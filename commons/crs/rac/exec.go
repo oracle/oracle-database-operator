@@ -39,31 +39,52 @@
 package commons
 
 import (
-	"bytes"
 	"context"
-	"net/http"
+	"fmt"
+	"strings"
 
 	racdb "github.com/oracle/oracle-database-operator/apis/database/v4"
+	sharedk8sexec "github.com/oracle/oracle-database-operator/commons/crs/shared/k8sexec"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/tools/remotecommand"
 )
 
-// ExecCommand executes the specified command inside the first container of the given pod.
-func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *racdb.RacDatabase, logger logr.Logger) (string, string, error) {
+// ExecCommandResp bundles Kubernetes client/config used by remote exec calls.
+type ExecCommandResp = sharedk8sexec.ExecCommandResp
 
-	var msg string
-	var (
-		execOut bytes.Buffer
-		execErr bytes.Buffer
-	)
+// NewExecCommandResp creates a reusable exec context wrapper.
+func NewExecCommandResp(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig) *ExecCommandResp {
+	return sharedk8sexec.NewExecCommandResp(kubeClient, kubeConfig)
+}
 
-	pod, err := kubeClient.CoreV1().
+// ExecCommand executes the specified command inside the first container of the given pod using bundled exec context.
+func ExecCommand(podName string, cmd []string, resp *ExecCommandResp, instance *racdb.RacDatabase, logger logr.Logger) (string, string, error) {
+	return ExecCommandWithResp(podName, cmd, resp, instance, logger)
+}
+
+// ExecCommandWithResp executes the specified command inside the first container of the given pod using bundled client/config.
+func ExecCommandWithResp(podName string, cmd []string, resp *ExecCommandResp, instance *racdb.RacDatabase, logger logr.Logger) (string, string, error) {
+	if instance == nil {
+		return "", "", fmt.Errorf("invalid exec request: instance is nil")
+	}
+	if strings.TrimSpace(instance.Namespace) == "" {
+		return "", "", fmt.Errorf("invalid exec request: instance namespace is empty")
+	}
+	if strings.TrimSpace(podName) == "" {
+		return "", "", fmt.Errorf("invalid exec request: pod name is empty")
+	}
+	if len(cmd) == 0 {
+		return "", "", fmt.Errorf("invalid exec request: command is empty")
+	}
+	if resp == nil || resp.KubeClient == nil || resp.KubeConfig == nil {
+		return "", "", fmt.Errorf("invalid exec context: kube client/config is not initialized")
+	}
+
+	pod, err := resp.KubeClient.CoreV1().
 		Pods(instance.Namespace).
 		Get(context.Background(), podName, metav1.GetOptions{})
 	if err != nil {
@@ -88,6 +109,14 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 		)
 		return "", "", nil
 	}
+	if len(pod.Spec.Containers) == 0 {
+		logger.Info(
+			"Skipping exec because pod has no containers",
+			"pod", podName,
+			"namespace", instance.Namespace,
+		)
+		return "", "", nil
+	}
 
 	// // Check container readiness (important for exec)
 	// ready := false
@@ -108,48 +137,16 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 	// 	return "", "", nil
 	// }
 
-	req := kubeClient.CoreV1().RESTClient().
-		Post().
-		Namespace(instance.Namespace).
-		Resource("pods").
-		Name(podName).
-		SubResource("exec").
-		VersionedParams(&corev1.PodExecOptions{
-			Command: cmd,
-			Stdout:  true,
-			Stderr:  true,
-			TTY:     true,
-		}, scheme.ParameterCodec)
-
-	config, err := kubeConfig.ClientConfig()
+	stdOut, stdErr, err := sharedk8sexec.StreamExec(context.Background(), resp, instance.Namespace, podName, pod.Spec.Containers[0].Name, cmd, true)
 	if err != nil {
-		return "Error Occurred", "Error Occurred", err
-	}
-
-	// Connect to url (constructed from req) using SPDY (HTTP/2) protocol which allows bidirectional streams.
-	exec, err := remotecommand.NewSPDYExecutor(config, http.MethodPost, req.URL())
-	if err != nil {
-		msg = "Error after executing remotecommand.NewSPDYExecutor"
-		LogMessages("Error", msg, err, instance, logger)
-		return "Error Occurred", "Error Occurred", err
-	}
-
-	err = exec.Stream(remotecommand.StreamOptions{
-		Stdout: &execOut,
-		Stderr: &execErr,
-		Tty:    true,
-	})
-	if err != nil {
-		msg = "Command execution failed inside the container!"
-		LogMessages("DEBUG", msg, err, instance, logger)
-		if len(execOut.String()) > 0 {
-			LogMessages("INFO", execOut.String(), nil, instance, logger)
+		LogMessages("DEBUG", "Command execution failed inside the container!", err, instance, logger)
+		if len(stdOut) > 0 {
+			LogMessages("INFO", stdOut, nil, instance, logger)
 		}
-		if len(execErr.String()) > 0 {
-			LogMessages("INFO", execErr.String(), nil, instance, logger)
+		if len(stdErr) > 0 {
+			LogMessages("INFO", stdErr, nil, instance, logger)
 		}
-		return execOut.String(), execErr.String(), err
+		return stdOut, stdErr, err
 	}
-
-	return execOut.String(), execErr.String(), nil
+	return stdOut, stdErr, nil
 }

@@ -56,18 +56,24 @@ import (
 var lrestlog = logf.Log.WithName("lrest-webhook")
 
 func (r *LREST) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+	return ctrl.NewWebhookManagedBy[*LREST](mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrest,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=mlrest.kb.io,admissionReviewVersions={v4,v1beta1}
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrest,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=mlrest.kb.io,admissionReviewVersions=v1
 
+// Update interface guards to use generics
+var _ admission.Validator[*LREST] = &LREST{}
+
+// Update the interface guard to the specific type
 var _ admission.Defaulter[*LREST] = &LREST{}
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
+// Update the method signature
+// Change runtime.Object -> *LREST
 func (r *LREST) Default(ctx context.Context, obj *LREST) error {
+
 	lrest := obj
 	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
 		lrestlog.Info("Setting default values in LREST spec for : " + r.Name)
@@ -84,18 +90,14 @@ func (r *LREST) Default(ctx context.Context, obj *LREST) error {
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrest,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=vlrest.kb.io,admissionReviewVersions={v4,v1beta1}
+//+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrest,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=vlrest.kb.io,admissionReviewVersions=v1
 
-var _ admission.Validator[*LREST] = &LREST{}
-
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
+// ValidateCreate implements admission.Validator[*LREST]
 func (r *LREST) ValidateCreate(ctx context.Context, obj *LREST) (admission.Warnings, error) {
 	lrest := obj
 	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
 		lrestlog.Info("ValidateCreate", "name", r.Name)
 	}
-
 	var allErrs field.ErrorList
 
 	if lrest.Spec.ServiceName == "" && lrest.Spec.DBServer != "" {
@@ -168,17 +170,17 @@ func (r *LREST) ValidateCreate(ctx context.Context, obj *LREST) (admission.Warni
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("webServerPwd"), "Please specify password for the Web Server User having SQL Administrator role"))
 	}
+
 	if len(allErrs) == 0 {
 		return nil, nil
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "LREST"},
-		r.Name, allErrs)
+		obj.Name, allErrs)
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *LREST) ValidateUpdate(ctx context.Context, old *LREST, newObj *LREST) (admission.Warnings, error) {
-
+// ValidateUpdate implements admission.Validator[*LREST]
+func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj *LREST) (admission.Warnings, error) {
 	isLRESTMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
 	if isLRESTMarkedToBeDeleted {
 		return nil, nil
@@ -218,13 +220,11 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old *LREST, newObj *LREST) (
 		r.Name, allErrs)
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
+// ValidateDelete implements admission.Validator[*LREST]
 func (r *LREST) ValidateDelete(ctx context.Context, obj *LREST) (admission.Warnings, error) {
 	lrest := obj
-	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
-		lrestlog.Info("validate delete", "name", r.Name)
+	if Bit(lrest.Spec.Trclvl, TRCWEB) {
+		lrestlog.Info("validate delete", "name", obj.Name)
 	}
-
-	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil
 }

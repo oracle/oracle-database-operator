@@ -66,114 +66,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// UpdateRacInstStatusData provides documentation for the UpdateRacInstStatusData function.
-func UpdateRacInstStatusData(
-	racDatabase *racdb.RacDatabase,
-	ctx context.Context,
-	req ctrl.Request,
-	oraRacSpex racdb.RacInstDetailSpec,
-	specidx int,
-	state string,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
-	logger logr.Logger,
-	kClient client.Client,
-) {
-	// podName is constructed based on oraRacSpex.Name
-	podName := oraRacSpex.Name + "-0"
-
-	racStatus := &racdb.RacNodeStatus{}
-	racNodeDetails := &racdb.RacNodeDetailedStatus{}
-	strMap := make(map[string]string)
-
+func ensureRacStatusDefaults(racDatabase *racdb.RacDatabase) {
 	if racDatabase.Status.AsmDiskGroups == nil {
 		racDatabase.Status.AsmDiskGroups = []racdb.AsmDiskGroupStatus{}
 	}
 	if racDatabase.Status.ConfigParams == nil {
 		racDatabase.Status.ConfigParams = &racdb.RacInitParams{}
-	}
-
-	if state == string(racdb.RACUpdateState) {
-		racDatabase.Status.State = state
-	}
-	if state == string(racdb.RACProvisionState) {
-		racDatabase.Status.State = state
-	}
-	if state == string(racdb.RACFailedState) {
-		clusterState := getClusterState(podName, racDatabase, 0, kubeClient, kubeConfig, logger)
-		instanceState := getDbInstState(podName, racDatabase, 0, kubeClient, kubeConfig, logger)
-		if clusterState == "HEALTHY" && instanceState == "OPEN" { // cluster is healthy and database is also fine
-			racDatabase.Status.State = string(racdb.RACAvailableState)
-			state = string(racdb.RACAvailableState)
-		} else {
-			racDatabase.Status.State = state
-		}
-
-	}
-	if state == string(racdb.RACManualState) {
-		racDatabase.Status.State = state
-	}
-	if state == string(racdb.RACAvailableState) {
-		racDatabase.Status.State = state
-		racNodeDetails.ClusterState = getClusterState(podName, racDatabase, specidx, kubeClient, kubeConfig, logger)
-		racNodeDetails.PodState = state
-		racNodeDetails.State = "OPEN"
-		racStatus.Name = podName
-
-		racNodeDetails.VipDetails = getVipDetails(racDatabase, racStatus, oraRacSpex, kClient)
-		racNodeDetails.InstanceState = getDbInstState(podName, racDatabase, specidx, kubeClient, kubeConfig, logger)
-		racNodeDetails.MountedDevices = getMountedDevices(podName, racDatabase.Namespace, racStatus, oraRacSpex, kClient, kubeConfig, logger, kubeClient)
-		racStatus.NodeDetails = racNodeDetails
-		addRacNodeStatus(racDatabase, ctx, req, racStatus, oraRacSpex, specidx, kubeClient, kubeConfig, logger)
-
-		if len(oraRacSpex.PvcName) > 0 {
-			racNodeDetails.PvcName = getPvcDetails(racDatabase, racStatus, oraRacSpex, kClient)
-		}
-	}
-
-	// Update status based on the state
-	if state == string(racdb.RACPodAvailableState) {
-		racDatabase.Status.State = state
-		racNodeDetails.ClusterState = getClusterState(podName, racDatabase, specidx, kubeClient, kubeConfig, logger)
-		racNodeDetails.PodState = state
-		racNodeDetails.State = "OPEN"
-		racStatus.Name = podName
-
-		racNodeDetails.VipDetails = getVipDetails(racDatabase, racStatus, oraRacSpex, kClient)
-		racNodeDetails.InstanceState = getDbInstState(podName, racDatabase, specidx, kubeClient, kubeConfig, logger)
-		racNodeDetails.MountedDevices = getMountedDevices(podName, racDatabase.Namespace, racStatus, oraRacSpex, kClient, kubeConfig, logger, kubeClient)
-		racStatus.NodeDetails = racNodeDetails
-		racDatabase.Status.ReleaseUpdate = "NOTAVAILABLE"
-		addRacNodeStatus(racDatabase, ctx, req, racStatus, oraRacSpex, specidx, kubeClient, kubeConfig, logger)
-
-		if len(oraRacSpex.PvcName) > 0 {
-			racNodeDetails.PvcName = getPvcDetails(racDatabase, racStatus, oraRacSpex, kClient)
-		}
-		if racDatabase.Spec.ConfigParams.GridHome != "" {
-			racDatabase.Status.ConfigParams.GridHome = racDatabase.Spec.ConfigParams.GridHome
-		}
-		if racDatabase.Spec.ConfigParams.DbHome != "" {
-			racDatabase.Status.ConfigParams.DbHome = racDatabase.Spec.ConfigParams.DbHome
-		}
-		crsDeviceList := GetcrsAsmDeviceList(racDatabase, racStatus, oraRacSpex, kClient, kubeConfig, logger, kubeClient)
-		dbDeviceList := GetdbAsmDeviceList(racDatabase, racStatus, oraRacSpex, kClient, kubeConfig, logger, kubeClient)
-		// Store CRS device list into status
-		SetAsmDiskGroupDevices(&racDatabase.Status.AsmDiskGroups, racdb.CrsAsmDiskDg, crsDeviceList)
-
-		// Store DB device list into status
-		SetAsmDiskGroupDevices(&racDatabase.Status.AsmDiskGroups, racdb.DbDataDiskDg, dbDeviceList)
-	} else if state == string(racdb.RACStatefulSetNotFound) {
-		newRacStatus := delRacNodeStatus(racDatabase, oraRacSpex.Name+"-0")
-		racDatabase.Status.RacNodes = newRacStatus
-		racDatabase.Status.ReleaseUpdate = "NOTAVAILABLE"
-
-	} else if state == string(racdb.PodNotFound) || state == string(racdb.PodNotReadyState) || state == string(racdb.PodFailureState) {
-		racNodeDetails.ClusterState = "NOTAVAILABLE"
-		racNodeDetails.PodState = state
-		racNodeDetails.VipDetails = getVipDetails(racDatabase, racStatus, oraRacSpex, kClient)
-		racNodeDetails.InstanceState = "NOTAVAILABLE"
-		racNodeDetails.PvcName = strMap
-		racDatabase.Status.ReleaseUpdate = "NOTAVAILABLE"
 	}
 }
 
@@ -196,37 +94,23 @@ func UpdateRacNodeStatusDataForCluster(
 	racStatus := &racdb.RacNodeStatus{}
 	racNodeDetails := &racdb.RacNodeDetailedStatus{}
 
-	// Sanity checks
-	if racDatabase.Status.AsmDiskGroups == nil {
-		racDatabase.Status.AsmDiskGroups = []racdb.AsmDiskGroupStatus{}
-	}
-	if racDatabase.Status.ConfigParams == nil {
-		racDatabase.Status.ConfigParams = &racdb.RacInitParams{}
-	}
+	ensureRacStatusDefaults(racDatabase)
 
 	racDatabase.Status.State = state
 
 	// Update status based on state
 	switch state {
 	case string(racdb.RACAvailableState):
-		racNodeDetails.ClusterState = getClusterState(podName, racDatabase, nodeIndex, kubeClient, kubeConfig, logger)
-		racNodeDetails.PodState = state
-		racNodeDetails.State = "OPEN"
-		racStatus.Name = podName
-		racNodeDetails.VipDetails = getVipDetailsForCluster(racDatabase, clusterSpec, nodeIndex, racStatus, kClient)
-		racNodeDetails.InstanceState = getDbInstState(podName, racDatabase, nodeIndex, kubeClient, kubeConfig, logger)
-		racNodeDetails.MountedDevices = getMountedDevicesForCluster(podName, racDatabase.Namespace, racStatus, nodeName, kClient, kubeConfig, logger, kubeClient)
-		racStatus.NodeDetails = racNodeDetails
+		populateRacNodeDetailsForCluster(
+			racDatabase, clusterSpec, nodeIndex, state, podName, nodeName,
+			racStatus, racNodeDetails, kClient, kubeClient, kubeConfig, logger,
+		)
 		addRacNodeStatusForCluster(racDatabase, ctx, req, racStatus, nodeName, nodeIndex, kubeClient, kubeConfig, logger)
 	case string(racdb.RACPodAvailableState):
-		racNodeDetails.ClusterState = getClusterState(podName, racDatabase, nodeIndex, kubeClient, kubeConfig, logger)
-		racNodeDetails.PodState = state
-		racNodeDetails.State = "OPEN"
-		racStatus.Name = podName
-		racNodeDetails.VipDetails = getVipDetailsForCluster(racDatabase, clusterSpec, nodeIndex, racStatus, kClient)
-		racNodeDetails.InstanceState = getDbInstState(podName, racDatabase, nodeIndex, kubeClient, kubeConfig, logger)
-		racNodeDetails.MountedDevices = getMountedDevicesForCluster(podName, racDatabase.Namespace, racStatus, nodeName, kClient, kubeConfig, logger, kubeClient)
-		racStatus.NodeDetails = racNodeDetails
+		populateRacNodeDetailsForCluster(
+			racDatabase, clusterSpec, nodeIndex, state, podName, nodeName,
+			racStatus, racNodeDetails, kClient, kubeClient, kubeConfig, logger,
+		)
 		addRacNodeStatusForCluster(racDatabase, ctx, req, racStatus, nodeName, nodeIndex, kubeClient, kubeConfig, logger)
 	case string(racdb.RACStatefulSetNotFound):
 		newRacStatus := delRacNodeStatus(racDatabase, nodeName+"-0")
@@ -242,6 +126,30 @@ func UpdateRacNodeStatusDataForCluster(
 	default:
 		racDatabase.Status.State = state
 	}
+}
+
+func populateRacNodeDetailsForCluster(
+	racDatabase *racdb.RacDatabase,
+	clusterSpec *racdb.RacClusterDetailSpec,
+	nodeIndex int,
+	state string,
+	podName string,
+	nodeName string,
+	racStatus *racdb.RacNodeStatus,
+	racNodeDetails *racdb.RacNodeDetailedStatus,
+	kClient client.Client,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	logger logr.Logger,
+) {
+	racNodeDetails.ClusterState = getClusterState(podName, racDatabase, nodeIndex, kubeClient, kubeConfig, logger)
+	racNodeDetails.PodState = state
+	racNodeDetails.State = "OPEN"
+	racStatus.Name = podName
+	racNodeDetails.VipDetails = getVipDetailsForCluster(racDatabase, clusterSpec, nodeIndex, racStatus, kClient)
+	racNodeDetails.InstanceState = getDbInstState(podName, racDatabase, nodeIndex, kubeClient, kubeConfig, logger)
+	racNodeDetails.MountedDevices = getMountedDevicesForCluster(podName, racDatabase.Namespace, racStatus, nodeName, kClient, kubeConfig, logger, kubeClient)
+	racStatus.NodeDetails = racNodeDetails
 }
 
 // SetAsmDiskGroupDevices provides documentation for the SetAsmDiskGroupDevices function.
@@ -277,37 +185,6 @@ func SetAsmDiskGroupDevices(groups *[]racdb.AsmDiskGroupStatus, groupType racdb.
 	}
 }
 
-// addRacNodeStatus provides documentation for the addRacNodeStatus function.
-func addRacNodeStatus(instance *racdb.RacDatabase, ctx context.Context, req ctrl.Request, racStatus *racdb.RacNodeStatus, oraRacSpex racdb.RacInstDetailSpec, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) {
-
-	var racState string
-	podName := oraRacSpex.Name + "-0"
-	idx, status := contains(instance, racStatus)
-	if status {
-		// racstate need to be read before overwriting the instance.Status.RacNodes[idx] = racStatus
-		racState = instance.Status.RacNodes[idx].NodeDetails.State
-		instance.Status.RacNodes[idx] = racStatus
-		instState := instance.Status.RacNodes[idx].NodeDetails.InstanceState
-		if instState == "OPEN" {
-			instance.Status.RacNodes[idx].NodeDetails.State = "AVAILABLE"
-		} else {
-			if (racState == "PENDING") || (racState == "ADDNODE") || (racState == "PROVISIONING") || (racState == "FAILED") || (racState == "UPDATE") {
-				instance.Status.RacNodes[idx].NodeDetails.State = getRacInstStateFile(podName, instance, specidx, kubeClient, kubeConfig, logger)
-			} else {
-				instance.Status.RacNodes[idx].NodeDetails.State = "PENDING"
-			}
-			// Block : at this time no code to maintain update and failed state
-			//failed state requires human intervention
-			//update state must be updated from where it is being called
-		}
-
-	} else {
-		instance.Status.RacNodes = append(instance.Status.RacNodes, racStatus)
-		instance.Status.RacNodes[idx].NodeDetails.State = "PENDING"
-	}
-
-}
-
 // addRacNodeStatusForCluster provides documentation for the addRacNodeStatusForCluster function.
 func addRacNodeStatusForCluster(
 	instance *racdb.RacDatabase,
@@ -320,6 +197,8 @@ func addRacNodeStatusForCluster(
 	kubeConfig clientcmd.ClientConfig,
 	logger logr.Logger,
 ) {
+	_ = ctx
+	_ = req
 	// var racState string
 	podName := nodeName + "-0"
 
@@ -332,7 +211,7 @@ func addRacNodeStatusForCluster(
 			instance.Status.RacNodes[idx].NodeDetails.State = "AVAILABLE"
 		} else {
 			s := instance.Status.RacNodes[idx].NodeDetails.State
-			if s == "PENDING" || s == "ADDNODE" || s == "PROVISIONING" || s == "FAILED" || s == "UPDATE" {
+			if shouldRefreshNodeState(s) {
 				instance.Status.RacNodes[idx].NodeDetails.State = getRacInstStateFileForCluster(podName, instance, nodeIndex, kubeClient, kubeConfig, logger)
 			} else {
 				instance.Status.RacNodes[idx].NodeDetails.State = "PENDING"
@@ -341,6 +220,15 @@ func addRacNodeStatusForCluster(
 	} else {
 		instance.Status.RacNodes = append(instance.Status.RacNodes, racStatus)
 		instance.Status.RacNodes[len(instance.Status.RacNodes)-1].NodeDetails.State = "PENDING"
+	}
+}
+
+func shouldRefreshNodeState(s string) bool {
+	switch s {
+	case "PENDING", "ADDNODE", "PROVISIONING", "FAILED", "UPDATE":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -354,22 +242,7 @@ func getMountedDevicesForCluster(
 	logger logr.Logger,
 	kubeClient kubernetes.Interface,
 ) []string {
-	var asmList []string
-
-	// Get the pod associated with this RAC cluster node
-	pod, err := kubeClient.CoreV1().Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
-	if err != nil {
-		logger.Error(err, "Failed to get pod for RAC node", "PodName", podName, "Namespace", namespace)
-		return nil
-	}
-
-	// Loop through the volume devices or mounted volumes in the pod spec
-	for _, container := range pod.Spec.Containers {
-		for _, volumeDevice := range container.VolumeDevices {
-			asmList = append(asmList, volumeDevice.DevicePath)
-		}
-	}
-	return asmList
+	return getPodVolumeDevicePaths(podName, namespace, kubeClient, logger)
 }
 
 // getVipDetailsForCluster provides documentation for the getVipDetailsForCluster function.
@@ -481,80 +354,17 @@ func UpdateRacDbServiceStatus(instance *racdb.RacDatabase, ctx context.Context, 
 	}
 }
 
-// contains provides documentation for the contains function.
-func contains(instance *racdb.RacDatabase, racStatus *racdb.RacNodeStatus) (int, bool) {
-	var index int
-	if len(instance.Status.RacNodes) > 0 {
-		for index, v := range instance.Status.RacNodes {
-			if v.Name == racStatus.Name {
-				return index, true
-			}
-		}
-	}
-
-	return index, false
-}
-
-// getVipDetails provides documentation for the getVipDetails function.
-func getVipDetails(instance *racdb.RacDatabase, racStatus *racdb.RacNodeStatus, oraRacSpex racdb.RacInstDetailSpec, rclient client.Client) map[string]string {
-	strMap := make(map[string]string)
-	_, err := CheckRacSvc(instance, "vip", oraRacSpex, oraRacSpex.VipSvcName, rclient)
-	if err == nil {
-		strMap["Name"] = oraRacSpex.VipSvcName
-		// See if service already exists and create if it doesn't
-	}
-
-	return strMap
-
-}
-
-// GetcrsAsmDeviceList provides documentation for the GetcrsAsmDeviceList function.
-func GetcrsAsmDeviceList(instance *racdb.RacDatabase, racStatus *racdb.RacNodeStatus, oraRacSpex racdb.RacInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-	asmList := ""
-	var err error
-	if len(instance.Status.RacNodes) > 0 {
-		asmList, err = CheckAsmList(instance.Status.RacNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-		if err != nil {
-			return ""
-		}
-
-	}
-
-	return asmList
-
-}
-
-// GetdbAsmDeviceList provides documentation for the GetdbAsmDeviceList function.
-func GetdbAsmDeviceList(instance *racdb.RacDatabase, racStatus *racdb.RacNodeStatus, oraRacSpex racdb.RacInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-	dbasmList := ""
-	var err error
-	if len(instance.Status.RacNodes) > 0 {
-		dbasmList, err = CheckDbAsmList(instance.Status.RacNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-		if err != nil {
-			return ""
-		}
-
-	}
-
-	return dbasmList
-
-}
-
-// getMountedDevices provides documentation for the getMountedDevices function.
-func getMountedDevices(podName, namespace string, racStatus *racdb.RacNodeStatus, oraRacSpex racdb.RacInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) []string {
+func getPodVolumeDevicePaths(podName, namespace string, kubeClient kubernetes.Interface, logger logr.Logger) []string {
 	var asmList []string
 
-	// Get the pod associated with the RAC node
-	pod, err := kubeClient.CoreV1().Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	pod, err := kubeClient.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 	if err != nil {
 		logger.Error(err, "Failed to get pod for RAC node", "PodName", podName, "Namespace", namespace)
 		return nil
 	}
 
-	// Loop through the volume devices or mounted volumes in the pod spec
 	for _, container := range pod.Spec.Containers {
 		for _, volumeDevice := range container.VolumeDevices {
-			// Append the device path to the asmList
 			asmList = append(asmList, volumeDevice.DevicePath)
 		}
 	}
@@ -562,26 +372,43 @@ func getMountedDevices(podName, namespace string, racStatus *racdb.RacNodeStatus
 	return asmList
 }
 
+func getAsmDeviceListByMode(
+	instance *racdb.RacDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	logger logr.Logger,
+	useCRS bool,
+) string {
+	if len(instance.Status.RacNodes) == 0 {
+		return ""
+	}
+
+	podName := instance.Status.RacNodes[0].Name
+	resp := NewExecCommandResp(kubeClient, kubeConfig)
+	var (
+		result string
+		err    error
+	)
+	if useCRS {
+		result, err = CheckAsmListWithResp(podName, resp, instance, logger)
+	} else {
+		result, err = CheckDbAsmListWithResp(podName, resp, instance, logger)
+	}
+	if err != nil {
+		return ""
+	}
+	return result
+}
+
 // delRacNodeStatus provides documentation for the delRacNodeStatus function.
 func delRacNodeStatus(instance *racdb.RacDatabase, name string) []*racdb.RacNodeStatus {
 	newRacStatus := []*racdb.RacNodeStatus{}
 	if len(instance.Status.RacNodes) > 0 {
 		for _, value := range instance.Status.RacNodes {
-			if ((value.Name) != (name)) && (value != nil) {
+			if value != nil && value.Name != name {
 				newRacStatus = append(newRacStatus, value)
 			}
 		}
 	}
 	return newRacStatus
-}
-
-// getPvcDetails provides documentation for the getPvcDetails function.
-func getPvcDetails(instance *racdb.RacDatabase, racStatus *racdb.RacNodeStatus, oraRacSpex racdb.RacInstDetailSpec, rclient client.Client) map[string]string {
-	strMap := make(map[string]string)
-	if len(oraRacSpex.PvcName) > 0 {
-		strMap = oraRacSpex.PvcName
-	}
-
-	return strMap
-
 }

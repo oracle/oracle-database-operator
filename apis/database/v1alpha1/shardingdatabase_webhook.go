@@ -39,14 +39,47 @@
 package v1alpha1
 
 import (
+	"context"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var shardingdatabaselog = logf.Log.WithName("shardingdatabase-resource")
 
 func (r *ShardingDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+
+	return ctrl.NewWebhookManagedBy[*ShardingDatabase](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
+}
+
+// Ensure the CRD implements the generic admission interfaces
+var _ admission.Defaulter[*ShardingDatabase] = &ShardingDatabase{}
+var _ admission.Validator[*ShardingDatabase] = &ShardingDatabase{}
+
+// Default implements admission.Defaulter[*ShardingDatabase]
+func (r *ShardingDatabase) Default(ctx context.Context, obj *ShardingDatabase) error {
+	shardingdatabaselog.Info("Defaulting for ShardingDatabase", "name", obj.Name)
+	return nil
+}
+
+// ValidateCreate implements admission.Validator[*ShardingDatabase]
+func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj *ShardingDatabase) (admission.Warnings, error) {
+	shardingdatabaselog.Info("ValidateCreate for ShardingDatabase", "name", obj.Name)
+	return nil, nil
+}
+
+// ValidateUpdate implements admission.Validator[*ShardingDatabase]
+func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *ShardingDatabase) (admission.Warnings, error) {
+	shardingdatabaselog.Info("ValidateUpdate for ShardingDatabase", "name", newObj.Name)
+	return nil, nil
+}
+
+// ValidateDelete implements admission.Validator[*ShardingDatabase]
+func (r *ShardingDatabase) ValidateDelete(ctx context.Context, obj *ShardingDatabase) (admission.Warnings, error) {
+	return nil, nil
 }

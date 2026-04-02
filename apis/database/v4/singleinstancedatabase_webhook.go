@@ -71,7 +71,9 @@ func (r *SingleInstanceDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-singleinstancedatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=singleinstancedatabases,verbs=create;update,versions=v4,name=msingleinstancedatabasev4.kb.io,admissionReviewVersions={v1,v1beta1}
 
 var _ admission.Defaulter[*SingleInstanceDatabase] = &SingleInstanceDatabase{}
+var _ admission.Validator[*SingleInstanceDatabase] = &SingleInstanceDatabase{}
 
+// Default implements admission.Defaulter[*SingleInstanceDatabase]
 func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanceDatabase) error {
 	sidb := obj
 

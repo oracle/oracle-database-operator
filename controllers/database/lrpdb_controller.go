@@ -59,7 +59,7 @@ import (
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 
 	"github.com/go-logr/logr"

@@ -54,23 +54,20 @@ import (
 var autonomousdatabaserestorelog = logf.Log.WithName("autonomousdatabaserestore-resource")
 
 func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithValidator(r).
+	return ctrl.NewWebhookManagedBy[*AutonomousDatabaseRestore](mgr, r).
 		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v4,name=vautonomousdatabaserestorev4.kb.io,admissionReviewVersions=v1
 
+// Use the generic admission.Validator interface
 var _ admission.Validator[*AutonomousDatabaseRestore] = &AutonomousDatabaseRestore{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
+// ValidateCreate - Signatures updated to specific pointer type
 func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj *AutonomousDatabaseRestore) (admission.Warnings, error) {
-	var (
-		allErrs field.ErrorList
-		restore = obj
-	)
-
+	var allErrs field.ErrorList
+	restore := obj
 	autonomousdatabaserestorelog.Info("validate create", "name", restore.Name)
 
 	namespaces := dbcommons.GetWatchNamespaces()
@@ -127,12 +124,10 @@ func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj *Aut
 		restore.Name, allErrs)
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *AutonomousDatabaseRestore) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousDatabaseRestore) (admission.Warnings, error) {
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateDelete(context.Context, *AutonomousDatabaseRestore) (admission.Warnings, error) {
+func (r *AutonomousDatabaseRestore) ValidateDelete(ctx context.Context, obj *AutonomousDatabaseRestore) (admission.Warnings, error) {
 	return nil, nil
 }

@@ -54,18 +54,21 @@
 package commons
 
 import (
-	"bufio"
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
-	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"time"
 
 	racdb "github.com/oracle/oracle-database-operator/apis/database/v4"
-	utils "github.com/oracle/oracle-database-operator/commons/rac/utils"
+	sharedasm "github.com/oracle/oracle-database-operator/commons/crs/asm"
+	utils "github.com/oracle/oracle-database-operator/commons/crs/rac/utils"
+	shareddiskcheck "github.com/oracle/oracle-database-operator/commons/crs/shared/diskcheck"
+	sharedinstanceutil "github.com/oracle/oracle-database-operator/commons/crs/shared/instanceutil"
+	sharednaming "github.com/oracle/oracle-database-operator/commons/crs/shared/naming"
+	sharednetutil "github.com/oracle/oracle-database-operator/commons/crs/shared/netutil"
+	sharedoracmd "github.com/oracle/oracle-database-operator/commons/crs/shared/oracmd"
+	sharedrsp "github.com/oracle/oracle-database-operator/commons/crs/shared/rsp"
+	sharedk8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
 
 	"strings"
 
@@ -73,8 +76,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -94,30 +97,6 @@ func buildEnvVarsSpec(envVariables []corev1.EnvVar) []corev1.EnvVar {
 			result = append(result, corev1.EnvVar{Name: "container", Value: "true"})
 		}
 	**/
-
-	return result
-}
-
-// buildContainerPortsDef assembles the container port definitions for the RAC instance.
-func buildContainerPortsDef(instance *racdb.RacDatabase, oraRacSpex racdb.RacInstDetailSpec) []corev1.ContainerPort {
-	var result []corev1.ContainerPort
-	if len(oraRacSpex.PortMappings) > 0 {
-		for _, portMapping := range oraRacSpex.PortMappings {
-			containerPort :=
-				corev1.ContainerPort{
-					Protocol:      portMapping.Protocol,
-					ContainerPort: portMapping.Port,
-					Name:          generatePortMapping(portMapping),
-				}
-			result = append(result, containerPort)
-		}
-	} else {
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraDBPort, Name: generateName(fmt.Sprintf("%s-%d", "tcp", utils.OraDBPort))})
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraLsnrPort, Name: generateName(fmt.Sprintf("%s-%d", "tcp", utils.OraLsnrPort))})
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraSSHPort, Name: generateName(fmt.Sprintf("%s-%d", "tcp", utils.OraSSHPort))})
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraLocalOnsPort, Name: generateName(fmt.Sprintf("%s-%d", "tcp", utils.OraLocalOnsPort))})
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraOemPort, Name: generateName(fmt.Sprintf("%s-%d", "tcp", utils.OraOemPort))})
-	}
 
 	return result
 }
@@ -209,8 +188,17 @@ func LogMessages(msgtype string, msg string, err error, instance *racdb.RacDatab
 
 // GetRacPodName returns the pod name for the provided RAC name.
 func GetRacPodName(racName string) string {
-	podName := racName
-	return podName
+	return racName
+}
+
+// BuildLabelsForRac returns stable labels shared by RAC cluster resources.
+func BuildLabelsForRac(instance *racdb.RacDatabase, component string) map[string]string {
+	return map[string]string{
+		"app":                            "oracle-database-operator",
+		"database.oracle.com/name":       instance.Name,
+		"database.oracle.com/component":  component,
+		"database.oracle.com/managed-by": "racdatabase-controller",
+	}
 }
 
 // getlabelsForRac builds common RAC labels for internal operations.
@@ -218,51 +206,168 @@ func getlabelsForRac(instance *racdb.RacDatabase) map[string]string {
 	return buildLabelsForRac(instance, "RAC")
 }
 
+func buildLabelsForRac(instance *racdb.RacDatabase, component string) map[string]string {
+	return BuildLabelsForRac(instance, component)
+}
+
+// BuildLabelsForDaemonSet prepares labels for RAC daemonset resources.
+func BuildLabelsForDaemonSet(instance *racdb.RacDatabase, label string) map[string]string {
+	return shareddiskcheck.BuildLabelsForDaemonSet(instance, label)
+}
+
+func buildLabelsForAsmPv(instance *racdb.RacDatabase, diskName string) map[string]string {
+	baseName := diskName[strings.LastIndex(diskName, "/")+1:]
+	asmVol := "block-asm-pv-" + instance.Name + "-" + baseName
+	return map[string]string{
+		"asm_vol":                      asmVol,
+		"app.kubernetes.io/name":       "oracle-rac",
+		"app.kubernetes.io/instance":   sanitizeK8sName(instance.Name),
+		"app.kubernetes.io/component":  "asm-pv",
+		"app.kubernetes.io/managed-by": "oracle-database-operator",
+	}
+}
+
+func getAsmNodeAffinity(instance *racdb.RacDatabase) *corev1.VolumeNodeAffinity {
+	nodeAffinity := &corev1.VolumeNodeAffinity{
+		Required: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{},
+		},
+	}
+	if instance.Spec.ClusterDetails == nil || len(instance.Spec.ClusterDetails.WorkerNodeSelector) == 0 {
+		return nodeAffinity
+	}
+
+	var matchExpr []corev1.NodeSelectorRequirement
+	for key, value := range instance.Spec.ClusterDetails.WorkerNodeSelector {
+		matchExpr = append(matchExpr, corev1.NodeSelectorRequirement{
+			Key:      key,
+			Operator: corev1.NodeSelectorOpIn,
+			Values:   []string{value},
+		})
+	}
+	nodeAffinity.Required.NodeSelectorTerms = []corev1.NodeSelectorTerm{{MatchExpressions: matchExpr}}
+	return nodeAffinity
+}
+
+func flattenAsmDisks(racDbSpec *racdb.RacDatabaseSpec) []string {
+	var groups [][]string
+	for _, dg := range racDbSpec.AsmStorageDetails {
+		groups = append(groups, dg.Disks)
+	}
+	return sharedasm.FlattenUniqueDiskGroups(groups)
+}
+
+func VolumePVForASM(
+	instance *racdb.RacDatabase,
+	dgIndex, diskIdx int,
+	diskName, diskGroupName, size string,
+) *corev1.PersistentVolume {
+	_ = dgIndex
+	_ = diskIdx
+	_ = diskGroupName
+	volumeBlock := corev1.PersistentVolumeBlock
+	pvName := GetAsmPvName(diskName, instance.Name)
+	labels := buildLabelsForAsmPv(instance, diskName)
+	asmPv := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvName,
+			Namespace: instance.Namespace,
+			Labels:    labels,
+		},
+		Spec: corev1.PersistentVolumeSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+			VolumeMode:  &volumeBlock,
+			Capacity: corev1.ResourceList{
+				corev1.ResourceStorage: resource.MustParse(size),
+			},
+		},
+	}
+	if len(instance.Spec.StorageClass) == 0 {
+		asmPv.Spec.NodeAffinity = getAsmNodeAffinity(instance)
+		asmPv.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{
+			Local: &corev1.LocalVolumeSource{Path: diskName},
+		}
+	} else {
+		asmPv.Spec.StorageClassName = instance.Spec.StorageClass
+	}
+	return asmPv
+}
+
+func VolumePVCForASM(
+	instance *racdb.RacDatabase,
+	dgIndex, diskIdx int,
+	diskName, diskGroupName, size string,
+) *corev1.PersistentVolumeClaim {
+	_ = dgIndex
+	_ = diskIdx
+	_ = diskGroupName
+	volumeBlock := corev1.PersistentVolumeBlock
+	asmPvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      GetAsmPvcName(diskName, instance.Name),
+			Namespace: instance.Namespace,
+			Labels:    buildLabelsForAsmPv(instance, diskName),
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+			VolumeMode:  &volumeBlock,
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse(size),
+				},
+			},
+		},
+	}
+	if len(instance.Spec.StorageClass) == 0 {
+		asmPvc.Spec.Selector = &metav1.LabelSelector{MatchLabels: buildLabelsForAsmPv(instance, diskName)}
+	} else {
+		asmPvc.Spec.StorageClassName = &instance.Spec.StorageClass
+	}
+	return asmPvc
+}
+
+func ConfigMapSpecs(instance *racdb.RacDatabase, cmData map[string]string, cmName string) *corev1.ConfigMap {
+	return sharedk8sobjects.ConfigMapSpec(instance.Namespace, instance.Name, cmName, cmData)
+}
+
+func BuildDiskCheckDaemonSet(racDatabase *racdb.RacDatabase) *appsv1.DaemonSet {
+	labels := BuildLabelsForDaemonSet(racDatabase, "disk-check")
+	var nodeAffinity *corev1.NodeAffinity
+	if racDatabase.Spec.ClusterDetails != nil && len(racDatabase.Spec.ClusterDetails.WorkerNodeSelector) > 0 {
+		nodeAffinity = shareddiskcheck.NodeAffinityForSelectorMap(racDatabase.Spec.ClusterDetails.WorkerNodeSelector)
+	}
+	disks := flattenAsmDisks(&racDatabase.Spec)
+	cmd := shareddiskcheck.BuildDiskCheckCommand(disks)
+	volumeMounts, volumes := shareddiskcheck.BuildDiskHostPathVolumes(disks, sanitizeK8sName)
+	return shareddiskcheck.BuildDaemonSet(racDatabase.Namespace, racDatabase.Spec.Image, labels, nodeAffinity, cmd, volumeMounts, volumes)
+}
+
 const maxNameLen = 63
 
 // sanitizeK8sName normalizes a string so it can be used as a Kubernetes object name.
 func sanitizeK8sName(name string) string {
-	re := regexp.MustCompile(`[^a-z0-9-]+`)
-	sanitized := re.ReplaceAllString(strings.ToLower(name), "-")
-	sanitized = strings.Trim(sanitized, "-")
-	if len(sanitized) > maxNameLen {
-		sanitized = sanitized[:maxNameLen]
-	}
-	return sanitized
+	return sharednaming.SanitizeK8sName(name, maxNameLen)
 }
 
 // shortHash returns a deterministic truncated SHA-1 checksum for the provided text.
 func shortHash(text string, n int) string {
-	h := sha1.New()
-	h.Write([]byte(text))
-	return hex.EncodeToString(h.Sum(nil))[:n]
+	return sharednaming.ShortHash(text, n)
 }
 
 // GetAsmPvcName builds the PVC name for the specified ASM disk and database.
 func GetAsmPvcName(diskPath, dbName string) string {
-	// Use a hash of the device path for uniqueness, keep it short but collision-resistant
-	hash := shortHash(diskPath, 8)
-	base := fmt.Sprintf("asm-pvc-%s-%s", hash, sanitizeK8sName(dbName))
-	if len(base) > maxNameLen {
-		base = base[:maxNameLen]
-	}
-	return base
+	return sharednaming.AsmPVCName(diskPath, dbName, maxNameLen)
 }
 
 // GetAsmPvName builds the PV name for the specified ASM disk and database.
 func GetAsmPvName(diskPath, dbName string) string {
-	hash := shortHash(diskPath, 8)
-	base := fmt.Sprintf("asm-pv-%s-%s", hash, sanitizeK8sName(dbName))
-	if len(base) > maxNameLen {
-		base = base[:maxNameLen]
-	}
-	return base
+	return sharednaming.AsmPVName(diskPath, dbName, maxNameLen)
 }
 
 // CheckSfset retrieves the named StatefulSet if present, returning nil when not found.
 func CheckSfset(sfsetName string, instance *racdb.RacDatabase, kClient client.Client) (*appsv1.StatefulSet, error) {
 	sfSetFound := &appsv1.StatefulSet{}
-	err := kClient.Get(context.TODO(), types.NamespacedName{
+	err := kClient.Get(context.Background(), types.NamespacedName{
 		Name:      sfsetName,
 		Namespace: instance.Namespace,
 	}, sfSetFound)
@@ -336,37 +441,29 @@ func getDbAsmCmd() []string {
 
 // getOraScriptMount returns the shared scripts mount path constant.
 func getOraScriptMount() string {
-
-	return utils.OraScriptMount
-
+	return sharedoracmd.ScriptMount
 }
 
 // getOraDbUser returns the Oracle database OS user name.
 func getOraDbUser() string {
-
-	return utils.OraDBUser
-
+	return sharedoracmd.DBUser
 }
 
 // getOraGiUser returns the Oracle Grid Infrastructure OS user name.
 func getOraGiUser() string {
-
-	return utils.OraGridUser
-
+	return sharedoracmd.GIUser
 }
 
 // getOraPythonCmd provides the Python interpreter path for RAC scripts.
 func getOraPythonCmd() string {
-
-	return "/bin/python3"
-
+	return sharedoracmd.Python3Cmd
 }
 
 // UpdateScanEP updates SCAN endpoints within the specified pod using provided GI home and scan name.
 func UpdateScanEP(gihome string, scanname string, podName string, instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	time.Sleep(60 * time.Second)
-	_, _, err := ExecCommand(podName, getUpdateScanEpCmd(gihome, scanname), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(podName, getUpdateScanEpCmd(gihome, scanname), NewExecCommandResp(kubeClient, kubeconfig), instance, logger)
 	if err != nil {
 		return fmt.Errorf("error ocurred while updating the scan endpoints")
 	}
@@ -390,8 +487,7 @@ func UpdateCDP(
 	_, _, err := ExecCommand(
 		podName,
 		getUpdateCdpCmd(gihome),
-		kubeClient,
-		kubeconfig,
+		NewExecCommandResp(kubeClient, kubeconfig),
 		instance,
 		logger,
 	)
@@ -409,7 +505,7 @@ func UpdateCDP(
 func UpdateTCPPort(gihome string, portlist string, lsnrname string, podName string, instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
-	_, _, err := ExecCommand(podName, getUpdateTCPPortCmd(gihome, portlist, lsnrname), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(podName, getUpdateTCPPortCmd(gihome, portlist, lsnrname), NewExecCommandResp(kubeClient, kubeconfig), instance, logger)
 	if err != nil {
 		return fmt.Errorf("error ocurred while updating TCP listener ports")
 	}
@@ -421,7 +517,7 @@ func UpdateTCPPort(gihome string, portlist string, lsnrname string, podName stri
 func UpdateAsmCount(gihome string, podName string, instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
-	_, _, err := ExecCommand(podName, getUpdateAsmCount(gihome), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(podName, getUpdateAsmCount(gihome), NewExecCommandResp(kubeClient, kubeconfig), instance, logger)
 	if err != nil {
 		return fmt.Errorf("error ocurred while updating TCP listener ports")
 	}
@@ -433,7 +529,7 @@ func UpdateAsmCount(gihome string, podName string, instance *racdb.RacDatabase, 
 func ValidateDbSetup(podName string, instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
-	_, _, err := ExecCommand(podName, racDBValidationCmd(), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(podName, racDBValidationCmd(), NewExecCommandResp(kubeClient, kubeconfig), instance, logger)
 	if err != nil {
 		return fmt.Errorf("error ocurred while validating the DB Setup")
 	}
@@ -444,7 +540,7 @@ func ValidateDbSetup(podName string, instance *racdb.RacDatabase, kubeClient kub
 func DelRacNode(podName string, instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	delcmd := racNodeDelCmd()
-	_, _, err := ExecCommand(podName, delcmd, kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(podName, delcmd, NewExecCommandResp(kubeClient, kubeconfig), instance, logger)
 	if err != nil {
 		return fmt.Errorf("error occurred while deleting the RAC node: %w", err)
 	}
@@ -454,24 +550,20 @@ func DelRacNode(podName string, instance *racdb.RacDatabase, kubeClient kubernet
 
 // CheckAsmList retrieves configured CRS ASM devices from the pod environment.
 func CheckAsmList(podName string, instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) (string, error) {
-	output, _, err := ExecCommand(podName, getAsmCmd(), kubeClient, kubeconfig, instance, logger)
+	return CheckAsmListWithResp(podName, NewExecCommandResp(kubeClient, kubeconfig), instance, logger)
+}
+
+// CheckAsmListWithResp retrieves configured CRS ASM devices from the pod environment using bundled exec context.
+func CheckAsmListWithResp(podName string, resp *ExecCommandResp, instance *racdb.RacDatabase, logger logr.Logger) (string, error) {
+	output, _, err := ExecCommandWithResp(podName, getAsmCmd(), resp, instance, logger)
 	if err != nil {
 		return "", err
 	}
-
-	parts := strings.SplitN(output, "=", 2)
-	if len(parts) < 2 {
-		return "", fmt.Errorf("unable to parse ASM device list from output: %s", output)
-	}
-
-	// Trim the \r and \n characters from the end of the string
-	deviceList := strings.TrimSpace(parts[1])
-	deviceList = strings.ReplaceAll(deviceList, "\r", "")
-	return deviceList, nil
+	return parseAsmDeviceListFromOutput(output)
 }
 
 // func getASMListDisks(podName string, instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) (string, error) {
-// 	output, _, err := ExecCommand(podName, getAsmCmd(), kubeClient, kubeconfig, instance, logger)
+// 	output, _, err := ExecCommand(podName, getAsmCmd(), NewExecCommandResp(kubeClient, kubeconfig), instance, logger)
 // 	if err != nil {
 // 		return "", err
 // 	}
@@ -490,18 +582,25 @@ func CheckAsmList(podName string, instance *racdb.RacDatabase, kubeClient kubern
 // CheckDbAsmList retrieves configured DB ASM devices from the pod environment.
 // CheckDbAsmList provides documentation for the CheckDbAsmList function.
 func CheckDbAsmList(podName string, instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) (string, error) {
-	output, _, err := ExecCommand(podName, getDbAsmCmd(), kubeClient, kubeconfig, instance, logger)
+	return CheckDbAsmListWithResp(podName, NewExecCommandResp(kubeClient, kubeconfig), instance, logger)
+}
+
+// CheckDbAsmListWithResp retrieves configured DB ASM devices from the pod environment using bundled exec context.
+func CheckDbAsmListWithResp(podName string, resp *ExecCommandResp, instance *racdb.RacDatabase, logger logr.Logger) (string, error) {
+	output, _, err := ExecCommandWithResp(podName, getDbAsmCmd(), resp, instance, logger)
 	if err != nil {
 		return "", err
 	}
+	return parseAsmDeviceListFromOutput(output)
+}
 
-	parts := strings.SplitN(output, "=", 2)
-	if len(parts) < 2 {
+func parseAsmDeviceListFromOutput(output string) (string, error) {
+	_, value, ok := strings.Cut(output, "=")
+	if !ok {
 		return "", fmt.Errorf("unable to parse ASM device list from output: %s", output)
 	}
 
-	// Trim the \r and \n characters from the end of the string
-	deviceList := strings.TrimSpace(parts[1])
+	deviceList := strings.TrimSpace(value)
 	deviceList = strings.ReplaceAll(deviceList, "\r", "")
 	return deviceList, nil
 }
@@ -509,7 +608,7 @@ func CheckDbAsmList(podName string, instance *racdb.RacDatabase, kubeClient kube
 // checkPvc fetches the named PVC from the instance namespace if it exists.
 func checkPvc(pvcName string, instance *racdb.RacDatabase, kClient client.Client) (*corev1.PersistentVolumeClaim, error) {
 	pvcFound := &corev1.PersistentVolumeClaim{}
-	err := kClient.Get(context.TODO(), types.NamespacedName{
+	err := kClient.Get(context.Background(), types.NamespacedName{
 		Name:      pvcName,
 		Namespace: instance.Namespace,
 	}, pvcFound)
@@ -522,7 +621,7 @@ func checkPvc(pvcName string, instance *racdb.RacDatabase, kClient client.Client
 // checkPv fetches the named PV from the instance namespace if it exists.
 func checkPv(pvName string, instance *racdb.RacDatabase, kClient client.Client) (*corev1.PersistentVolume, error) {
 	pvFound := &corev1.PersistentVolume{}
-	err := kClient.Get(context.TODO(), types.NamespacedName{
+	err := kClient.Get(context.Background(), types.NamespacedName{
 		Name:      pvName,
 		Namespace: instance.Namespace,
 	}, pvFound)
@@ -532,30 +631,16 @@ func checkPv(pvName string, instance *racdb.RacDatabase, kClient client.Client) 
 	return pvFound, nil
 }
 
-// DelRacSwPvc removes the software staging PVC associated with the RAC instance.
-func DelRacSwPvc(instance *racdb.RacDatabase, OraRacSpex racdb.RacInstDetailSpec, kClient client.Client, logger logr.Logger) error {
-
-	pvcName := OraRacSpex.Name + "-oradata-sw-vol-" + OraRacSpex.Name + "-0"
-	LogMessages("DEBUG", "Inside the delPvc and received param: "+GetFmtStr(pvcName), nil, instance, logger)
-	pvcFound, err := checkPvc(pvcName, instance, kClient)
-	if err != nil {
-		LogMessages("DEBUG", "Error occurred in finding the pvc claim!", nil, instance, logger)
-		return nil
-	}
-	err = kClient.Delete(context.Background(), pvcFound)
-	if err != nil {
-		LogMessages("DEBUG", "Error occurred in deleting the pvc claim!", nil, instance, logger)
-		return err
-	}
-	return nil
-}
-
 // DelRacSwPvcClusterStyle deletes the software PVC for the given cluster node index.
 func DelRacSwPvcClusterStyle(instance *racdb.RacDatabase, clusterSpec *racdb.RacClusterDetailSpec, nodeIndex int, kClient client.Client, logger logr.Logger) error {
 	nodeName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, nodeIndex+1)
 	pvcName := nodeName + "-oradata-sw-vol"
 
 	LogMessages("DEBUG", "Inside DelRacSwPvcClusterStyle and received param: "+GetFmtStr(pvcName), nil, instance, logger)
+	return deletePVCIfExists(instance, pvcName, kClient, logger)
+}
+
+func deletePVCIfExists(instance *racdb.RacDatabase, pvcName string, kClient client.Client, logger logr.Logger) error {
 	pvcFound, err := checkPvc(pvcName, instance, kClient)
 	if err != nil {
 		LogMessages("DEBUG", "Error occurred in finding the pvc claim!", nil, instance, logger)
@@ -639,32 +724,6 @@ func DelRacPv(instance *racdb.RacDatabase, diskName, dgName string, kClient clie
 	return nil
 }
 
-// CheckRacSvc attempts to retrieve a RAC service by type and name.
-func CheckRacSvc(instance *racdb.RacDatabase, svcType string, oraRacSpex racdb.RacInstDetailSpec, svcName string, kClient client.Client) (*corev1.Service, error) {
-	svcFound := &corev1.Service{}
-	var name string
-
-	if svcType == "nodeport" {
-		name = svcName
-	} else {
-		name = getRacSvcName(instance, oraRacSpex, svcType)
-	}
-
-	err := kClient.Get(context.TODO(), types.NamespacedName{
-		Name:      name,
-		Namespace: instance.Namespace,
-	}, svcFound)
-
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil // not an error, service already gone
-		}
-		return nil, err // real error
-	}
-
-	return svcFound, nil
-}
-
 // CheckRacSvcForCluster retrieves a RAC cluster service for the given node index and type.
 func CheckRacSvcForCluster(
 	instance *racdb.RacDatabase,
@@ -674,7 +733,6 @@ func CheckRacSvcForCluster(
 	svcName string, // Optional: for nodeport overrides
 	kClient client.Client,
 ) (*corev1.Service, error) {
-	svcFound := &corev1.Service{}
 	var name string
 
 	if svcType == "nodeport" && svcName != "" {
@@ -683,53 +741,41 @@ func CheckRacSvcForCluster(
 		name = GetClusterSvcName(instance, clusterSpec, nodeIndex, svcType)
 	}
 
-	err := kClient.Get(context.TODO(), types.NamespacedName{
-		Name:      name,
-		Namespace: instance.Namespace,
-	}, svcFound)
+	return getServiceIfExists(kClient, instance.Namespace, name)
+}
 
+func getServiceIfExists(kClient client.Client, namespace, name string) (*corev1.Service, error) {
+	svcFound := &corev1.Service{}
+	err := kClient.Get(context.Background(), types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}, svcFound)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, nil // Not an error, service may just be gone
+			return nil, nil
 		}
-		return nil, err // Real error
+		return nil, err
 	}
-
 	return svcFound, nil
 }
 
 // PodListValidation checks pods matching the StatefulSet name and returns readiness information.
 func PodListValidation(podList *corev1.PodList, sfName string, instance *racdb.RacDatabase, kClient client.Client) (bool, *corev1.Pod, *corev1.Pod) {
+	_ = instance
+	_ = kClient
+
 	var notReadyPod *corev1.Pod
 
-	for _, pod := range podList.Items {
-		if strings.Contains(pod.Name, sfName) {
-			// Check pod status
-			if pod.Status.Phase != corev1.PodRunning {
-				if notReadyPod == nil {
-					notReadyPod = &pod
-				}
-				continue
-			}
-
-			// Check container readiness
-			allContainersReady := true
-			for _, containerStatus := range pod.Status.ContainerStatuses {
-				if !containerStatus.Ready {
-					allContainersReady = false
-					break
-				}
-			}
-
-			if allContainersReady {
-				// Return the pod if it is ready
-				return true, &pod, nil
-			} else {
-				// Return the first not ready pod found
-				if notReadyPod == nil {
-					notReadyPod = &pod
-				}
-			}
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		if !podBelongsToStatefulSet(pod.Name, sfName) {
+			continue
+		}
+		if isPodReadyForValidation(pod) {
+			return true, pod.DeepCopy(), nil
+		}
+		if notReadyPod == nil {
+			notReadyPod = pod.DeepCopy()
 		}
 	}
 
@@ -737,37 +783,31 @@ func PodListValidation(podList *corev1.PodList, sfName string, instance *racdb.R
 	return false, nil, notReadyPod
 }
 
-// GetPodList lists pods associated with the provided RAC specification selector.
-func GetPodList(sfsetName string, instance *racdb.RacDatabase, kClient client.Client, oraRacSpex racdb.RacInstDetailSpec,
-) (*corev1.PodList, error) {
-	podList := &corev1.PodList{}
-	//labelSelector := labels.SelectorFromSet(getlabelsForRAC(instance))
-	//labelSelector := map[string]labels.Selector{}
-	var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForRac(-1, oraRacSpex))
-
-	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
-
-	err := kClient.List(context.TODO(), podList, listOps)
-	if err != nil {
-		return nil, err
+func podBelongsToStatefulSet(podName, sfName string) bool {
+	if sfName == "" {
+		return false
 	}
-	return podList, nil
+	return strings.HasPrefix(podName, sfName+"-")
 }
 
-// checkPod refreshes pod information from the cluster ensuring it exists.
-func checkPod(instance *racdb.RacDatabase, pod *corev1.Pod, kClient client.Client,
-) error {
-	err := kClient.Get(context.TODO(), types.NamespacedName{
-		Name:      pod.Name,
-		Namespace: instance.Namespace,
-	}, pod)
-
-	if err != nil {
-		// Pod Doesn't exist
-		return err
+func isPodReadyForValidation(pod *corev1.Pod) bool {
+	if pod == nil || pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning {
+		return false
 	}
-
-	return nil
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	if len(pod.Status.ContainerStatuses) == 0 {
+		return false
+	}
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if !containerStatus.Ready {
+			return false
+		}
+	}
+	return true
 }
 
 // checkPodStatus ensures the pod is running and ready.
@@ -783,7 +823,7 @@ func checkPodStatus(pod *corev1.Pod, kClient client.Client,
 			}
 		} else {
 			msg = "Pod is not scheduled or ready " + pod.Name + ".Describe the pod to check the detailed message"
-			return fmt.Errorf(msg)
+			return fmt.Errorf("%s", msg)
 		}
 	}
 	return nil
@@ -792,27 +832,19 @@ func checkPodStatus(pod *corev1.Pod, kClient client.Client,
 // checkContainerStatus verifies at least one container in the pod is running.
 func checkContainerStatus(pod *corev1.Pod, kClient client.Client,
 ) error {
+	_ = kClient
 
-	var statuses []corev1.ContainerStatus
-	var msg string
-	//	msg = "Inside the function checkContainerStatus"
-	//	LogMessages("DEBUG", msg)
-	statuses = pod.Status.ContainerStatuses
-	var isRunning bool = false
-	for _, status := range statuses {
-		if status.State.Running == nil {
-			isRunning = false
-		} else {
+	isRunning := false
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.State.Running != nil {
 			isRunning = true
 			break
 		}
 	}
-	msg = "Container is not in running state" + pod.Name + ".Describe the pod to check the detailed message"
-	if isRunning {
-		return nil
-	} else {
-		return fmt.Errorf(msg)
+	if !isRunning {
+		return fmt.Errorf("Container is not in running state%s.Describe the pod to check the detailed message", pod.Name)
 	}
+	return nil
 }
 
 // NewNamespace creates a corev1.Namespace object using the provided name.
@@ -832,14 +864,14 @@ func NewNamespace(name string) *corev1.Namespace {
 // getOwnerRef creates a controller owner reference for the given RAC instance.
 func getOwnerRef(instance *racdb.RacDatabase,
 ) []metav1.OwnerReference {
-
-	var ownerRef []metav1.OwnerReference
-	ownerRef = append(ownerRef, metav1.OwnerReference{Kind: instance.GroupVersionKind().Kind, APIVersion: instance.APIVersion, Name: instance.Name, UID: types.UID(instance.UID)})
-	return ownerRef
+	return []metav1.OwnerReference{
+		{Kind: instance.GroupVersionKind().Kind, APIVersion: instance.APIVersion, Name: instance.Name, UID: types.UID(instance.UID)},
+	}
 }
 
 // getRacInitContainerCmd builds the init container shell script for RAC networking setup.
 func getRacInitContainerCmd(resType string, name string, oraScriptMount string, intf1 string, intf2 string) string {
+	_ = name
 
 	// fallback (should normally be overridden by annotations)
 	if intf1 == "" {
@@ -881,25 +913,32 @@ func getRacInitContainerCmd(resType string, name string, oraScriptMount string, 
 // GetFmtStr wraps the provided string in brackets for logging clarity.
 func GetFmtStr(pstr string,
 ) string {
-	return "[" + pstr + "]"
+	return fmt.Sprintf("[%s]", pstr)
 }
 
 // getClusterState queries the cluster health for the specified pod.
 func getClusterState(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(podName, getGiHealthCmd(), kubeClient, kubeConfig, instance, logger)
-	if err != nil {
-		msg := "Pending"
-		LogMessages("DEBUG", msg, err, instance, logger)
-		return msg
-	}
-	return strings.TrimSpace(stdoutput)
+	_ = specidx
+	return getCommandStateOrPending(podName, getGiHealthCmd(), instance, kubeClient, kubeConfig, logger)
 }
 
 // getDbInstState returns the database state for the given RAC pod.
 func getDbInstState(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(podName, getRacDbModeCmd(), kubeClient, kubeConfig, instance, logger)
+	_ = specidx
+	return getCommandStateOrPending(podName, getRacDbModeCmd(), instance, kubeClient, kubeConfig, logger)
+}
+
+func getCommandStateOrPending(
+	podName string,
+	cmd []string,
+	instance *racdb.RacDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	logger logr.Logger,
+) string {
+	stdoutput, _, err := ExecCommand(podName, cmd, NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -917,32 +956,7 @@ func GetAsmInstState(
 	kubeConfig clientcmd.ClientConfig,
 	logger logr.Logger,
 ) []racdb.AsmDiskGroupStatus {
-	var diskGroups []racdb.AsmDiskGroupStatus
-	diskGroup := GetAsmDiskgroup(podName, instance, specidx, kubeClient, kubeConfig, logger)
-	if diskGroup == "Pending" || diskGroup == "" {
-		return diskGroups // return empty slice if pending or absent
-	}
-
-	dglist := strings.Split(diskGroup, ",")
-	for _, dg := range dglist {
-		asmdg := racdb.AsmDiskGroupStatus{}
-		asmdg.Name = strings.TrimSpace(dg)
-		asmdg.Disks = stringsToAsmDiskStatus(
-			getAsmDisks(podName, dg, instance, specidx, kubeClient, kubeConfig, logger),
-		)
-		asmdg.Redundancy = getAsmDgRedundancy(podName, dg, instance, specidx, kubeClient, kubeConfig, logger)
-		// Optionally fill other fields (Type, AutoUpdate, StorageClass) if available in spec:
-		for _, specDG := range instance.Spec.AsmStorageDetails {
-			if specDG.Name == asmdg.Name {
-				asmdg.Type = specDG.Type
-				asmdg.AutoUpdate = specDG.AutoUpdate
-				asmdg.StorageClass = specDG.StorageClass
-				break
-			}
-		}
-		diskGroups = append(diskGroups, asmdg)
-	}
-	return diskGroups
+	return buildAsmInstState(podName, instance, specidx, kubeClient, kubeConfig, logger, false)
 }
 
 // stringsToAsmDiskStatus converts disk names into RAC ASM disk status objects.
@@ -963,7 +977,18 @@ func getAsmInstState(
 	kubeConfig clientcmd.ClientConfig,
 	logger logr.Logger,
 ) []racdb.AsmDiskGroupStatus {
+	return buildAsmInstState(podName, racDatabase, specidx, kubeClient, kubeConfig, logger, true)
+}
 
+func buildAsmInstState(
+	podName string,
+	racDatabase *racdb.RacDatabase,
+	specidx int,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	logger logr.Logger,
+	includeStoredDiskSize bool,
+) []racdb.AsmDiskGroupStatus {
 	var diskGroups []racdb.AsmDiskGroupStatus
 
 	diskGroup := GetAsmDiskgroup(podName, racDatabase, specidx, kubeClient, kubeConfig, logger)
@@ -977,23 +1002,21 @@ func getAsmInstState(
 		asmdg := racdb.AsmDiskGroupStatus{}
 		asmdg.Name = strings.TrimSpace(dg)
 
-		diskNames := getAsmDisks(
-			podName, dg, racDatabase, specidx, kubeClient, kubeConfig, logger,
-		)
-
-		for _, disk := range diskNames {
-			diskName := strings.TrimSpace(disk)
-
-			asmdg.Disks = append(asmdg.Disks, racdb.AsmDiskStatus{
-				Name:     diskName,
-				SizeInGb: getExistingAsmDiskSize(racDatabase, asmdg.Name, diskName),
-				Valid:    true,
-			})
+		diskNames := getAsmDisks(podName, dg, racDatabase, specidx, kubeClient, kubeConfig, logger)
+		if includeStoredDiskSize {
+			for _, disk := range diskNames {
+				diskName := strings.TrimSpace(disk)
+				asmdg.Disks = append(asmdg.Disks, racdb.AsmDiskStatus{
+					Name:     diskName,
+					SizeInGb: getExistingAsmDiskSize(racDatabase, asmdg.Name, diskName),
+					Valid:    true,
+				})
+			}
+		} else {
+			asmdg.Disks = stringsToAsmDiskStatus(diskNames)
 		}
 
-		asmdg.Redundancy = getAsmDgRedundancy(
-			podName, dg, racDatabase, specidx, kubeClient, kubeConfig, logger,
-		)
+		asmdg.Redundancy = getAsmDgRedundancy(podName, dg, racDatabase, specidx, kubeClient, kubeConfig, logger)
 
 		for _, specDG := range racDatabase.Spec.AsmStorageDetails {
 			if specDG.Name == asmdg.Name {
@@ -1034,7 +1057,7 @@ func getExistingAsmDiskSize(
 func GetAsmDiskgroup(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
-	stdoutput, _, err := ExecCommand(podName, getAsmDiskgroupCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getAsmDiskgroupCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1047,7 +1070,7 @@ func GetAsmDiskgroup(podName string, instance *racdb.RacDatabase, specidx int, k
 func getAsmDisks(podName string, dg string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) []string {
 
-	stdoutput, _, err := ExecCommand(podName, getAsmDisksCmd(dg), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getAsmDisksCmd(dg), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1071,7 +1094,7 @@ func getAsmDisks(podName string, dg string, instance *racdb.RacDatabase, specidx
 func getAsmDgRedundancy(podName string, dg string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
-	stdoutput, _, err := ExecCommand(podName, getAsmDgRedundancyCmd(dg), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getAsmDgRedundancyCmd(dg), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1084,7 +1107,7 @@ func getAsmDgRedundancy(podName string, dg string, instance *racdb.RacDatabase, 
 func getAsmInstName(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
-	stdoutput, _, err := ExecCommand(podName, getAsmInstNameCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getAsmInstNameCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1097,7 +1120,7 @@ func getAsmInstName(podName string, instance *racdb.RacDatabase, specidx int, ku
 func getAsmInstStatus(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
-	stdoutput, _, err := ExecCommand(podName, getAsmInstStatusCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getAsmInstStatusCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1110,7 +1133,7 @@ func getAsmInstStatus(podName string, instance *racdb.RacDatabase, specidx int, 
 func getRacInstStateFile(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
-	stdoutput, _, err := ExecCommand(podName, getRacInstStateFileCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getRacInstStateFileCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1140,7 +1163,7 @@ func getRacInstStateFileForCluster(
 	logger logr.Logger,
 ) string {
 
-	stdoutput, _, err := ExecCommand(podName, getRacInstStateFileCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getRacInstStateFileCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1164,7 +1187,7 @@ func getRacInstStateFileForCluster(
 // getDBVersion fetches the database version string from the pod.
 func getDBVersion(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(podName, getRacDbVersionCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getRacDbVersionCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1180,7 +1203,7 @@ func getDBVersion(podName string, instance *racdb.RacDatabase, specidx int, kube
 // getDbState returns the health status of the database instance.
 func getDbState(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(podName, getRACHealthCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getRACHealthCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1192,7 +1215,7 @@ func getDbState(podName string, instance *racdb.RacDatabase, specidx int, kubeCl
 // getDbRole reports the database role (primary/standby) for the instance.
 func getDbRole(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(podName, getDbRoleCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getDbRoleCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1204,7 +1227,7 @@ func getDbRole(podName string, instance *racdb.RacDatabase, specidx int, kubeCli
 // getConnStr fetches the RAC connect string from the pod.
 func getConnStr(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(podName, getConnStrCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getConnStrCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1216,7 +1239,7 @@ func getConnStr(podName string, instance *racdb.RacDatabase, specidx int, kubeCl
 // getExternalConnStr constructs the external SCAN listener connect string.
 func getExternalConnStr(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	// stdoutput, _, err := ExecCommand(podName, getConnStrCmd(), kubeClient, kubeConfig, instance, logger)
+	// stdoutput, _, err := ExecCommand(podName, getConnStrCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	// if err != nil {
 	// 	msg := "Pending"
 	// 	LogMessages("DEBUG", msg, err, instance, logger)
@@ -1224,7 +1247,7 @@ func getExternalConnStr(podName string, instance *racdb.RacDatabase, specidx int
 	// }
 	// return strings.TrimSpace(stdoutput)
 	// Fetch the racnode-scan-lsnr service
-	svc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), "racnode-scan-lsnr", metav1.GetOptions{})
+	svc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.Background(), "racnode-scan-lsnr", metav1.GetOptions{})
 	if err != nil {
 		msg := "Failed to get racnode-scan-lsnr service"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1281,22 +1304,7 @@ func getClientEtcHost(podNames []string, instance *racdb.RacDatabase, specidx in
 
 // getNodeIPFromNodeDetails extracts the preferred IP for the provided node.
 func getNodeIPFromNodeDetails(node *corev1.Node) string {
-	var internalIP, externalIP string
-
-	// Extract internal and external IPs from node details
-	for _, addr := range node.Status.Addresses {
-		if addr.Type == corev1.NodeInternalIP {
-			internalIP = addr.Address
-		} else if addr.Type == corev1.NodeExternalIP {
-			externalIP = addr.Address
-		}
-	}
-
-	// Return external IP if it exists, otherwise return internal IP
-	if externalIP != "" {
-		return externalIP
-	}
-	return internalIP
+	return sharednetutil.PreferredNodeIP(node)
 }
 
 // readHostsFile reads the `/etc/hosts` file from the privileged RAC pod.
@@ -1304,7 +1312,7 @@ func readHostsFile(podName string, kubeClient kubernetes.Interface, kubeConfig c
 
 	cmd := []string{"cat", "/etc/hosts"} // Assuming this matches the MountPath in buildContainerSpecForRac
 
-	stdOutput, _, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
+	stdOutput, _, err := ExecCommand(podName, cmd, NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Failed to read /etc/hosts from pod" + podName
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1315,24 +1323,14 @@ func readHostsFile(podName string, kubeClient kubernetes.Interface, kubeConfig c
 
 // parseHostsContent returns the non-comment lines from an `/etc/hosts` file.
 func parseHostsContent(content string) string {
-	var uncommentedLines string
-
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		trimmedLine := strings.TrimSpace(line)
-		if trimmedLine != "" && !strings.HasPrefix(trimmedLine, "#") {
-			uncommentedLines = trimmedLine
-		}
-	}
-
-	return uncommentedLines
+	return sharednetutil.ParseHostsContent(content)
 }
 
 // getSvcState reports the status of the configured database service.
 func getSvcState(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
-	stdoutput, _, err := ExecCommand(podName, getDBServiceStatus(instance.Status.ConfigParams.DbHome, instance.Status.ConfigParams.DbName, instance.Status.ServiceDetails.Name), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getDBServiceStatus(instance.Status.ConfigParams.DbHome, instance.Status.ConfigParams.DbName, instance.Status.ServiceDetails.Name), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1344,7 +1342,7 @@ func getSvcState(podName string, instance *racdb.RacDatabase, specidx int, kubeC
 // getPdbConnStr retrieves the PDB connect string from the RAC pod.
 func getPdbConnStr(podName string, instance *racdb.RacDatabase, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(podName, getPdbConnStrCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getPdbConnStrCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Pending"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1355,7 +1353,7 @@ func getPdbConnStr(podName string, instance *racdb.RacDatabase, specidx int, kub
 
 // getGridHome retrieves the `GRID_HOME` environment variable from the specified pod.
 func getGridHome(podName string, instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) (string, error) {
-	stdoutput, _, err := ExecCommand(podName, getGridHomeCmd(), kubeClient, kubeConfig, instance, logger)
+	stdoutput, _, err := ExecCommand(podName, getGridHomeCmd(), NewExecCommandResp(kubeClient, kubeConfig), instance, logger)
 	if err != nil {
 		msg := "Error retrieving GRID_HOME"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1363,65 +1361,6 @@ func getGridHome(podName string, instance *racdb.RacDatabase, kubeClient kuberne
 	}
 
 	return strings.TrimSpace(stdoutput), nil
-}
-
-// GetCrsNodes categorizes CRS nodes into new, healthy, and unhealthy sets.
-func GetCrsNodes(instance *racdb.RacDatabase, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kClient client.Client) (string, string, string, string, string) {
-
-	var new_crs_nodes []string
-	var new_crs_nodes_list []string
-	var existing_crs_nodes_healthy []string
-	var existing_crs_nodes_not_healthy []string
-	var install_node string
-	var install_node_flag bool
-
-	if len(instance.Spec.InstDetails) > 0 {
-		for _, oraRacSpex := range instance.Spec.InstDetails {
-			if !utils.CheckStatusFlag(oraRacSpex.IsDelete) {
-				sfset, _ := CheckSfset(oraRacSpex.Name, instance, kClient)
-				if sfset == nil {
-					new_crs_nodes = append(new_crs_nodes, ("pubhost:" + oraRacSpex.Name + "-0" + "," + "viphost:" + oraRacSpex.VipSvcName))
-					new_crs_nodes_list = append(new_crs_nodes_list, oraRacSpex.Name+"-0")
-					if !install_node_flag {
-						install_node = oraRacSpex.Name + "-0"
-						install_node_flag = true
-					}
-				}
-			}
-		}
-		// Updating Racnode status
-
-		if len(instance.Status.RacNodes) > 0 {
-			for _, oraRacStatusSpex := range instance.Status.RacNodes {
-				_, err := CheckSfset(strings.Split(oraRacStatusSpex.Name, "-")[0], instance, kClient)
-				if err != nil {
-					newRacStatus := delRacNodeStatus(instance, oraRacStatusSpex.Name)
-					instance.Status.RacNodes = newRacStatus
-				}
-			}
-			// ====Updating the Racnode status block ends here====
-
-			/// The loop check for healthy and non healthy nodes
-
-			for _, oraRacStatusSpex := range instance.Status.RacNodes {
-				if oraRacStatusSpex.NodeDetails.ClusterState == "HEALTHY" {
-					if !checkElem(existing_crs_nodes_healthy, oraRacStatusSpex.Name) {
-						existing_crs_nodes_healthy = append(existing_crs_nodes_healthy, oraRacStatusSpex.Name)
-					}
-				} else {
-					if !checkElem(existing_crs_nodes_not_healthy, oraRacStatusSpex.Name) {
-						existing_crs_nodes_not_healthy = append(existing_crs_nodes_not_healthy, oraRacStatusSpex.Name)
-					}
-				}
-			}
-		}
-
-	}
-	//External for loop ends here
-
-	// Main if condition ends here
-	return strings.Join(new_crs_nodes[:], ";"), strings.Join(existing_crs_nodes_healthy, ","), strings.Join(existing_crs_nodes_not_healthy, ","), install_node, strings.Join(new_crs_nodes_list, ",")
-
 }
 
 // GetCrsNodesForCluster reports CRS node details for clustered RAC deployments.
@@ -1493,13 +1432,13 @@ func GetCrsNodesForCluster(
 
 // GetAsmDevices returns ASM device list from the instance specification.
 func GetAsmDevices(instance *racdb.RacDatabase) string {
-	var asmDisks []string
+	var groups [][]string
 	if instance.Spec.AsmStorageDetails != nil {
 		for _, dg := range instance.Spec.AsmStorageDetails {
-			asmDisks = append(asmDisks, dg.Disks...)
+			groups = append(groups, dg.Disks)
 		}
 	}
-	return strings.Join(asmDisks, ",")
+	return sharedinstanceutil.JoinAsmDiskGroups(groups)
 }
 
 // GetScanname constructs the SCAN service name for the RAC instance.
@@ -1509,50 +1448,28 @@ func GetScanname(instance *racdb.RacDatabase) string {
 
 // GetSSHkey checks for presence and readiness of the RAC SSH secret.
 func GetSSHkey(instance *racdb.RacDatabase, name string, kClient client.Client) (bool, bool) {
-
-	var privKeyFlag, pubKeyFlag bool
 	secretFound, err := CheckSecret(instance, name, kClient)
-
 	if err != nil {
-
-	} else {
-		for key := range secretFound.Data {
-			switch key {
-			case instance.Spec.SshKeySecret.PrivKeySecretName:
-				privKeyFlag = true
-			case instance.Spec.SshKeySecret.PubKeySecretName:
-				pubKeyFlag = true
-			}
-		}
+		return false, false
 	}
-
-	return privKeyFlag, pubKeyFlag
-
+	return sharedinstanceutil.SSHKeyFlags(
+		secretFound.Data,
+		instance.Spec.SshKeySecret.PrivKeySecretName,
+		instance.Spec.SshKeySecret.PubKeySecretName,
+	)
 }
 
 // GetDbSecret determines if required database secrets exist and contain keys.
 func GetDbSecret(instance *racdb.RacDatabase, name string, kClient client.Client) (bool, bool, bool) {
-
-	var commonospassflag, commonpwdfile, pwdkeyflag bool
 	secretFound, err := CheckSecret(instance, name, kClient)
-
 	if err != nil {
 		return false, false, false
-	} else {
-		for key := range secretFound.Data {
-			switch key {
-			case instance.Spec.DbSecret.PwdFileName:
-				commonospassflag = true
-			case instance.Spec.DbSecret.KeyFileName:
-				pwdkeyflag = true
-			case "pwdfile":
-				commonpwdfile = true
-			}
-		}
 	}
-
-	return commonospassflag, pwdkeyflag, commonpwdfile
-
+	return sharedinstanceutil.DBSecretFlags(
+		secretFound.Data,
+		instance.Spec.DbSecret.PwdFileName,
+		instance.Spec.DbSecret.KeyFileName,
+	)
 }
 
 // GetTdeWalletSecret validates the TDE wallet secret presence and keys.
@@ -1583,7 +1500,7 @@ func CheckSecret(instance *racdb.RacDatabase, secretName string, kClient client.
 
 	secretFound := &corev1.Secret{}
 
-	err := kClient.Get(context.TODO(), types.NamespacedName{
+	err := kClient.Get(context.Background(), types.NamespacedName{
 		Name:      secretName,
 		Namespace: instance.Namespace,
 	}, secretFound)
@@ -1638,7 +1555,7 @@ func CheckConfigMap(instance *racdb.RacDatabase, configMapName string, kClient c
 
 	configMapFound := &corev1.ConfigMap{}
 
-	err := kClient.Get(context.TODO(), types.NamespacedName{
+	err := kClient.Get(context.Background(), types.NamespacedName{
 		Name:      configMapName,
 		Namespace: instance.Namespace,
 	}, configMapFound)
@@ -1649,23 +1566,6 @@ func CheckConfigMap(instance *racdb.RacDatabase, configMapName string, kClient c
 
 	return configMapFound, nil
 
-}
-
-// GetConfigList lists configmaps matching the RAC StatefulSet label selector.
-func GetConfigList(sfsetName string, instance *racdb.RacDatabase, kClient client.Client, oraRacSpex racdb.RacInstDetailSpec,
-) (*corev1.ConfigMapList, error) {
-	cmapList := &corev1.ConfigMapList{}
-	//labelSelector := labels.SelectorFromSet(getlabelsForRAC(instance))
-	//labelSelector := map[string]labels.Selector{}
-	var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForRac(-1, oraRacSpex))
-
-	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
-
-	err := kClient.List(context.TODO(), cmapList, listOps)
-	if err != nil {
-		return nil, err
-	}
-	return cmapList, nil
 }
 
 // checkElem returns true when the element exists in the provided slice.
@@ -1702,85 +1602,7 @@ func ValidateNetInterface(net string, instance *racdb.RacDatabase, rspNetData st
 func CheckRspData(instance *racdb.RacDatabase, kClient client.Client, key string, cName string, fname string) (string, error) {
 	configMapFound, _ := CheckConfigMap(instance, cName, kClient)
 	data := configMapFound.Data[fname]
-	scanner := bufio.NewScanner(strings.NewReader(data))
-
-	searchKey := strings.ToLower(strings.TrimSpace(key))
-	keyHasDot := strings.Contains(key, ".")
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		splitIndex := strings.Index(line, "=")
-		if splitIndex == -1 {
-			continue
-		}
-		fullKey := strings.TrimSpace(line[:splitIndex])
-		fullKeyLower := strings.ToLower(fullKey)
-		if fullKeyLower == "variables" {
-			value := strings.TrimSpace(line[splitIndex+1:])
-
-			// If the search key is exactly "variables", return the whole thing
-			if searchKey == "variables=" {
-				fmt.Println("Key = variables, value = " + value)
-				return value, nil
-			}
-		}
-
-		if keyHasDot {
-			// For keys with dot, match the whole key as-is (case-insensitive)
-			if fullKeyLower == searchKey {
-				value := strings.TrimSpace(line[splitIndex+1:])
-				fmt.Print("Key = " + fullKey + " value= " + value)
-				return value, nil
-			}
-		} else {
-			// For keys without dot, match only the last segment
-			var lastKey string
-			if idx := strings.LastIndex(fullKey, "."); idx != -1 {
-				lastKey = fullKey[idx+1:]
-			} else {
-				lastKey = fullKey
-			}
-			lastKeyLower := strings.ToLower(strings.TrimSpace(lastKey))
-			if lastKeyLower == searchKey {
-				value := strings.TrimSpace(line[splitIndex+1:])
-				fmt.Print("Key = " + lastKey + " value= " + value)
-				return value, nil
-			}
-		}
-	}
-	return "", errors.New("the " + key + " key and value does not exist in grid responsefile. Invalid grid responsefile.")
-}
-
-// GetPrivNetDetails prepares private network details for RAC provisioning.
-func GetPrivNetDetails(instance *racdb.RacDatabase, OraRacSpex racdb.RacInstDetailSpec, kClient client.Client, privnet racdb.PrivIpDetailSpec) racdb.RacNetworkDetailSpec {
-	var network racdb.RacNetworkDetailSpec
-	network.Interface = privnet.Interface
-	network.Name = privnet.Name
-
-	// If IP is provided, use it, otherwise leave it empty for dynamic IP assignment
-	if privnet.IP != "" {
-		network.IPs = []string{privnet.IP}
-	} else {
-		// Leave the IPs empty if dynamic IP assignment is needed
-		network.IPs = []string{}
-	}
-
-	// Set the MAC address if it's available
-	if privnet.Mac != "" {
-		network.Mac = privnet.Mac
-	}
-
-	// Set the namespace if it's provided, otherwise use the instance's namespace
-	if privnet.Namespace != "" {
-		network.Namespace = privnet.Namespace
-	} else {
-		network.Namespace = instance.Namespace
-	}
-
-	return network
+	return sharedrsp.ParseValue(data, key)
 }
 
 // GetServiceParams formats service parameter information for status reporting.
@@ -1907,50 +1729,6 @@ func GetHealthyNodeCounts(instance *racdb.RacDatabase) (int, error) {
 }
 
 // GetDBLsnrEndPoints builds database listener endpoint strings for the instance.
-func GetDBLsnrEndPoints(instance *racdb.RacDatabase) (string, string, error) {
-
-	// Settings for DB_LISTENER_PORT
-	var endp string = ""
-	var locallsnr string = ""
-
-	if len(instance.Spec.InstDetails) > 0 {
-		for index, _ := range instance.Spec.InstDetails {
-			if !utils.CheckStatusFlag(instance.Spec.InstDetails[index].IsDelete) {
-				if instance.Spec.InstDetails[index].LsnrLocalPort != nil {
-					endp = endp + fmt.Sprint(*instance.Spec.InstDetails[index].LsnrLocalPort) + ","
-					locallsnr = locallsnr + instance.Spec.InstDetails[index].Name + "-0" + ":" + fmt.Sprint(*instance.Spec.InstDetails[index].LsnrLocalPort) + ";"
-
-				} else {
-					if instance.Spec.InstDetails[index].LsnrTargetPort != nil {
-						endp = endp + fmt.Sprint(*instance.Spec.InstDetails[index].LsnrTargetPort) + ","
-						locallsnr = locallsnr + instance.Spec.InstDetails[index].Name + "-0" + ":" + fmt.Sprint(*instance.Spec.InstDetails[index].LsnrTargetPort) + ";"
-					}
-
-				}
-			}
-		}
-		if endp != "" {
-			var suffix string = ","
-			if strings.HasSuffix(endp, suffix) {
-				endp = endp[:len(endp)-len(suffix)]
-			}
-		}
-
-		if locallsnr != "" {
-			var suffix string = ";"
-			if strings.HasSuffix(locallsnr, suffix) {
-				locallsnr = locallsnr[:len(locallsnr)-len(suffix)]
-			}
-		}
-	}
-	// LsnrTargetPort and LsnrLocalPort are optional fields
-	// if locallsnr != "" && endp != "" {
-	return locallsnr, endp, nil
-	// }
-	// return "", "", fmt.Errorf("error occurred in generating database listener endpoints")
-
-}
-
 // GetDBLsnrEndPointsForCluster builds listener endpoints for clustered deployments.
 func GetDBLsnrEndPointsForCluster(instance *racdb.RacDatabase) (string, string, error) {
 	var endp string

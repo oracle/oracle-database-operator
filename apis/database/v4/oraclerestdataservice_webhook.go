@@ -39,16 +39,48 @@
 package v4
 
 import (
+	"context"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var oraclerestdataservicelog = logf.Log.WithName("oraclerestdataservice-resource")
 
 func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+
+	return ctrl.NewWebhookManagedBy[*OracleRestDataService](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// Ensure the CRD implements the generic admission interfaces
+var _ admission.Defaulter[*OracleRestDataService] = &OracleRestDataService{}
+var _ admission.Validator[*OracleRestDataService] = &OracleRestDataService{}
+
+// Default implements admission.Defaulter[*OracleRestDataService]
+func (r *OracleRestDataService) Default(ctx context.Context, obj *OracleRestDataService) error {
+	// Access fields directly via 'obj'
+	oraclerestdataservicelog.Info("Defaulting for OracleRestDataService", "name", obj.Name)
+	return nil
+}
+
+// ValidateCreate implements admission.Validator[*OracleRestDataService]
+func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	oraclerestdataservicelog.Info("ValidateCreate for OracleRestDataService", "name", obj.Name)
+	return nil, nil
+}
+
+// ValidateUpdate implements admission.Validator[*OracleRestDataService]
+func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldObj, newObj *OracleRestDataService) (admission.Warnings, error) {
+	oraclerestdataservicelog.Info("ValidateUpdate for OracleRestDataService", "name", newObj.Name)
+	return nil, nil
+}
+
+// ValidateDelete implements admission.Validator[*OracleRestDataService]
+func (r *OracleRestDataService) ValidateDelete(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	return nil, nil
+}

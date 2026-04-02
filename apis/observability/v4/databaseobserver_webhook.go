@@ -40,6 +40,7 @@ package v4
 
 import (
 	"context"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -63,7 +64,8 @@ const (
 )
 
 func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+	// 1. Add the generic type parameter [*DatabaseObserver] and pass (mgr, r)
+	return ctrl.NewWebhookManagedBy[*DatabaseObserver](mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
@@ -71,11 +73,11 @@ func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-observability-oracle-com-v4-databaseobserver,mutating=true,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,verbs=create;update,versions=v4,name=mdatabaseobserver.kb.io,admissionReviewVersions=v1
 
+// 2. Update interface guards to use admission.CustomDefaulter and CustomValidator with generics
 var _ admission.Defaulter[*DatabaseObserver] = &DatabaseObserver{}
+var _ admission.Validator[*DatabaseObserver] = &DatabaseObserver{}
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the type
+// 3. Update Default: change runtime.Object to *DatabaseObserver
 func (r *DatabaseObserver) Default(ctx context.Context, obj *DatabaseObserver) error {
 	obs := obj
 	databaseobserverlog.Info("default", "name", obs.Name)
@@ -84,8 +86,6 @@ func (r *DatabaseObserver) Default(ctx context.Context, obj *DatabaseObserver) e
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-observability-oracle-com-v4-databaseobserver,mutating=false,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,versions=v4,name=vdatabaseobserver.kb.io,admissionReviewVersions=v1
-
-var _ admission.Validator[*DatabaseObserver] = &DatabaseObserver{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
 func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj *DatabaseObserver) (admission.Warnings, error) {

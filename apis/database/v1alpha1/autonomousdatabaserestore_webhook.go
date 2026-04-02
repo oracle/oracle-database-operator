@@ -44,12 +44,10 @@ import (
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -57,20 +55,21 @@ import (
 var autonomousdatabaserestorelog = logf.Log.WithName("autonomousdatabaserestore-resource")
 
 func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithCustomValidator(r).
+	return ctrl.NewWebhookManagedBy[*AutonomousDatabaseRestore](mgr, r).
+		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v1alpha1,name=vautonomousdatabaserestorev1alpha1.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomValidator = &AutonomousDatabaseRestore{}
+var _ admission.Validator[*AutonomousDatabaseRestore] = &AutonomousDatabaseRestore{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+// 3. Update ValidateCreate: replace runtime.Object with *AutonomousDatabaseRestore
+func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj *AutonomousDatabaseRestore) (admission.Warnings, error) {
+
 	var (
 		allErrs field.ErrorList
-		restore = obj.(*AutonomousDatabaseRestore)
+		restore = obj
 	)
 
 	autonomousdatabaserestorelog.Info("validate create", "name", restore.Name)
@@ -130,11 +129,11 @@ func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj runt
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (r *AutonomousDatabaseRestore) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousDatabaseRestore) (admission.Warnings, error) {
 	return nil, nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateDelete(context.Context, runtime.Object) (admission.Warnings, error) {
+func (r *AutonomousDatabaseRestore) ValidateDelete(ctx context.Context, obj *AutonomousDatabaseRestore) (admission.Warnings, error) {
 	return nil, nil
 }

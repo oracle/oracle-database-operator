@@ -68,6 +68,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -75,6 +77,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -82,8 +85,15 @@ import (
 	"github.com/go-logr/logr"
 	racdb "github.com/oracle/oracle-database-operator/apis/database/v4"
 	v4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	raccommon "github.com/oracle/oracle-database-operator/commons/rac"
-	utils "github.com/oracle/oracle-database-operator/commons/rac/utils"
+	sharedasm "github.com/oracle/oracle-database-operator/commons/crs/asm"
+	raccommon "github.com/oracle/oracle-database-operator/commons/crs/rac"
+	utils "github.com/oracle/oracle-database-operator/commons/crs/rac/utils"
+	shareddiskcheck "github.com/oracle/oracle-database-operator/commons/crs/shared/diskcheck"
+	sharedenvfile "github.com/oracle/oracle-database-operator/commons/crs/shared/envfile"
+	sharedorautil "github.com/oracle/oracle-database-operator/commons/crs/shared/orautil"
+	sharedspecguard "github.com/oracle/oracle-database-operator/commons/crs/shared/specguard"
+	sharedstatusmerge "github.com/oracle/oracle-database-operator/commons/crs/shared/statusmerge"
+	sharedk8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -102,7 +112,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // RacDatabaseReconciler reconciles `RacDatabase` resources defined in
@@ -118,6 +127,80 @@ type RacDatabaseReconciler struct {
 }
 
 const racDatabaseFinalizer = "database.oracle.com/racdatabasefinalizer"
+const racDiskCheckReadyTimeout = 15 * time.Minute
+const racConfigMapHashAnnotation = "database.oracle.com/rac-configmap-hash"
+
+var errRACDiskDiscoveryPending = errors.New("ASM disk discovery results not available yet")
+
+type racReconcilePhase string
+
+const (
+	racPhaseInitAndFetch         racReconcilePhase = "InitAndFetch"
+	racPhaseStateGuard           racReconcilePhase = "StateGuard"
+	racPhaseDeletionAndIntent    racReconcilePhase = "DeletionAndIntent"
+	racPhaseCleanup              racReconcilePhase = "Cleanup"
+	racPhasePendingAndRecovery   racReconcilePhase = "PendingAndRecovery"
+	racPhaseValidationAndDefault racReconcilePhase = "ValidationAndDefaults"
+	racPhaseServiceSync          racReconcilePhase = "ServiceSync"
+	racPhaseStorageSync          racReconcilePhase = "StorageSync"
+	racPhaseWorkloadSync         racReconcilePhase = "WorkloadSync"
+	racPhaseFinalize             racReconcilePhase = "Finalize"
+)
+
+const (
+	racOpTypeAddNodes    = "ADD_NODES"
+	racOpTypeDeleteNodes = "DELETE_NODES"
+)
+
+const (
+	racBreakGlassOverrideAnnotation = "database.oracle.com/breakglass-override"
+	racBreakGlassReasonAnnotation   = "database.oracle.com/breakglass-reason" // optional, for audit log context
+	racBreakGlassActorAnnotation    = "database.oracle.com/breakglass-actor"  // optional, for audit log context
+)
+
+func (r *RacDatabaseReconciler) phaseLogger(req ctrl.Request, phase racReconcilePhase) logr.Logger {
+	return r.Log.WithValues(
+		"controller", "racdatabase",
+		"namespace", req.Namespace,
+		"name", req.Name,
+		"phase", string(phase),
+	)
+}
+
+func (r *RacDatabaseReconciler) phaseInfo(req ctrl.Request, phase racReconcilePhase, msg string, keysAndValues ...interface{}) {
+	r.phaseLogger(req, phase).Info(msg, keysAndValues...)
+}
+
+func (r *RacDatabaseReconciler) phaseError(req ctrl.Request, phase racReconcilePhase, err error, msg string, keysAndValues ...interface{}) {
+	r.phaseLogger(req, phase).Error(err, msg, keysAndValues...)
+}
+
+func markRACFailedStatus(obj *racdb.RacDatabase) {
+	if obj == nil {
+		return
+	}
+	if obj.Status.State == "" {
+		obj.Status.State = string(racdb.RACFailedState)
+	}
+	obj.Status.DbState = string(racdb.RACFailedState)
+}
+
+func clearRACFailedStatus(obj *racdb.RacDatabase) {
+	if obj == nil {
+		return
+	}
+	if obj.Status.State == string(racdb.RACFailedState) {
+		obj.Status.State = string(racdb.RACUpdateState)
+	}
+}
+
+func isRACFailedStatus(obj *racdb.RacDatabase) bool {
+	if obj == nil {
+		return false
+	}
+	return obj.Status.State == string(racdb.RACFailedState) ||
+		obj.Status.DbState == string(racdb.RACFailedState)
+}
 
 //+kubebuilder:rbac:groups="database.oracle.com",resources=racdatabases,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="database.oracle.com",resources=racdatabases/status,verbs=get;update;patch
@@ -131,8 +214,7 @@ const racDatabaseFinalizer = "database.oracle.com/racdatabasefinalizer"
 //
 // 1. Resource Retrieval and Validation
 //   - Fetches the RacDatabase resource from the cluster
-//   - Determines configuration style (old-style InstDetails vs new-style ClusterDetails)
-//   - Validates that only one configuration style is specified
+//   - Validates that cluster-level RAC configuration is present
 //
 // 2. Status Initialization
 //   - Initializes ConfigParams and status fields with default values
@@ -160,7 +242,6 @@ const racDatabaseFinalizer = "database.oracle.com/racdatabasefinalizer"
 // 6. Configuration and StatefulSet Creation
 //   - Generates ConfigMaps with RAC configuration parameters
 //   - Creates or updates StatefulSets for RAC database instances
-//   - Handles both old-style (per-instance) and new-style (cluster-level) configurations
 //   - Supports ASM disk changes with automatic configuration updates
 //
 // 7. Post-Reconciliation Steps
@@ -174,21 +255,18 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	//ctx := context.Background()
 	_ = r.Log.WithValues("racdatabase", req.NamespacedName)
 
-	r.Log.Info("Reconcile requested")
+	r.phaseInfo(req, racPhaseInitAndFetch, "Reconcile requested")
 	var result ctrl.Result
 	var err error
 	completed := false
 	blocked := false
-	var i int32
-	var svcType string
 	var nilErr error = nil
-	var oraRacInst racdb.RacInstDetailSpec
+	phase := racPhaseInitAndFetch
 	resultNq := ctrl.Result{Requeue: false}
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}
 	// time.Sleep(50000 * time.Second)
 
 	racDatabase := &racdb.RacDatabase{}
-	configMapData := make(map[string]string)
 
 	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, racDatabase)
 	if err != nil {
@@ -197,9 +275,9 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return requeueN, nil
 		}
 		r.Log.Error(err, err.Error())
-		racDatabase.Spec.IsFailed = true
 		return resultQ, err
 	}
+	r.phaseInfo(req, phase, "Entering reconcile phase")
 	// Kube Client Config Setup
 	if r.kubeConfig == nil && r.kubeClient == nil {
 		r.kubeConfig, r.kubeClient, err = raccommon.GetRacK8sClientConfig(r.Client)
@@ -207,33 +285,33 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 	}
-	// Determine which config style is in use
-	var isOldStyle bool
-	if len(racDatabase.Spec.InstDetails) > 0 && racDatabase.Spec.ClusterDetails == nil {
-		isOldStyle = true
-	} else if racDatabase.Spec.ClusterDetails != nil && len(racDatabase.Spec.InstDetails) == 0 {
-		isOldStyle = false
-	} else if racDatabase.Spec.ClusterDetails != nil && len(racDatabase.Spec.InstDetails) > 0 {
-		// Both styles provided -- warn/error as needed
-		r.Log.Info("Both instDetails and instanceDetails are set. Please specify only one style. Defaulting to old style (instDetails).")
-		isOldStyle = true
-		return resultQ, fmt.Errorf("invalid specification: must provide either instDetails or instanceDetails and not both")
-	} else {
-		// Neither style provided -- error
-		r.Log.Error(nil, "Neither instDetails nor instanceDetails is provided. One must be set.")
-		return resultQ, fmt.Errorf("invalid specification: must provide either instDetails or instanceDetails")
+	if err = validateRACSpecLayout(&racDatabase.Spec); err != nil {
+		r.phaseError(req, phase, err, "Invalid RAC spec layout")
+		return resultQ, err
 	}
 	// Execute for every reconcile except deletion where it give error in logs
 	if racDatabase.ObjectMeta.DeletionTimestamp.IsZero() {
-		defer r.updateReconcileStatus(racDatabase, ctx, req, &result, &err, &blocked, &completed, isOldStyle)
+		defer r.updateReconcileStatus(racDatabase, ctx, req, &result, &err, &blocked, &completed)
 	}
 
 	// Retrieve the old spec from annotations
 	oldSpec, err := r.GetOldSpec(racDatabase)
 	if err != nil {
 		r.Log.Error(err, "Failed to update old spec annotation")
-		racDatabase.Spec.IsFailed = true
 		return resultQ, nil
+	}
+
+	phase = racPhaseStateGuard
+	r.phaseInfo(req, phase, "Entering reconcile phase")
+	webhooksEnabled := os.Getenv("ENABLE_WEBHOOKS") != "false"
+	if racDatabase.GetDeletionTimestamp() == nil && webhooksEnabled {
+		err = checkRACStateAndReturn(racDatabase)
+		if err != nil {
+			blocked = true
+			result = resultQ
+			r.phaseInfo(req, phase, "RAC object is in restricted state, returning back")
+			return result, nilErr
+		}
 	}
 
 	// Initialize racDatabase.Status if it's not already initialized
@@ -259,30 +337,61 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		r.Status().Update(ctx, racDatabase)
 	}
 
+	phase = racPhaseDeletionAndIntent
+	r.phaseInfo(req, phase, "Entering reconcile phase")
 	// Manage RACDatabase Deletion , if delete topology is called
-	err = r.manageRacDatabaseDeletion(req, ctx, racDatabase, isOldStyle)
+	deletionHandled, err := r.manageRacDatabaseDeletion(req, ctx, racDatabase)
 	if err != nil {
 		result = resultNq
 		return result, err
 	}
-
-	// cleanup RAC Instance
-	if oldSpec != nil {
-		_, err = r.cleanupRacInstance(req, ctx, racDatabase, isOldStyle, oldSpec)
-		if err != nil {
-			result = resultQ
-			r.Log.Info(err.Error())
-			return result, nilErr
-		}
-	} else {
-		_, err = r.cleanupRacInstance(req, ctx, racDatabase, isOldStyle, &racdb.RacDatabaseSpec{})
-		if err != nil {
-			result = resultQ
-			r.Log.Info(err.Error())
-			return result, nilErr
-		}
+	if deletionHandled {
+		r.phaseInfo(req, phase, "Deletion handled by finalizer path; skipping normal reconcile")
+		return resultNq, nil
 	}
 
+	addingNodes, deletingNodes := detectRACNodeOperationIntent(racDatabase, oldSpec)
+	if addingNodes && deletingNodes {
+		blocked = true
+		result = resultQ
+		err = fmt.Errorf("invalid reconcile intent: node add and node delete cannot run together in the same spec update")
+		r.phaseError(req, phase, err, "Controller-level guard blocked mixed node operations")
+		return result, nilErr
+	}
+	operationType := deriveRACOperationType(addingNodes, deletingNodes)
+	lockHeld := false
+	if operationType != "" {
+		if lerr := r.acquireRACOperationLock(ctx, req, racDatabase, oldSpec, operationType, string(phase)); lerr != nil {
+			blocked = true
+			result = resultQ
+			r.phaseInfo(req, phase, "Operation lock conflict; requeueing", "operation", operationType, "error", lerr.Error())
+			return result, nilErr
+		}
+		lockHeld = true
+		defer func() {
+			if !lockHeld {
+				return
+			}
+			if completed || err != nil || racDatabase.GetDeletionTimestamp() != nil {
+				if lerr := r.releaseRACOperationLock(ctx, req, operationType); lerr != nil {
+					r.phaseError(req, racPhaseFinalize, lerr, "Failed to release RAC operation lock", "operation", operationType)
+				}
+			}
+		}()
+	}
+
+	phase = racPhaseCleanup
+	r.phaseInfo(req, phase, "Entering reconcile phase")
+	// cleanup RAC Instance
+	_, err = r.cleanupRacInstance(req, ctx, racDatabase, effectiveOldSpec(oldSpec))
+	if err != nil {
+		result = resultQ
+		r.phaseInfo(req, phase, err.Error())
+		return result, nilErr
+	}
+
+	phase = racPhasePendingAndRecovery
+	r.phaseInfo(req, phase, "Entering reconcile phase")
 	podList := &corev1.PodList{}
 
 	err = r.List(ctx, podList,
@@ -299,7 +408,7 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 	if handled {
-		r.Log.Info("Some RAC pods are Pending; requeueing")
+		r.phaseInfo(req, phase, "Some RAC pods are Pending; requeueing")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -309,232 +418,135 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		r.Log.Info("Spec updated after FAILED state — allowing recovery")
 
 		racDatabase.Status.State = string(racdb.RACUpdateState)
-		racDatabase.Spec.IsFailed = false
 
 		err := r.updateStatusWithRetry(ctx, req, func(latest *racdb.RacDatabase) {
 			latest.Status = racDatabase.Status
 		})
 		if err != nil {
+			r.phaseError(req, phase, err, "Failed to update status while recovering from FAILED")
 			return resultQ, err
 		}
 	}
 
-	webhooksEnabled := os.Getenv("ENABLE_WEBHOOKS") != "false"
-
-	if webhooksEnabled {
-		err = checkRACStateAndReturn(racDatabase)
-		if err != nil {
-			result = resultQ
-			r.Log.Info("RAC object is in restricted state, returning back")
-			return result, nilErr
-		}
-	} else {
+	if !webhooksEnabled {
 		r.Log.Info("Webhooks disabled — skipping RAC state validation")
 	}
 
 	// If the object is being deleted, stop reconcile here
 	if racDatabase.GetDeletionTimestamp() != nil {
-		r.Log.Info("RacDatabase is being deleted, skipping normal reconcile")
+		r.phaseInfo(req, phase, "RacDatabase is being deleted, skipping normal reconcile")
 		return ctrl.Result{}, nil
 	}
-	// set defaults
-	var cName, fName string
+	result, completed, err = r.runRACProvisionPhases(
+		ctx, req, racDatabase, oldSpec, resultNq, resultQ,
+	)
+	return result, err
+}
 
-	cp := racDatabase.Spec.ConfigParams
-	if cp != nil {
+func (r *RacDatabaseReconciler) runRACProvisionPhases(
+	ctx context.Context,
+	req ctrl.Request,
+	racDatabase *racdb.RacDatabase,
+	oldSpec *racdb.RacDatabaseSpec,
+	resultNq ctrl.Result,
+	resultQ ctrl.Result,
+) (ctrl.Result, bool, error) {
+	var (
+		svcType       string
+		err           error
+		phase         racReconcilePhase
+		configMapData       = make(map[string]string)
+		nilErr        error = nil
+		completed     bool  = false
+	)
 
-		// Prefer Grid response file
-		if cp.GridResponseFile != nil {
-			if cp.GridResponseFile.ConfigMapName != "" {
-				cName = cp.GridResponseFile.ConfigMapName
-			}
-			if cp.GridResponseFile.Name != "" {
-				fName = cp.GridResponseFile.Name
-			}
-		}
-
-		// Fallback to DB response file (only if grid not set)
-		if cName == "" && fName == "" && cp.DbResponseFile != nil {
-			if cp.DbResponseFile.ConfigMapName != "" {
-				cName = cp.DbResponseFile.ConfigMapName
-			}
-			if cp.DbResponseFile.Name != "" {
-				fName = cp.DbResponseFile.Name
-			}
-		}
-	}
+	phase = racPhaseValidationAndDefault
+	r.phaseInfo(req, phase, "Entering reconcile phase")
+	cName, fName := resolveGridOrDBResponseFileRef(racDatabase.Spec.ConfigParams)
 
 	err = setRacDgFromStatusAndSpecWithMinimumDefaultsforRAC(racDatabase, r.Client, cName, fName)
 	if err != nil {
 		r.Log.Info("Failed to set disk group defaults")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, completed, err
 	}
 
-	// First Validate
 	err = r.validateSpex(racDatabase, oldSpec, ctx)
 	if err != nil {
 		r.Log.Info("Spec validation failed")
-		result = resultQ
 		r.Log.Info(err.Error())
-		return result, nilErr
+		return resultQ, completed, nilErr
 	}
 
-	// Update RAC ConfigParams
 	err = r.updateGiConfigParamStatus(racDatabase)
 	if err != nil {
-		//	time.Sleep(30 * time.Second)
-		result = resultQ
 		r.Log.Info(err.Error())
-		return result, nilErr
+		return resultQ, completed, nilErr
 	}
 
 	err = r.updateDbConfigParamStatus(racDatabase)
 	if err != nil {
-		//	time.Sleep(30 * time.Second)
-		result = resultQ
 		r.Log.Info(err.Error())
-		err = nilErr
-		return result, err
+		return resultQ, completed, nilErr
 	}
 
-	// Service creation
-	// Following check and loop will make sure  to create the service
+	phase = racPhaseServiceSync
+	r.phaseInfo(req, phase, "Entering reconcile phase")
 	if racDatabase.Spec.ExternalSvcType != nil {
 		svcType = *racDatabase.Spec.ExternalSvcType
 	} else {
 		svcType = "nodeport"
 	}
-	if isOldStyle {
-		for i = 0; i < int32(len(racDatabase.Spec.InstDetails)); i++ {
-			if !utils.CheckStatusFlag(racDatabase.Spec.InstDetails[i].IsDelete) {
-				result, err = r.createOrReplaceService(ctx, racDatabase, raccommon.BuildServiceDefForRac(racDatabase, 0, racDatabase.Spec.InstDetails[i], "vip"))
-				if err != nil {
-					result = resultNq
-					return result, err
-				}
 
-				result, err = r.createOrReplaceService(ctx, racDatabase, raccommon.BuildServiceDefForRac(racDatabase, 0, racDatabase.Spec.InstDetails[i], "local"))
-				if err != nil {
-					result = resultNq
-					return result, err
-				}
+	cd := racDatabase.Spec.ClusterDetails
+	for i := 0; i < cd.NodeCount; i++ {
+		if _, err = r.createOrReplaceService(ctx, racDatabase,
+			raccommon.BuildClusterServiceDefForRac(racDatabase, cd, i, "vip")); err != nil {
+			return resultNq, completed, err
+		}
 
-				result, err = r.createOrReplaceService(ctx, racDatabase, raccommon.BuildServiceDefForRac(racDatabase, 0, racDatabase.Spec.InstDetails[i], "scan"))
-				if err != nil {
-					result = resultNq
-					return result, err
-				}
+		if _, err = r.createOrReplaceService(ctx, racDatabase,
+			raccommon.BuildClusterServiceDefForRac(racDatabase, cd, i, "local")); err != nil {
+			return resultNq, completed, err
+		}
 
-				if racDatabase.Spec.InstDetails[i].OnsTargetPort != nil {
-					result, err = r.createOrReplaceService(ctx, racDatabase, raccommon.BuildExternalServiceDefForRac(racDatabase, 0, racDatabase.Spec.InstDetails[i], svcType, "onssvc"))
-					if err != nil {
-						result = resultNq
-						return result, err
-					}
-				}
-
-				if racDatabase.Spec.InstDetails[i].LsnrTargetPort != nil {
-					result, err = r.createOrReplaceService(ctx, racDatabase, raccommon.BuildExternalServiceDefForRac(racDatabase, int32(i), racDatabase.Spec.InstDetails[i], svcType, "lsnrsvc"))
-					if err != nil {
-						result = resultNq
-						return result, err
-					}
-				}
-
-				if len(oraRacInst.NodePortSvc) != 0 {
-					for index, _ := range oraRacInst.NodePortSvc {
-						result, err = r.createOrReplaceService(ctx, racDatabase, raccommon.BuildExternalServiceDefForRac(racDatabase, int32(index), racDatabase.Spec.InstDetails[i], "nodeport", "nodeport"))
-						if err != nil {
-							result = resultNq
-							return result, err
-						}
-
-					}
-				}
+		if cd.BaseOnsTargetPort > 0 {
+			if _, err = r.createOrReplaceService(ctx, racDatabase,
+				raccommon.BuildClusterExternalServiceDefForRac(racDatabase, cd, i, svcType, "onssvc")); err != nil {
+				return resultNq, completed, err
 			}
 		}
 
-		// Creating RAC Service
-
-		if racDatabase.Spec.ScanSvcTargetPort != nil {
-			result, err = r.createOrReplaceService(ctx, racDatabase, raccommon.BuildExternalServiceDefForRac(racDatabase, int32(0), racDatabase.Spec.InstDetails[int32(0)], svcType, "scansvc"))
-			if err != nil {
-				result = resultNq
-				return result, err
+		if cd.BaseLsnrTargetPort > 0 {
+			if _, err = r.createOrReplaceService(ctx, racDatabase,
+				raccommon.BuildClusterExternalServiceDefForRac(racDatabase, cd, i, svcType, "lsnrsvc")); err != nil {
+				return resultNq, completed, err
 			}
 		}
-	} else {
-		cd := racDatabase.Spec.ClusterDetails
-		for i := 0; i < cd.NodeCount; i++ {
-			// nodeName := fmt.Sprintf("%s-%d", cd.RacNodeName, i)
-
-			// VIP Service
-			result, err = r.createOrReplaceService(ctx, racDatabase,
-				raccommon.BuildClusterServiceDefForRac(racDatabase, cd, i, "vip"))
-			if err != nil {
-				result = resultNq
-				return result, err
+		if i == 0 {
+			if _, err = r.createOrReplaceService(ctx, racDatabase,
+				raccommon.BuildClusterExternalServiceDefForRac(racDatabase, cd, i, svcType, "scansvc")); err != nil {
+				return resultNq, completed, err
 			}
-
-			// Local Service
-			result, err = r.createOrReplaceService(ctx, racDatabase,
-				raccommon.BuildClusterServiceDefForRac(racDatabase, cd, i, "local"))
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-
-			// ONS Service, use per-node port
-			if cd.BaseOnsTargetPort > 0 {
-				result, err = r.createOrReplaceService(ctx, racDatabase,
-					raccommon.BuildClusterExternalServiceDefForRac(racDatabase, cd, i, svcType, "onssvc"))
-				if err != nil {
-					result = resultNq
-					return result, err
-				}
-			}
-
-			// Listener Service, use per-node port
-			if cd.BaseLsnrTargetPort > 0 {
-				result, err = r.createOrReplaceService(ctx, racDatabase,
-					raccommon.BuildClusterExternalServiceDefForRac(racDatabase, cd, i, svcType, "lsnrsvc"))
-				if err != nil {
-					result = resultNq
-					return result, err
-				}
-			}
-			// Scan Service -- likely same for all nodes, so could create only once for i == 0
-			if i == 0 {
-				result, err = r.createOrReplaceService(ctx, racDatabase,
-					raccommon.BuildClusterExternalServiceDefForRac(racDatabase, cd, i, svcType, "scansvc"))
-				if err != nil {
-					result = resultNq
-					return result, err
-				}
-			}
-
 		}
-		// run only once
-		result, err = r.createOrReplaceService(ctx, racDatabase,
-			raccommon.BuildClusterServiceDefForRac(racDatabase, cd, 0, "scan"))
-		if err != nil {
-			result = resultNq
-			return result, err
-		}
+
+	}
+	if _, err = r.createOrReplaceService(ctx, racDatabase,
+		raccommon.BuildClusterServiceDefForRac(racDatabase, cd, 0, "scan")); err != nil {
+		return resultNq, completed, err
 	}
 
 	r.ensureAsmStorageStatus(racDatabase)
+	phase = racPhaseStorageSync
+	r.phaseInfo(req, phase, "Entering reconcile phase")
 
 	isNewSetup := true
 	upgradeSetup := false
 
-	// Detect upgrade scenario — if old spec has no ASM storage details
 	if oldSpec != nil && oldSpec.OldAsmStorageDetails != nil {
 		upgradeSetup = true
-		isNewSetup = false // explicitly not a new install
+		isNewSetup = false
 		r.Log.Info("Detected upgrade scenario — marking upgradeSetup = true")
 	} else {
-		// Normal check for new setups
 		for _, diskgroup := range racDatabase.Status.AsmDiskGroups {
 			if len(diskgroup.Disks) > 0 && diskgroup.Name != "Pending" {
 				isNewSetup = false
@@ -550,19 +562,15 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if !isNewSetup && oldSpec != nil {
 		addedAsmDisks, removedAsmDisks, err = r.computeDiskChanges(racDatabase, oldSpec)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, completed, err
 		}
-		//debugger
-		// addedAsmDisks := []string{"/dev/disk/by-partlabel/ocne_asm_disk_03"}
 
-		// Cannot process add & remove together
 		if len(addedAsmDisks) > 0 && len(removedAsmDisks) > 0 {
 			r.Log.Info("Detected addition as well as deletion; cannot process both together",
 				"addedAsmDisks", addedAsmDisks, "removedAsmDisks", removedAsmDisks)
-			return resultQ, fmt.Errorf("cannot add and remove ASM disks in the same step")
+			return resultQ, completed, fmt.Errorf("cannot add and remove ASM disks in the same step")
 		}
 
-		// Set change flags and log
 		if len(addedAsmDisks) > 0 {
 			r.Log.Info("Detected addition of ASM disks", "addedAsmDisks", addedAsmDisks)
 			isDiskChanged = true
@@ -572,7 +580,7 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			isDiskChanged = true
 		}
 	}
-	// Check if any ASM disk has missing/zero size
+
 	missingSize := false
 	for _, dg := range racDatabase.Status.AsmDiskGroups {
 		for _, disk := range dg.Disks {
@@ -605,16 +613,16 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			"dgCount", len(racDatabase.Status.AsmDiskGroups),
 		)
 
-		if err := r.createDaemonSet(racDatabase, ctx, isOldStyle); err != nil {
+		if err := r.createDaemonSet(racDatabase, ctx); err != nil {
 			r.Log.Error(err, "failed to create disk-check daemonset")
-			return ctrl.Result{}, err // Return error to requeue on failure
+			return ctrl.Result{}, completed, err
 		}
 
 		ready, err := checkRacDaemonSetStatusforRAC(ctx, r, racDatabase)
 		if err != nil {
 			r.Log.Error(err, "ASM disk-check daemonset status error, cleaning up")
 
-			_ = r.cleanupDaemonSet(racDatabase, ctx, isOldStyle)
+			_ = r.cleanupDaemonSet(racDatabase, ctx)
 
 			racDatabase.Status.State = string(racdb.RACFailedState)
 
@@ -631,35 +639,35 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				latest.Status = racDatabase.Status
 			})
 			if err != nil {
-				return resultNq, err
+				return resultNq, completed, err
 			}
 
-			return resultNq, nil
+			return resultNq, completed, nil
 		}
 
 		if !ready {
-			// Not ready is NOT an error → no cleanup
 			r.Log.Info("ASM disks not ready yet. Waiting for disk-check daemonset to complete discovery.")
-
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, completed, nil
 		}
 
-		// Update disk sizes into Status AND get discovered disks
 		disks, err = r.updateDiskSizes(ctx, racDatabase)
 		if err != nil {
+			if errors.Is(err, errRACDiskDiscoveryPending) {
+				r.Log.Info("ASM disk discovery output is not available yet. Waiting for disk-check daemonset logs.")
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, completed, nil
+			}
 			r.Log.Error(err, "failed updating disk sizes")
+			return ctrl.Result{}, completed, err
 		}
-
 	}
 
-	// PV/PVC creation using discovered sizes
 	if len(racDatabase.Status.AsmDiskGroups) == 0 {
-		return resultNq, fmt.Errorf("no ASM disk group status available")
+		return resultNq, completed, fmt.Errorf("no ASM disk group status available")
 	}
 	err = setRacDgFromStatusAndSpecWithMinimumDefaultsforRAC(racDatabase, r.Client, cName, fName)
 	if err != nil {
 		r.Log.Info("Failed to set disk group defaults")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, completed, err
 	}
 
 	diskStatusMap := make(map[string]racdb.AsmDiskStatus)
@@ -671,13 +679,10 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		groupName := dgSpec.Name
 		dgType := dgSpec.Type
 
-		// --- CASE 1: OTHERS (mount-only, no ASM group) ---
 		if dgType == racdb.OthersDiskDg {
 			for diskIdx, diskName := range dgSpec.Disks {
 				diskStatus, ok := diskStatusMap[diskName]
 				if !ok || !diskStatus.Valid || diskStatus.SizeInGb == 0 {
-					// r.Log.Info("Invalid or missing disk status for OTHERS disk, skipping",
-					// 	"disk", diskName)
 					continue
 				}
 
@@ -685,24 +690,23 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 				pv := raccommon.VolumePVForASM(
 					racDatabase, dgIndex, diskIdx,
-					diskName, groupName, sizeStr, isOldStyle,
+					diskName, groupName, sizeStr,
 				)
-				if _, result, err = r.createOrReplaceAsmPv(ctx, racDatabase, pv, string(dgType)); err != nil {
-					return resultNq, err
+				if _, _, err = r.createOrReplaceAsmPv(ctx, racDatabase, pv, string(dgType)); err != nil {
+					return resultNq, completed, err
 				}
 
 				pvc := raccommon.VolumePVCForASM(
 					racDatabase, dgIndex, diskIdx,
 					diskName, groupName, sizeStr,
 				)
-				if _, result, err = r.createOrReplaceAsmPvC(ctx, racDatabase, pvc, string(dgType)); err != nil {
-					return resultNq, err
+				if _, _, err = r.createOrReplaceAsmPvC(ctx, racDatabase, pvc, string(dgType)); err != nil {
+					return resultNq, completed, err
 				}
 			}
 			continue
 		}
 
-		// --- CASE 2: Real ASM disk groups ---
 		var dgStatus *racdb.AsmDiskGroupStatus
 		for i, dgSt := range racDatabase.Status.AsmDiskGroups {
 			if dgSt.Name == groupName {
@@ -731,115 +735,41 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 			pv := raccommon.VolumePVForASM(
 				racDatabase, dgIndex, diskIdx,
-				diskName, groupName, sizeStr, isOldStyle,
+				diskName, groupName, sizeStr,
 			)
-			if _, result, err = r.createOrReplaceAsmPv(ctx, racDatabase, pv, string(dgType)); err != nil {
-				return resultNq, err
+			if _, _, err = r.createOrReplaceAsmPv(ctx, racDatabase, pv, string(dgType)); err != nil {
+				return resultNq, completed, err
 			}
 
 			pvc := raccommon.VolumePVCForASM(
 				racDatabase, dgIndex, diskIdx,
 				diskName, groupName, sizeStr,
 			)
-			if _, result, err = r.createOrReplaceAsmPvC(ctx, racDatabase, pvc, string(dgType)); err != nil {
-				return resultNq, err
+			if _, _, err = r.createOrReplaceAsmPvC(ctx, racDatabase, pvc, string(dgType)); err != nil {
+				return resultNq, completed, err
 			}
 		}
 	}
 
-	err = r.cleanupDaemonSet(racDatabase, ctx, isOldStyle)
+	err = r.cleanupDaemonSet(racDatabase, ctx)
 	if err != nil {
-		result = resultQ
-		// r.Log.Info(err.Error())
-		err = nilErr
-		return result, err
+		return resultQ, completed, nilErr
 	}
-	// }
-	// Continue with ConfigMap and StatefulSet creation...
+
+	phase = racPhaseWorkloadSync
+	r.phaseInfo(req, phase, "Entering reconcile phase")
 
 	if racDatabase.Spec.ConfigParams != nil {
-		configMapData, err = r.generateConfigMap(racDatabase, isOldStyle)
+		configMapData, err = r.generateConfigMap(racDatabase)
 		if err != nil {
-			result = resultNq
-			return result, err
+			return resultNq, completed, err
 		}
 	}
-	if isOldStyle && len(racDatabase.Spec.InstDetails) > 0 {
-
-		if len(racDatabase.Spec.InstDetails) > 0 {
-			for index := range racDatabase.Spec.InstDetails {
-				// Determine if this is the last iteration for statefulset
-				isLast := index == len(racDatabase.Spec.InstDetails)-1
-				oldState := racDatabase.Status.State
-				// check if its delete statefulset execution
-				if !utils.CheckStatusFlag(racDatabase.Spec.InstDetails[index].IsDelete) {
-					switch {
-					case isNewSetup || !isDiskChanged:
-						cmName := racDatabase.Spec.InstDetails[index].Name + racDatabase.Name + "-cmap"
-						cm := raccommon.ConfigMapSpecs(racDatabase, configMapData, cmName)
-						result, err = r.createConfigMap(ctx, racDatabase, cm)
-						if err != nil {
-							result = resultNq
-							return result, err
-						}
-						racDatabase.Spec.InstDetails[index].EnvFile = cmName
-						// Call createOrReplaceSfs first time and without change
-						// dep := raccommon.BuildStatefulSetForRac(racDatabase, racDatabase.Spec.InstDetails[index], r.Client)
-						dep, err := raccommon.BuildStatefulSetForRac(racDatabase, racDatabase.Spec.InstDetails[index], r.Client)
-						if err != nil {
-							result = resultNq
-							return result, err
-						}
-
-						result, err = r.createOrReplaceSfs(ctx, req, racDatabase, dep, index, isLast, oldState, isOldStyle)
-						if err != nil {
-							result = resultNq
-							return result, err
-						}
-
-					case isDiskChanged && !isNewSetup:
-
-						cmName := racDatabase.Spec.InstDetails[index].Name + racDatabase.Name + "-cmap"
-						configMapDataAutoUpdate, err := r.generateConfigMapAutoUpdate(ctx, racDatabase, cmName)
-						if err != nil {
-							result = resultNq
-							return result, err
-						}
-						result, err = r.updateConfigMap(ctx, racDatabase, configMapDataAutoUpdate, cmName)
-						if err != nil {
-							result = resultNq
-							return result, err
-						}
-						r.Log.Info("Config Map updated successfully with new asm details")
-						racDatabase.Spec.InstDetails[index].EnvFile = cmName
-						// Call createOrReplaceSfs with new ASM Devices and Auto update
-						// dep := raccommon.BuildStatefulSetForRac(racDatabase, racDatabase.Spec.InstDetails[index], r.Client)
-						dep, err := raccommon.BuildStatefulSetForRac(racDatabase, racDatabase.Spec.InstDetails[index], r.Client)
-						if err != nil {
-							result = resultNq
-							return result, err
-						}
-						result, err = r.createOrReplaceSfsAsm(ctx, req, racDatabase, dep, index, isLast, oldSpec, isOldStyle)
-						if err != nil {
-							result = resultNq
-							return result, err
-						}
-
-					}
-
-				}
-			}
-
-		}
-	} else if !isOldStyle && racDatabase.Spec.ClusterDetails != nil {
-		// --- New-style, cluster-level creation ---
+	if usesClusterRACSpec(&racDatabase.Spec) && racDatabase.Spec.ClusterDetails != nil {
 		cd := racDatabase.Spec.ClusterDetails
-		// Flag similar to old-style condition
 		isDiskChangedNew := isDiskChanged && !isNewSetup
-		err = raccommon.CreateServiceAccountIfNotExists(racDatabase, r.Client)
-		if err != nil {
-			result = resultNq
-			return result, err
+		if err = raccommon.CreateServiceAccountIfNotExists(racDatabase, r.Client); err != nil {
+			return resultNq, completed, err
 		}
 
 		for i := 0; i < cd.NodeCount; i++ {
@@ -848,20 +778,12 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			nodeName := fmt.Sprintf("%s%d", cd.RacNodeName, i+1)
 			cmName := nodeName + racDatabase.Name + "-cmap"
 
-			// Mirror old-style switch block
 			switch {
-			//
-			// ─────────────────────────────────────────────
-			// CASE 1: New setup OR disk not changed
-			// ─────────────────────────────────────────────
-			//
 			case isNewSetup || !isDiskChangedNew:
 
 				cm := raccommon.ConfigMapSpecs(racDatabase, configMapData, cmName)
-				result, err = r.createConfigMap(ctx, racDatabase, cm)
-				if err != nil {
-					result = resultNq
-					return result, err
+				if _, err = r.createConfigMap(ctx, racDatabase, cm); err != nil {
+					return resultNq, completed, err
 				}
 
 				spec := raccommon.BuildStatefulSpecForRacCluster(racDatabase, cd, i, r.Client)
@@ -874,32 +796,22 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 					Spec: *spec,
 				}
 
-				result, err = r.createOrReplaceSfs(
-					ctx, req, racDatabase, dep, i, isLast, racDatabase.Status.State, isOldStyle,
-				)
-				if err != nil {
-					result = resultNq
-					return result, err
+				if _, err = r.createOrReplaceSfs(
+					ctx, req, racDatabase, dep, i, isLast, racDatabase.Status.State,
+				); err != nil {
+					return resultNq, completed, err
 				}
 
-			//
-			// ─────────────────────────────────────────────
-			// CASE 2: Disk changed AND NOT new setup → ASM update
-			// ─────────────────────────────────────────────
-			//
 			case isDiskChangedNew && !isNewSetup:
 
 				configMapDataAutoUpdate, err :=
 					r.generateConfigMapAutoUpdateCluster(ctx, racDatabase, cmName)
 				if err != nil {
-					result = resultNq
-					return result, err
+					return resultNq, completed, err
 				}
 
-				result, err = r.updateConfigMap(ctx, racDatabase, configMapDataAutoUpdate, cmName)
-				if err != nil {
-					result = resultNq
-					return result, err
+				if _, err = r.updateConfigMap(ctx, racDatabase, configMapDataAutoUpdate, cmName); err != nil {
+					return resultNq, completed, err
 				}
 
 				r.Log.Info("ConfigMap updated successfully with new ASM disk details (new-style cluster mode)")
@@ -914,28 +826,24 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 					Spec: *spec,
 				}
 
-				// ---- Same pattern as old-style createOrReplaceSfsAsm ----
-				result, err = r.createOrReplaceSfsAsmCluster(
-					ctx, req, racDatabase, dep, i, isLast, oldSpec, isOldStyle,
-				)
-				if err != nil {
-					result = resultNq
-					return result, err
+				if _, err = r.createOrReplaceSfsAsmCluster(
+					ctx, req, racDatabase, dep, i, isLast, oldSpec,
+				); err != nil {
+					return resultNq, completed, err
 				}
 			}
 		}
 
 	}
 	completed = true
-	// Update the current spec + observedGeneration after successful reconciliation
-	if err := r.SetCurrentSpecAndObservedGeneration(ctx, racDatabase, req); err != nil {
+	phase = racPhaseFinalize
+	r.phaseInfo(req, phase, "Entering reconcile phase")
+	if err = r.SetCurrentSpecAndObservedGeneration(ctx, racDatabase, req); err != nil {
 		r.Log.Error(err, "Failed to persist current spec / observed generation")
-		racDatabase.Spec.IsFailed = true
-		return resultQ, err
+		return resultQ, completed, err
 	}
-	// r.updateReconcileStatus(racDatabase, ctx, req, &result, &err, &blocked, &completed)
-	r.Log.Info("Reconcile completed. Requeuing....")
-	return resultQ, nil
+	r.phaseInfo(req, phase, "Reconcile completed")
+	return resultNq, completed, nil
 }
 
 // podsOwnedByRacDatabase returns pods owned by the specified RAC database based on naming and owner references.
@@ -946,8 +854,6 @@ func podsOwnedByRacDatabase(pods []corev1.Pod, racdb *racdb.RacDatabase) []corev
 	var nodePrefix string
 	if racdb.Spec.ClusterDetails != nil {
 		nodePrefix = racdb.Spec.ClusterDetails.RacNodeName
-	} else if len(racdb.Spec.InstDetails) > 0 {
-		nodePrefix = racdb.Spec.InstDetails[0].Name
 	}
 
 	for _, pod := range pods {
@@ -1110,8 +1016,7 @@ func (r *RacDatabaseReconciler) computeDiskChanges(
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed retrieving StatefulSet '%s': %w", sfsName, err)
 		}
-		inst := racdb.RacInstDetailSpec{Name: sfsName}
-		podList, err := raccommon.GetPodList(racSfSet.Name, racDatabase, r.Client, inst)
+		podList, err := r.getPodsForStatefulSet(context.TODO(), racDatabase, racSfSet.Name)
 		if err != nil {
 			return nil, nil, fmt.Errorf("cannot get pod list for ASM inspection: %w", err)
 		}
@@ -1155,7 +1060,7 @@ func (r *RacDatabaseReconciler) computeDiskChanges(
 
 	// 2. Include disks to add from status (unchanged)
 	if disksToAdd, addErr := getDisksToAddStatusforRAC(racDatabase); addErr != nil {
-		racDatabase.Spec.IsFailed = true
+		markRACFailedStatus(racDatabase)
 		return nil, nil, fmt.Errorf("cannot get ASM disks to add: %w", addErr)
 	} else if len(disksToAdd) > 0 && len(addedAsmDisks) == 0 {
 		addedAsmDisks = disksToAdd
@@ -1163,7 +1068,7 @@ func (r *RacDatabaseReconciler) computeDiskChanges(
 
 	// 3. Include disks to remove from status (unchanged)
 	if disksToRemove, removeErr := getDisksToRemoveStatusforRAC(racDatabase); removeErr != nil {
-		racDatabase.Spec.IsFailed = true
+		markRACFailedStatus(racDatabase)
 		return nil, nil, fmt.Errorf("cannot get ASM disks to remove: %w", removeErr)
 	} else if len(disksToRemove) > 0 && len(removedAsmDisks) == 0 {
 		removedAsmDisks = disksToRemove
@@ -1190,8 +1095,7 @@ func (r *RacDatabaseReconciler) computeDiskChanges(
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed retrieving StatefulSet '%s': %w", sfsName, err)
 		}
-		inst := racdb.RacInstDetailSpec{Name: sfsName}
-		podList, err := raccommon.GetPodList(racSfSet.Name, racDatabase, r.Client, inst)
+		podList, err := r.getPodsForStatefulSet(context.TODO(), racDatabase, racSfSet.Name)
 		if err != nil {
 			return nil, nil, fmt.Errorf("cannot get pod list for ASM inspection: %w", err)
 		}
@@ -1301,6 +1205,305 @@ func checkRACStateAndReturn(racDatabase *racdb.RacDatabase) error {
 	return nil
 }
 
+func usesClusterRACSpec(spec *racdb.RacDatabaseSpec) bool {
+	return spec != nil && spec.ClusterDetails != nil
+}
+
+func validateRACSpecLayout(spec *racdb.RacDatabaseSpec) error {
+	if !usesClusterRACSpec(spec) {
+		return fmt.Errorf("invalid specification: clusterDetails is required")
+	}
+	return nil
+}
+
+// detectRACNodeOperationIntent derives coarse node-op intent from old/new specs.
+// It is used as a controller-level guard to prevent mixed add+delete node operations.
+func detectRACNodeOperationIntent(
+	racDatabase *racdb.RacDatabase,
+	oldSpec *racdb.RacDatabaseSpec,
+) (bool, bool) {
+	if racDatabase == nil || oldSpec == nil {
+		return false, false
+	}
+	if racDatabase.Spec.ClusterDetails == nil || oldSpec.ClusterDetails == nil {
+		return false, false
+	}
+	newCount := racDatabase.Spec.ClusterDetails.NodeCount
+	oldCount := oldSpec.ClusterDetails.NodeCount
+	adding := newCount > oldCount
+	deleting := newCount < oldCount
+	return adding, deleting
+}
+
+func deriveRACOperationType(adding, deleting bool) string {
+	if adding {
+		return racOpTypeAddNodes
+	}
+	if deleting {
+		return racOpTypeDeleteNodes
+	}
+	return ""
+}
+
+func effectiveOldSpec(oldSpec *racdb.RacDatabaseSpec) *racdb.RacDatabaseSpec {
+	if oldSpec != nil {
+		return oldSpec
+	}
+	return &racdb.RacDatabaseSpec{}
+}
+
+func resolveGridResponseFileRef(cfg *racdb.RacInitParams) (string, string) {
+	if cfg == nil || cfg.GridResponseFile == nil {
+		return "", ""
+	}
+	return cfg.GridResponseFile.ConfigMapName, cfg.GridResponseFile.Name
+}
+
+func resolveDBResponseFileRef(cfg *racdb.RacInitParams) (string, string) {
+	if cfg == nil || cfg.DbResponseFile == nil {
+		return "", ""
+	}
+	return cfg.DbResponseFile.ConfigMapName, cfg.DbResponseFile.Name
+}
+
+func resolveGridOrDBResponseFileRef(cfg *racdb.RacInitParams) (string, string) {
+	cName, fName := resolveGridResponseFileRef(cfg)
+	if cName != "" || fName != "" {
+		return cName, fName
+	}
+	return resolveDBResponseFileRef(cfg)
+}
+
+func parseRACBreakGlassOverride(meta metav1.Object) (bool, string, string) {
+	annotations := meta.GetAnnotations()
+	if len(annotations) == 0 {
+		return false, "", ""
+	}
+	if !strings.EqualFold(strings.TrimSpace(annotations[racBreakGlassOverrideAnnotation]), "true") {
+		return false, "", ""
+	}
+	reason := strings.TrimSpace(annotations[racBreakGlassReasonAnnotation])
+	actor := strings.TrimSpace(annotations[racBreakGlassActorAnnotation])
+	return true, reason, actor
+}
+
+func racControllerLevelLockBypassAllowedFields() map[string]struct{} {
+	// Maintain this allowlist in code when specific field-level lock bypasses are safe.
+	// Example:
+	// return map[string]struct{}{
+	//   "spec.details.someNonDisruptiveField": {},
+	// }
+	return map[string]struct{}{}
+}
+
+func diffJSONPaths(prefix string, oldVal interface{}, newVal interface{}, out map[string]struct{}) {
+	if reflect.DeepEqual(oldVal, newVal) {
+		return
+	}
+	oldMap, oldMapOK := oldVal.(map[string]interface{})
+	newMap, newMapOK := newVal.(map[string]interface{})
+	if oldMapOK && newMapOK {
+		keys := map[string]struct{}{}
+		for k := range oldMap {
+			keys[k] = struct{}{}
+		}
+		for k := range newMap {
+			keys[k] = struct{}{}
+		}
+		for k := range keys {
+			next := prefix + "." + k
+			diffJSONPaths(next, oldMap[k], newMap[k], out)
+		}
+		return
+	}
+	// Keep list diffs stable and compact: mark at the list path itself.
+	_, oldSliceOK := oldVal.([]interface{})
+	_, newSliceOK := newVal.([]interface{})
+	if oldSliceOK || newSliceOK {
+		out[prefix] = struct{}{}
+		return
+	}
+	out[prefix] = struct{}{}
+}
+
+func changedRACSpecPaths(oldSpec *racdb.RacDatabaseSpec, newSpec racdb.RacDatabaseSpec) ([]string, error) {
+	if oldSpec == nil {
+		return nil, nil
+	}
+	oldBytes, err := json.Marshal(oldSpec)
+	if err != nil {
+		return nil, err
+	}
+	newBytes, err := json.Marshal(newSpec)
+	if err != nil {
+		return nil, err
+	}
+	var oldObj map[string]interface{}
+	var newObj map[string]interface{}
+	if err := json.Unmarshal(oldBytes, &oldObj); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(newBytes, &newObj); err != nil {
+		return nil, err
+	}
+	outSet := map[string]struct{}{}
+	diffJSONPaths("spec", oldObj, newObj, outSet)
+	out := make([]string, 0, len(outSet))
+	for k := range outSet {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func shouldBypassRACOperationLockBySpecDelta(latest *racdb.RacDatabase, oldSpec *racdb.RacDatabaseSpec) (bool, []string, error) {
+	if latest == nil || oldSpec == nil {
+		return false, nil, nil
+	}
+	allowed := racControllerLevelLockBypassAllowedFields()
+	if len(allowed) == 0 {
+		return false, nil, nil
+	}
+	changed, err := changedRACSpecPaths(oldSpec, latest.Spec)
+	if err != nil {
+		return false, nil, err
+	}
+	if len(changed) == 0 {
+		return false, nil, nil
+	}
+	for _, path := range changed {
+		if _, ok := allowed[path]; !ok {
+			return false, changed, nil
+		}
+	}
+	return true, changed, nil
+}
+
+func (r *RacDatabaseReconciler) acquireRACOperationLock(
+	ctx context.Context,
+	req ctrl.Request,
+	racDatabase *racdb.RacDatabase,
+	oldSpec *racdb.RacDatabaseSpec,
+	operationType string,
+	phase string,
+) error {
+	const (
+		maxRetries = 5
+		retryDelay = 200 * time.Millisecond
+	)
+	if operationType == "" {
+		return nil
+	}
+	holder := req.NamespacedName.String()
+	var lastErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		latest := &racdb.RacDatabase{}
+		if err := r.Get(ctx, req.NamespacedName, latest); err != nil {
+			lastErr = err
+			time.Sleep(retryDelay)
+			continue
+		}
+		breakGlassEnabled, reason, actor := parseRACBreakGlassOverride(latest)
+		if breakGlassEnabled {
+			// Manual operator override: bypass lock acquisition and clear any existing lock.
+			if latest.Status.Operation != nil {
+				latest.Status.Operation = nil
+				if err := r.Status().Update(ctx, latest); err != nil {
+					if apierrors.IsConflict(err) {
+						lastErr = err
+						time.Sleep(retryDelay)
+						continue
+					}
+					return err
+				}
+			}
+			r.phaseInfo(req, racPhaseStateGuard, "Break-glass lock override enabled; skipping controller-level operation lock",
+				"annotation", racBreakGlassOverrideAnnotation,
+				"reason", reason,
+				"actor", actor)
+			return nil
+		}
+		existing := latest.Status.Operation
+		if existing != nil && existing.Type != "" && existing.Type != operationType {
+			bypassLock, changedPaths, bypassErr := shouldBypassRACOperationLockBySpecDelta(latest, oldSpec)
+			if bypassErr != nil {
+				return bypassErr
+			}
+			if bypassLock {
+				r.phaseInfo(req, racPhaseStateGuard, "Bypassing RAC operation lock based on function-level spec-delta allowlist",
+					"requestedOperation", operationType,
+					"heldOperation", existing.Type,
+					"heldBy", existing.Holder,
+					"changedPaths", strings.Join(changedPaths, ","))
+			} else {
+				r.phaseInfo(req, racPhaseStateGuard, "RAC operation lock held by another operation",
+					"heldOperation", existing.Type,
+					"heldBy", existing.Holder,
+					"heldGeneration", existing.TargetGeneration,
+					"requestedOperation", operationType)
+				return fmt.Errorf(
+					"operation lock held by %s (holder=%s, generation=%d), requested=%s",
+					existing.Type, existing.Holder, existing.TargetGeneration, operationType)
+			}
+		}
+		needsFreshStart := existing == nil ||
+			existing.Type != operationType ||
+			existing.TargetGeneration != latest.Generation
+		if latest.Status.Operation == nil {
+			latest.Status.Operation = &racdb.RacOperationStatus{}
+		}
+		latest.Status.Operation.Type = operationType
+		latest.Status.Operation.Holder = holder
+		latest.Status.Operation.Phase = phase
+		latest.Status.Operation.TargetGeneration = latest.Generation
+		if needsFreshStart {
+			latest.Status.Operation.StartedAt = metav1.Now()
+		}
+
+		if err := r.Status().Update(ctx, latest); err != nil {
+			if apierrors.IsConflict(err) {
+				lastErr = err
+				time.Sleep(retryDelay)
+				continue
+			}
+			return err
+		}
+		r.phaseInfo(req, racPhaseStateGuard, "Acquired RAC operation lock",
+			"operation", operationType,
+			"holder", holder,
+			"generation", latest.Generation)
+		return nil
+	}
+	return fmt.Errorf("failed to acquire operation lock after retries: %w", lastErr)
+}
+
+func (r *RacDatabaseReconciler) releaseRACOperationLock(
+	ctx context.Context,
+	req ctrl.Request,
+	operationType string,
+) error {
+	if operationType == "" {
+		return nil
+	}
+	holder := req.NamespacedName.String()
+	err := r.updateStatusWithRetry(ctx, req, func(latest *racdb.RacDatabase) {
+		if latest.Status.Operation == nil {
+			return
+		}
+		if latest.Status.Operation.Type != operationType {
+			return
+		}
+		if latest.Status.Operation.Holder != "" && latest.Status.Operation.Holder != holder {
+			return
+		}
+		latest.Status.Operation = nil
+	})
+	if err == nil {
+		r.phaseInfo(req, racPhaseFinalize, "Released RAC operation lock", "operation", operationType, "holder", holder)
+	}
+	return err
+}
+
 // generateConfigMapAutoUpdate reloads a RAC ConfigMap and refreshes its
 // environment payload with current ASM device details. It returns the updated
 // data map for reuse when persisting the ConfigMap.
@@ -1315,16 +1518,7 @@ func (r *RacDatabaseReconciler) generateConfigMapAutoUpdate(ctx context.Context,
 	// Get the existing config map data
 	configMapData := cm.Data
 	envFileData := configMapData["envfile"]
-	envVars := make(map[string]string)
-
-	// Parse the envfile into a map
-	lines := strings.Split(envFileData, "\r\n")
-	for _, line := range lines {
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			envVars[parts[0]] = parts[1]
-		}
-	}
+	envVars := sharedenvfile.ParseMap(envFileData)
 
 	// CRS_ASM_DEVICE_LIST
 	if crsList := raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.CrsAsmDiskDg); crsList != "" {
@@ -1339,12 +1533,7 @@ func (r *RacDatabaseReconciler) generateConfigMapAutoUpdate(ctx context.Context,
 	if dataList := raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.DbDataDiskDg); dataList != "" {
 		envVars["DATA_ASM_DEVICE_LIST"] = dataList
 	}
-	// Convert the envVars map back to a single string
-	var updatedData []string
-	for key, value := range envVars {
-		updatedData = append(updatedData, fmt.Sprintf("%s=%s", key, value))
-	}
-	configMapData["envfile"] = strings.Join(updatedData, "\r\n")
+	configMapData["envfile"] = sharedenvfile.SerializeMap(envVars)
 
 	return configMapData, nil
 }
@@ -1373,13 +1562,7 @@ func (r *RacDatabaseReconciler) generateConfigMapAutoUpdateCluster(
 	envFile := configMapData["envfile"]
 
 	// Parse into key=value map
-	envVars := map[string]string{}
-	for _, line := range strings.Split(envFile, "\r\n") {
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			envVars[parts[0]] = parts[1]
-		}
-	}
+	envVars := sharedenvfile.ParseMap(envFile)
 
 	// ---------------------------------------------------------
 	// 2. Extract ASMDG names + redundancy from Spec (NEW MODEL)
@@ -1506,12 +1689,7 @@ func (r *RacDatabaseReconciler) generateConfigMapAutoUpdateCluster(
 	// ---------------------------------------------------------
 	// 5. Convert back to envfile format
 	// ---------------------------------------------------------
-	updated := []string{}
-	for k, v := range envVars {
-		updated = append(updated, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	configMapData["envfile"] = strings.Join(updated, "\r\n")
+	configMapData["envfile"] = sharedenvfile.SerializeMap(envVars)
 
 	return configMapData, nil
 }
@@ -1539,7 +1717,7 @@ func (r *RacDatabaseReconciler) updateConfigMap(ctx context.Context, instance *r
 // updateReconcileStatus maintains reconcile conditions and topology details
 // after each controller pass. It refreshes status fields based on reconcile
 // outcome flags and observed cluster data.
-func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacDatabase, ctx context.Context, req ctrl.Request, result *ctrl.Result, err *error, blocked *bool, completed *bool, isOldStyle bool) {
+func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacDatabase, ctx context.Context, req ctrl.Request, result *ctrl.Result, err *error, blocked *bool, completed *bool) {
 	const maxRetries = 5
 	const retryDelay = 2 * time.Second
 
@@ -1552,7 +1730,7 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 	if racDatabase.ObjectMeta.DeletionTimestamp.IsZero() {
 
 		podNames, nodeDetails, err1 :=
-			r.updateRacInstTopologyStatus(racDatabase, ctx, req, isOldStyle)
+			r.updateRacInstTopologyStatus(racDatabase, ctx, req)
 
 		// ---- CASE 1: Pending pods → topology intentionally skipped ----
 		if err1 == nil && len(podNames) == 0 {
@@ -1653,6 +1831,14 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 	default:
 		return
 	}
+	// Keep transition time stable when reconcile condition content is unchanged.
+	if prev := meta.FindStatusCondition(racDatabase.Status.Conditions, condition.Type); prev != nil &&
+		prev.Status == condition.Status &&
+		prev.Reason == condition.Reason &&
+		prev.Message == condition.Message &&
+		prev.ObservedGeneration == condition.ObservedGeneration {
+		condition.LastTransitionTime = prev.LastTransitionTime
+	}
 
 	// ---------------------------------------------
 	// SET ONLY THE NEW CONDITION
@@ -1683,6 +1869,11 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 			r.Log.Error(err, "Failed to merge instances, retrying...")
 			time.Sleep(retryDelay)
 			continue // Retry merging
+		}
+		// Skip status write when nothing changed.
+		if reflect.DeepEqual(racDatabase.Status, latestInstance.Status) {
+			r.Log.Info("No RAC status changes detected; skipping status patch", "Instance", racDatabase.Name)
+			return
 		}
 
 		// Update the ResourceVersion of instance from latestInstance to avoid conflict
@@ -1777,7 +1968,7 @@ func (r *RacDatabaseReconciler) validateSpex(racDatabase *racdb.RacDatabase, old
 	r.ensureAsmStorageStatus(racDatabase)
 	_, diskRemoveErr := getDisksToRemoveStatusforRAC(racDatabase)
 	if diskRemoveErr != nil {
-		racDatabase.Spec.IsFailed = true
+		markRACFailedStatus(racDatabase)
 		return diskRemoveErr
 	}
 	for _, statusDG := range racDatabase.Status.AsmDiskGroups {
@@ -1822,38 +2013,21 @@ func (r *RacDatabaseReconciler) validateSpex(racDatabase *racdb.RacDatabase, old
 			cfg.GridResponseFile.Name,
 		)
 		if err != nil {
-			racDatabase.Spec.IsFailed = true
+			markRACFailedStatus(racDatabase)
 			return err
 		}
 
-		// Validate InstDetails (if provided)
-		if len(racDatabase.Spec.InstDetails) > 0 {
-			for idx := range racDatabase.Spec.InstDetails {
-
-				isDeleteStr := racDatabase.Spec.InstDetails[idx].IsDelete
-				switch isDeleteStr {
-				case "true":
-					r.Log.Info("Performing operation for IsDelete true")
-				default:
-					if isDeleteStr != "" {
-						r.Log.Info("Unexpected value for IsDelete: " + isDeleteStr)
-					}
-
-					// PrivateIPDetails can be nil → must check
-					if racDatabase.Spec.InstDetails[idx].PrivateIPDetails != nil {
-						for _, iface := range racDatabase.Spec.InstDetails[idx].PrivateIPDetails {
-							interfaceName := iface.Interface
-
-							err = raccommon.ValidateNetInterface(interfaceName, racDatabase, netRspData)
-							if err != nil {
-								racDatabase.Spec.IsFailed = true
-								return fmt.Errorf(
-									"The network card name '%s' does not match the interface list in the Grid Response File",
-									interfaceName,
-								)
-							}
-						}
-					}
+		clusterSpec := racDatabase.Spec.ClusterDetails
+		if clusterSpec != nil {
+			for _, iface := range clusterSpec.PrivateIPDetails {
+				interfaceName := iface.Interface
+				err = raccommon.ValidateNetInterface(interfaceName, racDatabase, netRspData)
+				if err != nil {
+					markRACFailedStatus(racDatabase)
+					return fmt.Errorf(
+						"The network card name '%s' does not match the interface list in the Grid Response File",
+						interfaceName,
+					)
 				}
 			}
 		}
@@ -2158,11 +2332,11 @@ func flattenAsmDisksForRAC(racDbSpec *racdb.RacDatabaseSpec) []string {
 // createDaemonSet ensures the disk discovery DaemonSet exists with the
 // expected spec. It creates or updates the workload so ASM disk metadata
 // stays current across reconcile iterations.
-func (r *RacDatabaseReconciler) createDaemonSet(racDatabase *racdb.RacDatabase, ctx context.Context, oldStyle bool) error {
+func (r *RacDatabaseReconciler) createDaemonSet(racDatabase *racdb.RacDatabase, ctx context.Context) error {
 	r.Log.Info("Validate New ASM Disks")
 
 	// Build the desired DaemonSet (disk-check)
-	desiredDaemonSet := raccommon.BuildDiskCheckDaemonSet(racDatabase, oldStyle)
+	desiredDaemonSet := raccommon.BuildDiskCheckDaemonSet(racDatabase)
 
 	// Try to get the existing DaemonSet
 	existingDaemonSet := &appsv1.DaemonSet{}
@@ -2175,13 +2349,13 @@ func (r *RacDatabaseReconciler) createDaemonSet(racDatabase *racdb.RacDatabase, 
 		if apierrors.IsNotFound(err) {
 			r.Log.Info("Creating DaemonSet", "name", desiredDaemonSet.Name)
 			if err := r.Client.Create(ctx, desiredDaemonSet); err != nil {
-				racDatabase.Spec.IsFailed = true
+				markRACFailedStatus(racDatabase)
 				return err
 			}
 			r.Log.Info("DaemonSet created successfully", "DaemonSet.Name", desiredDaemonSet.Name)
 
 		} else {
-			racDatabase.Spec.IsFailed = true
+			markRACFailedStatus(racDatabase)
 			return err
 		}
 	} else {
@@ -2203,6 +2377,88 @@ func (r *RacDatabaseReconciler) createDaemonSet(racDatabase *racdb.RacDatabase, 
 	return nil
 }
 
+func diskCheckLabelSelectorForRAC(racDatabase *racdb.RacDatabase) string {
+	return shareddiskcheck.LabelSelectorForDaemonSet(racDatabase, "disk-check")
+}
+
+func (r *RacDatabaseReconciler) collectDiskCheckResults(
+	ctx context.Context,
+	racDatabase *racdb.RacDatabase,
+) ([]racdb.AsmDiskStatus, bool, error) {
+	podList, err := r.kubeClient.CoreV1().Pods(racDatabase.Namespace).List(
+		ctx,
+		metav1.ListOptions{LabelSelector: diskCheckLabelSelectorForRAC(racDatabase)},
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(podList.Items) == 0 {
+		return nil, false, nil
+	}
+
+	expectedDisks := flattenAsmDisksForRAC(&racDatabase.Spec)
+	if len(expectedDisks) == 0 {
+		return nil, true, nil
+	}
+
+	discovered := make(map[string]racdb.AsmDiskStatus, len(expectedDisks))
+	for _, pod := range podList.Items {
+		if pod.Status.Phase != corev1.PodRunning && pod.Status.Phase != corev1.PodSucceeded {
+			return nil, false, nil
+		}
+
+		rawLogs, err := r.kubeClient.CoreV1().Pods(pod.Namespace).GetLogs(
+			pod.Name,
+			&corev1.PodLogOptions{Container: "disk-check"},
+		).DoRaw(ctx)
+		if err != nil {
+			r.Log.Info("Disk-check pod logs are not available yet", "pod", pod.Name)
+			return nil, false, nil
+		}
+		if len(bytes.TrimSpace(rawLogs)) == 0 {
+			continue
+		}
+
+		scanner := bufio.NewScanner(bytes.NewReader(rawLogs))
+		for scanner.Scan() {
+			var entry struct {
+				Disk   string `json:"disk"`
+				Valid  bool   `json:"valid"`
+				SizeGb int    `json:"sizeGb"`
+			}
+			if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+				continue
+			}
+			if strings.TrimSpace(entry.Disk) == "" {
+				continue
+			}
+			discovered[entry.Disk] = racdb.AsmDiskStatus{
+				Name:     entry.Disk,
+				SizeInGb: entry.SizeGb,
+				Valid:    entry.Valid,
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			return nil, false, err
+		}
+	}
+
+	results := make([]racdb.AsmDiskStatus, 0, len(discovered))
+	for _, diskName := range expectedDisks {
+		diskName = strings.TrimSpace(diskName)
+		if diskName == "" {
+			continue
+		}
+		status, ok := discovered[diskName]
+		if !ok {
+			return nil, false, nil
+		}
+		results = append(results, status)
+	}
+
+	return results, true, nil
+}
+
 // updateDiskSizes refreshes ASM disk size information within status using
 // latest metrics from disk discovery outputs. It aligns spec sizing with
 // what was actually discovered on cluster nodes.
@@ -2211,51 +2467,14 @@ func (r *RacDatabaseReconciler) updateDiskSizes(
 	racDatabase *racdb.RacDatabase,
 ) ([]racdb.AsmDiskStatus, error) {
 
-	// 1. Collect discovered disks (ASM + OTHERS)
-	var disks []racdb.AsmDiskStatus
-
-	podList := &corev1.PodList{}
-	labels := raccommon.BuildLabelsForDaemonSet(racDatabase, "disk-check")
-	if err := r.Client.List(
-		ctx,
-		podList,
-		client.InNamespace(racDatabase.Namespace),
-		client.MatchingLabels(labels),
-	); err != nil {
+	// 1. Collect discovered disks (ASM + OTHERS) directly from API server so
+	// newly created disk-check pods are visible on the first successful run.
+	disks, complete, err := r.collectDiskCheckResults(ctx, racDatabase)
+	if err != nil {
 		return nil, err
 	}
-
-	for _, pod := range podList.Items {
-		req := r.kubeClient.CoreV1().
-			Pods(pod.Namespace).
-			GetLogs(pod.Name, &corev1.PodLogOptions{Container: "disk-check"})
-
-		logs, err := req.Stream(ctx)
-		if err != nil {
-			r.Log.Error(err, "Failed to stream logs", "pod", pod.Name)
-			continue
-		}
-
-		func() {
-			defer logs.Close()
-			scanner := bufio.NewScanner(logs)
-			for scanner.Scan() {
-				var entry struct {
-					Disk   string `json:"disk"`
-					Valid  bool   `json:"valid"`
-					SizeGb int    `json:"sizeGb"`
-				}
-				if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
-					r.Log.Error(err, "Failed to unmarshal disk info", "pod", pod.Name)
-					continue
-				}
-				disks = append(disks, racdb.AsmDiskStatus{
-					Name:     entry.Disk,
-					SizeInGb: entry.SizeGb,
-					Valid:    entry.Valid,
-				})
-			}
-		}()
+	if !complete {
+		return nil, errRACDiskDiscoveryPending
 	}
 
 	// 2. Build ASM disk group status (exclude OTHERS)
@@ -2354,9 +2573,9 @@ func (r *RacDatabaseReconciler) updateDiskSizes(
 
 // cleanupDaemonSet removes the temporary disk discovery DaemonSet when it is
 // no longer required. This keeps the cluster clean once ASM updates finish.
-func (r *RacDatabaseReconciler) cleanupDaemonSet(racDatabase *racdb.RacDatabase, ctx context.Context, oldStyle bool) error {
+func (r *RacDatabaseReconciler) cleanupDaemonSet(racDatabase *racdb.RacDatabase, ctx context.Context) error {
 	// r.Log.Info("CleanupDaemonSet")
-	desiredDaemonSet := raccommon.BuildDiskCheckDaemonSet(racDatabase, oldStyle)
+	desiredDaemonSet := raccommon.BuildDiskCheckDaemonSet(racDatabase)
 
 	// Try to get the existing DaemonSet
 	existingDaemonSet := &appsv1.DaemonSet{}
@@ -2554,18 +2773,7 @@ func findRacDisksToAddforRAC(newSpecDisks, statusDisks []string, instance *racdb
 // updateGiConfigParamStatus ensures Grid Infrastructure parameters in status
 // are populated by reading from response files or spec defaults when needed.
 func (r *RacDatabaseReconciler) updateGiConfigParamStatus(racDatabase *racdb.RacDatabase) error {
-	var cName, fName string
-
-	cfg := racDatabase.Spec.ConfigParams
-
-	if cfg != nil && cfg.GridResponseFile != nil {
-		if cfg.GridResponseFile.ConfigMapName != "" {
-			cName = cfg.GridResponseFile.ConfigMapName
-		}
-		if cfg.GridResponseFile.Name != "" {
-			fName = cfg.GridResponseFile.Name
-		}
-	}
+	cName, fName := resolveGridResponseFileRef(racDatabase.Spec.ConfigParams)
 
 	if racDatabase.Status.ConfigParams == nil {
 		racDatabase.Status.ConfigParams = new(racdb.RacInitParams)
@@ -2579,7 +2787,7 @@ func (r *RacDatabaseReconciler) updateGiConfigParamStatus(racDatabase *racdb.Rac
 		} else {
 			invlocation, err := raccommon.CheckRspData(racDatabase, r.Client, "INVENTORY_LOCATION", cName, fName)
 			if err != nil {
-				racDatabase.Spec.IsFailed = true
+				markRACFailedStatus(racDatabase)
 				return errors.New("error in responsefile, unable to read INVENTORY_LOCATION")
 			} else {
 				racDatabase.Status.ConfigParams.Inventory = invlocation
@@ -2593,7 +2801,7 @@ func (r *RacDatabaseReconciler) updateGiConfigParamStatus(racDatabase *racdb.Rac
 		} else {
 			gibase, err := raccommon.CheckRspData(racDatabase, r.Client, "ORACLE_BASE", cName, fName)
 			if err != nil {
-				racDatabase.Spec.IsFailed = true
+				markRACFailedStatus(racDatabase)
 				return errors.New("error in responsefile, unable to read ORACLE_BASE")
 			} else {
 				racDatabase.Status.ConfigParams.GridBase = gibase
@@ -2607,7 +2815,7 @@ func (r *RacDatabaseReconciler) updateGiConfigParamStatus(racDatabase *racdb.Rac
 		} else {
 			gihome, err := raccommon.CheckRspData(racDatabase, r.Client, "GRID_HOME", cName, fName)
 			if err != nil {
-				racDatabase.Spec.IsFailed = true
+				markRACFailedStatus(racDatabase)
 				return errors.New("error in responsefile, unable to read GRID_HOME")
 			} else {
 				racDatabase.Status.ConfigParams.GridHome = gihome
@@ -2621,7 +2829,7 @@ func (r *RacDatabaseReconciler) updateGiConfigParamStatus(racDatabase *racdb.Rac
 		} else {
 			scanname, err := raccommon.CheckRspData(racDatabase, r.Client, "scanName", cName, fName)
 			if err != nil {
-				racDatabase.Spec.IsFailed = true
+				markRACFailedStatus(racDatabase)
 				return errors.New("error in responsefile, unable to read scanName")
 			} else {
 				racDatabase.Status.ScanSvcName = scanname
@@ -2640,12 +2848,7 @@ func setRacDgFromStatusAndSpecWithMinimumDefaultsforRAC(
 	client client.Client,
 	cName, fName string,
 ) error {
-	ensureCrsDiskGroupforRAC(racDatabase, client, cName, fName)
-	ensureDbDataDiskGroupforRAC(racDatabase)
-	ensureDbRecoveryDiskGroupforRAC(racDatabase)
-	ensureDefaultCharsetforRAC(racDatabase)
-
-	return nil
+	return sharedasm.EnsureDefaults(newRacAsmAdapter(racDatabase, client), cName, fName)
 }
 
 // ensureCrsDiskGroupforRAC injects or enriches the CRS disk group entry
@@ -2837,15 +3040,9 @@ func (r *RacDatabaseReconciler) updateDbConfigParamStatus(
 	racDatabase *racdb.RacDatabase,
 ) error {
 
-	var cName, fName string
+	cName, fName := resolveDBResponseFileRef(racDatabase.Spec.ConfigParams)
 	var rspData string
-
 	cfg := racDatabase.Spec.ConfigParams
-
-	if cfg != nil && cfg.DbResponseFile != nil {
-		cName = cfg.DbResponseFile.ConfigMapName
-		fName = cfg.DbResponseFile.Name
-	}
 
 	if racDatabase.Spec.ConfigParams == nil {
 		return nil
@@ -2868,7 +3065,7 @@ func (r *RacDatabaseReconciler) updateDbConfigParamStatus(
 			fName,
 		)
 		if err != nil {
-			racDatabase.Spec.IsFailed = true
+			markRACFailedStatus(racDatabase)
 			return "", fmt.Errorf("error in responsefile, unable to read variables")
 		}
 		rspData = data
@@ -2886,7 +3083,7 @@ func (r *RacDatabaseReconciler) updateDbConfigParamStatus(
 			}
 			dbName := utils.GetValue(data, "DB_NAME")
 			if dbName == "" {
-				racDatabase.Spec.IsFailed = true
+				markRACFailedStatus(racDatabase)
 				return fmt.Errorf("error in responsefile, unable to read DB_NAME")
 			}
 			racDatabase.Status.ConfigParams.DbName = dbName
@@ -2956,7 +3153,6 @@ func (r *RacDatabaseReconciler) updateRacInstTopologyStatus(
 	racDatabase *racdb.RacDatabase,
 	ctx context.Context,
 	req ctrl.Request,
-	isOldStyle bool,
 ) ([]string, map[string]*corev1.Node, error) {
 
 	var (
@@ -2980,26 +3176,17 @@ func (r *RacDatabaseReconciler) updateRacInstTopologyStatus(
 			"racDatabase", racDatabase.Name,
 		)
 
-		// Always update using latest object
-		latest := &racdb.RacDatabase{}
-		if err := r.Client.Get(ctx, client.ObjectKeyFromObject(racDatabase), latest); err != nil {
-			return podNames, nodeDetails, err
-		}
-
-		latest.Status.State = string(racdb.RACPendingState)
-		latest.Status.DbState = string(racdb.RACPendingState)
-
-		meta.SetStatusCondition(&latest.Status.Conditions, metav1.Condition{
-			Type:               string(racdb.RacCrdReconcileWaitingState),
-			Status:             metav1.ConditionTrue,
-			Reason:             string(racdb.RacCrdReconcileWaitingReason),
-			Message:            "Waiting for all RAC pods to become Running",
-			ObservedGeneration: latest.Generation,
-			LastTransitionTime: metav1.Now(),
-		})
-
 		err := r.updateStatusWithRetry(ctx, req, func(latest *racdb.RacDatabase) {
-			latest.Status = racDatabase.Status
+			latest.Status.State = string(racdb.RACPendingState)
+			latest.Status.DbState = string(racdb.RACPendingState)
+			meta.SetStatusCondition(&latest.Status.Conditions, metav1.Condition{
+				Type:               string(racdb.RacCrdReconcileWaitingState),
+				Status:             metav1.ConditionTrue,
+				Reason:             string(racdb.RacCrdReconcileWaitingReason),
+				Message:            "Waiting for all RAC pods to become Running",
+				ObservedGeneration: latest.Generation,
+				LastTransitionTime: metav1.Now(),
+			})
 		})
 		if err != nil {
 			return nil, nil, err
@@ -3012,89 +3199,52 @@ func (r *RacDatabaseReconciler) updateRacInstTopologyStatus(
 	// -------------------------------------------------------------
 	// STEP 1: Validate ONLY when cluster is converged
 	// -------------------------------------------------------------
-	if isOldStyle && len(racDatabase.Spec.InstDetails) > 0 {
+	clusterSpec := racDatabase.Spec.ClusterDetails
+	for index := 0; index < clusterSpec.NodeCount; index++ {
 
-		for index, oraRacSpec := range racDatabase.Spec.InstDetails {
-			if strings.EqualFold(oraRacSpec.IsDelete, "true") {
-				continue
-			}
-
-			_, pod, err = r.validateRacInst(
-				racDatabase, ctx, req, oraRacSpec, index, isOldStyle,
-			)
-			if err != nil {
-				return podNames, nodeDetails, err
-			}
-			if pod == nil {
-				continue
-			}
-
-			podNames = append(podNames, pod.Name)
-
-			node, err := r.getNodeDetails(pod.Spec.NodeName)
-			if err != nil {
-				return podNames, nodeDetails,
-					fmt.Errorf("failed to get node details for pod %s: %w", pod.Name, err)
-			}
-			nodeDetails[pod.Name] = node
-		}
-
-	} else if racDatabase.Spec.ClusterDetails != nil {
-
-		clusterSpec := racDatabase.Spec.ClusterDetails
-
-		for index := 0; index < clusterSpec.NodeCount; index++ {
-
-			_, pod, err = r.validateRacNodeCluster(
-				racDatabase, ctx, req, clusterSpec, index,
-			)
-			if err != nil {
-				return podNames, nodeDetails, err
-			}
-			if pod == nil {
-				continue
-			}
-
-			podNames = append(podNames, pod.Name)
-
-			node, err := r.getNodeDetails(pod.Spec.NodeName)
-			if err != nil {
-				return podNames, nodeDetails,
-					fmt.Errorf("failed to get node details for pod %s: %w", pod.Name, err)
-			}
-			nodeDetails[pod.Name] = node
-		}
-		desiredNodes := map[string]struct{}{}
-
-		for i := 0; i < clusterSpec.NodeCount; i++ {
-			stsName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, i+1)
-			podName := fmt.Sprintf("%s-0", stsName) // StatefulSet pod 0
-			desiredNodes[podName] = struct{}{}
-		}
-
-		filteredStatus := []*v4.RacNodeStatus{}
-
-		for _, nodeStatus := range racDatabase.Status.RacNodes {
-			if nodeStatus == nil {
-				continue
-			}
-
-			if _, ok := desiredNodes[nodeStatus.Name]; ok {
-				filteredStatus = append(filteredStatus, nodeStatus)
-			} else {
-				r.Log.Info(
-					"Pruning stale RAC node from status",
-					"node", nodeStatus.Name,
-				)
-			}
-		}
-
-		racDatabase.Status.RacNodes = filteredStatus
-		err := r.updateStatusNoGetRetry(ctx, racDatabase)
+		_, pod, err = r.validateRacNodeCluster(
+			racDatabase, ctx, req, clusterSpec, index,
+		)
 		if err != nil {
-			return nil, nil, err
+			return podNames, nodeDetails, err
+		}
+		if pod == nil {
+			continue
 		}
 
+		podNames = append(podNames, pod.Name)
+
+		node, err := r.getNodeDetails(pod.Spec.NodeName)
+		if err != nil {
+			return podNames, nodeDetails,
+				fmt.Errorf("failed to get node details for pod %s: %w", pod.Name, err)
+		}
+		nodeDetails[pod.Name] = node
+	}
+
+	desiredNodes := map[string]struct{}{}
+	for i := 0; i < clusterSpec.NodeCount; i++ {
+		stsName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, i+1)
+		podName := fmt.Sprintf("%s-0", stsName)
+		desiredNodes[podName] = struct{}{}
+	}
+
+	filteredStatus := []*v4.RacNodeStatus{}
+	for _, nodeStatus := range racDatabase.Status.RacNodes {
+		if nodeStatus == nil {
+			continue
+		}
+		if _, ok := desiredNodes[nodeStatus.Name]; ok {
+			filteredStatus = append(filteredStatus, nodeStatus)
+		} else {
+			r.Log.Info("Pruning stale RAC node from status", "node", nodeStatus.Name)
+		}
+	}
+
+	racDatabase.Status.RacNodes = filteredStatus
+	err = r.updateStatusNoGetRetry(ctx, racDatabase)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// -------------------------------------------------------------
@@ -3102,12 +3252,12 @@ func (r *RacDatabaseReconciler) updateRacInstTopologyStatus(
 	// -------------------------------------------------------------
 	if len(podNames) == 0 || len(nodeDetails) == 0 {
 		// Not Pending → real failure
-		racDatabase.Spec.IsFailed = true
+		markRACFailedStatus(racDatabase)
 		return podNames, nodeDetails,
 			errors.New("failed to collect RAC pod or node details")
 	}
 
-	racDatabase.Spec.IsFailed = false
+	clearRACFailedStatus(racDatabase)
 	return podNames, nodeDetails, nil
 }
 
@@ -3126,12 +3276,39 @@ func hasPendingRacPods(
 		return false, err
 	}
 
-	for _, p := range podList.Items {
+	for _, p := range podsOwnedByRacDatabase(podList.Items, racDatabase) {
 		if p.Status.Phase == corev1.PodPending {
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+func (r *RacDatabaseReconciler) getPodsForStatefulSet(
+	ctx context.Context,
+	racDatabase *racdb.RacDatabase,
+	statefulSetName string,
+) (*corev1.PodList, error) {
+	allPods := &corev1.PodList{}
+	if err := r.List(ctx, allPods, client.InNamespace(racDatabase.Namespace)); err != nil {
+		return nil, err
+	}
+
+	filtered := &corev1.PodList{}
+	prefix := statefulSetName + "-"
+	for _, pod := range allPods.Items {
+		if strings.HasPrefix(pod.Name, prefix) {
+			filtered.Items = append(filtered.Items, pod)
+			continue
+		}
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind == "StatefulSet" && ref.Name == statefulSetName {
+				filtered.Items = append(filtered.Items, pod)
+				break
+			}
+		}
+	}
+	return filtered, nil
 }
 
 // validateRacNodeCluster inspects cluster-level spec fields, nodes, and
@@ -3153,7 +3330,7 @@ func (r *RacDatabaseReconciler) validateRacNodeCluster(
 	if racSfSet == nil {
 		return nil, nil, fmt.Errorf("StatefulSet for %s not found", nodeName)
 	}
-	podList, err := raccommon.GetPodList(racSfSet.Name, racDatabase, r.Client, racdb.RacInstDetailSpec{Name: nodeName})
+	podList, err := r.getPodsForStatefulSet(ctx, racDatabase, racSfSet.Name)
 	if err != nil {
 		msg := "Unable to find any pod in statefulset " + raccommon.GetFmtStr(racSfSet.Name) + "."
 		raccommon.LogMessages("INFO", msg, nil, racDatabase, r.Log)
@@ -3178,7 +3355,7 @@ func (r *RacDatabaseReconciler) validateRacNodeCluster(
 	if racDatabase.Spec.IsManual {
 		state = string(racdb.RACManualState)
 	}
-	if racDatabase.Spec.IsFailed {
+	if isRACFailedStatus(racDatabase) {
 		state = string(racdb.RACFailedState)
 	}
 
@@ -3257,176 +3434,10 @@ func (r *RacDatabaseReconciler) validateRacDb(racDatabase *racdb.RacDatabase, ct
 
 }
 
-// validateRacInst inspects per-instance configuration, pods, and nodes to
-// verify RAC instance state matches desired spec before orchestration moves on.
-func (r *RacDatabaseReconciler) validateRacInst(
-	racDatabase *racdb.RacDatabase,
-	ctx context.Context,
-	req ctrl.Request,
-	OraRacSpex racdb.RacInstDetailSpec,
-	index int,
-	isOldStyle bool,
-) (*appsv1.StatefulSet, *corev1.Pod, error) {
-
-	var err error
-	racSfSet := &appsv1.StatefulSet{}
-	racPod := &corev1.Pod{}
-
-	racSfSet, err = raccommon.CheckSfset(OraRacSpex.Name, racDatabase, r.Client)
-	if err != nil {
-		r.updateRacInstStatus(racDatabase, ctx, req, racDatabase.Spec.InstDetails[index], index, string(racdb.RACProvisionState), r.Client, true)
-		return racSfSet, racPod, err
-	}
-	if racSfSet == nil {
-		return nil, nil, fmt.Errorf("StatefulSet for %s not found", OraRacSpex.Name)
-	}
-	podList, err := raccommon.GetPodList(racSfSet.Name, racDatabase, r.Client, OraRacSpex)
-	if err != nil {
-		msg := "Unable to find any pod in statefulset " + raccommon.GetFmtStr(racSfSet.Name) + "."
-		raccommon.LogMessages("INFO", msg, nil, racDatabase, r.Log)
-		r.updateRacInstStatus(racDatabase, ctx, req, racDatabase.Spec.InstDetails[index], index, string(racdb.RACProvisionState), r.Client, true)
-		return racSfSet, racPod, err
-	}
-
-	isPodExist, racPod, notReadyPod := raccommon.PodListValidation(podList, racSfSet.Name, racDatabase, r.Client)
-	if !isPodExist {
-		var msg string
-		if notReadyPod != nil {
-			msg = "unable to validate RAC pod. The  pod not ready  is: " + notReadyPod.Name
-			raccommon.LogMessages("INFO", msg, nil, racDatabase, r.Log)
-			return racSfSet, racPod, fmt.Errorf("%s", msg)
-		}
-		msg = "unable to validate RAC pod. No pods matching the criteria were found"
-		raccommon.LogMessages("INFO", msg, nil, racDatabase, r.Log)
-		return racSfSet, racPod, fmt.Errorf("%s", msg)
-	}
-
-	// Update status when PODs are ready
-	state := racDatabase.Status.State
-	if racDatabase.Spec.IsManual {
-		state = string(racdb.RACManualState)
-	}
-	if racDatabase.Spec.IsFailed {
-		state = string(racdb.RACFailedState)
-	}
-
-	switch {
-	case isPodExist && (state == string(racdb.RACProvisionState) ||
-		state == string(racdb.RACUpdateState) ||
-		state == string(racdb.RACPendingState)):
-		state = string(racdb.RACPodAvailableState)
-	case state == string(racdb.RACFailedState):
-		state = string(racdb.RACFailedState)
-	case state == string(racdb.RACManualState):
-		state = string(racdb.RACManualState)
-	default:
-		state = racDatabase.Status.State
-	}
-
-	r.updateRacInstStatus(racDatabase, ctx, req, racDatabase.Spec.InstDetails[index], index, state, r.Client, true)
-
-	r.Log.Info("Completed Update of RAC instance status", "Name", OraRacSpex.Name)
-	return racSfSet, racPod, nil
-}
-
-// updateRacInstStatus refreshes instance-level status fields using the
-// current reconcile observations, capturing pod readiness and node info.
-func (r *RacDatabaseReconciler) updateRacInstStatus(
-	racDatabase *racdb.RacDatabase,
-	ctx context.Context,
-	req ctrl.Request,
-	OraRacSpex racdb.RacInstDetailSpec,
-	specIdx int,
-	state string,
-	kClient client.Client,
-	mergingRequired bool,
-) {
-	const maxRetries = 5
-	const retryDelay = 2 * time.Second
-
-	var lastErr error
-	var failedUpdate bool
-	// Get/Update RAC instance status data
-	raccommon.UpdateRacInstStatusData(racDatabase, ctx, req, OraRacSpex, specIdx, state, r.kubeClient, r.kubeConfig, r.Log, r.Client)
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-
-		// Fetch the latest version of the object
-		latestInstance := &racdb.RacDatabase{}
-		err := r.Client.Get(ctx, req.NamespacedName, latestInstance)
-		if err != nil {
-			r.Log.Error(err, "Failed to fetch the latest version of RAC instance")
-			lastErr = err
-			continue // Continue to retry
-		}
-		latestInstance.Status.RacNodes = racDatabase.Status.RacNodes
-		if mergingRequired {
-
-			// Ensure latestInstance has the most recent version
-			r.ensureAsmStorageStatus(latestInstance)
-
-			// Merge the instance fields into latestInstance
-			err = mergeRacInstancesFromLatest(racDatabase, latestInstance)
-			if err != nil {
-				r.Log.Error(err, "Failed to merge instances")
-			}
-		}
-
-		// Attempt to update the combined instance back to the Kubernetes API
-		// err = r.Status().Update(ctx, instance)
-		racDatabase.ResourceVersion = latestInstance.ResourceVersion
-
-		err = r.Status().Update(ctx, racDatabase)
-		if err != nil {
-			if apierrors.IsConflict(err) {
-				r.Log.Info("Conflict detected in updateRacInstStatus, retrying...", "attempt", attempt+1)
-				time.Sleep(retryDelay)
-				failedUpdate = true
-				continue // Retry
-			}
-			// For other errors, log and return
-			r.Log.Error(err, "Failed to update the RAC instance")
-			lastErr = err
-			failedUpdate = true
-			continue // Continue to retry
-		}
-		r.Log.Info("RAC Object updated with updateRacInstStatus")
-		failedUpdate = false
-		break //break if its updated successfully
-	}
-
-	// If we exhaust all retries, print the last error encountered
-	if failedUpdate {
-		r.Log.Info("failed to update RAC instance after 5 attempts", "lastErr", lastErr)
-	}
-}
-
 // RacGetRestrictedFields lists immutable spec fields enforced by webhook
 // validation to prevent unsupported manual edits.
 func RacGetRestrictedFields() map[string]struct{} {
-	return map[string]struct{}{
-		"ConfigParams.DbName":                         {},
-		"ConfigParams.GridBase":                       {},
-		"ConfigParams.GridHome":                       {},
-		"ConfigParams.DbBase":                         {},
-		"ConfigParams.DbHome":                         {},
-		"ConfigParams.CrsAsmDiskDg":                   {},
-		"ConfigParams.CrsAsmDiskDgRedundancy":         {},
-		"ConfigParams.DBAsmDiskDgRedundancy":          {},
-		"ConfigParams.DbCharSet":                      {},
-		"ConfigParams.DbConfigType":                   {},
-		"ConfigParams.DbDataFileDestDg":               {},
-		"ConfigParams.DbUniqueName":                   {},
-		"ConfigParams.DbRecoveryFileDest":             {},
-		"ConfigParams.DbRedoFileSize":                 {},
-		"ConfigParams.DbStorageType":                  {},
-		"ConfigParams.DbSwZipFile":                    {},
-		"ConfigParams.GridSwZipFile":                  {},
-		"ConfigParams.GridResponseFile.ConfigMapName": {},
-		"ConfigParams.GridResponseFile.Name":          {},
-		"ConfigParams.DbResponseFile.ConfigMapName":   {},
-		"ConfigParams.DbResponseFile.Name":            {},
-	}
+	return sharedspecguard.RestrictedConfigParamFields()
 }
 
 // mergeInstancesFromUpdated updates latestInstance with fields from updatedInstance
@@ -3436,127 +3447,84 @@ func RacGetRestrictedFields() map[string]struct{} {
 // mergeRacInstancesFromLatest copies mutable fields from the latest object
 // into the reconcile instance, ensuring status updates patch cleanly.
 func mergeRacInstancesFromLatest(instance, latestInstance *racdb.RacDatabase) error {
-	instanceVal := reflect.ValueOf(instance).Elem()
-	latestVal := reflect.ValueOf(latestInstance).Elem()
-
-	// Assuming `Status` is a field in `RacDatabase`
-	instanceStatus := instanceVal.FieldByName("Status")
-	latestStatus := latestVal.FieldByName("Status")
-
-	if !instanceStatus.IsValid() || !latestStatus.IsValid() {
-		return fmt.Errorf("status field is not valid in one of the instances")
-	}
-
-	// Merge the Status field
-	return mergeRacStructFields(instanceStatus, latestStatus)
+	return sharedstatusmerge.MergeNamedStructField(
+		instance,
+		latestInstance,
+		"Status",
+		sharedstatusmerge.Options{
+			PointerMode: sharedstatusmerge.PointerDeepMerge,
+			SliceMode:   sharedstatusmerge.SliceMergeByIndex,
+		},
+	)
 }
 
-// mergeRacStructFields recursively merges exported struct fields when the
-// destination field is unset, preserving existing values from latest status.
-func mergeRacStructFields(instanceField, latestField reflect.Value) error {
-	if instanceField.Kind() != reflect.Struct || latestField.Kind() != reflect.Struct {
-		return fmt.Errorf("fields to be merged must be of struct type")
-	}
-
-	for i := 0; i < instanceField.NumField(); i++ {
-		subField := instanceField.Type().Field(i)
-		instanceSubField := instanceField.Field(i)
-		latestSubField := latestField.Field(i)
-
-		if !isRacExported(subField) || !instanceSubField.CanSet() {
-			continue
-		}
-
-		switch latestSubField.Kind() {
-		case reflect.Ptr:
-			if !latestSubField.IsNil() {
-				if instanceSubField.IsNil() {
-					// Allocate new pointer struct
-					instanceSubField.Set(reflect.New(latestSubField.Type().Elem()))
-				}
-				// Merge inside pointer struct
-				if err := mergeRacStructFields(instanceSubField.Elem(), latestSubField.Elem()); err != nil {
-					return err
-				}
-			}
-
-		case reflect.String:
-			if latestSubField.String() != "" && latestSubField.String() != "NOT_DEFINED" && instanceSubField.String() == "" {
-				instanceSubField.Set(latestSubField)
-			}
-		case reflect.Struct:
-			if err := mergeRacStructFields(instanceSubField, latestSubField); err != nil {
-				return err
-			}
-		case reflect.Slice:
-			if latestSubField.Len() > 0 {
-				if instanceSubField.IsNil() {
-					// Initialize empty slice first
-					instanceSubField.Set(reflect.MakeSlice(instanceSubField.Type(), 0, latestSubField.Len()))
-				}
-				if instanceSubField.Len() == 0 {
-					instanceSubField.Set(latestSubField)
-				} else {
-					// Merge slice items by index
-					for j := 0; j < latestSubField.Len(); j++ {
-						if j < instanceSubField.Len() {
-							if latestSubField.Index(j).Kind() == reflect.Struct {
-								if err := mergeRacStructFields(instanceSubField.Index(j), latestSubField.Index(j)); err != nil {
-									return err
-								}
-							} else if instanceSubField.Index(j).IsZero() {
-								instanceSubField.Index(j).Set(latestSubField.Index(j))
-							}
-						} else {
-							instanceSubField.Set(reflect.Append(instanceSubField, latestSubField.Index(j)))
-						}
-					}
-				}
-			}
-
-		default:
-			if reflect.DeepEqual(instanceSubField.Interface(), reflect.Zero(instanceSubField.Type()).Interface()) {
-				instanceSubField.Set(latestSubField)
-			}
-		}
-	}
-	return nil
+type racEnvAccumulator struct {
+	lines        []string
+	seenKeyIndex map[string]int
 }
 
-// isRacExported reports whether a struct field is exported, used to control
-// reflection-based merges without touching private data.
-func isRacExported(field reflect.StructField) bool {
-	return field.PkgPath == ""
+func newRACEnvAccumulator(capHint int) *racEnvAccumulator {
+	if capHint < 0 {
+		capHint = 0
+	}
+	return &racEnvAccumulator{
+		lines:        make([]string, 0, capHint),
+		seenKeyIndex: make(map[string]int, capHint),
+	}
 }
 
-// generateConfigMap builds ConfigMap data for RAC setup, producing the envfile
-// content tailored to either legacy or cluster-style configurations.
-func (r *RacDatabaseReconciler) generateConfigMap(instance *racdb.RacDatabase, isOldStyle bool) (map[string]string, error) {
-	configMapData := make(map[string]string, 0)
-	var new_crs_nodes, existing_crs_nodes_healthy, existing_crs_nodes_not_healthy, install_node string
-	if isOldStyle {
-		new_crs_nodes, existing_crs_nodes_healthy, existing_crs_nodes_not_healthy, install_node, _ =
-			raccommon.GetCrsNodes(instance, r.kubeClient, r.kubeConfig, r.Log, r.Client)
-	} else {
-		new_crs_nodes, existing_crs_nodes_healthy, existing_crs_nodes_not_healthy, install_node, _ =
-			raccommon.GetCrsNodesForCluster(instance, r.kubeClient, r.kubeConfig, r.Log, r.Client)
-	} // asm_devices := raccommon.GetAsmDevices(instance)
-	var data []string
-	var addnodeFlag bool
-	scan_name := raccommon.GetScanname(instance)
-
-	//Defaults from webhook
-	if instance.Spec.ImagePullPolicy == nil || *instance.Spec.ImagePullPolicy == corev1.PullPolicy("") {
-		policy := corev1.PullPolicy("Always")
-		instance.Spec.ImagePullPolicy = &policy
+func (e *racEnvAccumulator) AddRaw(entry string) {
+	parts := strings.SplitN(entry, "=", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+		e.lines = append(e.lines, entry)
+		return
 	}
 
-	if instance.Spec.SshKeySecret != nil {
-		if instance.Spec.SshKeySecret.KeyMountLocation == "" {
-			instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+	key := strings.TrimSpace(parts[0])
+	if idx, ok := e.seenKeyIndex[key]; ok {
+		e.lines[idx] = entry
+		return
+	}
+	e.seenKeyIndex[key] = len(e.lines)
+	e.lines = append(e.lines, entry)
+}
+
+func (e *racEnvAccumulator) AddKV(key, value string) {
+	e.AddRaw(fmt.Sprintf("%s=%s", key, value))
+}
+
+func (e *racEnvAccumulator) Values() []string {
+	return e.lines
+}
+
+type racAsmEnvValues struct {
+	crsDiskGroup   string
+	crsDeviceList  string
+	crsRedundancy  string
+	dataDgName     string
+	dataDeviceList string
+	dataRedundancy string
+	recoDgName     string
+	recoDeviceList string
+	recoRedundancy string
+	redoDgName     string
+	redoDeviceList string
+	redoRedundancy string
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
 		}
 	}
+	return ""
+}
 
+func setRACSecretMountDefaults(instance *racdb.RacDatabase) {
+	if instance.Spec.SshKeySecret != nil && instance.Spec.SshKeySecret.KeyMountLocation == "" {
+		instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+	}
 	if instance.Spec.DbSecret != nil && instance.Spec.DbSecret.Name != "" {
 		if instance.Spec.DbSecret.PwdFileMountLocation == "" {
 			instance.Spec.DbSecret.PwdFileMountLocation = utils.OraRacDbPwdFileSecretMount
@@ -3565,7 +3533,6 @@ func (r *RacDatabaseReconciler) generateConfigMap(instance *racdb.RacDatabase, i
 			instance.Spec.DbSecret.KeyFileMountLocation = utils.OraRacDbKeyFileSecretMount
 		}
 	}
-
 	if instance.Spec.TdeWalletSecret != nil && instance.Spec.TdeWalletSecret.Name != "" {
 		if instance.Spec.TdeWalletSecret.PwdFileMountLocation == "" {
 			instance.Spec.TdeWalletSecret.PwdFileMountLocation = utils.OraRacTdePwdFileSecretMount
@@ -3574,436 +3541,401 @@ func (r *RacDatabaseReconciler) generateConfigMap(instance *racdb.RacDatabase, i
 			instance.Spec.TdeWalletSecret.KeyFileMountLocation = utils.OraRacTdeKeyFileSecretMount
 		}
 	}
-	//debug
-	if len(new_crs_nodes) == 0 {
-		return configMapData, nil
-	}
+}
 
-	if len(new_crs_nodes) > 0 && len(existing_crs_nodes_not_healthy) > 0 {
-		return configMapData, errors.New("cannot perform node addition as there are unhealthy CRS nodes")
-	}
-
-	if len(new_crs_nodes) > 0 {
-		data = append(data, "CRS_NODES="+new_crs_nodes)
-	}
-
-	if len(existing_crs_nodes_healthy) > 0 {
-		data = append(data, "EXISTING_CLS_NODE="+existing_crs_nodes_healthy)
-		if len(instance.Spec.ConfigParams.OpType) == 0 {
-			data = append(data, "OP_TYPE=racaddnode")
-			data = append(data, "ADD_CDP=true")
-			addnodeFlag = true
-
-		}
-	} else {
-		if len(instance.Spec.ConfigParams.OpType) == 0 {
-			data = append(data, "OP_TYPE=setuprac")
-		}
-	}
-
-	// --- Pick ALL envVars directly from CR spec ---
-	for _, e := range instance.Spec.EnvVars {
-		data = append(data, fmt.Sprintf("%s=%s", e.Name, e.Value))
-	}
-
-	// Service Parameters
-	if instance.Spec.ServiceDetails.Name != "" {
-		sparams := raccommon.GetServiceParams(instance)
-		data = append(data, "DB_SERVICE="+sparams)
-	}
-
-	if instance.Spec.ConfigParams.PdbName != "" {
-		data = append(data, "ORACLE_PDB="+instance.Spec.ConfigParams.PdbName)
-	}
-
-	// Settings for DB_LISTENER_PORT
-	var endp string
-	var locallsnr string
-	var err error
-
-	if isOldStyle {
-		locallsnr, endp, err = raccommon.GetDBLsnrEndPoints(instance)
-	} else {
-		locallsnr, endp, err = raccommon.GetDBLsnrEndPointsForCluster(instance)
-	}
-	if err == nil {
-		// Only add if non-empty, and don't duplicate DB_LISTENER_ENDPOINTS
-		if endp != "" {
-			data = append(data, "DB_LISTENER_ENDPOINTS="+endp)
-		}
-		if locallsnr != "" {
-			data = append(data, "LOCAL_LISTENER="+locallsnr)
-		}
-	}
-
-	// Setting for DB Listener Ends here
-
-	if instance.Spec.ConfigParams.DbHome != "" {
-		data = append(data, "DB_HOME="+instance.Spec.ConfigParams.DbHome)
-	} else {
-		if instance.Status.ConfigParams != nil {
-			if instance.Status.ConfigParams.DbHome != "" {
-				data = append(data, "DB_HOME="+instance.Status.ConfigParams.DbHome)
-			}
-		}
-	}
-
-	if instance.Spec.ConfigParams.DbBase != "" {
-		data = append(data, "DB_BASE="+instance.Spec.ConfigParams.DbBase)
-	} else {
-		if instance.Status.ConfigParams != nil {
-			if instance.Status.ConfigParams.DbBase != "" {
-				data = append(data, "DB_BASE="+instance.Status.ConfigParams.DbBase)
-			}
-		}
-	}
-
-	if instance.Spec.ConfigParams.GridBase != "" {
-		data = append(data, "GRID_BASE="+instance.Spec.ConfigParams.GridBase)
-	} else {
-		if instance.Status.ConfigParams != nil {
-			if instance.Status.ConfigParams.GridBase != "" {
-				data = append(data, "GRID_BASE="+instance.Status.ConfigParams.GridBase)
-			}
-		}
-	}
-
-	if instance.Spec.ConfigParams.GridHome != "" {
-		data = append(data, "GRID_HOME="+instance.Spec.ConfigParams.GridHome)
-	} else {
-		if instance.Status.ConfigParams != nil {
-			if instance.Status.ConfigParams.GridHome != "" {
-				data = append(data, "GRID_HOME="+instance.Status.ConfigParams.GridHome)
-			}
-		}
-	}
-
-	if instance.Spec.ConfigParams.Inventory != "" {
-		data = append(data, "INVENTORY="+instance.Spec.ConfigParams.Inventory)
-	} else {
-		if instance.Status.ConfigParams != nil {
-			if instance.Status.ConfigParams.Inventory != "" {
-				data = append(data, "INVENTORY="+instance.Status.ConfigParams.Inventory)
-			}
-		}
-	}
-
-	if instance.Spec.SshKeySecret.Name != " " {
-		//SecretMap check is done in ValidateSpex
-		data = append(data, "SSH_PRIVATE_KEY="+instance.Spec.SshKeySecret.KeyMountLocation+"/"+instance.Spec.SshKeySecret.PrivKeySecretName)
-		data = append(data, "SSH_PUBLIC_KEY="+instance.Spec.SshKeySecret.KeyMountLocation+"/"+instance.Spec.SshKeySecret.PubKeySecretName)
-	}
-
-	if instance.Spec.DbSecret != nil {
-		if instance.Spec.DbSecret.Name != "" {
-			data = append(data, "SECRET_VOLUME="+instance.Spec.DbSecret.PwdFileMountLocation)
-			commonpassflag, pwdkeyflag, _ := raccommon.GetDbSecret(instance, instance.Spec.DbSecret.Name, r.Client)
-			if commonpassflag && pwdkeyflag {
-				data = append(data, "DB_PWD_FILE="+instance.Spec.DbSecret.PwdFileName)
-				data = append(data, "PWD_KEY="+instance.Spec.DbSecret.KeyFileName)
-			} else {
-				data = append(data, "PASSWORD_FILE=pwdfile")
-			}
-		}
-	}
-
-	if instance.Spec.TdeWalletSecret != nil {
-		if instance.Spec.TdeWalletSecret.Name != "" {
-			data = append(data, "TDE_SECRET_VOLUME="+instance.Spec.TdeWalletSecret.PwdFileMountLocation)
-			data = append(data, "SETUP_TDE_WALLET=true")
-			tdepassflag, tdepwdkeyflag, _ := raccommon.GetTdeWalletSecret(instance, instance.Spec.TdeWalletSecret.Name, r.Client)
-			if tdepassflag && tdepwdkeyflag {
-				data = append(data, "TDE_PWD_FILE="+instance.Spec.TdeWalletSecret.PwdFileName)
-				data = append(data, "TDE_PWD_KEY="+instance.Spec.TdeWalletSecret.KeyFileName)
-			} else {
-				data = append(data, "PASSWORD_FILE=tdepwdfile")
-			}
-		}
-	}
-
-	data = append(data, "PROFILE_FLAG=true")
-	data = append(data, "SCAN_NAME="+scan_name)
-
-	data = append(data, "INSTALL_NODE="+install_node)
-
-	if instance.Spec.ConfigParams.DbName != "" {
-		data = append(data, "DB_NAME="+instance.Spec.ConfigParams.DbName)
-	} else {
-		if instance.Status.ConfigParams != nil {
-			if instance.Status.ConfigParams.DbName != "" {
-				data = append(data, "DB_NAME="+instance.Status.ConfigParams.DbName)
-			}
-		}
-	}
-
-	if instance.Spec.ConfigParams.DbUniqueName != "" {
-		// Configmap check is done in ValidateSpex
-		data = append(data, "DB_UNIQUE_NAME="+instance.Spec.ConfigParams.DbUniqueName)
-	} else {
-		if instance.Status.ConfigParams != nil {
-			if instance.Status.ConfigParams.DbUniqueName != "" {
-				data = append(data, "DB_UNIQUE_NAME="+instance.Status.ConfigParams.DbUniqueName)
-			}
-		}
-	}
-
-	if instance.Spec.ConfigParams.GridSwZipFile != "" {
-		data = append(data, "GRID_SW_ZIP_FILE="+instance.Spec.ConfigParams.GridSwZipFile)
-		//data = append(data, "COPY_GRID_SOFTWARE=true")
-	}
-	if instance.Spec.ConfigParams.HostSwStageLocation != "" {
-		data = append(data, "STAGING_SOFTWARE_LOC="+utils.OraSwStageLocation)
-
-	}
-
-	if instance.Spec.ConfigParams.RuPatchLocation != "" {
-		data = append(data, "APPLY_RU_LOCATION="+utils.OraRuPatchStageLocation)
-	}
-
-	if instance.Spec.ConfigParams.RuFolderName != "" {
-		data = append(data, "RU_FOLDER_NAME="+instance.Spec.ConfigParams.RuFolderName)
-	}
-	if instance.Spec.ConfigParams.OPatchLocation != "" {
-		data = append(data, "OPATCH_ZIP_FILE="+utils.OraOPatchStageLocation+"/"+instance.Spec.ConfigParams.OPatchSwZipFile)
-	}
-	if instance.Spec.ConfigParams.OneOffLocation != "" {
-		data = append(data, "ONEOFF_FOLDER_NAME="+instance.Spec.ConfigParams.OneOffLocation)
-	}
-	if instance.Spec.ConfigParams.DbOneOffIds != "" {
-		data = append(data, "DB_ONEOFF_IDS="+instance.Spec.ConfigParams.DbOneOffIds)
-	}
-
-	if instance.Spec.ConfigParams.GridOneOffIds != "" {
-		data = append(data, "GRID_ONEOFF_IDS="+instance.Spec.ConfigParams.GridOneOffIds)
-	}
-
-	if instance.Spec.ConfigParams.DbSwZipFile != "" {
-		data = append(data, "DB_SW_ZIP_FILE="+instance.Spec.ConfigParams.DbSwZipFile)
-		//data = append(data, "COPY_DB_SOFTWARE=true")
-	}
-
-	// ---- ASM DISK GROUP FIELDS: now using new model ----
-	crsDiskGroup := ""
-	crsDeviceList := ""
-	crsRedundancy := ""
-	dataDeviceList := ""
-	recoDeviceList := ""
-	redoDeviceList := ""
-	dataDgName := ""
-	recoDgName := ""
-	redoDgName := ""
-	dataRedundancy := ""
-	recoRedundancy := ""
-	redoRedundancy := ""
-
+func collectRACAsmEnvValues(instance *racdb.RacDatabase) racAsmEnvValues {
+	values := racAsmEnvValues{}
 	for _, dg := range instance.Spec.AsmStorageDetails {
 		switch dg.Type {
 		case racdb.CrsAsmDiskDg:
 			if dg.Name != "" {
-				crsDiskGroup = ensurePlusPrefixforRAC(dg.Name)
+				values.crsDiskGroup = ensurePlusPrefixforRAC(dg.Name)
 			}
 			if dg.Redundancy != "" {
-				crsRedundancy = dg.Redundancy
+				values.crsRedundancy = dg.Redundancy
 			}
 		case racdb.DbDataDiskDg:
 			if dg.Name != "" {
-				dataDgName = ensurePlusPrefixforRAC(dg.Name)
+				values.dataDgName = ensurePlusPrefixforRAC(dg.Name)
 			}
 			if dg.Redundancy != "" {
-				dataRedundancy = dg.Redundancy
+				values.dataRedundancy = dg.Redundancy
 			}
 		case racdb.DbRecoveryDiskDg:
 			if dg.Name != "" {
-				recoDgName = ensurePlusPrefixforRAC(dg.Name)
+				values.recoDgName = ensurePlusPrefixforRAC(dg.Name)
 			}
 			if dg.Redundancy != "" {
-				recoRedundancy = dg.Redundancy
+				values.recoRedundancy = dg.Redundancy
 			}
 		case racdb.RedoDiskDg:
 			if dg.Name != "" {
-				redoDgName = ensurePlusPrefixforRAC(dg.Name)
+				values.redoDgName = ensurePlusPrefixforRAC(dg.Name)
 			}
 			if dg.Redundancy != "" {
-				redoRedundancy = dg.Redundancy
+				values.redoRedundancy = dg.Redundancy
 			}
 		}
 	}
 
-	crsDeviceList = raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.CrsAsmDiskDg)
-	dataDeviceList = raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.DbDataDiskDg)
-	recoDeviceList = raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.DbRecoveryDiskDg)
-	redoDeviceList = raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.RedoDiskDg)
+	values.crsDeviceList = raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.CrsAsmDiskDg)
+	values.dataDeviceList = raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.DbDataDiskDg)
+	values.recoDeviceList = raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.DbRecoveryDiskDg)
+	values.redoDeviceList = raccommon.AsmDevicesByType(instance.Status.AsmDiskGroups, racdb.RedoDiskDg)
+	return values
+}
 
-	// Environment variables ("KEY=VAL" entries), set only if non-empty
-	if crsDiskGroup != "" {
-		data = append(data, "CRS_ASM_DISKGROUP="+crsDiskGroup)
-	} else {
-		crsDiskGroup = "+DATA"
-		data = append(data, "CRS_ASM_DISKGROUP="+crsDiskGroup)
+type racNodeTopologyInfo struct {
+	newNodes       string
+	healthyNodes   string
+	unhealthyNodes string
+	installNode    string
+}
+
+func (r *RacDatabaseReconciler) getRACNodeTopologyInfo(instance *racdb.RacDatabase) racNodeTopologyInfo {
+	info := racNodeTopologyInfo{}
+	info.newNodes, info.healthyNodes, info.unhealthyNodes, info.installNode, _ =
+		raccommon.GetCrsNodesForCluster(instance, r.kubeClient, r.kubeConfig, r.Log, r.Client)
+	return info
+}
+
+func appendRACNodeIntentEnv(cfg *racdb.RacInitParams, env *racEnvAccumulator, topo racNodeTopologyInfo) (bool, error) {
+	addnodeFlag := false
+	if topo.newNodes == "" {
+		return addnodeFlag, nil
 	}
-	if crsDeviceList != "" {
-		data = append(data, "CRS_ASM_DEVICE_LIST="+crsDeviceList)
+	if topo.unhealthyNodes != "" {
+		return addnodeFlag, errors.New("cannot perform node addition as there are unhealthy CRS nodes")
 	}
-	if crsRedundancy != "" {
-		data = append(data, "CRS_ASMDG_REDUNDANCY="+crsRedundancy)
+	env.AddKV("CRS_NODES", topo.newNodes)
+	if topo.healthyNodes != "" {
+		env.AddKV("EXISTING_CLS_NODE", topo.healthyNodes)
+		if cfg.OpType == "" {
+			env.AddKV("OP_TYPE", "racaddnode")
+			env.AddKV("ADD_CDP", "true")
+			addnodeFlag = true
+		}
+		return addnodeFlag, nil
 	}
-	if dataDgName == "" {
-		data = append(data, "DB_DATA_FILE_DEST="+crsDiskGroup)
-	} else {
-		data = append(data, "DB_DATA_FILE_DEST="+dataDgName)
+	if cfg.OpType == "" {
+		env.AddKV("OP_TYPE", "setuprac")
 	}
-	if dataDeviceList != "" {
-		data = append(data, "DB_ASM_DEVICE_LIST="+dataDeviceList)
+	return addnodeFlag, nil
+}
+
+func appendRACSpecEnvVars(instance *racdb.RacDatabase, env *racEnvAccumulator) {
+	for _, e := range instance.Spec.EnvVars {
+		env.AddKV(e.Name, e.Value)
 	}
-	if dataRedundancy != "" {
-		data = append(data, "DB_ASMDG_PROPERTIES=redundancy:"+dataRedundancy)
+}
+
+func appendRACServiceAndListenerEnv(instance *racdb.RacDatabase, cfg *racdb.RacInitParams, env *racEnvAccumulator) {
+	if instance.Spec.ServiceDetails.Name != "" {
+		env.AddKV("DB_SERVICE", raccommon.GetServiceParams(instance))
 	}
-	if recoDeviceList != "" {
-		data = append(data, "RECO_ASM_DEVICE_LIST="+recoDeviceList)
-	}
-	if recoDgName == "" {
-		data = append(data, "DB_RECOVERY_FILE_DEST="+crsDiskGroup)
-	} else {
-		data = append(data, "DB_RECOVERY_FILE_DEST="+recoDgName)
-	}
-	if recoRedundancy != "" {
-		data = append(data, "RECO_ASMDG_PROPERTIES=redundancy:"+recoRedundancy)
-	}
-	if redoDgName != "" {
-		data = append(data, "LOG_FILE_DEST="+redoDgName)
-	}
-	if redoDeviceList != "" {
-		data = append(data, "REDO_ASM_DEVICE_LIST="+redoDeviceList)
-	}
-	if redoRedundancy != "" {
-		data = append(data, "REDO_ASMDG_PROPERTIES=redundancy:"+redoRedundancy)
-	}
-	if instance.Spec.ConfigParams.DbCharSet == "" {
-		instance.Spec.ConfigParams.DbCharSet = "AL32UTF8"
-		data = append(data, "DB_CHARACTERSET="+instance.Spec.ConfigParams.DbCharSet)
+	if cfg.PdbName != "" {
+		env.AddKV("ORACLE_PDB", cfg.PdbName)
 	}
 
-	// ---- ALL OTHER CONFIG PARAMS - use as before ----
+	var (
+		endp      string
+		locallsnr string
+		err       error
+	)
+	locallsnr, endp, err = raccommon.GetDBLsnrEndPointsForCluster(instance)
+	if err != nil {
+		return
+	}
+	if endp != "" {
+		env.AddKV("DB_LISTENER_ENDPOINTS", endp)
+	}
+	if locallsnr != "" {
+		env.AddKV("LOCAL_LISTENER", locallsnr)
+	}
+}
 
-	if !addnodeFlag {
-		cfg := instance.Spec.ConfigParams
-		if cfg != nil {
-			if cfg.DbStorageType != "" {
-				data = append(data, "DB_STORAGE_TYPE="+cfg.DbStorageType)
-			}
-			if cfg.DbCharSet != "" {
-				data = append(data, "DB_CHARACTERSET="+cfg.DbCharSet)
-			}
+func appendRACCorePathEnv(cfg *racdb.RacInitParams, statusCfg *racdb.RacInitParams, env *racEnvAccumulator) {
+	if v := firstNonEmpty(cfg.DbHome, func() string {
+		if statusCfg == nil {
+			return ""
+		}
+		return statusCfg.DbHome
+	}()); v != "" {
+		env.AddKV("DB_HOME", v)
+	}
+	if v := firstNonEmpty(cfg.DbBase, func() string {
+		if statusCfg == nil {
+			return ""
+		}
+		return statusCfg.DbBase
+	}()); v != "" {
+		env.AddKV("DB_BASE", v)
+	}
+	if v := firstNonEmpty(cfg.GridBase, func() string {
+		if statusCfg == nil {
+			return ""
+		}
+		return statusCfg.GridBase
+	}()); v != "" {
+		env.AddKV("GRID_BASE", v)
+	}
+	if v := firstNonEmpty(cfg.GridHome, func() string {
+		if statusCfg == nil {
+			return ""
+		}
+		return statusCfg.GridHome
+	}()); v != "" {
+		env.AddKV("GRID_HOME", v)
+	}
+	if v := firstNonEmpty(cfg.Inventory, func() string {
+		if statusCfg == nil {
+			return ""
+		}
+		return statusCfg.Inventory
+	}()); v != "" {
+		env.AddKV("INVENTORY", v)
+	}
+}
 
-			if cfg.DbType != "" {
-				data = append(data, "DB_TYPE="+cfg.DbType)
-			}
-			if cfg.DbConfigType != "" {
-				data = append(data, "DB_CONFIG_TYPE="+cfg.DbConfigType)
-			}
-			if cfg.EnableArchiveLog != "" {
-				data = append(data, "ENABLE_ARCHIVELOG="+cfg.EnableArchiveLog)
-			}
-			// GRID RESPONSE FILE
-			if cfg.GridResponseFile != nil && cfg.GridResponseFile.ConfigMapName != "" {
-				data = append(data,
-					"GRID_RESPONSE_FILE="+utils.OraGiRsp+"/"+cfg.GridResponseFile.Name)
-			}
+func (r *RacDatabaseReconciler) appendRACSecretEnv(instance *racdb.RacDatabase, env *racEnvAccumulator) {
+	if instance.Spec.SshKeySecret != nil && strings.TrimSpace(instance.Spec.SshKeySecret.Name) != "" {
+		env.AddKV("SSH_PRIVATE_KEY", instance.Spec.SshKeySecret.KeyMountLocation+"/"+instance.Spec.SshKeySecret.PrivKeySecretName)
+		env.AddKV("SSH_PUBLIC_KEY", instance.Spec.SshKeySecret.KeyMountLocation+"/"+instance.Spec.SshKeySecret.PubKeySecretName)
+	}
 
-			// DB RESPONSE FILE
-			if cfg.DbResponseFile != nil && cfg.DbResponseFile.ConfigMapName != "" {
-				data = append(data,
-					"DBCA_RESPONSE_FILE="+utils.OraDbRsp+"/"+cfg.DbResponseFile.Name)
-			}
-			if cfg.SgaSize != "" {
-				data = append(data, "INIT_SGA_SIZE="+cfg.SgaSize)
-			}
-			if cfg.PgaSize != "" {
-				data = append(data, "INIT_PGA_SIZE="+cfg.PgaSize)
-			}
-			if cfg.Processes > 0 {
-				data = append(data, "INIT_PROCESSES="+strconv.Itoa(cfg.Processes))
-			}
-			if cfg.CpuCount > 0 {
-				data = append(data, "CPU_COUNT="+strconv.Itoa(cfg.CpuCount))
-			}
-			if instance.Spec.ConfigParams.SgaSize != "" {
-				normalizedSGA := normalizeOracleMemoryUnitforRAC(instance.Spec.ConfigParams.SgaSize)
-				data = append(data, "INIT_SGA_SIZE="+normalizedSGA)
-			}
-
-			if instance.Spec.ConfigParams.PgaSize != "" {
-				normalizedPGA := normalizeOracleMemoryUnitforRAC(instance.Spec.ConfigParams.PgaSize)
-				data = append(data, "INIT_PGA_SIZE="+normalizedPGA)
-			}
-			if instance.Spec.ConfigParams.Processes > 0 {
-				// Configmap check is done in ValidateSpex
-				data = append(data, "INIT_PROCESSES="+strconv.Itoa(instance.Spec.ConfigParams.Processes))
-			}
-
-			if instance.Spec.ConfigParams.CpuCount > 0 {
-				// Configmap check is done in ValidateSpex
-				data = append(data, "CPU_COUNT="+strconv.Itoa(instance.Spec.ConfigParams.CpuCount))
-			}
-
+	if instance.Spec.DbSecret != nil && instance.Spec.DbSecret.Name != "" {
+		env.AddKV("SECRET_VOLUME", instance.Spec.DbSecret.PwdFileMountLocation)
+		commonpassflag, pwdkeyflag, _ := raccommon.GetDbSecret(instance, instance.Spec.DbSecret.Name, r.Client)
+		if commonpassflag && pwdkeyflag {
+			env.AddKV("DB_PWD_FILE", instance.Spec.DbSecret.PwdFileName)
+			env.AddKV("PWD_KEY", instance.Spec.DbSecret.KeyFileName)
+		} else {
+			env.AddKV("PASSWORD_FILE", "pwdfile")
 		}
 	}
 
-	configMapData["envfile"] = strings.Join(data, "\r\n")
+	if instance.Spec.TdeWalletSecret != nil && instance.Spec.TdeWalletSecret.Name != "" {
+		env.AddKV("TDE_SECRET_VOLUME", instance.Spec.TdeWalletSecret.PwdFileMountLocation)
+		env.AddKV("SETUP_TDE_WALLET", "true")
+		tdepassflag, tdepwdkeyflag, _ := raccommon.GetTdeWalletSecret(instance, instance.Spec.TdeWalletSecret.Name, r.Client)
+		if tdepassflag && tdepwdkeyflag {
+			env.AddKV("TDE_PWD_FILE", instance.Spec.TdeWalletSecret.PwdFileName)
+			env.AddKV("TDE_PWD_KEY", instance.Spec.TdeWalletSecret.KeyFileName)
+		} else {
+			env.AddKV("PASSWORD_FILE", "tdepwdfile")
+		}
+	}
+}
+
+func appendRACIdentityAndSoftwareEnv(cfg *racdb.RacInitParams, statusCfg *racdb.RacInitParams, scanName, installNode string, env *racEnvAccumulator) {
+	env.AddKV("PROFILE_FLAG", "true")
+	env.AddKV("SCAN_NAME", scanName)
+	env.AddKV("INSTALL_NODE", installNode)
+
+	if v := firstNonEmpty(cfg.DbName, func() string {
+		if statusCfg == nil {
+			return ""
+		}
+		return statusCfg.DbName
+	}()); v != "" {
+		env.AddKV("DB_NAME", v)
+	}
+	if cfg.DbUniqueName != "" {
+		env.AddKV("DB_UNIQUE_NAME", cfg.DbUniqueName)
+	} else if statusCfg != nil && statusCfg.DbUniqueName != "" {
+		env.AddKV("DB_UNIQUE_NAME", statusCfg.DbUniqueName)
+	}
+
+	if cfg.GridSwZipFile != "" {
+		env.AddKV("GRID_SW_ZIP_FILE", cfg.GridSwZipFile)
+	}
+	if cfg.HostSwStageLocation != "" {
+		env.AddKV("STAGING_SOFTWARE_LOC", utils.OraSwStageLocation)
+	}
+	if cfg.RuPatchLocation != "" {
+		env.AddKV("APPLY_RU_LOCATION", utils.OraRuPatchStageLocation)
+	}
+	if cfg.RuFolderName != "" {
+		env.AddKV("RU_FOLDER_NAME", cfg.RuFolderName)
+	}
+	if cfg.OPatchLocation != "" {
+		env.AddKV("OPATCH_ZIP_FILE", utils.OraOPatchStageLocation+"/"+cfg.OPatchSwZipFile)
+	}
+	if cfg.OneOffLocation != "" {
+		env.AddKV("ONEOFF_FOLDER_NAME", cfg.OneOffLocation)
+	}
+	if cfg.DbOneOffIds != "" {
+		env.AddKV("DB_ONEOFF_IDS", cfg.DbOneOffIds)
+	}
+	if cfg.GridOneOffIds != "" {
+		env.AddKV("GRID_ONEOFF_IDS", cfg.GridOneOffIds)
+	}
+	if cfg.DbSwZipFile != "" {
+		env.AddKV("DB_SW_ZIP_FILE", cfg.DbSwZipFile)
+	}
+}
+
+func appendRACAsmStorageEnv(instance *racdb.RacDatabase, cfg *racdb.RacInitParams, env *racEnvAccumulator) {
+	asmValues := collectRACAsmEnvValues(instance)
+	if asmValues.crsDiskGroup == "" {
+		asmValues.crsDiskGroup = "+DATA"
+	}
+	env.AddKV("CRS_ASM_DISKGROUP", asmValues.crsDiskGroup)
+	if asmValues.crsDeviceList != "" {
+		env.AddKV("CRS_ASM_DEVICE_LIST", asmValues.crsDeviceList)
+	}
+	if asmValues.crsRedundancy != "" {
+		env.AddKV("CRS_ASMDG_REDUNDANCY", asmValues.crsRedundancy)
+	}
+	if asmValues.dataDgName == "" {
+		env.AddKV("DB_DATA_FILE_DEST", asmValues.crsDiskGroup)
+	} else {
+		env.AddKV("DB_DATA_FILE_DEST", asmValues.dataDgName)
+	}
+	if asmValues.dataDeviceList != "" {
+		env.AddKV("DB_ASM_DEVICE_LIST", asmValues.dataDeviceList)
+	}
+	if asmValues.dataRedundancy != "" {
+		env.AddKV("DB_ASMDG_PROPERTIES", "redundancy:"+asmValues.dataRedundancy)
+	}
+	if asmValues.recoDeviceList != "" {
+		env.AddKV("RECO_ASM_DEVICE_LIST", asmValues.recoDeviceList)
+	}
+	if asmValues.recoDgName == "" {
+		env.AddKV("DB_RECOVERY_FILE_DEST", asmValues.crsDiskGroup)
+	} else {
+		env.AddKV("DB_RECOVERY_FILE_DEST", asmValues.recoDgName)
+	}
+	if asmValues.recoRedundancy != "" {
+		env.AddKV("RECO_ASMDG_PROPERTIES", "redundancy:"+asmValues.recoRedundancy)
+	}
+	if asmValues.redoDgName != "" {
+		env.AddKV("LOG_FILE_DEST", asmValues.redoDgName)
+	}
+	if asmValues.redoDeviceList != "" {
+		env.AddKV("REDO_ASM_DEVICE_LIST", asmValues.redoDeviceList)
+	}
+	if asmValues.redoRedundancy != "" {
+		env.AddKV("REDO_ASMDG_PROPERTIES", "redundancy:"+asmValues.redoRedundancy)
+	}
+	if cfg.DbCharSet == "" {
+		env.AddKV("DB_CHARACTERSET", "AL32UTF8")
+	}
+}
+
+func appendRACDbInitEnv(cfg *racdb.RacInitParams, addnodeFlag bool, env *racEnvAccumulator) {
+	if addnodeFlag {
+		return
+	}
+	if cfg.DbStorageType != "" {
+		env.AddKV("DB_STORAGE_TYPE", cfg.DbStorageType)
+	}
+	if cfg.DbCharSet != "" {
+		env.AddKV("DB_CHARACTERSET", cfg.DbCharSet)
+	}
+	if cfg.DbType != "" {
+		env.AddKV("DB_TYPE", cfg.DbType)
+	}
+	if cfg.DbConfigType != "" {
+		env.AddKV("DB_CONFIG_TYPE", cfg.DbConfigType)
+	}
+	if cfg.EnableArchiveLog != "" {
+		env.AddKV("ENABLE_ARCHIVELOG", cfg.EnableArchiveLog)
+	}
+	if cfg.GridResponseFile != nil && cfg.GridResponseFile.ConfigMapName != "" {
+		env.AddKV("GRID_RESPONSE_FILE", utils.OraGiRsp+"/"+cfg.GridResponseFile.Name)
+	}
+	if cfg.DbResponseFile != nil && cfg.DbResponseFile.ConfigMapName != "" {
+		env.AddKV("DBCA_RESPONSE_FILE", utils.OraDbRsp+"/"+cfg.DbResponseFile.Name)
+	}
+	if cfg.SgaSize != "" {
+		env.AddKV("INIT_SGA_SIZE", cfg.SgaSize)
+		env.AddKV("INIT_SGA_SIZE", normalizeOracleMemoryUnitforRAC(cfg.SgaSize))
+	}
+	if cfg.PgaSize != "" {
+		env.AddKV("INIT_PGA_SIZE", cfg.PgaSize)
+		env.AddKV("INIT_PGA_SIZE", normalizeOracleMemoryUnitforRAC(cfg.PgaSize))
+	}
+	if cfg.Processes > 0 {
+		env.AddKV("INIT_PROCESSES", strconv.Itoa(cfg.Processes))
+		env.AddKV("INIT_PROCESSES", strconv.Itoa(cfg.Processes))
+	}
+	if cfg.CpuCount > 0 {
+		env.AddKV("CPU_COUNT", strconv.Itoa(cfg.CpuCount))
+		env.AddKV("CPU_COUNT", strconv.Itoa(cfg.CpuCount))
+	}
+}
+
+// generateConfigMap builds ConfigMap data for RAC setup, producing the envfile
+// content tailored to either legacy or cluster-style configurations.
+func (r *RacDatabaseReconciler) generateConfigMap(instance *racdb.RacDatabase) (map[string]string, error) {
+	configMapData := make(map[string]string, 0)
+	cfg := instance.Spec.ConfigParams
+	if cfg == nil {
+		cfg = &racdb.RacInitParams{}
+	}
+	statusCfg := instance.Status.ConfigParams
+	topo := r.getRACNodeTopologyInfo(instance)
+	env := newRACEnvAccumulator(96)
+	scanName := raccommon.GetScanname(instance)
+
+	//Defaults from webhook
+	if instance.Spec.ImagePullPolicy == nil || *instance.Spec.ImagePullPolicy == corev1.PullPolicy("") {
+		policy := corev1.PullPolicy("Always")
+		instance.Spec.ImagePullPolicy = &policy
+	}
+
+	setRACSecretMountDefaults(instance)
+	if topo.newNodes == "" {
+		return configMapData, nil
+	}
+
+	addnodeFlag, err := appendRACNodeIntentEnv(cfg, env, topo)
+	if err != nil {
+		return configMapData, err
+	}
+	appendRACSpecEnvVars(instance, env)
+	appendRACServiceAndListenerEnv(instance, cfg, env)
+	appendRACCorePathEnv(cfg, statusCfg, env)
+	r.appendRACSecretEnv(instance, env)
+	appendRACIdentityAndSoftwareEnv(cfg, statusCfg, scanName, topo.installNode, env)
+	appendRACAsmStorageEnv(instance, cfg, env)
+	appendRACDbInitEnv(cfg, addnodeFlag, env)
+
+	configMapData["envfile"] = strings.Join(env.Values(), "\r\n")
 	return configMapData, nil
 }
 
 // normalizeOracleMemoryUnitforRAC standardizes memory strings onto Oracle's
 // expected units, simplifying downstream comparisons and validation work.
 func normalizeOracleMemoryUnitforRAC(s string) string {
-	s = strings.TrimSpace(strings.ToUpper(s))
-	s = strings.ReplaceAll(s, "GI", "G")
-	s = strings.ReplaceAll(s, "MI", "M")
-	return s
+	return sharedorautil.NormalizeOracleMemoryUnit(s)
 }
 
 // ensurePlusPrefixforRAC guarantees ASM disk group names start with '+' to
 // meet Oracle conventions when the spec omits the prefix.
 func ensurePlusPrefixforRAC(name string) string {
-	if name == "" {
-		return ""
-	}
-	if !strings.HasPrefix(name, "+") {
-		return "+" + name
-	}
-	return name
+	return sharedorautil.EnsurePlusPrefix(name)
 }
 
 // createConfigMap ensures the target ConfigMap exists with the desired
 // contents, creating it when first provisioning RAC configuration.
 func (r *RacDatabaseReconciler) createConfigMap(ctx context.Context, instance *racdb.RacDatabase, cm *corev1.ConfigMap) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-
-	found := &corev1.ConfigMap{}
-
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      cm.Name,
-		Namespace: instance.Namespace,
-	}, found)
-
-	if err != nil && apierrors.IsNotFound(err) {
-		// Create the Service
-		reqLogger.Info("Creating Configmap Normally")
-		err = r.Create(ctx, cm)
-		if err != nil {
-			// Service creation failed
-			reqLogger.Error(err, "failed to create configmap", " namespace", instance.Namespace)
+	created, err := sharedk8sobjects.EnsureConfigMapExists(ctx, r.Client, instance.Namespace, cm)
+	if err != nil {
+		reqLogger.Error(err, "failed to reconcile configmap", "namespace", instance.Namespace)
+		var cmErr *sharedk8sobjects.ConfigMapReconcileError
+		if errors.As(err, &cmErr) && cmErr.Op == sharedk8sobjects.ConfigMapOpCreate {
+			// Preserve historical RAC behavior: create failures were logged and not returned.
 			return ctrl.Result{}, nil
-		} else {
-			// Service creation was successful
-			return ctrl.Result{Requeue: true}, nil
 		}
-	} else if err != nil {
-		// Error that isn't due to the Service not existing
-		reqLogger.Error(err, "failed to find the  configmap details")
 		return ctrl.Result{}, err
 	}
-
+	if created {
+		reqLogger.Info("Creating Configmap Normally")
+		return ctrl.Result{Requeue: true}, nil
+	}
 	return ctrl.Result{}, nil
 
 }
@@ -4014,36 +3946,28 @@ func (r *RacDatabaseReconciler) createOrReplaceService(ctx context.Context, inst
 	dep *corev1.Service,
 ) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name, "dep.Name", dep.Name)
-
-	found := &corev1.Service{}
-
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      dep.Name,
-		Namespace: instance.Namespace,
-	}, found)
-
-	jsn, _ := json.Marshal(dep)
-	raccommon.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
-	if err != nil && apierrors.IsNotFound(err) {
-		// Create the Service
-		reqLogger.Info("Creating a service")
-		err = r.Create(ctx, dep)
-		if err != nil {
-			// Service creation failed
-			instance.Spec.IsFailed = true
-			reqLogger.Error(err, "Failed to create Service", "Service.Namespace", dep.Namespace, "Service.Name", dep.Name)
-			return ctrl.Result{}, nil
-		} else {
-			// Service creation was successful
-			return ctrl.Result{Requeue: true}, nil
-		}
-	} else if err != nil {
-		// Error that isn't due to the Service not existing
-		reqLogger.Error(err, "Failed to find the  Service details")
+	changed, err := sharedk8sobjects.EnsureService(ctx, r.Client, instance.Namespace, dep, sharedk8sobjects.ServiceSyncOptions{
+		NodePortMerge:             sharedk8sobjects.NodePortMergeByNamePortAndProtocol,
+		SyncOwnerReferences:       true,
+		SyncSessionAffinityCfg:    true,
+		SyncPublishNotReady:       true,
+		SyncInternalTrafficPolicy: true,
+		SyncLoadBalancerFields:    true,
+	})
+	if err != nil {
+		markRACFailedStatus(instance)
+		reqLogger.Error(err, "Failed to reconcile Service", "Service.Namespace", dep.Namespace, "Service.Name", dep.Name)
 		return ctrl.Result{}, err
 	}
-
+	if changed {
+		reqLogger.Info("Service reconciled to desired state", "Service.Namespace", dep.Namespace, "Service.Name", dep.Name)
+		return ctrl.Result{Requeue: true}, nil
+	}
 	return ctrl.Result{}, nil
+}
+
+func mergeServicePortsWithAssignedNodePorts(existing []corev1.ServicePort, desired []corev1.ServicePort) []corev1.ServicePort {
+	return sharedk8sobjects.MergeServicePortsWithAssignedNodePortsByNamePortProtocol(existing, desired)
 }
 
 // createOrReplaceAsmPv reconciles ASM persistent volumes for RAC disk
@@ -4055,43 +3979,27 @@ func (r *RacDatabaseReconciler) createOrReplaceAsmPv(
 	dgType string,
 ) (string, ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	found := &corev1.PersistentVolume{}
-
-	// Fetch the existing PV
-	err := r.Get(context.TODO(), types.NamespacedName{
-		Name: dep.Name,
-	}, found)
 
 	jsn, _ := json.Marshal(dep)
 	raccommon.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
 
-	if err != nil && apierrors.IsNotFound(err) {
-		// PV does not exist, create it
-		reqLogger.Info("Creating a new PV", "dep.Name", dep.Name)
-		err = r.Create(context.TODO(), dep)
-		if err != nil {
-			// PV creation failed
-			instance.Spec.IsFailed = true
-			reqLogger.Error(err, "Failed to create Persistent Volume", "PV.Name", dep.Name)
-			return "", ctrl.Result{}, err
+	name, created, err := sharedk8sobjects.EnsurePersistentVolume(context.TODO(), r.Client, dep)
+	if err != nil {
+		markRACFailedStatus(instance)
+		if strings.Contains(err.Error(), "different disk configuration") {
+			reqLogger.Info("Detected existing PV with different disk details and as the configuration has changed, setup cannot continue", "dep.Name", dep.Name)
+		} else {
+			reqLogger.Error(err, "Failed to reconcile Persistent Volume", "PV.Name", dep.Name)
 		}
-		return dep.Name, ctrl.Result{}, nil
-	} else if err != nil {
-		// Other errors fetching the PV
-		reqLogger.Error(err, "Failed to get Persistent Volume details")
 		return "", ctrl.Result{}, err
 	}
-
-	// Check if the disk path or configuration differs from the existing PV
-	if !reflect.DeepEqual(dep.Spec.PersistentVolumeSource.Local, found.Spec.PersistentVolumeSource.Local) {
-		// Disk configuration has changed, delete the old PV and create a new one
-		reqLogger.Info("Detected existing PV with different disk details and as the configuration has changed, setup cannot continue", "dep.Name", dep.Name)
-		return "", ctrl.Result{}, fmt.Errorf("persistent volume %s has a different disk configuration. Please delete or update the existing PV to proceed", dep.Name)
+	if created {
+		reqLogger.Info("Creating a new PV", "dep.Name", dep.Name)
+		return dep.Name, ctrl.Result{}, nil
 	}
 
 	reqLogger.Info("PV Found", "dep.Name", dep.Name, "dgType", dgType)
-
-	return found.Name, ctrl.Result{}, nil
+	return name, ctrl.Result{}, nil
 }
 
 // createOrReplaceAsmPvC handles the ConfigMap variant of ASM PV reconcilation,
@@ -4101,36 +4009,21 @@ func (r *RacDatabaseReconciler) createOrReplaceAsmPvC(ctx context.Context, insta
 	dgType string,
 ) (string, ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	found := &corev1.PersistentVolumeClaim{}
-
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      dep.Name,
-		Namespace: instance.Namespace,
-	}, found)
 
 	jsn, _ := json.Marshal(dep)
 	raccommon.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
-	if err != nil && apierrors.IsNotFound(err) {
-		// Create the Service
-		reqLogger.Info("Creating a PVC")
-		err = r.Create(ctx, dep)
-		if err != nil {
-			// Service creation failed
-			instance.Spec.IsFailed = true
-			reqLogger.Error(err, "Failed to create Persistent Volume", "PVC.Namespace", dep.Namespace, "PersistentVolume.Name", dep.Name)
-			return "", ctrl.Result{}, err
-		} else {
-			// Service creation was successful
-			return dep.Name, ctrl.Result{}, nil
-		}
-	} else if err != nil {
-		// Error that isn't due to the Service not existing
-		reqLogger.Error(err, "Failed to find the persistent volume Claim details")
+	name, created, err := sharedk8sobjects.EnsurePersistentVolumeClaim(ctx, r.Client, dep)
+	if err != nil {
+		markRACFailedStatus(instance)
+		reqLogger.Error(err, "Failed to reconcile Persistent Volume Claim", "PVC.Namespace", dep.Namespace, "PersistentVolume.Name", dep.Name)
 		return "", ctrl.Result{}, err
 	}
+	if created {
+		reqLogger.Info("Creating a PVC")
+		return dep.Name, ctrl.Result{}, nil
+	}
 	reqLogger.Info("PVC Found", "dep.Name", dep.Name, "dgType", dgType)
-
-	return found.Name, ctrl.Result{}, nil
+	return name, ctrl.Result{}, nil
 }
 
 // ensureAsmStorageStatus initializes ASM DiskGroup details
@@ -4140,69 +4033,29 @@ func (r *RacDatabaseReconciler) createOrReplaceAsmPvC(ctx context.Context, insta
 func (r *RacDatabaseReconciler) ensureAsmStorageStatus(racDatabase *racdb.RacDatabase) {
 	r.Log.Info("Ensuring ASM DiskGroup status initialization")
 
-	// Always initialize to avoid nil pointer issues
 	if racDatabase.Status.AsmDiskGroups == nil {
 		racDatabase.Status.AsmDiskGroups = []racdb.AsmDiskGroupStatus{}
+		clusterSpec := racDatabase.Spec.ClusterDetails
+		if clusterSpec != nil && clusterSpec.NodeCount > 0 {
+			nodeName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, 1)
+			podName := nodeName + "-0"
 
-		// If RAC instances exist, attempt to restore ASM devices and disk group metadata
-		if len(racDatabase.Spec.InstDetails) > 0 {
-			for idx, oraRacSpex := range racDatabase.Spec.InstDetails {
-				// Skip deleted instances
-				if strings.ToLower(oraRacSpex.IsDelete) == "true" {
-					continue
-				}
+			crsDeviceList := raccommon.GetAsmDevicesForCluster(racDatabase, racdb.CrsAsmDiskDg)
+			dbDeviceList := raccommon.GetAsmDevicesForCluster(racDatabase, racdb.DbDataDiskDg)
+			raccommon.SetAsmDiskGroupDevices(&racDatabase.Status.AsmDiskGroups, racdb.CrsAsmDiskDg, crsDeviceList)
+			raccommon.SetAsmDiskGroupDevices(&racDatabase.Status.AsmDiskGroups, racdb.DbDataDiskDg, dbDeviceList)
 
-				podName := fmt.Sprintf("%s-%d", oraRacSpex.Name, 0) // assuming "-0" pattern for first pod
-				r.Log.Info("Restoring ASM DiskGroup devices for instance", "Instance", oraRacSpex.Name)
-
-				// Get CRS ASM and DB ASM device lists
-				crsDeviceList := raccommon.GetcrsAsmDeviceList(
-					racDatabase,
-					&racdb.RacNodeStatus{},
-					oraRacSpex,
-					r.Client,
-					r.kubeConfig,
-					r.Log,
-					r.kubeClient,
-				)
-
-				dbDeviceList := raccommon.GetdbAsmDeviceList(
-					racDatabase,
-					&racdb.RacNodeStatus{},
-					oraRacSpex,
-					r.Client,
-					r.kubeConfig,
-					r.Log,
-					r.kubeClient,
-				)
-
-				// Update the ASM DiskGroups with CRS and DB device lists
-				raccommon.SetAsmDiskGroupDevices(&racDatabase.Status.AsmDiskGroups, racdb.CrsAsmDiskDg, crsDeviceList)
-				raccommon.SetAsmDiskGroupDevices(&racDatabase.Status.AsmDiskGroups, racdb.DbDataDiskDg, dbDeviceList)
-
-				diskGroup := raccommon.GetAsmDiskgroup(
-					podName,
-					racDatabase,
-					idx,
-					r.kubeClient,
-					r.kubeConfig,
-					r.Log,
-				)
-
-				// If valid DG info returned, merge/update status
-				if diskGroup != "" {
-					for i, dgStatus := range racDatabase.Status.AsmDiskGroups {
-						if dgStatus.Name == diskGroup {
-							racDatabase.Status.AsmDiskGroups[i].Name = diskGroup
-							break
-						}
+			diskGroup := raccommon.GetAsmDiskgroup(podName, racDatabase, 0, r.kubeClient, r.kubeConfig, r.Log)
+			if diskGroup != "" {
+				for i, dgStatus := range racDatabase.Status.AsmDiskGroups {
+					if dgStatus.Name == diskGroup {
+						racDatabase.Status.AsmDiskGroups[i].Name = diskGroup
+						break
 					}
 				}
 			}
 		}
-
-		r.Log.Info("ASM DiskGroup devices restored successfully",
-			"DiskGroupsCount", len(racDatabase.Status.AsmDiskGroups))
+		r.Log.Info("ASM DiskGroup devices restored successfully", "DiskGroupsCount", len(racDatabase.Status.AsmDiskGroups))
 	}
 }
 
@@ -4214,7 +4067,7 @@ func (r *RacDatabaseReconciler) ensureStatefulSetUpdated(ctx context.Context,
 	desired *appsv1.StatefulSet,
 	asmAutoUpdate bool,
 	// isDelete bool,
-	req ctrl.Request, isOldStyle bool) error {
+	req ctrl.Request) error {
 	timeout := 15 * time.Minute // Set a timeout for the update wait
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -4239,19 +4092,10 @@ func (r *RacDatabaseReconciler) ensureStatefulSetUpdated(ctx context.Context,
 	if len(existing.Spec.Template.Spec.Containers[0].VolumeDevices) != len(desired.Spec.Template.Spec.Containers[0].VolumeDevices) {
 		r.Log.Info("Change State to UPDATING")
 
-		if isOldStyle && len(racDatabase.Spec.InstDetails) > 0 {
-			for index := range racDatabase.Spec.InstDetails {
-				r.updateRacInstStatus(
-					racDatabase, ctx, req, racDatabase.Spec.InstDetails[index], index,
-					string(racdb.RACProvisionState), r.Client, true,
-				)
-			}
-		} else if racDatabase.Spec.ClusterDetails != nil && racDatabase.Spec.ClusterDetails.NodeCount > 0 {
+		if racDatabase.Spec.ClusterDetails != nil && racDatabase.Spec.ClusterDetails.NodeCount > 0 {
 			clusterSpec := racDatabase.Spec.ClusterDetails
 			for index := 0; index < clusterSpec.NodeCount; index++ {
-				r.updateRacNodeStatusForCluster(
-					racDatabase, ctx, req, clusterSpec, index, string(racdb.RACProvisionState),
-				)
+				r.updateRacNodeStatusForCluster(racDatabase, ctx, req, clusterSpec, index, string(racdb.RACProvisionState))
 			}
 		}
 		reqLogger.Info("StatefulSet spec differs for volume devices, updating StatefulSet (pods may be recreated)", "StatefulSet.Namespace", racDatabase.Namespace, "StatefulSet.Name", desired.Name)
@@ -4302,17 +4146,23 @@ func (r *RacDatabaseReconciler) ensureStatefulSetUpdated(ctx context.Context,
 
 // diskGroupExists executes ASM queries against a pod to determine whether a
 // specific disk group is present, aiding add/remove workflows.
-func (r *RacDatabaseReconciler) diskGroupExists(podName, diskGroupName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *racdb.RacDatabase, logger logr.Logger) (bool, error) {
+func (r *RacDatabaseReconciler) diskGroupExists(
+	podName, diskGroupName string,
+	resp *raccommon.ExecCommandResp,
+	instance *racdb.RacDatabase,
+	logger logr.Logger,
+) (bool, error) {
+	_ = logger
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	cmd := fmt.Sprintf("su - grid -c 'asmcmd lsdg | grep -w %s'", diskGroupName)
-	stdout, _, err := raccommon.ExecCommand(podName, []string{"bash", "-c", cmd}, r.kubeClient, r.kubeConfig, instance, reqLogger)
+	stdout, _, err := raccommon.ExecCommandWithResp(podName, []string{"bash", "-c", cmd}, resp, instance, reqLogger)
 	if err != nil {
 		return false, err
 	}
 	if strings.Contains(stdout, diskGroupName) {
 		return true, nil
 	}
-	return false, nil
+	return true, nil
 }
 
 // addDisks orchestrates the addition of new ASM disks by invoking helper
@@ -4329,6 +4179,7 @@ func (r *RacDatabaseReconciler) addDisks(
 		"Instance.Namespace", instance.Namespace,
 		"Instance.Name", instance.Name,
 	)
+	resp := raccommon.NewExecCommandResp(r.kubeClient, r.kubeConfig)
 
 	if len(podList.Items) == 0 {
 		return fmt.Errorf("no pods available to add ASM disks")
@@ -4346,8 +4197,7 @@ func (r *RacDatabaseReconciler) addDisks(
 	exists, err := r.diskGroupExists(
 		podName,
 		diskGroupName,
-		r.kubeClient,
-		r.kubeConfig,
+		resp,
 		instance,
 		reqLogger,
 	)
@@ -4372,13 +4222,8 @@ func (r *RacDatabaseReconciler) addDisks(
 			"DiskGroup", diskGroupName,
 		)
 
-		stdout, stderr, err := raccommon.ExecCommand(
-			podName,
-			[]string{"bash", "-c", cmd},
-			r.kubeClient,
-			r.kubeConfig,
-			instance,
-			reqLogger,
+		stdout, stderr, err := raccommon.ExecCommandWithResp(
+			podName, []string{"bash", "-c", cmd}, resp, instance, reqLogger,
 		)
 		if err != nil {
 			// tolerate "already added"
@@ -4390,7 +4235,7 @@ func (r *RacDatabaseReconciler) addDisks(
 				continue
 			}
 
-			instance.Spec.IsFailed = true
+			markRACFailedStatus(instance)
 			reqLogger.Error(err, "Failed to execute command",
 				"Stdout", stdout,
 				"Stderr", stderr,
@@ -4405,96 +4250,60 @@ func (r *RacDatabaseReconciler) addDisks(
 // checkRacDaemonSetStatusforRAC verifies disk-check DaemonSet readiness,
 // returning a boolean that indicates whether discovery completed.
 func checkRacDaemonSetStatusforRAC(ctx context.Context, r *RacDatabaseReconciler, racDatabase *racdb.RacDatabase) (bool, error) {
-	timeout := time.After(2 * time.Minute)
-	tick := time.NewTicker(10 * time.Second) // Poll every 10 seconds
-	// Initial delay before starting checks
-	time.Sleep(10 * time.Second)
+	timeout := time.After(racDiskCheckReadyTimeout)
+	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
-	// Sleep for 60 seconds
+
+	checkOnce := func() (bool, error) {
+		ready, invalidDevice, err := shareddiskcheck.CheckDaemonSetReadyAndDiskValidation(
+			ctx,
+			r.Client,
+			r.kubeClient,
+			racDatabase.Namespace,
+			"disk-check-daemonset",
+			diskCheckLabelSelectorForRAC(racDatabase),
+		)
+		if err != nil {
+			return false, err
+		}
+		if invalidDevice {
+			return false, fmt.Errorf("disk validation failed: not a valid block device")
+		}
+		if !ready {
+			return false, nil
+		}
+
+		_, discoveryReady, err := r.collectDiskCheckResults(ctx, racDatabase)
+		if err != nil {
+			return false, err
+		}
+		if !discoveryReady {
+			return false, nil
+		}
+
+		return true, nil
+	}
+
 	for {
 		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
 		case <-timeout:
-			// Timeout reached
-			ds := &appsv1.DaemonSet{}
-			err := r.Client.Get(ctx, types.NamespacedName{
-				Name:      "disk-check-daemonset",
-				Namespace: racDatabase.Namespace,
-			}, ds)
+			ready, err := checkOnce()
 			if err != nil {
 				return false, err
 			}
-
-			// Fetch the list of Pods managed by the DaemonSet
-			pods, err := r.kubeClient.CoreV1().Pods(racDatabase.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "app=disk-check",
-			})
-			if err != nil {
-				return false, err
-			}
-
-			// Check logs from each Pod
-			for _, pod := range pods.Items {
-				if pod.Status.Phase != corev1.PodRunning {
-					// Pod is not running, check for logs and errors
-					logs, err := r.kubeClient.CoreV1().Pods(racDatabase.Namespace).GetLogs(
-						pod.Name,
-						&corev1.PodLogOptions{},
-					).DoRaw(ctx)
-					if err != nil {
-						return false, err
-					}
-
-					if bytes.Contains(logs, []byte("not a valid block device")) {
-						// Disk validation failed
-						return false, nil
-					}
-				}
-			}
-
-			// DaemonSet did not become ready or running within the timeout
-			return false, fmt.Errorf("DaemonSet %s/%s did not become ready or running within 5 minutes", racDatabase.Namespace, "disk-check-daemonset")
-
-		case <-tick.C:
-			// Check DaemonSet status
-			ds := &appsv1.DaemonSet{}
-			err := r.Client.Get(ctx, types.NamespacedName{
-				Name:      "disk-check-daemonset",
-				Namespace: racDatabase.Namespace,
-			}, ds)
-			if err != nil {
-				return false, err
-			}
-
-			// Check DaemonSet readiness
-			if ds.Status.NumberReady == ds.Status.DesiredNumberScheduled && ds.Status.NumberReady > 0 {
-				// DaemonSet is running and ready
+			if ready {
 				return true, nil
 			}
-
-			// If DaemonSet is not ready, fetch the list of Pods managed by the DaemonSet
-			pods, err := r.kubeClient.CoreV1().Pods(racDatabase.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "app=disk-check",
-			})
+			return false, fmt.Errorf("timeout waiting for disk-check daemonset readiness and ASM disk discovery after %s", racDiskCheckReadyTimeout)
+		case <-tick.C:
+			ready, err := checkOnce()
 			if err != nil {
 				return false, err
 			}
-
-			// Check logs from each Pod
-			for _, pod := range pods.Items {
-				// Pod is not running, check for logs and errors
-				logs, err := r.kubeClient.CoreV1().Pods(racDatabase.Namespace).GetLogs(
-					pod.Name,
-					&corev1.PodLogOptions{},
-				).DoRaw(ctx)
-				if err != nil {
-					return false, err
-				}
-
-				if bytes.Contains(logs, []byte("not a valid block device")) {
-					// Disk validation failed
-					return false, nil
-				}
-
+			if ready {
+				return true, nil
 			}
 		}
 	}
@@ -4510,352 +4319,179 @@ func (r *RacDatabaseReconciler) createOrReplaceSfs(
 	index int,
 	isLast bool,
 	oldState string,
-	isOldStyle bool,
 ) (ctrl.Result, error) {
+	_ = oldState
 	reqLogger := r.Log.WithValues("Instance.Namespace", racDatabase.Namespace, "Instance.Name", racDatabase.Name)
-
-	found := &appsv1.StatefulSet{}
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      dep.Name,
-		Namespace: racDatabase.Namespace,
-	}, found)
-
-	jsn, _ := json.Marshal(dep)
-	raccommon.LogMessages("DEBUG", string(jsn), nil, racDatabase, r.Log)
-
-	if err != nil && apierrors.IsNotFound(err) {
-		if isOldStyle {
-			r.updateRacInstStatus(
-				racDatabase, ctx, req, racDatabase.Spec.InstDetails[index], index,
-				string(racdb.RACProvisionState), r.Client, true,
-			)
-		} else {
-			clusterSpec := racDatabase.Spec.ClusterDetails
-			r.updateRacNodeStatusForCluster(
-				racDatabase, ctx, req,
-				clusterSpec, index,
-				string(racdb.RACProvisionState),
-			)
-		}
+	configMapHash, err := r.computeRACConfigMapHash(ctx, racDatabase.Namespace, &dep.Spec.Template)
+	if err != nil {
+		reqLogger.Error(err, "Failed to compute RAC ConfigMap hash", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
+		return ctrl.Result{}, err
+	}
+	if dep.Spec.Template.Annotations == nil {
+		dep.Spec.Template.Annotations = map[string]string{}
+	}
+	dep.Spec.Template.Annotations[racConfigMapHashAnnotation] = configMapHash
+	result, err := sharedk8sobjects.ReconcileStatefulSet(ctx, r.Client, racDatabase.Namespace, dep, func(found, desired *appsv1.StatefulSet) bool {
+		return syncRACStatefulSetScopedFields(found, desired)
+	})
+	if err != nil {
+		markRACFailedStatus(racDatabase)
+		reqLogger.Error(err, "Failed to reconcile StatefulSet", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
+		return ctrl.Result{}, err
+	}
+	if result.Created {
+		r.markRACProvisioningForStatefulSet(ctx, req, racDatabase, index)
 		reqLogger.Info("Creating a StatefulSet Normally", "StatefulSetName", dep.Name)
-		err = r.Create(ctx, dep)
-
-		if err != nil {
-			// StatefulSet creation failed
-			racDatabase.Spec.IsFailed = true
-			reqLogger.Error(err, "Failed to create StatefulSet", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
-			return ctrl.Result{}, err
-		} else if !isLast {
-			// StatefulSet creation was successful
+		if !isLast {
 			return ctrl.Result{}, nil
 		}
-	} else if err != nil {
-		// Error that isn't due to the StatefulSet not existing
-		reqLogger.Error(err, "Failed to find the StatefulSet details")
-		return ctrl.Result{}, err
+	}
+	if result.Updated {
+		r.markRACProvisioningForStatefulSet(ctx, req, racDatabase, index)
+		reqLogger.Info("Updating StatefulSet to desired spec", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
 	}
 
 	return ctrl.Result{}, nil
 }
 
-// createOrReplaceSfsAsm coordinates StatefulSet changes when ASM updates are
-// required, driving rolling restarts and handling auto-update flags.
-func (r *RacDatabaseReconciler) createOrReplaceSfsAsm(ctx context.Context, req ctrl.Request, racDatabase *racdb.RacDatabase,
-	dep *appsv1.StatefulSet, index int, isLast bool, oldSpec *racdb.RacDatabaseSpec, isOldStyle bool,
-) (ctrl.Result, error) {
-	asmAutoUpdate := true
-	reqLogger := r.Log.WithValues("racDatabase.Namespace", racDatabase.Namespace, "racDatabase.Name", racDatabase.Name)
-
-	found := &appsv1.StatefulSet{}
-
-	// Check if the StatefulSet was found successfully
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      dep.Name,
-		Namespace: racDatabase.Namespace,
-	}, found)
-	if err != nil {
-		reqLogger.Error(err, "Failed to find existing StatefulSet to update")
-		return ctrl.Result{}, err
+func (r *RacDatabaseReconciler) computeRACConfigMapHash(ctx context.Context, namespace string, template *corev1.PodTemplateSpec) (string, error) {
+	if template == nil {
+		return "", nil
 	}
 
-	addedAsmDisks, removedAsmDisks, err := r.computeDiskChanges(racDatabase, oldSpec)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	inUse := false
-
-	if len(removedAsmDisks) > 0 {
-		// Step 1: Get the StatefulSet
-		OraRacSpex := racDatabase.Spec.InstDetails[index]
-		racSfSet, err := raccommon.CheckSfset(OraRacSpex.Name, racDatabase, r.Client)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to retrieve StatefulSet for RAC database '%s': %w", OraRacSpex.Name, err)
-			r.Log.Error(err, errMsg.Error())
-			return reconcile.Result{}, errMsg
-		}
-
-		// Step 2: Get the Pod list
-		podList, err := raccommon.GetPodList(racSfSet.Name, racDatabase, r.Client, OraRacSpex)
-		if err != nil {
-			errMsg := fmt.Errorf("failed to retrieve pod list for StatefulSet '%s': %w", racSfSet.Name, err)
-			r.Log.Error(err, errMsg.Error())
-			return reconcile.Result{}, errMsg
-		}
-		if len(podList.Items) == 0 {
-			errMsg := fmt.Errorf("no pods found for StatefulSet '%s'", racSfSet.Name)
-			r.Log.Error(errMsg, "Empty pod list")
-			return reconcile.Result{}, errMsg
-		}
-
-		// Step 3: Use last pod to get ASM state
-		podName := podList.Items[len(podList.Items)-1].Name
-		racDatabase.Status.AsmDiskGroups = raccommon.GetAsmInstState(podName, racDatabase, 0, r.kubeClient, r.kubeConfig, r.Log)
-
-		// Step 4: Check removed disks against disk groups
-
-		asmDiskGroups := racDatabase.Status.AsmDiskGroups
-
-		for _, removedAsmDisk := range removedAsmDisks {
-			for _, diskgroup := range asmDiskGroups {
-				for _, asmDiskStatus := range diskgroup.Disks {
-					if removedAsmDisk == asmDiskStatus.Name {
-						err := fmt.Errorf(
-							"disk '%s' is part of diskgroup '%s' and must be manually removed before proceeding",
-							removedAsmDisk, diskgroup.Name,
-						)
-						r.Log.Info(
-							"Disk is in use and cannot be removed automatically",
-							"disk", removedAsmDisk, "diskgroup", diskgroup.Name,
-						)
-						inUse = true
-						return reconcile.Result{}, err
-					}
-				}
-			}
-		}
-	}
-	r.ensureAsmStorageStatus(racDatabase)
-
-	// Ensure the StatefulSet is updated or re-created based on autoUpdate set to true/false
-	// err = r.ensureStatefulSetUpdated(ctx, reqLogger, racDatabase, dep, autoUpdate, isDelete, req)
-	err = r.ensureStatefulSetUpdated(ctx, reqLogger, racDatabase, dep, asmAutoUpdate, req, isOldStyle)
-	if err != nil {
-		racDatabase.Spec.IsFailed = true
-		reqLogger.Error(err, "Failed to ensure StatefulSet is updated or created")
-		if isOldStyle {
-			r.updateRacInstStatus(racDatabase, ctx, req, racDatabase.Spec.InstDetails[index], index, string(racdb.RACProvisionState), r.Client, true)
-		} else {
-			clusterSpec := racDatabase.Spec.ClusterDetails
-			for index := 0; index < clusterSpec.NodeCount; index++ {
-				r.updateRacNodeStatusForCluster(
-					racDatabase, ctx, req, clusterSpec, index, string(racdb.RACProvisionState),
-				)
-			}
-		}
-		return ctrl.Result{}, err
+	type configMapFingerprint struct {
+		volumeName string
+		configName string
+		data       []string
+		binaryData []string
 	}
 
-	// Wait for all Pods to be created and running
-	podList := &corev1.PodList{}
-	allPodsRunning := true
+	fingerprints := make([]configMapFingerprint, 0)
+	for _, volume := range template.Spec.Volumes {
+		if volume.ConfigMap == nil {
+			continue
+		}
+		if !strings.HasSuffix(volume.Name, "-oradata-envfile") {
+			continue
+		}
+		found := &corev1.ConfigMap{}
+		if err := r.Client.Get(ctx, types.NamespacedName{Name: volume.ConfigMap.Name, Namespace: namespace}, found); err != nil {
+			return "", err
+		}
 
-	// Immediate check before starting ticker loop
-	err = r.List(ctx, podList, client.InNamespace(dep.Namespace), client.MatchingLabels(dep.Spec.Template.Labels))
-	if err != nil {
-		reqLogger.Error(err, "Failed to list Pods", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
-		return reconcile.Result{}, err
+		fp := configMapFingerprint{
+			volumeName: volume.Name,
+			configName: volume.ConfigMap.Name,
+		}
+		for k, v := range found.Data {
+			fp.data = append(fp.data, k+"="+v)
+		}
+		for k, v := range found.BinaryData {
+			fp.binaryData = append(fp.binaryData, k+"="+hex.EncodeToString(v))
+		}
+		sort.Strings(fp.data)
+		sort.Strings(fp.binaryData)
+		fingerprints = append(fingerprints, fp)
 	}
 
-	for _, pod := range podList.Items {
-		if pod.Status.Phase != corev1.PodRunning {
-			allPodsRunning = false
-			reqLogger.Info("Waiting for Pod to be running", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-			break
+	sort.Slice(fingerprints, func(i, j int) bool {
+		if fingerprints[i].volumeName != fingerprints[j].volumeName {
+			return fingerprints[i].volumeName < fingerprints[j].volumeName
+		}
+		return fingerprints[i].configName < fingerprints[j].configName
+	})
+
+	sum := sha256.New()
+	for _, fp := range fingerprints {
+		sum.Write([]byte(fp.volumeName))
+		sum.Write([]byte{0})
+		sum.Write([]byte(fp.configName))
+		sum.Write([]byte{0})
+		for _, entry := range fp.data {
+			sum.Write([]byte(entry))
+			sum.Write([]byte{0})
+		}
+		for _, entry := range fp.binaryData {
+			sum.Write([]byte(entry))
+			sum.Write([]byte{0})
 		}
 	}
 
-	if !allPodsRunning {
-		// Only wait if at least one pod is not running
-		timeout := time.After(2 * time.Minute) // 2-minute timeout
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
+	return hex.EncodeToString(sum.Sum(nil)), nil
+}
 
-	waitLoop:
-		for {
-			select {
-			case <-timeout:
-				reqLogger.Info("Timed out waiting for all Pods to be created and running", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
-				return reconcile.Result{}, fmt.Errorf("timed out waiting for all Pods to be created and running")
-			case <-ticker.C:
-				err = r.List(ctx, podList, client.InNamespace(dep.Namespace), client.MatchingLabels(dep.Spec.Template.Labels))
-				if err != nil {
-					reqLogger.Error(err, "Failed to list Pods", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
-					return reconcile.Result{}, err
-				}
-
-				allPodsRunning = true
-				for _, pod := range podList.Items {
-					if pod.Status.Phase != corev1.PodRunning {
-						allPodsRunning = false
-						reqLogger.Info("Waiting for Pod to be running", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-						break
-					}
-				}
-
-				if allPodsRunning {
-					reqLogger.Info("All Pods are running", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
-					break waitLoop
-				}
-			}
-		}
+func syncRACStatefulSetScopedFields(found, desired *appsv1.StatefulSet) bool {
+	updated := false
+	if !reflect.DeepEqual(found.Labels, desired.Labels) {
+		found.Labels = desired.Labels
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Annotations, desired.Annotations) {
+		found.Annotations = desired.Annotations
+		updated = true
+	}
+	if syncRACPodTemplateScopedFields(&found.Spec.Template, &desired.Spec.Template) {
+		updated = true
 	}
 
-	// Additional pod readiness check per your original code
-	if allPodsRunning {
-		const (
-			podCheckInterval = 15 * time.Second // Interval between pod readiness checks
-			podReadyTimeout  = 15 * time.Minute // Maximum wait time for pod readiness
-		)
+	return updated
+}
 
-		timeoutCtx, cancel := context.WithTimeout(ctx, podReadyTimeout)
-		defer cancel()
+func syncRACPodTemplateScopedFields(found, desired *corev1.PodTemplateSpec) bool {
+	updated := false
 
-		// Wait for StatefulSet pods to be ready
-		for i := 0; i < len(dep.Spec.Template.Spec.Containers); i++ {
-			podName := fmt.Sprintf("%s-%d", dep.Name, i)
-			var isPodReady bool
+	foundHash := ""
+	if found.Annotations != nil {
+		foundHash = found.Annotations[racConfigMapHashAnnotation]
+	}
+	desiredHash := ""
+	if desired.Annotations != nil {
+		desiredHash = desired.Annotations[racConfigMapHashAnnotation]
+	}
+	if foundHash != desiredHash {
+		if found.Annotations == nil {
+			found.Annotations = map[string]string{}
+		}
+		found.Annotations[racConfigMapHashAnnotation] = desiredHash
+		updated = true
+	}
+	if !equalRACContainerVolumeDevices(found.Spec.Containers, desired.Spec.Containers) {
+		found.Spec.Containers = desired.Spec.Containers
+		updated = true
+	}
+	return updated
+}
 
-		waitForPodASM:
-			for {
-				select {
-				case <-timeoutCtx.Done():
-					reqLogger.Error(timeoutCtx.Err(), "Timed out waiting for pod to be ready", "Pod.Name", podName)
-					if isOldStyle {
-						r.updateRacInstStatus(racDatabase, ctx, req, racDatabase.Spec.InstDetails[index], index, string(racdb.RACProvisionState), r.Client, true)
-					} else {
-						clusterSpec := racDatabase.Spec.ClusterDetails
-						for index := 0; index < clusterSpec.NodeCount; index++ {
-							r.updateRacNodeStatusForCluster(
-								racDatabase, ctx, req, clusterSpec, index, string(racdb.RACProvisionState),
-							)
-						}
-					}
-					return ctrl.Result{}, timeoutCtx.Err()
-				default:
-					podList, err := raccommon.GetPodList(dep.Name, racDatabase, r.Client, racDatabase.Spec.InstDetails[index])
-					if err != nil {
-						reqLogger.Error(err, "Failed to list pods")
-						return ctrl.Result{}, err
-					}
-					isPodReady, _, _ = raccommon.PodListValidation(podList, dep.Name, racDatabase, r.Client)
-					if isPodReady {
-						reqLogger.Info("Pod is ready", "Pod.Name", podName)
-						break waitForPodASM // Break out of the labeled loop
-					} else {
-						reqLogger.Info("Pod is not ready yet", "Pod.Name", podName)
-						time.Sleep(podCheckInterval)
-					}
-				}
-			}
+func equalRACContainerVolumeDevices(found, desired []corev1.Container) bool {
+	if len(found) != len(desired) {
+		return false
+	}
+	for i := range found {
+		if found[i].Name != desired[i].Name {
+			return false
+		}
+		if !reflect.DeepEqual(found[i].VolumeDevices, desired[i].VolumeDevices) {
+			return false
 		}
 	}
-	// Disk is not in use, proceed with PV and PVC deletion in last stage
-	if isLast && !inUse {
-		// Use raccommon.GetAsmPvcName and raccommon.getAsmPvName to generate PVC and PV names
+	return true
+}
 
-		// Find and delete the corresponding PVC
-		for _, diskName := range racDatabase.Status.RacNodes[index].NodeDetails.MountedDevices {
-			for _, removedAsmDisk := range removedAsmDisks {
-				if diskName == removedAsmDisk {
-					pvcName := raccommon.GetAsmPvcName(diskName, racDatabase.Name)
-					pvc := &corev1.PersistentVolumeClaim{}
-					err := r.Get(ctx, client.ObjectKey{
-						Name:      pvcName,
-						Namespace: racDatabase.Namespace,
-					}, pvc)
-					if err != nil {
-						if !apierrors.IsNotFound(err) {
-							r.Log.Error(err, "Failed to get PVC", "PVC.Name", pvcName)
-							return reconcile.Result{}, err
-						}
-						// PVC already deleted
-					} else {
-						err = r.Delete(ctx, pvc)
-						if err != nil {
-							r.Log.Error(err, "Failed to delete PVC", "PVC.Name", pvcName)
-							return reconcile.Result{}, err
-						}
-						r.Log.Info("Successfully deleted PVC", "PVC.Name", pvcName)
-					}
-
-					// Find and delete the corresponding PV
-					pvName := raccommon.GetAsmPvName(diskName, racDatabase.Name) // Use the existing function
-					pv := &corev1.PersistentVolume{}
-					err = r.Get(ctx, client.ObjectKey{
-						Name: pvName,
-					}, pv)
-					if err != nil {
-						if !apierrors.IsNotFound(err) {
-							r.Log.Error(err, "Failed to get PV", "PV.Name", pvName)
-							return reconcile.Result{}, err
-						}
-						// PV already deleted
-					} else {
-						err = r.Delete(ctx, pv)
-						if err != nil {
-							r.Log.Error(err, "Failed to delete PV", "PV.Name", pvName)
-							return reconcile.Result{}, err
-						}
-						r.Log.Info("Successfully deleted PV", "PV.Name", pvName)
-					}
-				}
-			}
-		}
+func (r *RacDatabaseReconciler) markRACProvisioningForStatefulSet(
+	ctx context.Context,
+	req ctrl.Request,
+	racDatabase *racdb.RacDatabase,
+	index int,
+) {
+	clusterSpec := racDatabase.Spec.ClusterDetails
+	if clusterSpec == nil {
+		return
 	}
-
-	if isLast && asmAutoUpdate {
-		// last iteration
-		// update status column with configParams
-		// Addition fo Disk Execution
-		// Check each new disk against CrsAsmDeviceList, DbAsmDeviceList, RecoAsmDeviceList, RedoAsmDeviceList
-		deviceDg := ""
-		for _, disk := range addedAsmDisks {
-			var cName, fName string
-
-			if racDatabase.Spec.ConfigParams.GridResponseFile.ConfigMapName != "" {
-				cName = racDatabase.Spec.ConfigParams.GridResponseFile.ConfigMapName
-			}
-			if racDatabase.Spec.ConfigParams.GridResponseFile.Name != "" {
-				fName = racDatabase.Spec.ConfigParams.GridResponseFile.Name
-			}
-			err := setRacDgFromStatusAndSpecWithMinimumDefaultsforRAC(racDatabase, r.Client, cName, fName)
-			if err != nil {
-				reqLogger.Error(err, "Failed to set disk group defaults")
-				return ctrl.Result{}, err
-			}
-
-			deviceDg = getDeviceDG(
-				disk,
-				&racDatabase.Spec,
-				reqLogger,
-			)
-		}
-		if deviceDg != "" {
-			// Add disks after POD recreation
-			podList, err := raccommon.GetPodList(dep.Name, racDatabase, r.Client, racDatabase.Spec.InstDetails[index])
-			if err != nil {
-				reqLogger.Error(err, "Failed to list pods")
-				return ctrl.Result{}, err
-			}
-			err = r.addDisks(ctx, podList, racDatabase, deviceDg, addedAsmDisks)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			reqLogger.Info("New Disks added to CRS Disks Group")
-		}
-	}
-
-	return ctrl.Result{}, nil
+	r.updateRacNodeStatusForCluster(
+		racDatabase, ctx, req,
+		clusterSpec, index,
+		string(racdb.RACProvisionState),
+	)
 }
 
 // createOrReplaceSfsAsmCluster manages new cluster-style StatefulSet updates
@@ -4868,7 +4504,6 @@ func (r *RacDatabaseReconciler) createOrReplaceSfsAsmCluster(
 	index int,
 	isLast bool,
 	oldSpec *racdb.RacDatabaseSpec,
-	isOldStyle bool,
 ) (ctrl.Result, error) {
 
 	asmAutoUpdate := true
@@ -4906,10 +4541,6 @@ func (r *RacDatabaseReconciler) createOrReplaceSfsAsmCluster(
 	// STEP 3 — Check ASM disk usage before removal
 	// ---------------------------------------------------------
 	if len(removedAsmDisks) > 0 {
-
-		clusterSpec := racDatabase.Spec.ClusterDetails
-		nodeName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, index+1)
-
 		// 3a: Retrieve StatefulSet
 		racSfSet, err := raccommon.CheckSfset(dep.Name, racDatabase, r.Client)
 		if err != nil {
@@ -4917,12 +4548,7 @@ func (r *RacDatabaseReconciler) createOrReplaceSfsAsmCluster(
 		}
 
 		// 3b: Get pod list for this RAC node (cluster mode)
-		podList, err := raccommon.GetPodList(
-			racSfSet.Name,
-			racDatabase,
-			r.Client,
-			racdb.RacInstDetailSpec{Name: nodeName},
-		)
+		podList, err := r.getPodsForStatefulSet(ctx, racDatabase, racSfSet.Name)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to retrieve pod list for StatefulSet '%s': %w",
 				racSfSet.Name, err)
@@ -4944,9 +4570,9 @@ func (r *RacDatabaseReconciler) createOrReplaceSfsAsmCluster(
 	// ---------------------------------------------------------
 	// STEP 4 — Apply StatefulSet ASM Update
 	// ---------------------------------------------------------
-	err = r.ensureStatefulSetUpdated(ctx, reqLogger, racDatabase, dep, asmAutoUpdate, req, isOldStyle)
+	err = r.ensureStatefulSetUpdated(ctx, reqLogger, racDatabase, dep, asmAutoUpdate, req)
 	if err != nil {
-		racDatabase.Spec.IsFailed = true
+		markRACFailedStatus(racDatabase)
 		reqLogger.Error(err, "Failed to ensure StatefulSet update")
 
 		// Update cluster node statuses
@@ -5032,12 +4658,7 @@ func (r *RacDatabaseReconciler) createOrReplaceSfsAsmCluster(
 	// STEP 7 — Add new ASM disks after recreation (last iteration)
 	// ---------------------------------------------------------
 	if isLast && len(addedAsmDisks) > 0 {
-		clusterSpec := racDatabase.Spec.ClusterDetails
-		nodeName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, index+1)
-
-		podList, err := raccommon.GetPodList(dep.Name, racDatabase, r.Client,
-			racdb.RacInstDetailSpec{Name: nodeName},
-		)
+		podList, err := r.getPodsForStatefulSet(ctx, racDatabase, dep.Name)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -5106,77 +4727,16 @@ func getDeviceDG(disk string, spec *racdb.RacDatabaseSpec, reqLogger logr.Logger
 // getRACDisksChangedSpecforRAC compares old vs. new specs to produce lists of
 // added and removed disks, which guide follow-up reconcile operations.
 func getRACDisksChangedSpecforRAC(racDatabase racdb.RacDatabase, oldSpec racdb.RacDatabaseSpec) ([]string, []string) {
-	addedAsmDisks := []string{}
-	removedAsmDisks := []string{}
-
-	// If old spec is empty, do not treat this as disk changes
-	if len(oldSpec.AsmStorageDetails) == 0 {
-		return addedAsmDisks, removedAsmDisks
-	}
-
-	// Helper: disk slice to set
-	diskSliceToSet := func(disks []string) map[string]bool {
-		set := make(map[string]bool)
-		for _, disk := range disks {
-			if disk != "" {
-				set[disk] = true
-			}
-		}
-		return set
-	}
-
-	newGroupMap := make(map[string][]string)
-	for _, dg := range racDatabase.Spec.AsmStorageDetails {
-		groupKey := fmt.Sprintf("%s-%s", dg.Name, dg.Type)
-		newGroupMap[groupKey] = dg.Disks
-	}
-
-	oldGroupMap := make(map[string][]string)
-	for _, dg := range oldSpec.AsmStorageDetails {
-		groupKey := fmt.Sprintf("%s-%s", dg.Name, dg.Type)
-		oldGroupMap[groupKey] = dg.Disks
-	}
-
-	// Unique sets for additions/removals
-	addedDiskSet := make(map[string]bool)
-	removedDiskSet := make(map[string]bool)
-
-	// 1. Check for added and removed disks per group
-	for name, newDisks := range newGroupMap {
-		oldDisks := oldGroupMap[name]
-		// Added: in newDisks not in oldDisks
-		oldSet := diskSliceToSet(oldDisks)
-		for _, disk := range newDisks {
-			if disk != "" && !oldSet[disk] {
-				addedDiskSet[disk] = true
-			}
-		}
-	}
-	for name, oldDisks := range oldGroupMap {
-		newDisks := newGroupMap[name]
-		newSet := diskSliceToSet(newDisks)
-		for _, disk := range oldDisks {
-			if disk != "" && !newSet[disk] {
-				removedDiskSet[disk] = true
-			}
-		}
-	}
-
-	// 2. Flatten all for top-level lists (de-duplicate)
-	for disk := range addedDiskSet {
-		addedAsmDisks = append(addedAsmDisks, disk)
-	}
-	for disk := range removedDiskSet {
-		removedAsmDisks = append(removedAsmDisks, disk)
-	}
-
-	return addedAsmDisks, removedAsmDisks
+	newAdapter := newRacAsmAdapter(&racDatabase, nil)
+	oldObj := racdb.RacDatabase{Spec: oldSpec}
+	oldAdapter := newRacAsmAdapter(&oldObj, nil)
+	return sharedasm.GetDisksChanged(newAdapter, oldAdapter)
 }
 
 // manageRacDatabaseDeletion orchestrates finalizer and cleanup logic when
-// manageRacDatabaseDeletion orchestrates finalizer and cleanup logic when
 // the RAC database resource is being deleted, including final status updates.
-func (r *RacDatabaseReconciler) manageRacDatabaseDeletion(req ctrl.Request, ctx context.Context, racDatabase *racdb.RacDatabase, isOldStyle bool) error {
+// Returns handled=true when reconcile should stop normal processing.
+func (r *RacDatabaseReconciler) manageRacDatabaseDeletion(req ctrl.Request, ctx context.Context, racDatabase *racdb.RacDatabase) (bool, error) {
 	log := r.Log.WithValues("manageRacDatabaseDeletion", req.NamespacedName)
 
 	// Check if the RacDatabase instance is marked to be deleted
@@ -5184,381 +4744,174 @@ func (r *RacDatabaseReconciler) manageRacDatabaseDeletion(req ctrl.Request, ctx 
 	if isRacDatabaseMarkedToBeDeleted {
 		if controllerutil.ContainsFinalizer(racDatabase, racDatabaseFinalizer) {
 			// Run cleanup
-			if err := r.cleanupRacDatabase(req, racDatabase, isOldStyle); err != nil {
-				return err
+			if err := r.cleanupRacDatabase(req, ctx, racDatabase); err != nil {
+				return true, err
 			}
 
 			// Remove finalizer
 			if err := r.patchFinalizer(ctx, racDatabase, false); err != nil {
 				log.Error(err, "Failed to remove finalizer")
-				return err
+				return true, err
 			}
 
 			log.Info("Successfully removed RacDatabase finalizer")
-			return errors.New("deletion pending")
+			return true, nil
 		}
 
 		// Finalizer already gone, just let K8s delete it
-		return errors.New("deletion pending")
+		return true, nil
 	}
 
 	// Add finalizer for this CR if not present
 	if !controllerutil.ContainsFinalizer(racDatabase, racDatabaseFinalizer) {
 		if err := r.patchFinalizer(ctx, racDatabase, true); err != nil {
 			log.Error(err, "Failed to add finalizer")
-			return err
+			return false, err
 		}
 	}
-	return nil
+	return false, nil
 }
 
 // patchFinalizer updates the finalizer for the given resource
 // patchFinalizer adds or removes the custom finalizer using a merge patch so
 // the operator can manage cleanup semantics during deletion.
 func (r *RacDatabaseReconciler) patchFinalizer(ctx context.Context, racDatabase *racdb.RacDatabase, add bool) error {
-	var finalizers []string
-	if add {
-		finalizers = append(racDatabase.GetFinalizers(), racDatabaseFinalizer)
-	} else {
-		for _, finalizer := range racDatabase.GetFinalizers() {
-			if finalizer != racDatabaseFinalizer {
-				finalizers = append(finalizers, finalizer)
-			}
+	const maxRetries = 5
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		latest := &racdb.RacDatabase{}
+		if err := r.Client.Get(ctx, types.NamespacedName{
+			Name:      racDatabase.Name,
+			Namespace: racDatabase.Namespace,
+		}, latest); err != nil {
+			return err
 		}
+		original := latest.DeepCopy()
+		if add {
+			controllerutil.AddFinalizer(latest, racDatabaseFinalizer)
+		} else {
+			controllerutil.RemoveFinalizer(latest, racDatabaseFinalizer)
+		}
+		if err := r.Client.Patch(ctx, latest, client.MergeFrom(original)); err != nil {
+			if apierrors.IsConflict(err) {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			return err
+		}
+		return nil
 	}
-
-	// Prepare patch payload
-	patchData := map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"finalizers": finalizers,
-		},
-	}
-	patchBytes, err := json.Marshal(patchData)
-	if err != nil {
-		return err
-	}
-
-	patch := client.RawPatch(types.MergePatchType, patchBytes)
-	return r.Client.Patch(ctx, racDatabase, patch, &client.PatchOptions{
-		FieldManager: "rac-database-finalizer-manager",
-	})
+	return fmt.Errorf("failed to patch finalizer after retries")
 }
 
 // cleanupRacDatabase handles resource teardown for RAC objects, including
 // waiting for StatefulSets and services to drain before final removal.
 func (r *RacDatabaseReconciler) cleanupRacDatabase(
 	req ctrl.Request,
+	ctx context.Context,
 	racDatabase *racdb.RacDatabase,
-	isOldStyle bool) error {
-
+) error {
 	log := r.Log.WithValues("cleanupRacDatabase", req.NamespacedName)
-	var err error
-
-	if isOldStyle {
-		// --- Old style (per-instance) cleanup ---
-		var sfSetFound *appsv1.StatefulSet
-		var svcFound *corev1.Service
-		var i int32
-
-		// Delete StatefulSets and ConfigMaps
-		for i = 0; i < int32(len(racDatabase.Spec.InstDetails)); i++ {
-			OraRacSpex := racDatabase.Spec.InstDetails[i]
-			sfSetFound, err = raccommon.CheckSfset(OraRacSpex.Name, racDatabase, r.Client)
-			if err != nil {
-				return err
-			}
-			if sfSetFound != nil {
-				log.Info("Deleting RAC Statefulset " + sfSetFound.Name)
-				if err := r.Client.Delete(context.Background(), sfSetFound); err != nil {
-					if apierrors.IsNotFound(err) {
-						log.Info("StatefulSet already deleted")
-					} else {
-						return err
-					}
-				}
-			}
-
-			cmName := OraRacSpex.Name + racDatabase.Name + "-cmap"
-			configMapFound, err := raccommon.CheckConfigMap(racDatabase, cmName, r.Client)
-			if err == nil {
-				log.Info("Deleting RAC Configmap " + configMapFound.Name)
-				if err = r.Client.Delete(context.Background(), configMapFound); err != nil {
-					return err
-				}
-			}
-		}
-
-		// Delete SW PVCs
-		for index := range racDatabase.Spec.InstDetails {
-			err = raccommon.DelRacSwPvc(racDatabase, racDatabase.Spec.InstDetails[index], r.Client, r.Log)
-			if err != nil {
-				return err
-			}
-		}
-
-		// Delete DaemonSet
-		daemonSetName := "disk-check-daemonset"
-		daemonSet := &appsv1.DaemonSet{}
-		err = r.Client.Get(context.TODO(), types.NamespacedName{
-			Name:      daemonSetName,
-			Namespace: racDatabase.Namespace,
-		}, daemonSet)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				r.Log.Info("DaemonSet not found, skipping deletion", "DaemonSet.Name", daemonSetName)
-			} else {
-				r.Log.Error(err, "Failed to get DaemonSet", "DaemonSet.Name", daemonSetName)
-				return err
-			}
-		} else {
-			if err = r.Client.Delete(context.TODO(), daemonSet); err != nil {
-				r.Log.Error(err, "Failed to delete DaemonSet", "DaemonSet.Name", daemonSetName)
-				return err
-			}
-		}
-
-		// Delete ASM PVCs and PVs
-		if racDatabase.Spec.AsmStorageDetails != nil {
-			for _, dg := range racDatabase.Spec.AsmStorageDetails {
-				for _, diskName := range dg.Disks {
-					err = raccommon.DelRacPvc(racDatabase, diskName, dg.Name, r.Client, r.Log)
-					if err != nil {
-						return err
-					}
-				}
-			}
-
-			if len(racDatabase.Spec.StorageClass) == 0 {
-				processedDisks := make(map[string]bool)
-				for _, dg := range racDatabase.Spec.AsmStorageDetails {
-					for _, diskName := range dg.Disks {
-						if processedDisks[diskName] {
-							continue
-						}
-						err = raccommon.DelRacPv(racDatabase, diskName, dg.Name, r.Client, r.Log)
-						if err != nil {
-							return err
-						}
-						processedDisks[diskName] = true
-					}
-				}
-			}
-		}
-
-		// Delete Services
-		svcTypes := []string{"vip", "local", "onssvc", "lsnrsvc", "scansvc", "scan"}
-		for _, svcType := range svcTypes {
-			if err := r.deleteRacServices(req, racDatabase, svcType, isOldStyle); err != nil {
-				return err
-			}
-		}
-		// NodePort Services
-		for i = 0; i < int32(len(racDatabase.Spec.InstDetails)); i++ {
-			if len(racDatabase.Spec.InstDetails[i].NodePortSvc) != 0 {
-				for index := range racDatabase.Spec.InstDetails[i].NodePortSvc {
-					svcFound, err = raccommon.CheckRacSvc(
-						racDatabase,
-						"nodeport",
-						racDatabase.Spec.InstDetails[i],
-						racDatabase.Spec.InstDetails[i].NodePortSvc[index].SvcName,
-						r.Client,
-					)
-					if err == nil {
-						if err = r.Client.Delete(context.Background(), svcFound); err != nil {
-							return err
-						}
-					}
-				}
-			}
-		}
-		// All done
-		log.Info("Successfully cleaned up RacDatabase (old style)")
-		return nil
-
-	} else {
-		// --- New style (cluster-level) cleanup ---
-		log.Info("Running cleanup for RacDatabase (cluster style)")
-
-		// Example: Cleanup using details from ClusterDetails
-		// You'll need to adapt this based on how cluster-level objects are managed/deployed.
-		// Pseudocode follows:
-
-		cd := racDatabase.Spec.ClusterDetails
-		if cd == nil {
-			log.Error(nil, "ClusterDetails is nil in cleanup for new style spec")
-			return fmt.Errorf("internal error: ClusterDetails is nil in new style cleanup")
-		}
-
-		// For StatefulSet: if you are using a pattern, such as racnode-0, racnode-1, etc:
-		for i := 0; i < cd.NodeCount; i++ {
-			nodeName := fmt.Sprintf("%s%d", cd.RacNodeName, i+1)
-			sfSetFound, err := raccommon.CheckSfset(nodeName, racDatabase, r.Client)
-			if err != nil && sfSetFound != nil {
-				return err
-			}
-			if sfSetFound != nil {
-				log.Info("Deleting RAC Statefulset " + sfSetFound.Name)
-				if err := r.Client.Delete(context.Background(), sfSetFound); err != nil {
-					if apierrors.IsNotFound(err) {
-						log.Info("StatefulSet already deleted")
-					} else {
-						return err
-					}
-				}
-			}
-			// Cluster-wide configmap cleanup (optional, if used in new style)
-			cmName := fmt.Sprintf("%s%s-cmap", nodeName, racDatabase.Name)
-			configMapFound, err := raccommon.CheckConfigMap(racDatabase, cmName, r.Client)
-			if err == nil {
-				log.Info("Deleting RAC Configmap " + configMapFound.Name)
-				if err = r.Client.Delete(context.Background(), configMapFound); err != nil {
-					return err
-				}
-			}
-		}
-
-		daemonSetName := "disk-check-daemonset"
-		daemonSet := &appsv1.DaemonSet{}
-		err = r.Client.Get(context.TODO(), types.NamespacedName{
-			Name:      daemonSetName,
-			Namespace: racDatabase.Namespace,
-		}, daemonSet)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				log.Info("DaemonSet not found, skipping deletion", "DaemonSet.Name", daemonSetName)
-			} else {
-				log.Error(err, "Failed to get DaemonSet", "DaemonSet.Name", daemonSetName)
-				return err
-			}
-		} else {
-			if err = r.Client.Delete(context.TODO(), daemonSet); err != nil {
-				log.Error(err, "Failed to delete DaemonSet", "DaemonSet.Name", daemonSetName)
-				return err
-			}
-		}
-		// Example software PVC cleanup (adjust as per your naming conventions)
-		for i := 0; i < cd.NodeCount; i++ {
-			err := raccommon.DelRacSwPvcClusterStyle(racDatabase, cd, i, r.Client, r.Log)
-			if err != nil {
-				return err
-			}
-		}
-
-		// ASM PVC/PV cleanup
-		if racDatabase.Spec.AsmStorageDetails != nil {
-			for _, dg := range racDatabase.Spec.AsmStorageDetails {
-				for _, diskName := range dg.Disks {
-					err = raccommon.DelRacPvc(racDatabase, diskName, dg.Name, r.Client, r.Log)
-					if err != nil {
-						return err
-					}
-					// PVs
-					if len(racDatabase.Spec.StorageClass) == 0 {
-						err = raccommon.DelRacPv(racDatabase, diskName, dg.Name, r.Client, r.Log)
-						if err != nil {
-							return err
-						}
-					}
-				}
-			}
-		}
-
-		// Example: Cleanup of services based on cluster-level naming
-		svcTypes := []string{"vip", "local", "onssvc", "lsnrsvc", "scansvc", "scan"}
-		for _, svcType := range svcTypes {
-			if err := r.deleteRacServices(req, racDatabase, svcType, isOldStyle); err != nil {
-				return err
-			}
-		}
-
-		log.Info("Successfully cleaned up RacDatabase (cluster style)")
-		return nil
+	cd := racDatabase.Spec.ClusterDetails
+	if cd == nil {
+		log.Error(nil, "ClusterDetails is nil in cleanup")
+		return fmt.Errorf("internal error: ClusterDetails is nil in cleanup")
 	}
+
+	log.Info("Running cleanup for RacDatabase (cluster style)")
+	for i := 0; i < cd.NodeCount; i++ {
+		nodeName := fmt.Sprintf("%s%d", cd.RacNodeName, i+1)
+		sfSetFound, err := raccommon.CheckSfset(nodeName, racDatabase, r.Client)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return err
+			}
+			sfSetFound = nil
+		}
+		if sfSetFound != nil {
+			log.Info("Deleting RAC Statefulset " + sfSetFound.Name)
+			if err := r.Client.Delete(ctx, sfSetFound); err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
+		}
+
+		cmName := fmt.Sprintf("%s%s-cmap", nodeName, racDatabase.Name)
+		configMapFound, err := raccommon.CheckConfigMap(racDatabase, cmName, r.Client)
+		if err == nil {
+			log.Info("Deleting RAC Configmap " + configMapFound.Name)
+			if err = r.Client.Delete(ctx, configMapFound); err != nil {
+				return err
+			}
+		}
+		if err := raccommon.DelRacSwPvcClusterStyle(racDatabase, cd, i, r.Client, r.Log); err != nil {
+			return err
+		}
+	}
+
+	daemonSetName := "disk-check-daemonset"
+	daemonSet := &appsv1.DaemonSet{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: daemonSetName, Namespace: racDatabase.Namespace}, daemonSet)
+	if err == nil {
+		if err = r.Client.Delete(ctx, daemonSet); err != nil {
+			return err
+		}
+	} else if !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	for _, dg := range racDatabase.Spec.AsmStorageDetails {
+		for _, diskName := range dg.Disks {
+			if err := raccommon.DelRacPvc(racDatabase, diskName, dg.Name, r.Client, r.Log); err != nil {
+				return err
+			}
+			if len(racDatabase.Spec.StorageClass) == 0 {
+				if err := raccommon.DelRacPv(racDatabase, diskName, dg.Name, r.Client, r.Log); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	for _, svcType := range []string{"vip", "local", "onssvc", "lsnrsvc", "scansvc", "scan"} {
+		if err := r.deleteRacServices(req, ctx, racDatabase, svcType); err != nil {
+			return err
+		}
+	}
+
+	log.Info("Successfully cleaned up RacDatabase (cluster style)")
+	return nil
 }
 
 // deleteRacServices removes all RAC-related Services, cleaning up network
 // endpoints as part of instance teardown routines.
 func (r *RacDatabaseReconciler) deleteRacServices(
 	req ctrl.Request,
+	ctx context.Context,
 	racDatabase *racdb.RacDatabase,
 	svcType string,
-	isOldStyle bool,
 ) error {
 	log := r.Log.WithValues("deleteRacServices", req.NamespacedName)
 
-	if isOldStyle {
-		// --- Old style: per-instance/service deletion ---
-		for i := 0; i < len(racDatabase.Spec.InstDetails); i++ {
-			svcFound, err := raccommon.CheckRacSvc(
-				racDatabase,
-				svcType,
-				racDatabase.Spec.InstDetails[i],
-				"",
-				r.Client,
-			)
-			if err != nil {
-				return err
-			}
-			if svcFound != nil {
-				log.Info("Deleting RAC Service " + svcFound.Name)
-				if err := r.Client.Delete(context.Background(), svcFound); err != nil {
-					return client.IgnoreNotFound(err)
-				}
-			}
-		}
-	} else {
-		// --- New style: cluster-level deletion using consistent naming ---
-		cluster := racDatabase.Spec.ClusterDetails
-		if cluster == nil {
-			log.Error(nil, "ClusterDetails is nil during new style service deletion")
-			return fmt.Errorf("ClusterDetails is nil")
-		}
-
-		// Handle standard per-node services
-		for i := 0; i < cluster.NodeCount; i++ {
-			// Use same service name construction as creation
-			svcName := raccommon.GetClusterSvcName(racDatabase, cluster, i, svcType)
-			svc := &corev1.Service{}
-			err := r.Client.Get(context.TODO(), types.NamespacedName{
-				Name:      svcName,
-				Namespace: racDatabase.Namespace,
-			}, svc)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					log.Info("Service not found, skipping", "Service.Name", svcName)
-					continue
-				}
-				return err
-			}
-			log.Info("Deleting RAC Service " + svc.Name)
-			if err := r.Client.Delete(context.Background(), svc); err != nil {
-				return client.IgnoreNotFound(err)
-			}
-		}
-
-		// Handle special cluster-wide services (e.g., "scansvc", "scan")
-		if svcType == "scansvc" || svcType == "scan" {
-			svcName := raccommon.GetClusterSvcName(racDatabase, cluster, 0, svcType)
-			svc := &corev1.Service{}
-			err := r.Client.Get(context.TODO(), types.NamespacedName{
-				Name:      svcName,
-				Namespace: racDatabase.Namespace,
-			}, svc)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					log.Info("Cluster-wide Service not found, skipping", "Service.Name", svcName)
-				} else {
-					return err
-				}
-			} else {
-				log.Info("Deleting Cluster-wide RAC Service " + svc.Name)
-				if err := r.Client.Delete(context.Background(), svc); err != nil {
-					return client.IgnoreNotFound(err)
-				}
-			}
-		}
+	cluster := racDatabase.Spec.ClusterDetails
+	if cluster == nil {
+		log.Error(nil, "ClusterDetails is nil during service deletion")
+		return fmt.Errorf("ClusterDetails is nil")
 	}
 
+	for i := 0; i < cluster.NodeCount; i++ {
+		svcName := raccommon.GetClusterSvcName(racDatabase, cluster, i, svcType)
+		svc := &corev1.Service{}
+		err := r.Client.Get(ctx, types.NamespacedName{Name: svcName, Namespace: racDatabase.Namespace}, svc)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
+		log.Info("Deleting RAC Service " + svc.Name)
+		if err := r.Client.Delete(ctx, svc); err != nil {
+			return client.IgnoreNotFound(err)
+		}
+	}
 	return nil
 }
 
@@ -5568,317 +4921,119 @@ func (r *RacDatabaseReconciler) cleanupRacInstance(
 	req ctrl.Request,
 	ctx context.Context,
 	racDatabase *racdb.RacDatabase,
-	isOldStyle bool,
 	oldSpec *racdb.RacDatabaseSpec) (int32, error) {
 	log := r.Log.WithValues("cleanupRacInstance", req.NamespacedName)
-	var i int32
-	var err error
-	if oldSpec.ClusterDetails != nil && oldSpec.ClusterDetails.NodeCount > 0 {
-
-		if isOldStyle {
-			// Old style: Iterate InstDetails per-node
-			if len(racDatabase.Spec.InstDetails) > 0 {
-				for i = 0; i < int32(len(racDatabase.Spec.InstDetails)); i++ {
-					OraRacSpex := racDatabase.Spec.InstDetails[i]
-					if utils.CheckStatusFlag(OraRacSpex.IsDelete) {
-						if len(racDatabase.Status.RacNodes) > 0 {
-							for _, oraRacStatus := range racDatabase.Status.RacNodes {
-								if strings.ToUpper(oraRacStatus.Name) == (strings.ToUpper(OraRacSpex.Name) + "-0") {
-									if !utils.CheckStatusFlag(oraRacStatus.NodeDetails.IsDelete) {
-										log.Info("Setting RAC status instance " + oraRacStatus.Name + " delete flag true")
-										err = r.deleteRACInst(OraRacSpex, req, ctx, racDatabase, isOldStyle)
-										if err != nil {
-											log.Info("Error occurred RAC instance " + oraRacStatus.Name + " deletion")
-											return i, err
-										}
-										oraRacStatus.NodeDetails.IsDelete = "true"
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			return i, nil
-		} else {
-			cd := racDatabase.Spec.ClusterDetails
-			if cd == nil {
-				log.Error(nil, "ClusterDetails is nil in cleanup instance")
-				return 0, fmt.Errorf("internal error: ClusterDetails is nil in new style cleanup instance")
-			}
-
-			// 1. Build sets of previous and current nodes
-			oldNodeNames := []string{}
-			currentNodeNames := []string{}
-
-			// Assume 'oldSpec' is obtained from annotation or similar
-			if oldSpec.ClusterDetails.NodeCount > 0 {
-				for idx := 0; idx < oldSpec.ClusterDetails.NodeCount; idx++ {
-					oldNodeNames = append(oldNodeNames, fmt.Sprintf("%s%d", oldSpec.ClusterDetails.RacNodeName, idx+1))
-				}
-			}
-
-			// Current node names
-			for idx := 0; idx < cd.NodeCount; idx++ {
-				currentNodeNames = append(currentNodeNames, fmt.Sprintf("%s%d", cd.RacNodeName, idx+1))
-			}
-
-			// 2. Create a lookup set for current nodes
-			currentNodeSet := make(map[string]struct{}, len(currentNodeNames))
-			for _, name := range currentNodeNames {
-				currentNodeSet[name] = struct{}{}
-			}
-
-			// 3. Clean up only nodes in old but not in new
-			deletedCount := 0
-			for _, name := range oldNodeNames {
-				if _, stillExists := currentNodeSet[name]; !stillExists {
-					spec := racdb.RacInstDetailSpec{Name: name}
-					log.Info("Starting delete RAC instance for node " + name)
-					err := r.deleteRACInst(spec, req, ctx, racDatabase, false)
-					if err != nil {
-						log.Info(fmt.Sprintf("Error occurred during cluster node %s deletion", name))
-						return int32(deletedCount), err
-					}
-					deletedCount++
-				}
-			}
-			return int32(deletedCount), nil
-		}
-	} else {
+	if oldSpec == nil || oldSpec.ClusterDetails == nil || oldSpec.ClusterDetails.NodeCount <= 0 {
 		return 0, nil
 	}
+	cd := racDatabase.Spec.ClusterDetails
+	if cd == nil {
+		log.Error(nil, "ClusterDetails is nil in cleanup instance")
+		return 0, fmt.Errorf("internal error: ClusterDetails is nil in new style cleanup instance")
+	}
+
+	// 1. Build sets of previous and current nodes
+	oldNodeNames := []string{}
+	currentNodeNames := []string{}
+
+	// Assume 'oldSpec' is obtained from annotation or similar
+	if oldSpec.ClusterDetails.NodeCount > 0 {
+		for idx := 0; idx < oldSpec.ClusterDetails.NodeCount; idx++ {
+			oldNodeNames = append(oldNodeNames, fmt.Sprintf("%s%d", oldSpec.ClusterDetails.RacNodeName, idx+1))
+		}
+	}
+
+	// Current node names
+	for idx := 0; idx < cd.NodeCount; idx++ {
+		currentNodeNames = append(currentNodeNames, fmt.Sprintf("%s%d", cd.RacNodeName, idx+1))
+	}
+
+	// 2. Create a lookup set for current nodes
+	currentNodeSet := make(map[string]struct{}, len(currentNodeNames))
+	for _, name := range currentNodeNames {
+		currentNodeSet[name] = struct{}{}
+	}
+
+	// 3. Clean up only nodes in old but not in new
+	deletedCount := 0
+	for _, name := range oldNodeNames {
+		if _, stillExists := currentNodeSet[name]; !stillExists {
+			log.Info("Starting delete RAC instance for node " + name)
+			err := r.deleteRACInst(name, req, ctx, racDatabase)
+			if err != nil {
+				log.Info(fmt.Sprintf("Error occurred during cluster node %s deletion", name))
+				return int32(deletedCount), err
+			}
+			deletedCount++
+		}
+	}
+	return int32(deletedCount), nil
 
 }
 
 // deleteRACInst drives deletion logic for individual RAC instances, ensuring
 // Kubernetes objects and ASM state are cleaned up safely.
 func (r *RacDatabaseReconciler) deleteRACInst(
-	OraRacSpex racdb.RacInstDetailSpec,
+	nodeName string,
 	req ctrl.Request,
 	ctx context.Context,
 	racDatabase *racdb.RacDatabase,
-	isOldStyle bool,
 ) error {
 	log := r.Log.WithValues("deleteRACInst", req.NamespacedName)
-	// log.Info("Sleeping for 60 minutes before continuing")
-	// time.Sleep(60 * time.Minute)
-	if isOldStyle {
-		var nodeCount int
-		var err error
-		var cmName string
-		var healthyNode string
+	podName := nodeName + "-0"
+	if err := raccommon.DelRacNode(podName, racDatabase, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+		return err
+	}
 
-		nodeCount, err = raccommon.GetHealthyNodeCounts(racDatabase)
-		healthyNode, err = raccommon.GetHealthyNode(racDatabase)
-		if err != nil {
-			return fmt.Errorf("no healthy node found in the cluster to perform delete node operator. manual intervention required")
-		}
-
-		_, endp, err := raccommon.GetDBLsnrEndPoints(racDatabase)
-		if err != nil {
-			return fmt.Errorf("endpoint generation error in delete block")
-		}
-
-		sfSetFound, err := raccommon.CheckSfset(OraRacSpex.Name, racDatabase, r.Client)
-		if err == nil && sfSetFound != nil {
-			if strings.ToLower(OraRacSpex.IsDelete) != "force" {
-				err = raccommon.DelRacNode(sfSetFound.Name+"-0", racDatabase, r.kubeClient, r.kubeConfig, r.Log)
-				if err != nil {
-					return err
-				}
-			}
-			err = r.Client.Delete(context.Background(), sfSetFound)
-			if err != nil {
-				return err
-			}
-		}
-		if !utils.CheckStatusFlag(OraRacSpex.IsKeepPVC) {
-			err = raccommon.DelRacSwPvc(racDatabase, OraRacSpex, r.Client, r.Log)
-			if err != nil {
-				return err
-			}
-		}
-		cmName = OraRacSpex.Name + racDatabase.Name + "-cmap"
-		configMapFound, err := raccommon.CheckConfigMap(racDatabase, cmName, r.Client)
-		if err == nil {
-			err = r.Client.Delete(context.Background(), configMapFound)
-			if err != nil {
-				return err
-			}
-		}
-
-		svcTypes := []string{"vip", "local", "onssvc", "lsnrsvc"}
-		for _, svcType := range svcTypes {
-			svcFound, err := raccommon.CheckRacSvc(racDatabase, svcType, OraRacSpex, "", r.Client)
-			if err == nil && svcFound != nil {
-				err = r.Client.Delete(context.Background(), svcFound)
-				if err != nil {
-					return err
-				}
-			}
-		}
-
-		if len(OraRacSpex.NodePortSvc) != 0 {
-			for index := range OraRacSpex.NodePortSvc {
-				svcFound, err := raccommon.CheckRacSvc(racDatabase, "nodeport", OraRacSpex, OraRacSpex.NodePortSvc[index].SvcName, r.Client)
-				if err == nil && svcFound != nil {
-					err = r.Client.Delete(context.Background(), svcFound)
-					if err != nil {
-						return err
-					}
-				}
-			}
-		}
-
-		// ASM, Listener, and Scan endpoint update logic is the same per node -- no change needed
-		if nodeCount == 3 {
-			err = raccommon.UpdateAsmCount(racDatabase.Spec.ConfigParams.GridHome, healthyNode, racDatabase, r.kubeClient, r.kubeConfig, r.Log)
-			if err != nil {
-				log.Info("error occurred while updating the asm count")
-			} else {
-				log.Info("Updated the asm cardinality successfully")
-			}
-		}
-		log.Info("Updating the tcp listener endpoints after node deletion")
-		lsnrname := "dblsnr"
-		err = raccommon.UpdateTCPPort(racDatabase.Spec.ConfigParams.GridHome, endp, lsnrname, healthyNode, racDatabase, r.kubeClient, r.kubeConfig, r.Log)
-		if err != nil {
-			log.Info("error occurred while updating the listener tcp ports")
-		} else {
-			log.Info("Updated the tcp listener endpoints successfully")
-		}
-		log.Info("Updating the scan end points after node deletion")
-		err = raccommon.UpdateScanEP(racDatabase.Spec.ConfigParams.GridHome, racDatabase.Spec.ScanSvcName, healthyNode, racDatabase, r.kubeClient, r.kubeConfig, r.Log)
-		if err != nil {
-			log.Info("error occurred while updating the scan end points")
-		} else {
-			log.Info("Updated scan end points successfully after node deletion")
-		}
-		log.Info("Updating the cdp after node deletion")
-		err = raccommon.UpdateCDP(racDatabase.Spec.ConfigParams.GridHome, healthyNode, racDatabase, r.kubeClient, r.kubeConfig, r.Log)
-		if err != nil {
-			log.Info("error occurred while updating the CDP")
-		} else {
-			log.Info("Updated cdp successfully after node deletion")
-		}
-	} else {
-		// === New style (cluster, per-cluster naming, no InstDetails) ===
-		nodeName := OraRacSpex.Name
-
-		// Derive pod name, e.g. racnode-0-0 for statefulset racnode-0
-		podName := nodeName + "-0"
-
-		// Remove Oracle RAC instance from node _before_ deleting StatefulSet
-		err := raccommon.DelRacNode(podName, racDatabase, r.kubeClient, r.kubeConfig, r.Log)
-		if err != nil {
+	sfSetFound, err := raccommon.CheckSfset(nodeName, racDatabase, r.Client)
+	if err == nil && sfSetFound != nil {
+		if err = r.Client.Delete(context.Background(), sfSetFound); err != nil {
 			return err
 		}
+	}
 
-		// Now it is safe to delete the StatefulSet
-		sfSetFound, err := raccommon.CheckSfset(nodeName, racDatabase, r.Client)
-		if err == nil && sfSetFound != nil {
-			err = r.Client.Delete(context.Background(), sfSetFound)
-			if err != nil {
+	cmName := nodeName + racDatabase.Name + "-cmap"
+	configMapFound, err := raccommon.CheckConfigMap(racDatabase, cmName, r.Client)
+	if err == nil {
+		if err = r.Client.Delete(context.Background(), configMapFound); err != nil {
+			return err
+		}
+	}
+
+	nodeIndex := extractNodeIndexFromName(nodeName)
+	for _, svcType := range []string{"vip", "local", "onssvc", "lsnrsvc", "nodeport"} {
+		svcName := raccommon.GetClusterSvcName(racDatabase, racDatabase.Spec.ClusterDetails, nodeIndex, svcType)
+		svcFound, err := raccommon.CheckRacSvcForCluster(
+			racDatabase, racDatabase.Spec.ClusterDetails, nodeIndex, svcType, svcName, r.Client)
+		if err == nil && svcFound != nil {
+			if err = r.Client.Delete(context.Background(), svcFound); err != nil {
 				return err
 			}
+			log.Info("Deleted Svc", "svcName", svcName)
 		}
+	}
 
-		// 2. Delete ConfigMap by naming convention
-		cmName := nodeName + racDatabase.Name + "-cmap"
-		configMapFound, err := raccommon.CheckConfigMap(racDatabase, cmName, r.Client)
-		if err == nil {
-			err = r.Client.Delete(context.Background(), configMapFound)
-			if err != nil {
-				return err
-			}
+	_, endp, err := raccommon.GetDBLsnrEndPointsForCluster(racDatabase)
+	if err != nil {
+		return fmt.Errorf("endpoint generation error in delete block")
+	}
+	healthyNode, err := raccommon.GetHealthyNode(racDatabase)
+	if err != nil {
+		return fmt.Errorf("no healthy node found in the cluster to perform delete node operator. manual intervention required")
+	}
+	if racDatabase.Spec.ClusterDetails != nil && racDatabase.Spec.ClusterDetails.NodeCount == 3 {
+		if err := raccommon.UpdateAsmCount(racDatabase.Spec.ConfigParams.GridHome, healthyNode, racDatabase, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+			log.Info("error occurred while updating the asm count")
 		}
-
-		// 3. Delete VIP/LOCAL/ONSSVC/LSNR SVCs, also NodePort if naming applies
-		svcTypes := []string{"vip", "local", "onssvc", "lsnrsvc", "nodeport"}
-		nodeIndex := extractNodeIndexFromName(nodeName) // Ensure nodeName like "racnode-1"
-		for _, svcType := range svcTypes {
-			svcName := raccommon.GetClusterSvcName(racDatabase, racDatabase.Spec.ClusterDetails, nodeIndex, svcType)
-			svcFound, err := raccommon.CheckRacSvcForCluster(
-				racDatabase, racDatabase.Spec.ClusterDetails, nodeIndex, svcType, svcName, r.Client)
-			if err == nil && svcFound != nil {
-				err = r.Client.Delete(context.Background(), svcFound)
-				if err != nil {
-					return err
-				}
-				log.Info("Deleted Svc", "svcName", svcName)
-			}
-		}
-		_, endp, err := raccommon.GetDBLsnrEndPointsForCluster(racDatabase)
-		if err != nil {
-			return fmt.Errorf("endpoint generation error in delete block")
-		}
-		// nodeCount, err := raccommon.GetHealthyNodeCounts(racDatabase)
-		healthyNode, err := raccommon.GetHealthyNode(racDatabase)
-		// ASM, TCP Listener, and Scan endpoint logic is usually cluster/global
-		if racDatabase.Spec.ClusterDetails != nil && racDatabase.Spec.ClusterDetails.NodeCount == 3 {
-			err := raccommon.UpdateAsmCount(
-				racDatabase.Spec.ConfigParams.GridHome,
-				healthyNode,
-				racDatabase,
-				r.kubeClient, r.kubeConfig, r.Log,
-			)
-			if err != nil {
-				log.Info("error occurred while updating the asm count")
-			} else {
-				log.Info("Updated the asm cardinality successfully")
-			}
-		}
-
-		if err != nil {
-			return fmt.Errorf("no healthy node found in the cluster to perform delete node operator. manual intervention required")
-		}
-
-		log.Info("Updating the tcp listener endpoints after node deletion")
-		lsnrname := "dblsnr"
-		err = raccommon.UpdateTCPPort(
-			racDatabase.Spec.ConfigParams.GridHome,
-			endp,
-			lsnrname,
-			healthyNode,
-			racDatabase,
-			r.kubeClient, r.kubeConfig, r.Log,
-		)
-		if err != nil {
-			log.Info("error occurred while updating the listener tcp ports")
-		} else {
-			log.Info("Updated the tcp listener endpoints successfully")
-		}
-
-		log.Info("Updating the scan end points after node deletion")
-		log.Info(
-			"Updating the scan end points after node deletion",
-			"GridHome", racDatabase.Spec.ConfigParams.GridHome,
-			"ScanSvcName", racDatabase.Spec.ScanSvcName,
-			"HealthyNode", healthyNode,
-			"RacDatabaseName", racDatabase.Name,
-			"Namespace", racDatabase.Namespace,
-		)
-
-		err = raccommon.UpdateScanEP(
-			racDatabase.Spec.ConfigParams.GridHome,
-			racDatabase.Spec.ScanSvcName,
-			healthyNode,
-			racDatabase,
-			r.kubeClient, r.kubeConfig, r.Log,
-		)
-		if err != nil {
-			log.Info("error occurred while updating the scan end points")
-		} else {
-			log.Info("Updated scan end points successfully after node deletion")
-		}
-		log.Info("Updating the cdp after node deletion")
-		err = raccommon.UpdateCDP(racDatabase.Spec.ConfigParams.GridHome, healthyNode, racDatabase, r.kubeClient, r.kubeConfig, r.Log)
-		if err != nil {
-			log.Info("error occurred while updating the CDP")
-		} else {
-			log.Info("Updated cdp successfully after node deletion")
-		}
+	}
+	if err = raccommon.UpdateTCPPort(racDatabase.Spec.ConfigParams.GridHome, endp, "dblsnr", healthyNode, racDatabase, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+		log.Info("error occurred while updating the listener tcp ports")
+	}
+	if err = raccommon.UpdateScanEP(racDatabase.Spec.ConfigParams.GridHome, racDatabase.Spec.ScanSvcName, healthyNode, racDatabase, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+		log.Info("error occurred while updating the scan end points")
+	}
+	if err = raccommon.UpdateCDP(racDatabase.Spec.ConfigParams.GridHome, healthyNode, racDatabase, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+		log.Info("error occurred while updating the CDP")
 	}
 	log.Info("Successfully cleaned up RacInstance")
 	return nil
@@ -5959,13 +5114,7 @@ func (r *RacDatabaseReconciler) SetCurrentSpecAndObservedGeneration(
 	req ctrl.Request,
 ) error {
 
-	var cName, fName string
-	if racDatabase.Spec.ConfigParams != nil &&
-		racDatabase.Spec.ConfigParams.GridResponseFile != nil {
-
-		cName = racDatabase.Spec.ConfigParams.GridResponseFile.ConfigMapName
-		fName = racDatabase.Spec.ConfigParams.GridResponseFile.Name
-	}
+	cName, fName := resolveGridResponseFileRef(racDatabase.Spec.ConfigParams)
 
 	// Normalize DG defaults
 	if err := setRacDgFromStatusAndSpecWithMinimumDefaultsforRAC(
@@ -6065,7 +5214,7 @@ func (r *RacDatabaseReconciler) updateRacNodeStatusForCluster(
 		r.kubeClient, r.kubeConfig, r.Log, r.Client,
 	)
 
-	// Retry update with resource version logic, same as old style
+	// Retry update with resource version logic
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Fetch the latest instance from the API
 		latestInstance := &racdb.RacDatabase{}

@@ -60,15 +60,14 @@ import (
 	"strings"
 
 	racdb "github.com/oracle/oracle-database-operator/apis/database/v4"
-	utils "github.com/oracle/oracle-database-operator/commons/rac/utils"
+	utils "github.com/oracle/oracle-database-operator/commons/crs/rac/utils"
+	sharedk8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -156,35 +155,7 @@ func buildPodSpecForRacCluster(
 
 // CreateServiceAccountIfNotExists ensures the configured service account exists in the namespace.
 func CreateServiceAccountIfNotExists(instance *racdb.RacDatabase, kClient client.Client) error {
-	if instance.Spec.SrvAccountName == "" {
-		return nil
-	}
-
-	ServiceAccountName := instance.Spec.SrvAccountName
-	if ServiceAccountName == "" {
-		ServiceAccountName = "default"
-		return nil
-	}
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ServiceAccountName,
-			Namespace: instance.Namespace,
-		},
-	}
-
-	existingSA := &corev1.ServiceAccount{}
-	err := kClient.Get(context.TODO(), types.NamespacedName{Name: sa.Name, Namespace: sa.Namespace}, existingSA)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			err = kClient.Create(context.TODO(), sa)
-			if err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-	}
-	return nil
+	return sharedk8sobjects.EnsureServiceAccountIfNotExists(context.Background(), kClient, instance.Namespace, instance.Spec.SrvAccountName)
 }
 
 // VolumeClaimTemplatesForRacCluster provides documentation for the VolumeClaimTemplatesForRacCluster function.
@@ -388,10 +359,8 @@ func buildContainerSpecForRacCluster(
 
 	// Local listener port (default 1522)
 	oraLsnrPort := 1522
-	if nodeIndex < len(instance.Spec.InstDetails) &&
-		instance.Spec.InstDetails[nodeIndex].LsnrLocalPort != nil &&
-		*instance.Spec.InstDetails[nodeIndex].LsnrLocalPort != 0 {
-		oraLsnrPort = int(*instance.Spec.InstDetails[nodeIndex].LsnrLocalPort)
+	if clusterSpec.BaseLsnrTargetPort != 0 {
+		oraLsnrPort = int(clusterSpec.BaseLsnrTargetPort)
 	}
 
 	containerSpec := corev1.Container{
@@ -969,7 +938,7 @@ func buildContainerPortsDefForCluster(
 ) []corev1.ContainerPort {
 	var result []corev1.ContainerPort
 
-	// If you ever add per-cluster PortMappings[], use them here as the old code does for InstDetails:
+	// If you ever add per-cluster PortMappings[], use them here.
 	// if len(clusterSpec.PortMappings) > 0 {
 	//     for _, portMapping := range clusterSpec.PortMappings {
 	//         cp := corev1.ContainerPort{
@@ -982,7 +951,7 @@ func buildContainerPortsDefForCluster(
 	//     return result
 	// }
 
-	// Standard port set, matching the old-style hardcoded fallback:
+	// Standard RAC container port set.
 	result = append(result,
 		corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraDBPort, Name: generateName(fmt.Sprintf("tcp-%d", utils.OraDBPort))},
 		corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraLsnrPort, Name: generateName(fmt.Sprintf("tcp-%d", utils.OraLsnrPort))},

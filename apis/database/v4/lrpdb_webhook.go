@@ -61,15 +61,19 @@ import (
 var lrpdblog = logf.Log.WithName("lrpdb-webhook")
 
 func (r *LRPDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithValidator(&LRPDB{}).
-		WithDefaulter(&LRPDB{}).
+	return ctrl.NewWebhookManagedBy[*LRPDB](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrpdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=mlrpdb.kb.io,admissionReviewVersions={v4,v1beta1}
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrpdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=mlrpdb.kb.io,admissionReviewVersions=v1
 
+// Use the generic admission interfaces
 var _ admission.Defaulter[*LRPDB] = &LRPDB{}
+var _ admission.Validator[*LRPDB] = &LRPDB{}
+
+//+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrpdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=vlrpdb.kb.io,admissionReviewVersions=v1
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *LRPDB) Default(ctx context.Context, obj *LRPDB) error {
@@ -133,10 +137,7 @@ func (r *LRPDB) Default(ctx context.Context, obj *LRPDB) error {
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrpdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=vlrpdb.kb.io,admissionReviewVersions={v4,v1beta1}
-
-var _ admission.Validator[*LRPDB] = &LRPDB{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *LRPDB) ValidateCreate(ctx context.Context, obj *LRPDB) (admission.Warnings, error) {
@@ -330,7 +331,7 @@ func (r *LRPDB) CheckObjExistence(action string, allErrs *field.ErrorList, ctx c
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *LRPDB) ValidateUpdate(ctx context.Context, obj *LRPDB, old *LRPDB) (admission.Warnings, error) {
+func (r *LRPDB) ValidateUpdate(ctx context.Context, old, obj *LRPDB) (admission.Warnings, error) {
 	pdbold := old
 	if Bit(pdbold.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("ValidateUpdate-Validating LRPDB spec for : " + r.Name)

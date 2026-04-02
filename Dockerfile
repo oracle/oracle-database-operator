@@ -21,11 +21,17 @@ ARG TARGETARCH
 ARG INSTALL_GO="false"
 ARG GOLANG_VERSION
 ARG DEBUG="false"
-
-# Go build/cache locations (keeps layers smaller and build faster with BuildKit cache mounts)
-ENV GOCACHE=/go-cache \
-    GOMODCACHE=/gomod-cache \
-    GOBIN=/workspace/bin
+RUN if [ "$INSTALL_GO" = "true" ]; then \
+        echo -e "\nCurrent Arch: $(arch), Downloading Go for linux/${TARGETARCH}" &&\
+        curl -LJO https://go.dev/dl/go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz &&\
+        rm -rf /usr/local/go && tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz &&\
+        rm go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz; \
+        echo "Go Arch: $(/usr/local/go/bin/go env GOARCH)"; \
+    fi
+ENV PATH=/usr/local/go/bin:${PATH}
+ENV GOCACHE=/go-cache
+ENV GOMODCACHE=/gomod-cache
+ENV GOBIN=/workspace/bin
 
 WORKDIR /workspace
 
@@ -49,7 +55,7 @@ COPY  go.sum go.sum
 RUN --mount=type=cache,target=/go-cache \
     --mount=type=cache,target=/gomod-cache \
     set -e; \
-    go mod download
+    go mod download -x
 
 # Copy source
 COPY  LICENSE.txt LICENSE.txt
@@ -64,6 +70,7 @@ RUN --mount=type=cache,target=/go-cache \
     --mount=type=cache,target=/gomod-cache \
     set -e; \
     if [ "${DEBUG}" = "true" ]; then \
+      mkdir -p "${GOBIN}"; \
       CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" GO111MODULE=on \
         go build -gcflags="all=-N -l" -o /workspace/manager main.go; \
       go install github.com/go-delve/delve/cmd/dlv@v1.26.1; \

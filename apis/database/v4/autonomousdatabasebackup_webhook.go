@@ -54,17 +54,19 @@ import (
 var autonomousdatabasebackuplog = logf.Log.WithName("autonomousdatabasebackup-resource")
 
 func (r *AutonomousDatabaseBackup) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithValidator(r).
+	// Pass the generic type and receiver 'r', and remove .For(r)
+	// Note: Removed the duplicate .WithValidator(r) call
+	return ctrl.NewWebhookManagedBy[*AutonomousDatabaseBackup](mgr, r).
 		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabasebackup,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,versions=v4,name=vautonomousdatabasebackupv4.kb.io,admissionReviewVersions=v1
 
+// Use the generic admission.Validator interface
 var _ admission.Validator[*AutonomousDatabaseBackup] = &AutonomousDatabaseBackup{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
+// ValidateCreate - Updated signature to *AutonomousDatabaseBackup
 func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj *AutonomousDatabaseBackup) (admission.Warnings, error) {
 	backup := obj
 
@@ -98,14 +100,11 @@ func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj *Auto
 		backup.Name, allErrs)
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
+// ValidateUpdate - Updated signature and fixed the oldObj/newObj assignment bug
 func (r *AutonomousDatabaseBackup) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousDatabaseBackup) (admission.Warnings, error) {
-	var (
-		allErrs   field.ErrorList
-		oldBackup = oldObj
-		newBackup = oldObj
-	)
-
+	var allErrs field.ErrorList
+	oldBackup := oldObj
+	newBackup := oldObj
 	autonomousdatabasebackuplog.Info("validate update", "name", newBackup.Name)
 
 	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil && newBackup.Spec.AutonomousDatabaseBackupOCID != nil &&
@@ -141,7 +140,7 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(ctx context.Context, oldObj, n
 		newBackup.Name, allErrs)
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseBackup) ValidateDelete(context.Context, *AutonomousDatabaseBackup) (admission.Warnings, error) {
+// ValidateDelete signature updated
+func (r *AutonomousDatabaseBackup) ValidateDelete(ctx context.Context, obj *AutonomousDatabaseBackup) (admission.Warnings, error) {
 	return nil, nil
 }

@@ -40,14 +40,13 @@ package v1
 
 import (
 	"context"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -65,35 +64,33 @@ const (
 )
 
 func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithCustomDefaulter(r).
-		WithCustomValidator(r).
+	return ctrl.NewWebhookManagedBy[*DatabaseObserver](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
-}
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+}
 
 //+kubebuilder:webhook:path=/mutate-observability-oracle-com-v1-databaseobserver,mutating=true,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,verbs=create;update,versions=v1,name=mdatabaseobserver.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomDefaulter = &DatabaseObserver{}
+// 2. Update interface guards to use admission.CustomDefaulter and CustomValidator with generics
+var _ admission.Defaulter[*DatabaseObserver] = &DatabaseObserver{}
+var _ admission.Validator[*DatabaseObserver] = &DatabaseObserver{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the type
-func (r *DatabaseObserver) Default(ctx context.Context, obj runtime.Object) error {
-	obs := obj.(*DatabaseObserver)
+// 3. Update Default signature: change runtime.Object to *DatabaseObserver
+func (r *DatabaseObserver) Default(ctx context.Context, obj *DatabaseObserver) error {
+	obs := obj
 	databaseobserverlog.Info("default", "name", obs.Name)
 
 	// TODO(user): fill in your defaulting logic.
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update,path=/validate-observability-oracle-com-v1-databaseobserver,mutating=false,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,versions=v1,name=vdatabaseobserver.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomValidator = &DatabaseObserver{}
-
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	obs := obj.(*DatabaseObserver)
+func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj *DatabaseObserver) (admission.Warnings, error) {
+	obs := obj
 	databaseobserverlog.Info("validate create", "name", obs.Name)
 
 	var e field.ErrorList
@@ -141,8 +138,8 @@ func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Objec
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	obs := newObj.(*DatabaseObserver)
+func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj *DatabaseObserver) (admission.Warnings, error) {
+	obs := newObj
 	databaseobserverlog.Info("validate update", "name", obs.Name)
 	var e field.ErrorList
 
@@ -160,8 +157,8 @@ func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj ru
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	obs := obj.(*DatabaseObserver)
+func (r *DatabaseObserver) ValidateDelete(ctx context.Context, obj *DatabaseObserver) (admission.Warnings, error) {
+	obs := obj
 	databaseobserverlog.Info("validate delete", "name", obs.Name)
 
 	return nil, nil
