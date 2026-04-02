@@ -55,15 +55,10 @@ package v4
 import (
 	"context"
 	"fmt"
-	"net"
 	"reflect"
-	"regexp"
-	"strconv"
 	"strings"
 
-	"os"
-
-	utils "github.com/oracle/oracle-database-operator/commons/rac/utils"
+	utils "github.com/oracle/oracle-database-operator/commons/crs/rac/utils"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -78,7 +73,7 @@ var racdatabaselog = logf.Log.WithName("racdatabase-resource")
 
 // SetupWebhookWithManager registers the RAC database webhook with the manager.
 func (r *RacDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+	return ctrl.NewWebhookManagedBy[*RacDatabase](mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
@@ -175,11 +170,8 @@ func (r *RacDatabase) ValidateCreate(ctx context.Context, obj *RacDatabase) (adm
 		cr.validateDbSecret,
 		cr.validateTdeSecret,
 		cr.validateServiceSpecs,
-		cr.validatePrivateIPSpecs,
 		cr.validateAsmStorage,
 		cr.validateGeneric,
-		cr.validateUniquePorts,
-		cr.validateUniqueIPAddresses,
 	} {
 		if errs := vfn(); errs != nil {
 			validationErrs = append(validationErrs, errs...)
@@ -488,27 +480,8 @@ func (r *RacDatabase) ValidateDelete(ctx context.Context, obj *RacDatabase) (adm
 	return nil, nil
 }
 
-// validateUniqueIPAddresses verifies that private IP addresses are unique.
-func (r *RacDatabase) validateUniqueIPAddresses() field.ErrorList {
-	var validationErrs field.ErrorList
-	ipMap := make(map[string]bool)
-
-	for i, inst := range r.Spec.InstDetails {
-		for j, ipDetail := range inst.PrivateIPDetails {
-			ipPath := field.NewPath("spec").Child("instDetails").Index(i).Child("privateIPDetails").Index(j).Child("ip")
-			if ipMap[ipDetail.IP] {
-				validationErrs = append(validationErrs, field.Invalid(ipPath, ipDetail.IP, "IP address must be unique"))
-			} else {
-				ipMap[ipDetail.IP] = true
-			}
-		}
-	}
-
-	return validationErrs
-}
-
 // ValidateUpdate implements webhook.CustomValidator
-func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj *RacDatabase, newObj *RacDatabase) (admission.Warnings, error) {
+func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *RacDatabase) (admission.Warnings, error) {
 	racdatabaselog.Info("validate update", "name", r.Name)
 
 	oldCr := oldObj
@@ -522,7 +495,9 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj *RacDatabase, n
 	// Block spec updates in certain states
 	if newCr.Status.State == "PROVISIONING" ||
 		newCr.Status.State == "UPDATING" ||
-		newCr.Status.State == "PODAVAILABLE" {
+		newCr.Status.State == "PODAVAILABLE" ||
+		newCr.Status.State == string(RACAddInstState) ||
+		newCr.Status.State == string(RACDeletingState) {
 		if !reflect.DeepEqual(oldCr.Spec, newCr.Spec) {
 			return nil, apierrors.NewForbidden(
 				schema.GroupResource{Group: "database.oracle.com", Resource: "RacDatabase"},
@@ -744,35 +719,6 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj *RacDatabase, n
 	return warnings, nil
 }
 
-// validateUniquePorts ensures NodePort and service ports do not conflict.
-// validateUniquePorts ensures NodePort and service ports do not conflict.
-func (r *RacDatabase) validateUniquePorts() field.ErrorList {
-	var validationErrs field.ErrorList
-	portMap := make(map[int]bool)
-
-	for _, inst := range r.Spec.InstDetails {
-		// Check for OnsTargetPort if present
-		if inst.OnsTargetPort != nil {
-			if portMap[int(*inst.OnsTargetPort)] {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("instDetails").Child(inst.Name).Child("onsTargetPort"), inst.OnsTargetPort, "onsTargetPort must be unique"))
-			} else {
-				portMap[int(*inst.OnsTargetPort)] = true
-			}
-		}
-
-		// Check for LsnrTargetPort if present
-		if inst.LsnrTargetPort != nil {
-			if portMap[int(*inst.LsnrTargetPort)] {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("instDetails").Child(inst.Name).Child("lsnrTargetPort"), inst.LsnrTargetPort, "lsnrTargetPort must be unique"))
-			} else {
-				portMap[int(*inst.LsnrTargetPort)] = true
-			}
-		}
-	}
-
-	return validationErrs
-}
-
 // validateSshSecret verifies SSH secret references and required fields.
 // validateSshSecret verifies SSH secret references and required fields.
 func (r *RacDatabase) validateSshSecret() field.ErrorList {
@@ -914,127 +860,12 @@ func (r *RacDatabase) validateServiceSpecs() field.ErrorList {
 		}
 	}
 
-	nodeCount := 0
-	for index := range r.Spec.InstDetails {
-		if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-			nodeCount = nodeCount + 1
-		}
-	}
-
-	if r.Spec.ServiceDetails.Name != "" {
-		prefAvailCount := len(r.Spec.ServiceDetails.Preferred) + len(r.Spec.ServiceDetails.Available)
-		var a []any = []any{"%s -> %s\n", strconv.Itoa(prefAvailCount), strconv.Itoa(nodeCount)}
-		fmt.Fprintln(os.Stdout, a...)
-		if prefAvailCount > nodeCount {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("ServiceDetails").Child("Preferred"), r.Spec.ServiceDetails.Preferred,
-					"The statefulset counts ["+strconv.Itoa(nodeCount)+"] are not matching with the preferred and available instances ["+strconv.Itoa(prefAvailCount)+"]count"))
-		}
-	}
-
 	// ======> Service Specs Check Ends here here ====>
 
 	if len(validationErrs) > 0 {
 		return validationErrs
 	}
 
-	return nil
-}
-
-// validatePrivateIPSpecs ensures private network specs are well formed.
-// validatePrivateIPSpecs ensures private network specs are well formed.
-func (r *RacDatabase) validatePrivateIPSpecs() field.ErrorList {
-
-	var validationErrs field.ErrorList
-	var status bool
-
-	status = true
-	for index := range r.Spec.InstDetails {
-		if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-			// Checking the mulus configuration
-			//*** IP Block Check Begins - Following block validate Private IPs **///
-			for pindex := range r.Spec.InstDetails[index].PrivateIPDetails {
-				if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name == "" {
-					validationErrs = append(validationErrs,
-						field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails").Child("Name"), r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name,
-							"Multus configuration Name cannot be empty"))
-					status = false
-				}
-				if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name != "" {
-					if r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP == "" {
-						validationErrs = append(validationErrs,
-							field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails").Child("IP"), r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP,
-								"IP cannot be set to empty"))
-						status = false
-					} else {
-						ip1 := net.ParseIP(r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP)
-						if ip1.To4() == nil {
-							validationErrs = append(validationErrs,
-								field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails").Child("IP"), r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP,
-									" IP is set incorrectly"))
-							status = false
-						}
-						if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface == "" {
-							validationErrs = append(validationErrs,
-								field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails").Child("Interface"), r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface,
-									"Interface name cannot be set to empty"))
-							status = false
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if status {
-		for index := range r.Spec.InstDetails {
-			if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-				status = false
-				for pindex := range r.Spec.InstDetails[index].PrivateIPDetails {
-					if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name != "" && r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface != "" && r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP != "" {
-						error := r.checkPrivateNetworkConfiguration(r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name, r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP, r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface)
-						if error != nil {
-							validationErrs = append(validationErrs, error...)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if len(validationErrs) > 0 {
-		return validationErrs
-	}
-
-	return nil
-}
-
-// checkPrivateNetworkConfiguration verifies private network overlap rules.
-func (r *RacDatabase) checkPrivateNetworkConfiguration(name string, ip string, nwcard string) field.ErrorList {
-	var status bool
-	var validationErrs field.ErrorList
-
-	for index := range r.Spec.InstDetails {
-		if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-			status = false
-			for pindex := range r.Spec.InstDetails[index].PrivateIPDetails {
-				if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name == name && r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface == nwcard {
-					status = true
-					break
-				}
-			}
-			if !status {
-				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails"), r.Spec.InstDetails[index].PrivateIPDetails,
-						"Multus configuration mismatch. "+name+" or "+nwcard+" is  not matching with other statefulsets multus conifguration"))
-				break
-			}
-		}
-	}
-
-	if len(validationErrs) > 0 {
-		return validationErrs
-	}
 	return nil
 }
 
@@ -1054,24 +885,6 @@ func (r *RacDatabase) validateConfigParams() field.ErrorList {
 func (r *RacDatabase) validateGeneric() field.ErrorList {
 
 	var validationErrs field.ErrorList
-
-	for index := range r.Spec.InstDetails {
-		if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-
-			is_alphanumeric := regexp.MustCompile(`^[a-zA-Z]*[0-9]*$`).MatchString(r.Spec.InstDetails[index].Name)
-			if !is_alphanumeric {
-				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("InstDetails").Child("Name"), r.Spec.InstDetails[index].Name,
-						"Name can be only alphanumeric string"))
-			}
-
-			if r.Spec.InstDetails[index].HostSwLocation == "" && r.Spec.StorageClass == "" {
-				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("InstDetails").Child("HostSwLocation"), r.Spec.InstDetails[index].HostSwLocation,
-						"HostSwLocation and StorageClass both cannot be set to empty. You need set one of them for software location."))
-			}
-		}
-	}
 
 	if r.Spec.ConfigParams == nil {
 		validationErrs = append(validationErrs,

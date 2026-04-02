@@ -46,7 +46,7 @@ import (
 	"strconv"
 	"strings"
 
-	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
+	utils "github.com/oracle/oracle-database-operator/commons/crs/restart/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -63,7 +63,7 @@ var OracleRestartlog = logf.Log.WithName("OracleRestart-resource")
 // SetupWebhookWithManager registers the OracleRestart webhook with the
 // controller manager.
 func (r *OracleRestart) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+	return ctrl.NewWebhookManagedBy[*OracleRestart](mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
@@ -317,7 +317,8 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj *OracleRestart) 
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj *OracleRestart) (admission.Warnings, error) {
-	old, newCr := oldObj, newObj
+	old := oldObj
+	newCr := newObj
 
 	OracleRestartlog.Info("validate update", "name", newCr.Name)
 

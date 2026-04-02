@@ -39,16 +39,34 @@
 package v4
 
 import (
+	"context"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var dataguardbrokerlog = logf.Log.WithName("dataguardbroker-resource")
 
 func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+
+	return ctrl.NewWebhookManagedBy[*DataguardBroker](mgr, r).
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// +kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-dataguardbroker,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dataguardbrokers,versions=v4,name=vdataguardbrokerv4.kb.io,admissionReviewVersions=v1
+
+var _ admission.Validator[*DataguardBroker] = &DataguardBroker{}
+
+func (r *DataguardBroker) ValidateCreate(ctx context.Context, obj *DataguardBroker) (admission.Warnings, error) {
+	return nil, nil
+}
+
+func (r *DataguardBroker) ValidateUpdate(ctx context.Context, oldObj, newObj *DataguardBroker) (admission.Warnings, error) {
+	return nil, nil
+}
+
+func (r *DataguardBroker) ValidateDelete(ctx context.Context, obj *DataguardBroker) (admission.Warnings, error) {
+	return nil, nil
+}

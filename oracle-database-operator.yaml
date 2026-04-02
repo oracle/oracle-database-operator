@@ -10744,6 +10744,8 @@ spec:
               asmDiskGroupDetails:
                 items:
                   properties:
+                    asmStorageSizeInGb:
+                      type: integer
                     autoUpdate:
                       type: string
                     disks:
@@ -13377,6 +13379,8 @@ spec:
               asmDiskGroupDetails:
                 items:
                   properties:
+                    asmStorageSizeInGb:
+                      type: integer
                     autoUpdate:
                       type: string
                     disks:
@@ -13602,235 +13606,6 @@ spec:
                 type: string
               imagePullSecret:
                 type: string
-              instDetails:
-                items:
-                  properties:
-                    envFile:
-                      type: string
-                    envVars:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                          value:
-                            type: string
-                          valueFrom:
-                            properties:
-                              configMapKeyRef:
-                                properties:
-                                  key:
-                                    type: string
-                                  name:
-                                    default: ""
-                                    type: string
-                                  optional:
-                                    type: boolean
-                                required:
-                                - key
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              fieldRef:
-                                properties:
-                                  apiVersion:
-                                    type: string
-                                  fieldPath:
-                                    type: string
-                                required:
-                                - fieldPath
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              fileKeyRef:
-                                properties:
-                                  key:
-                                    type: string
-                                  optional:
-                                    default: false
-                                    type: boolean
-                                  path:
-                                    type: string
-                                  volumeName:
-                                    type: string
-                                required:
-                                - key
-                                - path
-                                - volumeName
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              resourceFieldRef:
-                                properties:
-                                  containerName:
-                                    type: string
-                                  divisor:
-                                    anyOf:
-                                    - type: integer
-                                    - type: string
-                                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                    x-kubernetes-int-or-string: true
-                                  resource:
-                                    type: string
-                                required:
-                                - resource
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              secretKeyRef:
-                                properties:
-                                  key:
-                                    type: string
-                                  name:
-                                    default: ""
-                                    type: string
-                                  optional:
-                                    type: boolean
-                                required:
-                                - key
-                                type: object
-                                x-kubernetes-map-type: atomic
-                            type: object
-                        required:
-                        - name
-                        type: object
-                      type: array
-                    hostSwLocation:
-                      type: string
-                    isDelete:
-                      type: string
-                    isForceDelete:
-                      type: string
-                    isKeepPVC:
-                      type: string
-                    label:
-                      type: string
-                    lsnrLocalPort:
-                      format: int32
-                      type: integer
-                    lsnrTargetPort:
-                      format: int32
-                      type: integer
-                    name:
-                      type: string
-                    nodePortSvc:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                          portMappings:
-                            items:
-                              properties:
-                                nodePort:
-                                  format: int32
-                                  type: integer
-                                port:
-                                  format: int32
-                                  type: integer
-                                protocol:
-                                  type: string
-                                targetPort:
-                                  format: int32
-                                  type: integer
-                              required:
-                              - port
-                              - protocol
-                              - targetPort
-                              type: object
-                            type: array
-                          svcType:
-                            type: string
-                        required:
-                        - name
-                        - svcType
-                        type: object
-                      type: array
-                    onsLocalPort:
-                      format: int32
-                      type: integer
-                    onsTargetPort:
-                      format: int32
-                      type: integer
-                    portMappings:
-                      items:
-                        properties:
-                          nodePort:
-                            format: int32
-                            type: integer
-                          port:
-                            format: int32
-                            type: integer
-                          protocol:
-                            type: string
-                          targetPort:
-                            format: int32
-                            type: integer
-                        required:
-                        - port
-                        - protocol
-                        - targetPort
-                        type: object
-                      type: array
-                    privateIPDetails:
-                      items:
-                        properties:
-                          interface:
-                            type: string
-                          ip:
-                            type: string
-                          mac:
-                            type: string
-                          name:
-                            type: string
-                          namespace:
-                            type: string
-                          type:
-                            type: string
-                        type: object
-                      type: array
-                    pvcName:
-                      additionalProperties:
-                        type: string
-                      type: object
-                    resources:
-                      properties:
-                        claims:
-                          items:
-                            properties:
-                              name:
-                                type: string
-                              request:
-                                type: string
-                            required:
-                            - name
-                            type: object
-                          type: array
-                          x-kubernetes-list-map-keys:
-                          - name
-                          x-kubernetes-list-type: map
-                        limits:
-                          additionalProperties:
-                            anyOf:
-                            - type: integer
-                            - type: string
-                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                            x-kubernetes-int-or-string: true
-                          type: object
-                        requests:
-                          additionalProperties:
-                            anyOf:
-                            - type: integer
-                            - type: string
-                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                            x-kubernetes-int-or-string: true
-                          type: object
-                      type: object
-                    vipSvcName:
-                      type: string
-                    workerNode:
-                      items:
-                        type: string
-                      type: array
-                  required:
-                  - name
-                  - vipSvcName
-                  type: object
-                type: array
               instanceDetails:
                 properties:
                   baseLsnrTargetPort:
@@ -14381,235 +14156,6 @@ spec:
                 type: string
               imagePullSecret:
                 type: string
-              instDetails:
-                items:
-                  properties:
-                    envFile:
-                      type: string
-                    envVars:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                          value:
-                            type: string
-                          valueFrom:
-                            properties:
-                              configMapKeyRef:
-                                properties:
-                                  key:
-                                    type: string
-                                  name:
-                                    default: ""
-                                    type: string
-                                  optional:
-                                    type: boolean
-                                required:
-                                - key
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              fieldRef:
-                                properties:
-                                  apiVersion:
-                                    type: string
-                                  fieldPath:
-                                    type: string
-                                required:
-                                - fieldPath
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              fileKeyRef:
-                                properties:
-                                  key:
-                                    type: string
-                                  optional:
-                                    default: false
-                                    type: boolean
-                                  path:
-                                    type: string
-                                  volumeName:
-                                    type: string
-                                required:
-                                - key
-                                - path
-                                - volumeName
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              resourceFieldRef:
-                                properties:
-                                  containerName:
-                                    type: string
-                                  divisor:
-                                    anyOf:
-                                    - type: integer
-                                    - type: string
-                                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                    x-kubernetes-int-or-string: true
-                                  resource:
-                                    type: string
-                                required:
-                                - resource
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              secretKeyRef:
-                                properties:
-                                  key:
-                                    type: string
-                                  name:
-                                    default: ""
-                                    type: string
-                                  optional:
-                                    type: boolean
-                                required:
-                                - key
-                                type: object
-                                x-kubernetes-map-type: atomic
-                            type: object
-                        required:
-                        - name
-                        type: object
-                      type: array
-                    hostSwLocation:
-                      type: string
-                    isDelete:
-                      type: string
-                    isForceDelete:
-                      type: string
-                    isKeepPVC:
-                      type: string
-                    label:
-                      type: string
-                    lsnrLocalPort:
-                      format: int32
-                      type: integer
-                    lsnrTargetPort:
-                      format: int32
-                      type: integer
-                    name:
-                      type: string
-                    nodePortSvc:
-                      items:
-                        properties:
-                          name:
-                            type: string
-                          portMappings:
-                            items:
-                              properties:
-                                nodePort:
-                                  format: int32
-                                  type: integer
-                                port:
-                                  format: int32
-                                  type: integer
-                                protocol:
-                                  type: string
-                                targetPort:
-                                  format: int32
-                                  type: integer
-                              required:
-                              - port
-                              - protocol
-                              - targetPort
-                              type: object
-                            type: array
-                          svcType:
-                            type: string
-                        required:
-                        - name
-                        - svcType
-                        type: object
-                      type: array
-                    onsLocalPort:
-                      format: int32
-                      type: integer
-                    onsTargetPort:
-                      format: int32
-                      type: integer
-                    portMappings:
-                      items:
-                        properties:
-                          nodePort:
-                            format: int32
-                            type: integer
-                          port:
-                            format: int32
-                            type: integer
-                          protocol:
-                            type: string
-                          targetPort:
-                            format: int32
-                            type: integer
-                        required:
-                        - port
-                        - protocol
-                        - targetPort
-                        type: object
-                      type: array
-                    privateIPDetails:
-                      items:
-                        properties:
-                          interface:
-                            type: string
-                          ip:
-                            type: string
-                          mac:
-                            type: string
-                          name:
-                            type: string
-                          namespace:
-                            type: string
-                          type:
-                            type: string
-                        type: object
-                      type: array
-                    pvcName:
-                      additionalProperties:
-                        type: string
-                      type: object
-                    resources:
-                      properties:
-                        claims:
-                          items:
-                            properties:
-                              name:
-                                type: string
-                              request:
-                                type: string
-                            required:
-                            - name
-                            type: object
-                          type: array
-                          x-kubernetes-list-map-keys:
-                          - name
-                          x-kubernetes-list-type: map
-                        limits:
-                          additionalProperties:
-                            anyOf:
-                            - type: integer
-                            - type: string
-                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                            x-kubernetes-int-or-string: true
-                          type: object
-                        requests:
-                          additionalProperties:
-                            anyOf:
-                            - type: integer
-                            - type: string
-                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                            x-kubernetes-int-or-string: true
-                          type: object
-                      type: object
-                    vipSvcName:
-                      type: string
-                    workerNode:
-                      items:
-                        type: string
-                      type: array
-                  required:
-                  - name
-                  - vipSvcName
-                  type: object
-                type: array
               installNode:
                 type: string
               isDebug:
@@ -14635,6 +14181,21 @@ spec:
                 type: integer
               oldSpec:
                 type: string
+              operation:
+                properties:
+                  holder:
+                    type: string
+                  phase:
+                    type: string
+                  startedAt:
+                    format: date-time
+                    type: string
+                  targetGeneration:
+                    format: int64
+                    type: integer
+                  type:
+                    type: string
+                type: object
               pdbConnectString:
                 type: string
               racNodes:
@@ -18925,26 +18486,6 @@ webhooks:
       namespace: oracle-database-operator-system
       path: /mutate-database-oracle-com-v4-dbcssystem
   failurePolicy: Fail
-  name: mdbcssystemv1alpha1.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - dbcssystems
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v4-dbcssystem
-  failurePolicy: Fail
   name: mdbcssystemv4.kb.io
   rules:
   - apiGroups:
@@ -18958,8 +18499,7 @@ webhooks:
     - dbcssystems
   sideEffects: None
 - admissionReviewVersions:
-  - v4
-  - v1beta1
+  - v1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
@@ -18979,8 +18519,7 @@ webhooks:
     - lrests
   sideEffects: None
 - admissionReviewVersions:
-  - v4
-  - v1beta1
+  - v1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
@@ -19295,14 +18834,14 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /validate-observability-oracle-com-v1alpha1-databaseobserver
+      path: /validate-observability-oracle-com-v4-databaseobserver
   failurePolicy: Fail
   name: vdatabaseobserver.kb.io
   rules:
   - apiGroups:
     - observability.oracle.com
     apiVersions:
-    - v1alpha1
+    - v4
     operations:
     - CREATE
     - UPDATE
@@ -19336,6 +18875,26 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-dataguardbroker
+  failurePolicy: Fail
+  name: vdataguardbrokerv4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dataguardbrokers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v4-dbcssystem
   failurePolicy: Fail
   name: vdbcssystemv4.kb.io
@@ -19352,8 +18911,7 @@ webhooks:
     - dbcssystems
   sideEffects: None
 - admissionReviewVersions:
-  - v4
-  - v1beta1
+  - v1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
@@ -19373,8 +18931,7 @@ webhooks:
     - lrests
   sideEffects: None
 - admissionReviewVersions:
-  - v4
-  - v1beta1
+  - v1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
@@ -19504,6 +19061,28 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-singleinstancedatabase
+  failurePolicy: Fail
+  name: vsingleinstancedatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - singleinstancedatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v4-singleinstancedatabase
   failurePolicy: Fail
   name: vsingleinstancedatabasev4.kb.io
@@ -19545,7 +19124,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sidb-operator-sa
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
         imagePullPolicy: Always
         name: manager
         ports:

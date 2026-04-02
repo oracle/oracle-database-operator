@@ -62,7 +62,6 @@ import (
 // RacDatabaseSpec captures desired configuration for a RAC database deployment.
 // RacDatabaseSpec captures desired configuration for a RAC database deployment.
 type RacDatabaseSpec struct {
-	InstDetails          []RacInstDetailSpec          `json:"instDetails,omitempty"`
 	ClusterDetails       *RacClusterDetailSpec        `json:"instanceDetails,omitempty"`
 	ConfigParams         *RacInitParams               `json:"configParams"`
 	AsmStorageDetails    []AsmDiskGroupDetails        `json:"asmDiskGroupDetails"`
@@ -145,29 +144,6 @@ type RacInitParams struct {
 	OneOffLocation          string           `json:"oneOffLocation,omitempty"`
 	DbOneOffIds             string           `json:"dbOneOffIds,omitempty"`
 	GridOneOffIds           string           `json:"gridOneOffIds,omitempty"`
-}
-
-// RacInstDetailSpec describes per-instance configuration in old-style specs.
-type RacInstDetailSpec struct {
-	Name             string                       `json:"name"`
-	HostSwLocation   string                       `json:"hostSwLocation,omitempty"`
-	WorkerNode       []string                     `json:"workerNode,omitempty"`
-	EnvVars          []corev1.EnvVar              `json:"envVars,omitempty"`
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requiremen
-	Label            string                       `json:"label,omitempty"`
-	IsDelete         string                       `json:"isDelete,omitempty"`
-	IsForceDelete    string                       `json:"isForceDelete,omitempty"`
-	IsKeepPVC        string                       `json:"isKeepPVC,omitempty"`
-	PvcName          map[string]string            `json:"pvcName,omitempty"`
-	VipSvcName       string                       `json:"vipSvcName"`
-	NodePortSvc      []RacNodePortSvc             `json:"nodePortSvc,omitempty"`  // Port mappings for the service that is created. The service is created if
-	PortMappings     []RacPortMapping             `json:"portMappings,omitempty"` // Port mappings for the service that is created. The service is created if there is at least
-	PrivateIPDetails []PrivIpDetailSpec           `json:"privateIPDetails,omitempty"`
-	EnvFile          string                       `json:"envFile,omitempty"`
-	OnsTargetPort    *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
-	LsnrTargetPort   *int32                       `json:"lsnrTargetPort,omitempty"`
-	OnsLocalPort     *int32                       `json:"onsLocalPort,omitempty"` // Port that will be exposed on the service.
-	LsnrLocalPort    *int32                       `json:"lsnrLocalPort,omitempty"`
 }
 
 // RacClusterDetailSpec defines cluster-wide configuration for new-style specs.
@@ -303,6 +279,15 @@ type RacNodeDetailedStatus struct {
 	MountedDevices []string          `json:"mountedDevices,omitempty"`
 }
 
+// RacOperationStatus captures controller-level operation lock metadata.
+type RacOperationStatus struct {
+	Type             string      `json:"type,omitempty"`
+	Phase            string      `json:"phase,omitempty"`
+	Holder           string      `json:"holder,omitempty"`
+	TargetGeneration int64       `json:"targetGeneration,omitempty"`
+	StartedAt        metav1.Time `json:"startedAt,omitempty"`
+}
+
 // RacDatabaseStatus defines the observed state of RacDatabase
 type RacDatabaseStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -324,9 +309,8 @@ type RacDatabaseStatus struct {
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
-	Conditions   []metav1.Condition   `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
-	InstDetails  *[]RacInstDetailSpec `json:"instDetails,omitempty"`
-	ConfigParams *RacInitParams       `json:"configParams,omitempty"`
+	Conditions   []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	ConfigParams *RacInitParams     `json:"configParams,omitempty"`
 	// AsmDetails         *RacAsmInstanceStatus        `json:"asmDetails,omitempty"`
 	AsmDiskGroups      []AsmDiskGroupStatus    `json:"asmDiskGroups,omitempty"`
 	NfsStorageDetails  *corev1.NFSVolumeSource `json:"nfsStorageDetails,omitempty"`
@@ -352,6 +336,7 @@ type RacDatabaseStatus struct {
 	TdeWalletSecret    *RacDbPwdSecretDetails       `json:"tdeWalletSecret,omitempty"`
 	ServiceDetails     RacServiceSpec               `json:"serviceDetails,omitempty"`
 	Resources          *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requiremen`
+	Operation          *RacOperationStatus          `json:"operation,omitempty"`
 	OldSpec            string                       `json:"oldSpec,omitempty"`
 	ObservedGeneration int64                        `json:"observedGeneration,omitempty"`
 }

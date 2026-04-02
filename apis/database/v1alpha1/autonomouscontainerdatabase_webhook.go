@@ -43,12 +43,14 @@ import (
 
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
+
+	// "k8s.io/apimachinery/pkg/runtime" // No longer needed for signatures
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	// "sigs.k8s.io/controller-runtime/pkg/webhook" // Swapping for admission package
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -56,27 +58,28 @@ import (
 var autonomouscontainerdatabaselog = logf.Log.WithName("autonomouscontainerdatabase-resource")
 
 func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithCustomValidator(r).
+
+	return ctrl.NewWebhookManagedBy[*AutonomousContainerDatabase](mgr, r).
+		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomouscontainerdatabases,versions=v1alpha1,name=vautonomouscontainerdatabasev1alpha1.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomValidator = &AutonomousContainerDatabase{}
+// Update the guard to admission.Validator
+var _ admission.Validator[*AutonomousContainerDatabase] = &AutonomousContainerDatabase{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+// Update signatures to use *AutonomousContainerDatabase
+func (r *AutonomousContainerDatabase) ValidateCreate(ctx context.Context, obj *AutonomousContainerDatabase) (admission.Warnings, error) {
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousContainerDatabase) (admission.Warnings, error) {
 	var (
 		allErrs field.ErrorList
-		oldAcd  *AutonomousContainerDatabase = oldObj.(*AutonomousContainerDatabase)
-		newAcd  *AutonomousContainerDatabase = newObj.(*AutonomousContainerDatabase)
 	)
+	oldAcd := oldObj
+	newAcd := newObj
 
 	autonomouscontainerdatabaselog.Info("validate update", "name", newAcd.Name)
 
@@ -106,7 +109,6 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj
 		newAcd.Name, allErrs)
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateDelete(context.Context, runtime.Object) (admission.Warnings, error) {
+func (r *AutonomousContainerDatabase) ValidateDelete(ctx context.Context, obj *AutonomousContainerDatabase) (admission.Warnings, error) {
 	return nil, nil
 }

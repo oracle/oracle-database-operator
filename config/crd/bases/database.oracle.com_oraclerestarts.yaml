@@ -48,6 +48,8 @@ spec:
               asmDiskGroupDetails:
                 items:
                   properties:
+                    asmStorageSizeInGb:
+                      type: integer
                     autoUpdate:
                       type: string
                     disks:

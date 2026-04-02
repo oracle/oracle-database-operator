@@ -40,14 +40,13 @@ package v1alpha1
 
 import (
 	"context"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -65,105 +64,82 @@ const (
 )
 
 func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithCustomDefaulter(r).
-		WithCustomValidator(r).
+	// 1. Use the generic builder with [*DatabaseObserver]
+	// 2. Pass both 'mgr' and 'r' to the constructor
+	return ctrl.NewWebhookManagedBy[*DatabaseObserver](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
 //+kubebuilder:webhook:path=/mutate-observability-oracle-com-v1alpha1-databaseobserver,mutating=true,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,verbs=create;update,versions=v1alpha1,name=mdatabaseobserver.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomDefaulter = &DatabaseObserver{}
+// 3. Update guards to generic admission package
+var _ admission.Defaulter[*DatabaseObserver] = &DatabaseObserver{}
+var _ admission.Validator[*DatabaseObserver] = &DatabaseObserver{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the type
-func (r *DatabaseObserver) Default(ctx context.Context, obj runtime.Object) error {
-	obs := obj.(*DatabaseObserver)
-	databaseobserverlog.Info("default", "name", obs.Name)
+// Default implements admission.Defaulter[*DatabaseObserver]
+func (r *DatabaseObserver) Default(ctx context.Context, obj *DatabaseObserver) error {
+	// Casting is no longer required. Use 'obj' directly.
+	databaseobserverlog.Info("default", "name", obj.Name)
 
-	// TODO(user): fill in your defaulting logic.
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update,path=/validate-observability-oracle-com-v1alpha1-databaseobserver,mutating=false,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,versions=v1alpha1,name=vdatabaseobserver.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomValidator = &DatabaseObserver{}
-
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	obs := obj.(*DatabaseObserver)
-	databaseobserverlog.Info("validate create", "name", obs.Name)
+// ValidateCreate implements admission.Validator[*DatabaseObserver]
+func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj *DatabaseObserver) (admission.Warnings, error) {
+	databaseobserverlog.Info("validate create", "name", obj.Name)
 
 	var e field.ErrorList
 	ns := dbcommons.GetWatchNamespaces()
 
-	// Check for namespace/cluster scope access
-	if _, isDesiredNamespaceWithinScope := ns[obs.Namespace]; !isDesiredNamespaceWithinScope && len(ns) > 0 {
+	// Check for namespace scope access
+	if _, isDesiredNamespaceWithinScope := ns[obj.Namespace]; !isDesiredNamespaceWithinScope && len(ns) > 0 {
 		e = append(e,
-			field.Invalid(field.NewPath("metadata").Child("namespace"), obs.Namespace,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), obj.Namespace,
 				"Oracle database operator doesn't watch over this namespace"))
 	}
 
-	// The other vault field must have value if one does
-	if (obs.Spec.Database.OCIVault.VaultID != "" && obs.Spec.Database.OCIVault.VaultPasswordSecret == "") ||
-		(obs.Spec.Database.OCIVault.VaultPasswordSecret != "" && obs.Spec.Database.OCIVault.VaultID == "") {
-
+	// OCI Vault validation
+	if (obj.Spec.Database.OCIVault.VaultID != "" && obj.Spec.Database.OCIVault.VaultPasswordSecret == "") ||
+		(obj.Spec.Database.OCIVault.VaultPasswordSecret != "" && obj.Spec.Database.OCIVault.VaultID == "") {
 		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("database").Child("oci"), obs.Spec.Database.OCIVault,
+			field.Invalid(field.NewPath("spec").Child("database").Child("oci"), obj.Spec.Database.OCIVault,
 				ErrorSpecValidationMissingVaultField))
 	}
 
-	// The other vault field must have value if one does
-	if (obs.Spec.Database.AzureVault.VaultID != "" && (obs.Spec.Database.AzureVault.VaultPasswordSecret == "" && obs.Spec.Database.AzureVault.VaultUsernameSecret == "")) ||
-		(obs.Spec.Database.AzureVault.VaultPasswordSecret != "" && obs.Spec.Database.AzureVault.VaultID == "") ||
-		(obs.Spec.Database.AzureVault.VaultUsernameSecret != "" && obs.Spec.Database.AzureVault.VaultID == "") {
-
+	// Azure Vault validation
+	if (obj.Spec.Database.AzureVault.VaultID != "" && (obj.Spec.Database.AzureVault.VaultPasswordSecret == "" && obj.Spec.Database.AzureVault.VaultUsernameSecret == "")) ||
+		(obj.Spec.Database.AzureVault.VaultPasswordSecret != "" && obj.Spec.Database.AzureVault.VaultID == "") ||
+		(obj.Spec.Database.AzureVault.VaultUsernameSecret != "" && obj.Spec.Database.AzureVault.VaultID == "") {
 		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("database").Child("azure"), obs.Spec.Database.AzureVault,
+			field.Invalid(field.NewPath("spec").Child("database").Child("azure"), obj.Spec.Database.AzureVault,
 				ErrorSpecValidationMissingVaultField))
 	}
 
-	// disallow usage of any other image than the observability-exporter
-	// temporarily disabled
-	//if obs.Spec.Deployment.ExporterImage != "" && !strings.HasPrefix(obs.Spec.Deployment.ExporterImage, AllowedExporterImage) {
-	//	e = append(e,
-	//		field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), obs.Spec.Deployment.ExporterImage,
-	//			ErrorSpecExporterImageNotAllowed))
-	//}
-
-	// Return if any errors
 	if len(e) > 0 {
-		return nil, apierrors.NewInvalid(schema.GroupKind{Group: "observability.oracle.com", Kind: "DatabaseObserver"}, obs.Name, e)
+		return nil, apierrors.NewInvalid(schema.GroupKind{Group: "observability.oracle.com", Kind: "DatabaseObserver"}, obj.Name, e)
 	}
 	return nil, nil
-
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	obs := newObj.(*DatabaseObserver)
-	databaseobserverlog.Info("validate update", "name", obs.Name)
+// ValidateUpdate implements admission.Validator[*DatabaseObserver]
+func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj *DatabaseObserver) (admission.Warnings, error) {
+	databaseobserverlog.Info("validate update", "name", newObj.Name)
 	var e field.ErrorList
 
-	// disallow usage of any other image than the observability-exporter
-	//if obs.Spec.Deployment.ExporterImage != "" && !strings.HasPrefix(obs.Spec.Deployment.ExporterImage, AllowedExporterImage) {
-	//	e = append(e,
-	//		field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), obs.Spec.Deployment.ExporterImage,
-	//			ErrorSpecExporterImageNotAllowed))
-	//}
-	// Return if any errors
+	// Re-run creation validations if necessary or add update-specific logic here
+
 	if len(e) > 0 {
-		return nil, apierrors.NewInvalid(schema.GroupKind{Group: "observability.oracle.com", Kind: "DatabaseObserver"}, obs.Name, e)
+		return nil, apierrors.NewInvalid(schema.GroupKind{Group: "observability.oracle.com", Kind: "DatabaseObserver"}, newObj.Name, e)
 	}
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	obs := obj.(*DatabaseObserver)
-	databaseobserverlog.Info("validate delete", "name", obs.Name)
-
+// ValidateDelete implements admission.Validator[*DatabaseObserver]
+func (r *DatabaseObserver) ValidateDelete(ctx context.Context, obj *DatabaseObserver) (admission.Warnings, error) {
+	databaseobserverlog.Info("validate delete", "name", obj.Name)
 	return nil, nil
 }

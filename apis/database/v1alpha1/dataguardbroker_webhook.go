@@ -40,18 +40,15 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -59,24 +56,23 @@ import (
 var dataguardbrokerlog = logf.Log.WithName("dataguardbroker-resource")
 
 func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithCustomDefaulter(r).
-		WithCustomValidator(r).
+	// 1. Add the generic type parameter [*DataguardBroker]
+	return ctrl.NewWebhookManagedBy[*DataguardBroker](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-dataguardbroker,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dataguardbrokers,verbs=create;update,versions=v1alpha1,name=mdataguardbroker.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.CustomDefaulter = &DataguardBroker{}
+// Update both CustomDefaulter and CustomValidator guards
+var _ admission.Validator[*DataguardBroker] = &DataguardBroker{}
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *DataguardBroker) Default(ctx context.Context, obj runtime.Object) error {
-	dg, ok := obj.(*DataguardBroker)
-	if !ok {
-		return apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to DataguardBroker"))
-	}
+// Update Default: replace runtime.Object with *DataguardBroker
+func (r *DataguardBroker) Default(ctx context.Context, obj *DataguardBroker) error {
+
+	dg := obj
+
 	dataguardbrokerlog.Info("default", "name", dg.Name)
 
 	if dg.Spec.LoadBalancer {
@@ -105,17 +101,14 @@ func (r *DataguardBroker) Default(ctx context.Context, obj runtime.Object) error
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-dataguardbroker,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dataguardbrokers,versions=v1alpha1,name=vdataguardbroker.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.CustomValidator = &DataguardBroker{}
+var _ admission.Validator[*DataguardBroker] = &DataguardBroker{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	dg, ok := obj.(*DataguardBroker)
-	if !ok {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to DataguardBroker"))
-	}
+func (r *DataguardBroker) ValidateCreate(ctx context.Context, obj *DataguardBroker) (admission.Warnings, error) {
+	dg := obj
+
 	dataguardbrokerlog.Info("validate create", "name", dg.Name)
 	var allErrs field.ErrorList
 	namespaces := dbcommons.GetWatchNamespaces()
@@ -137,12 +130,8 @@ func (r *DataguardBroker) ValidateCreate(ctx context.Context, obj runtime.Object
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
-	new, ok := newObj.(*DataguardBroker)
-	if !ok {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast newObj object to DataguardBroker"))
-	}
-
+func (r *DataguardBroker) ValidateUpdate(ctx context.Context, old, newObj *DataguardBroker) (admission.Warnings, error) {
+	new := newObj
 	dataguardbrokerlog.Info("validate update", "name", new.Name)
 	var allErrs field.ErrorList
 
@@ -161,10 +150,7 @@ func (r *DataguardBroker) ValidateUpdate(ctx context.Context, old, newObj runtim
 	}
 
 	// Now check for updation errors
-	oldObj, okay := old.(*DataguardBroker)
-	if !okay {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast old object to DataguardBroker"))
-	}
+	oldObj := old
 
 	if oldObj.Status.ProtectionMode != "" && !strings.EqualFold(new.Spec.ProtectionMode, oldObj.Status.ProtectionMode) {
 		allErrs = append(allErrs,
@@ -190,9 +176,8 @@ func (r *DataguardBroker) ValidateUpdate(ctx context.Context, old, newObj runtim
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (r *DataguardBroker) ValidateDelete(ctx context.Context, obj *DataguardBroker) (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate delete", "name", r.Name)
 
-	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil
 }

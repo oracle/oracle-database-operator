@@ -54,13 +54,14 @@ import (
 var autonomousdatabaselog = logf.Log.WithName("autonomousdatabase-resource")
 
 func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+	return ctrl.NewWebhookManagedBy[*AutonomousDatabase](mgr, r).
 		WithValidator(r).
 		Complete()
 }
 
 // +kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v4,name=vautonomousdatabasev4.kb.io,admissionReviewVersions=v1
 
+// Use the generic Validator interface instead of CustomValidator
 var _ admission.Validator[*AutonomousDatabase] = &AutonomousDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
@@ -93,13 +94,10 @@ func (r *AutonomousDatabase) ValidateCreate(ctx context.Context, obj *Autonomous
 		adb.Name, allErrs)
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
+// ValidateUpdate - Signatures updated and type assertions removed
 func (r *AutonomousDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousDatabase) (admission.Warnings, error) {
-	var (
-		allErrs field.ErrorList
-		newAdb  = newObj
-	)
-
+	var allErrs field.ErrorList
+	newAdb := newObj
 	autonomousdatabaselog.Info("validate update", "name", newAdb.Name)
 
 	allErrs = validateCommon(r, allErrs)
@@ -129,7 +127,7 @@ func validateCommon(adb *AutonomousDatabase, allErrs field.ErrorList) field.Erro
 	return allErrs
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
+// ValidateDelete signature updated to match generic interface
 func (r *AutonomousDatabase) ValidateDelete(ctx context.Context, obj *AutonomousDatabase) (admission.Warnings, error) {
 	return nil, nil
 }

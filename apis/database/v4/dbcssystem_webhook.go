@@ -55,36 +55,33 @@ var dbcssystemlog = logf.Log.WithName("dbcssystem-resource")
 
 // SetupWebhookWithManager registers the webhook with the manager.
 func (r *DbcsSystem) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+	return ctrl.NewWebhookManagedBy[*DbcsSystem](mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
 }
 
-// Ensure our CRD type implements the webhook interfaces
-var _ admission.Validator[*DbcsSystem] = &DbcsSystem{}
+// CustomDefaulter is often the non-generic legacy interface.
 var _ admission.Defaulter[*DbcsSystem] = &DbcsSystem{}
+var _ admission.Validator[*DbcsSystem] = &DbcsSystem{}
 
 // +kubebuilder:webhook:path=/mutate-database-oracle-com-v4-dbcssystem,mutating=true,failurePolicy=fail,sideEffects=none,groups=database.oracle.com,resources=dbcssystems,verbs=create;update,versions=v4,name=mdbcssystemv4.kb.io,admissionReviewVersions=v1
 
-// Default implements webhook.CustomDefaulter
+// Default implements admission.Defaulter[*DbcsSystem]
 func (r *DbcsSystem) Default(ctx context.Context, obj *DbcsSystem) error {
 	cr := obj
 
 	dbcssystemlog.Info("default", "name", cr.Name)
-
-	// TODO: add your defaulting logic here
 	return nil
 }
 
 // +kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-dbcssystem,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dbcssystems,versions=v4,name=vdbcssystemv4.kb.io,admissionReviewVersions=v1
 
-// ValidateCreate implements webhook.CustomValidator
+// ValidateCreate implements admission.Validator[*DbcsSystem]
 func (r *DbcsSystem) ValidateCreate(ctx context.Context, obj *DbcsSystem) (admission.Warnings, error) {
-	dbcssystemlog.Info("validate create")
+	dbcssystemlog.Info("validate create", "name", obj.Name)
 
 	cr := obj
-
 	blockedStates := map[string]bool{
 		"PROVISIONING": true,
 		"UPDATING":     true,
@@ -102,12 +99,13 @@ func (r *DbcsSystem) ValidateCreate(ctx context.Context, obj *DbcsSystem) (admis
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.CustomValidator
+// ValidateUpdate implements admission.Validator[*DbcsSystem]
 func (r *DbcsSystem) ValidateUpdate(ctx context.Context, oldObj, newObj *DbcsSystem) (admission.Warnings, error) {
+
 	dbcssystemlog.Info("validate update")
 
-	oldCr, newCr := oldObj, newObj
-
+	oldCr := oldObj
+	newCr := newObj
 	blockedStates := map[string]bool{
 		"UPDATING":     true,
 		"PROVISIONING": true,
@@ -127,9 +125,8 @@ func (r *DbcsSystem) ValidateUpdate(ctx context.Context, oldObj, newObj *DbcsSys
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator
+// ValidateDelete implements admission.Validator[*DbcsSystem]
 func (r *DbcsSystem) ValidateDelete(ctx context.Context, obj *DbcsSystem) (admission.Warnings, error) {
-	dbcssystemlog.Info("validate delete")
-	// TODO: Add delete validation if needed
+	dbcssystemlog.Info("validate delete", "name", obj.Name)
 	return nil, nil
 }

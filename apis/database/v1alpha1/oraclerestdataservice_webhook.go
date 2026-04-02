@@ -40,16 +40,13 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -57,24 +54,23 @@ import (
 var oraclerestdataservicelog = logf.Log.WithName("oraclerestdataservice-resource")
 
 func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithCustomDefaulter(r).
-		WithCustomValidator(r).
+	// 1. Add the generic type parameter [*OracleRestDataService]
+	return ctrl.NewWebhookManagedBy[*OracleRestDataService](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-oraclerestdataservice,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestdataservices,verbs=create;update,versions=v1alpha1,name=moraclerestdataservice.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.CustomDefaulter = &OracleRestDataService{}
+// 2. Use admission.CustomDefaulter and admission.CustomValidator with generics
+var _ admission.Defaulter[*OracleRestDataService] = &OracleRestDataService{}
+var _ admission.Validator[*OracleRestDataService] = &OracleRestDataService{}
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *OracleRestDataService) Default(ctx context.Context, obj runtime.Object) error {
-	ords, ok := obj.(*OracleRestDataService)
-	if !ok {
-		return apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to OracleRestDataService"))
-	}
+// 3. Update Default: change runtime.Object to *OracleRestDataService
+func (r *OracleRestDataService) Default(ctx context.Context, obj *OracleRestDataService) error {
+	ords := obj
+
 	oraclerestdataservicelog.Info("default", "name", ords.Name)
 	// OracleRestDataService Currently supports single replica
 	ords.Spec.Replicas = 1
@@ -89,17 +85,12 @@ func (r *OracleRestDataService) Default(ctx context.Context, obj runtime.Object)
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-oraclerestdataservice,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestdataservices,versions=v1alpha1,name=voraclerestdataservice.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.CustomValidator = &OracleRestDataService{}
-
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	ords, ok := obj.(*OracleRestDataService)
-	if !ok {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to OracleRestDataService"))
-	}
+func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	ords := obj
+
 	oraclerestdataservicelog.Info("validate create", "name", ords.Name)
 
 	var allErrs field.ErrorList
@@ -151,11 +142,9 @@ func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj runtime.
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeObject, newRuntimeObject runtime.Object) (admission.Warnings, error) {
-	new, ok := newRuntimeObject.(*OracleRestDataService)
-	if !ok {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast newRuntimeObject object to OracleRestDataService"))
-	}
+func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeObject, newRuntimeObject *OracleRestDataService) (admission.Warnings, error) {
+	new := newRuntimeObject
+
 	oraclerestdataservicelog.Info("validate update", "name", new.Name)
 
 	var allErrs field.ErrorList
@@ -167,10 +156,7 @@ func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeOb
 	}
 
 	// Now check for updation errors
-	old, okay := oldRuntimeObject.(*OracleRestDataService)
-	if !okay {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast oldRuntimeObject object to OracleRestDataService"))
-	}
+	old := oldRuntimeObject
 
 	if old.Status.DatabaseRef != "" && old.Status.DatabaseRef != new.Spec.DatabaseRef {
 		allErrs = append(allErrs,
@@ -191,9 +177,8 @@ func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeOb
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (r *OracleRestDataService) ValidateDelete(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
 	oraclerestdataservicelog.Info("validate delete", "name", r.Name)
 
-	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil
 }

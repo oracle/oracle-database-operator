@@ -48,7 +48,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 )
 
 const (

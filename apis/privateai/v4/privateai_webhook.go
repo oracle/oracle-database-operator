@@ -48,30 +48,34 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-// nolint:unused
 // log is for logging in this package.
 var privateailog = logf.Log.WithName("privateai-resource")
 
 // SetupPrivateAiWebhookWithManager registers the webhook for PrivateAi in the manager.
 func (r *PrivateAi) SetupPrivateAiWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithValidator(r).
-		WithDefaulter(r).
+	// 1. Add generic type parameter [*PrivateAi] and pass (mgr, r)
+	return ctrl.NewWebhookManagedBy[*PrivateAi](mgr, r).
+		WithValidator(&PrivateAi{}).
+		WithDefaulter(&PrivateAi{}).
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// 2. Ensure your CustomValidator and CustomDefaulter implementations use admission interfaces
+var _ admission.Validator[*PrivateAi] = &PrivateAi{}
+var _ admission.Defaulter[*PrivateAi] = &PrivateAi{}
 
 // +kubebuilder:webhook:path=/mutate-privateai-oracle-com-v4-privateai,mutating=true,failurePolicy=fail,sideEffects=None,groups=privateai.oracle.com,resources=privateais,verbs=create;update,versions=v4,name=mprivateai-v4.kb.io,admissionReviewVersions=v1
 
-// Retained for generated deepcopy compatibility; webhook behavior now uses *PrivateAi receiver methods directly.
-type PrivateAiCustomDefaulter struct{}
-
-var _ admission.Defaulter[*PrivateAi] = &PrivateAi{}
+// PrivateAiCustomDefaulter struct is responsible for setting default values on the custom resource of the
+// Kind PrivateAi when those are created or updated.
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as it is used only for temporary operations and does not need to be deeply copied.
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind PrivateAi.
-func (r *PrivateAi) Default(ctx context.Context, obj *PrivateAi) error {
+func (d *PrivateAi) Default(ctx context.Context, obj *PrivateAi) error {
 	privateai := obj
+
 	privateailog.Info("Defaulting for PrivateAi", "name", privateai.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -131,7 +135,6 @@ func (r *PrivateAi) Default(ctx context.Context, obj *PrivateAi) error {
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 // NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
 // Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
 // +kubebuilder:webhook:path=/validate-privateai-oracle-com-v4-privateai,mutating=false,failurePolicy=fail,sideEffects=None,groups=privateai.oracle.com,resources=privateais,verbs=create;update,versions=v4,name=vprivateai-v4.kb.io,admissionReviewVersions=v1
@@ -139,11 +142,10 @@ func (r *PrivateAi) Default(ctx context.Context, obj *PrivateAi) error {
 // Retained for generated deepcopy compatibility; webhook behavior now uses *PrivateAi receiver methods directly.
 type PrivateAiCustomValidator struct{}
 
-var _ admission.Validator[*PrivateAi] = &PrivateAi{}
-
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (r *PrivateAi) ValidateCreate(ctx context.Context, obj *PrivateAi) (admission.Warnings, error) {
+func (v *PrivateAi) ValidateCreate(ctx context.Context, obj *PrivateAi) (admission.Warnings, error) {
 	privateai := obj
+
 	privateailog.Info("Validation for PrivateAi upon creation", "name", privateai.GetName())
 
 	pstatus, _ := strconv.ParseBool(privateai.Spec.PaiEnableAuthentication)
@@ -159,8 +161,9 @@ func (r *PrivateAi) ValidateCreate(ctx context.Context, obj *PrivateAi) (admissi
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (r *PrivateAi) ValidateUpdate(ctx context.Context, oldObj, newObj *PrivateAi) (admission.Warnings, error) {
+func (v *PrivateAi) ValidateUpdate(ctx context.Context, oldObj, newObj *PrivateAi) (admission.Warnings, error) {
 	privateai := newObj
+
 	privateailog.Info("Validation for PrivateAi upon update", "name", privateai.GetName())
 	pstatus, _ := strconv.ParseBool(privateai.Spec.PaiEnableAuthentication)
 	if pstatus {
@@ -175,11 +178,10 @@ func (r *PrivateAi) ValidateUpdate(ctx context.Context, oldObj, newObj *PrivateA
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (r *PrivateAi) ValidateDelete(ctx context.Context, obj *PrivateAi) (admission.Warnings, error) {
+func (v *PrivateAi) ValidateDelete(ctx context.Context, obj *PrivateAi) (admission.Warnings, error) {
 	privateai := obj
-	privateailog.Info("Validation for PrivateAi upon deletion", "name", privateai.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
+	privateailog.Info("Validation for PrivateAi upon deletion", "name", privateai.GetName())
 
 	return nil, nil
 }

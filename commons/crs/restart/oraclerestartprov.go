@@ -47,7 +47,10 @@ import (
 	"github.com/go-logr/logr"
 	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
 	oraclerestartdb "github.com/oracle/oracle-database-operator/apis/database/v4"
-	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
+	sharedasm "github.com/oracle/oracle-database-operator/commons/crs/asm"
+	utils "github.com/oracle/oracle-database-operator/commons/crs/restart/utils"
+	shareddiskcheck "github.com/oracle/oracle-database-operator/commons/crs/shared/diskcheck"
+	sharedk8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -1238,177 +1241,33 @@ func UpdateProvForOracleRestart(instance *oraclerestartdb.OracleRestart,
 
 // ConfigMapSpecs provides documentation for the ConfigMapSpecs function.
 func ConfigMapSpecs(instance *oraclerestartdb.OracleRestart, cmData map[string]string, cmName string) *corev1.ConfigMap {
-	//cm := &corev1.ConfigMap{}
-
-	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind: "ConfigMap",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cmName,
-			Namespace: instance.Namespace,
-			Labels: map[string]string{
-				"name": instance.Name + cmName,
-			},
-		},
-		Data: cmData,
-	}
-
+	return sharedk8sobjects.ConfigMapSpec(instance.Namespace, instance.Name, cmName, cmData)
 }
 
 // BuildDiskCheckDaemonSet provides documentation for the BuildDiskCheckDaemonSet function.
 func BuildDiskCheckDaemonSet(OracleRestart *oraclerestartdb.OracleRestart) *appsv1.DaemonSet {
 	labels := BuildLabelsForDaemonSet(OracleRestart, "disk-check")
 	workerNodes := getAllWorkerNodes(OracleRestart)
-	privileged := true
 	disks := flattenAsmDisks(&OracleRestart.Spec)
-	diskArray := strings.Join(disks, " ")
-
-	cmd := fmt.Sprintf(`
-disks=(%s)
-for disk in "${disks[@]}"; do
-  real_disk=$(readlink -f "$disk")
-  if [ -b "$real_disk" ]; then
-    size_bytes=$(blockdev --getsize64 "$real_disk")
-    size_gb=$((size_bytes / 1024 / 1024 / 1024))
-    echo "{\"disk\":\"$disk\",\"valid\":true,\"sizeGb\":$size_gb}"
-  else
-    echo "{\"disk\":\"$disk\",\"valid\":false,\"sizeGb\":0}"
-    exit 1
-  fi
-done
-sleep 3600
-`, diskArray)
-
-	var volumeMounts []corev1.VolumeMount
-	for _, disk := range disks {
-		volName := sanitizeK8sName(disk) + "-vol"
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      volName,
-			MountPath: disk, // mount to the same path
-		})
-	}
-
-	var volumes []corev1.Volume
-	for _, disk := range disks {
-		volName := sanitizeK8sName(disk) + "-vol"
-		hostPathType := corev1.HostPathBlockDev
-		volumes = append(volumes, corev1.Volume{
-			Name: volName,
-			VolumeSource: corev1.VolumeSource{
-				HostPath: &corev1.HostPathVolumeSource{
-					Path: disk,
-					Type: &hostPathType, // pointer to the enum
-				},
-			},
-		})
-
-	}
-
-	return &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "disk-check-daemonset",
-			Namespace: OracleRestart.Namespace,
-			Labels:    labels,
-		},
-		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-				},
-				Spec: corev1.PodSpec{
-					Affinity: &corev1.Affinity{
-						NodeAffinity: &corev1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-								NodeSelectorTerms: []corev1.NodeSelectorTerm{
-									{
-										MatchExpressions: []corev1.NodeSelectorRequirement{
-											{
-												Key:      "kubernetes.io/hostname",
-												Operator: corev1.NodeSelectorOpIn,
-												Values:   workerNodes,
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-					Containers: []corev1.Container{
-						{
-							Name:    "disk-check",
-							Image:   OracleRestart.Spec.Image,
-							Command: []string{"/bin/bash", "-c"},
-							Args:    []string{cmd},
-							SecurityContext: &corev1.SecurityContext{
-								Privileged: &privileged,
-								Capabilities: &corev1.Capabilities{
-									Add: []corev1.Capability{
-										"NET_ADMIN", "SYS_NICE", "SYS_RESOURCE",
-										"AUDIT_WRITE", "NET_RAW", "AUDIT_CONTROL", "SYS_CHROOT",
-									},
-								},
-							},
-							VolumeMounts: volumeMounts,
-						},
-					},
-					Volumes: volumes,
-				},
-			},
-		},
-	}
+	cmd := shareddiskcheck.BuildDiskCheckCommand(disks)
+	volumeMounts, volumes := shareddiskcheck.BuildDiskHostPathVolumes(disks, sanitizeK8sName)
+	nodeAffinity := shareddiskcheck.NodeAffinityForHostnames(workerNodes)
+	return shareddiskcheck.BuildDaemonSet(OracleRestart.Namespace, OracleRestart.Spec.Image, labels, nodeAffinity, cmd, volumeMounts, volumes)
 }
 
 // Helper function to flatten all disk names in AsmStorageDetails, removing duplicates
 // flattenAsmDisks provides documentation for the flattenAsmDisks function.
 func flattenAsmDisks(racDbSpec *oraclerestartdb.OracleRestartSpec) []string {
-	seen := make(map[string]struct{})
-	var allDisks []string
+	var groups [][]string
 	for _, dg := range racDbSpec.AsmStorageDetails {
-		for _, disk := range dg.Disks {
-			if _, ok := seen[disk]; !ok {
-				allDisks = append(allDisks, disk)
-				seen[disk] = struct{}{}
-			}
-		}
+		groups = append(groups, dg.Disks)
 	}
-	return allDisks
+	return sharedasm.FlattenUniqueDiskGroups(groups)
 }
 
 // CreateServiceAccountIfNotExists provides documentation for the CreateServiceAccountIfNotExists function.
 func CreateServiceAccountIfNotExists(instance *oraclerestartdb.OracleRestart, kClient client.Client) error {
-	if instance.Spec.SrvAccountName == "" {
-		return nil
-	}
-
-	ServiceAccountName := instance.Spec.SrvAccountName
-	if ServiceAccountName == "" {
-		ServiceAccountName = "default"
-		return nil
-	}
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ServiceAccountName,
-			Namespace: instance.Namespace,
-		},
-	}
-
-	existingSA := &corev1.ServiceAccount{}
-	err := kClient.Get(context.TODO(), types.NamespacedName{Name: sa.Name, Namespace: sa.Namespace}, existingSA)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			err = kClient.Create(context.TODO(), sa)
-			if err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-	}
-	return nil
+	return sharedk8sobjects.EnsureServiceAccountIfNotExists(context.TODO(), kClient, instance.Namespace, instance.Spec.SrvAccountName)
 }
 
 // IsStaticProvisioning provides documentation for the IsStaticProvisioning function.
@@ -1518,8 +1377,5 @@ func getAllWorkerNodes(instance *oraclerestartdb.OracleRestart) []string {
 
 // BuildLabelsForDaemonSet provides documentation for the BuildLabelsForDaemonSet function.
 func BuildLabelsForDaemonSet(instance *oraclerestart.OracleRestart, label string) map[string]string {
-	return map[string]string{
-		"cluster": label,
-	}
-
+	return shareddiskcheck.BuildLabelsForDaemonSet(instance, label)
 }

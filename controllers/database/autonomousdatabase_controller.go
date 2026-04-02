@@ -71,7 +71,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 

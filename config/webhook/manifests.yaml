@@ -93,7 +93,7 @@ webhooks:
       namespace: system
       path: /mutate-database-oracle-com-v4-dbcssystem
   failurePolicy: Fail
-  name: mdbcssystemv1alpha1.kb.io
+  name: mdbcssystemv4.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -126,8 +126,7 @@ webhooks:
     - dbcssystems
   sideEffects: None
 - admissionReviewVersions:
-  - v4
-  - v1beta1
+  - v1
   clientConfig:
     service:
       name: webhook-service
@@ -147,8 +146,7 @@ webhooks:
     - lrests
   sideEffects: None
 - admissionReviewVersions:
-  - v4
-  - v1beta1
+  - v1
   clientConfig:
     service:
       name: webhook-service
@@ -461,14 +459,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-observability-oracle-com-v4-databaseobserver
+      path: /validate-observability-oracle-com-v1alpha1-databaseobserver
   failurePolicy: Fail
   name: vdatabaseobserver.kb.io
   rules:
   - apiGroups:
     - observability.oracle.com
     apiVersions:
-    - v4
+    - v1alpha1
     operations:
     - CREATE
     - UPDATE
@@ -501,14 +499,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-observability-oracle-com-v1alpha1-databaseobserver
+      path: /validate-observability-oracle-com-v4-databaseobserver
   failurePolicy: Fail
   name: vdatabaseobserver.kb.io
   rules:
   - apiGroups:
     - observability.oracle.com
     apiVersions:
-    - v1alpha1
+    - v4
     operations:
     - CREATE
     - UPDATE
@@ -542,6 +540,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-database-oracle-com-v4-dataguardbroker
+  failurePolicy: Fail
+  name: vdataguardbrokerv4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dataguardbrokers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-database-oracle-com-v4-dbcssystem
   failurePolicy: Fail
   name: vdbcssystemv4.kb.io
@@ -558,8 +576,28 @@ webhooks:
     - dbcssystems
   sideEffects: None
 - admissionReviewVersions:
-  - v4
-  - v1beta1
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-dbcssystem
+  failurePolicy: Fail
+  name: vdbcssystemv4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - dbcssystems
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   clientConfig:
     service:
       name: webhook-service
@@ -581,6 +619,26 @@ webhooks:
 - admissionReviewVersions:
   - v4
   - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-lrpdb
+  failurePolicy: Fail
+  name: vlrpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrpdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   clientConfig:
     service:
       name: webhook-service
@@ -702,6 +760,28 @@ webhooks:
     - DELETE
     resources:
     - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v1alpha1-singleinstancedatabase
+  failurePolicy: Fail
+  name: vsingleinstancedatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - singleinstancedatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1

@@ -53,16 +53,17 @@ import (
 var autonomouscontainerdatabaselog = logf.Log.WithName("autonomouscontainerdatabase-resource")
 
 func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
+	return ctrl.NewWebhookManagedBy[*AutonomousContainerDatabase](mgr, r).
 		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomouscontainerdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomouscontainerdatabases,versions=v4,name=vautonomouscontainerdatabasev4.kb.io,admissionReviewVersions=v1
 
+// Update the interface guard to admission.CustomValidator with the generic type
 var _ admission.Validator[*AutonomousContainerDatabase] = &AutonomousContainerDatabase{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
+// Ensure your Validate methods use the concrete pointer type
 func (r *AutonomousContainerDatabase) ValidateCreate(ctx context.Context, obj *AutonomousContainerDatabase) (admission.Warnings, error) {
 	return nil, nil
 }

@@ -41,62 +41,53 @@ package v1alpha1
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var dbcssystemlog = logf.Log.WithName("dbcssystem-resource")
 
+// SetupWebhookWithManager registers the DbcsSystem webhook with the manager.
 func (r *DbcsSystem) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, r).
-		WithCustomDefaulter(r).
-		WithCustomValidator(r).
+
+	return ctrl.NewWebhookManagedBy[*DbcsSystem](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-dbcssystem,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dbcssystems,verbs=create;update,versions=v4,name=mdbcssystemv4.kb.io,admissionReviewVersions=v1
 
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-dbcssystem,mutating=true,failurePolicy=fail,sideEffects=none,groups=database.oracle.com,resources=dbcssystems,verbs=create;update,versions=v4,name=mdbcssystemv1alpha1.kb.io,admissionReviewVersions=v1
+// 4. Update the interface guards to use the generic admission package
+var _ admission.Defaulter[*DbcsSystem] = &DbcsSystem{}
+var _ admission.Validator[*DbcsSystem] = &DbcsSystem{}
 
-var _ webhook.CustomDefaulter = &DbcsSystem{}
+// Default implements admission.Defaulter[*DbcsSystem]
+func (r *DbcsSystem) Default(ctx context.Context, obj *DbcsSystem) error {
+	// Access fields directly via 'obj'. No type assertion needed.
+	dbcssystemlog.Info("default", "name", obj.Name)
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *DbcsSystem) Default(ctx context.Context, obj runtime.Object) error {
-	dbcssystemlog.Info("default", "name", r.Name)
-
-	// TODO(user): fill in your defaulting logic.
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
+//+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-dbcssystem,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dbcssystems,versions=v4,name=vdbcssystemv4.kb.io,admissionReviewVersions=v1
 
-// +kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-dbcssystem,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dbcssystems,versions=v4,name=vdbcssystemv1alpha1.kb.io,admissionReviewVersions=v1
-var _ webhook.CustomValidator = &DbcsSystem{}
-
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DbcsSystem) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	dbcssystemlog.Info("validate create", "name", r.Name)
-
-	// 	// TODO(user): fill in your validation logic upon object creation.
+// ValidateCreate implements admission.Validator[*DbcsSystem]
+func (r *DbcsSystem) ValidateCreate(ctx context.Context, obj *DbcsSystem) (admission.Warnings, error) {
+	dbcssystemlog.Info("validate create", "name", obj.Name)
 	return nil, nil
 }
 
-// // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DbcsSystem) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
-	dbcssystemlog.Info("validate update", "name", r.Name)
-
-	// 	// TODO(user): fill in your validation logic upon object update.
+// ValidateUpdate implements admission.Validator[*DbcsSystem]
+func (r *DbcsSystem) ValidateUpdate(ctx context.Context, oldObj, newObj *DbcsSystem) (admission.Warnings, error) {
+	dbcssystemlog.Info("validate update", "name", newObj.Name)
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DbcsSystem) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	dbcssystemlog.Info("validate delete", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object deletion.
+// ValidateDelete implements admission.Validator[*DbcsSystem]
+func (r *DbcsSystem) ValidateDelete(ctx context.Context, obj *DbcsSystem) (admission.Warnings, error) {
+	dbcssystemlog.Info("validate delete", "name", obj.Name)
 	return nil, nil
 }

@@ -83,7 +83,7 @@ import (
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	//lrcommons "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 )

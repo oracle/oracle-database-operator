@@ -56,7 +56,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/common"
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	adbfamily "github.com/oracle/oracle-database-operator/commons/adb_family"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 

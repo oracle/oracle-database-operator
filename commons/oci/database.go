@@ -48,7 +48,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 )
 
 type DatabaseService struct {
