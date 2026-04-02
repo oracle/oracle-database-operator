@@ -45,6 +45,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"os"
@@ -67,25 +68,25 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
-	dataguardcontroller "github.com/oracle/oracle-database-operator/controllers/dataguard"
-
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
 	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
+	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
+	dataguardcontroller "github.com/oracle/oracle-database-operator/controllers/dataguard"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	privateaiv4controller "github.com/oracle/oracle-database-operator/controllers/privateai"
 	// +kubebuilder:scaffold:imports
 )
 
 var (
-    scheme   = runtime.NewScheme()
-    setupLog = ctrl.Log.WithName("setup")
+	scheme   = runtime.NewScheme()
+	setupLog = ctrl.Log.WithName("setup")
 )
 
 // init registers all API schemas used by the manager.
@@ -103,30 +104,84 @@ func init() {
 
 // main configures and starts the controller manager for the Oracle Database Operator.
 func main() {
+	metricsAddr, enableLeaderElection := parseFlags()
+	configureLogger()
+
+	watchNamespaces, err := getWatchNamespace()
+	if err != nil {
+		setupLog.Error(err, "failed to get watch namespaces")
+		os.Exit(1)
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), buildManagerOptions(metricsAddr, enableLeaderElection, watchNamespaces))
+	if err != nil {
+		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	if err := setupControllers(mgr, parseReconcileInterval()); err != nil {
+		setupLog.Error(err, "unable to create controller")
+		os.Exit(1)
+	}
+
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err := setupWebhooks(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook")
+			os.Exit(1)
+		}
+	}
+
+	if err := setupIndexes(mgr); err != nil {
+		setupLog.Error(err, "unable to create index")
+		os.Exit(1)
+	}
+
+	setupLog.Info("starting manager")
+	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		setupLog.Error(err, "problem running manager")
+		os.Exit(1)
+	}
+}
+
+func parseFlags() (string, bool) {
 	var metricsAddr string
 	var enableLeaderElection bool
+
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(
+		&enableLeaderElection,
+		"enable-leader-election",
+		false,
+		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.",
+	)
 	flag.Parse()
 
-	// Initialize new logger Opts
+	return metricsAddr, enableLeaderElection
+}
+
+func configureLogger() {
 	options := &ctrlzap.Options{
 		Development: true,
 		TimeEncoder: zapcore.RFC3339TimeEncoder,
 	}
-
 	ctrl.SetLogger(zap.New(func(o *zap.Options) { *o = *options }))
-	watchNamespaces, err := getWatchNamespace()
-	if err != nil {
-		setupLog.Error(err, "Failed to get watch namespaces")
-		os.Exit(1)
+}
+
+func buildManagerOptions(metricsAddr string, enableLeaderElection bool, watchNamespaces map[string]cache.Config) ctrl.Options {
+	disableHTTP2 := func(c *tls.Config) {
+		c.NextProtos = []string{"http/1.1"}
 	}
-	opt := ctrl.Options{
+
+	return ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
-			BindAddress: metricsAddr,
+			BindAddress:    metricsAddr,
+			SecureServing:  envBoolOrDefault("METRICS_SECURE", true),
+			FilterProvider: filters.WithAuthenticationAndAuthorization,
+			CertDir:        envOrDefault("METRICS_CERT_DIR", "/metrics-certs"),
+			CertName:       envOrDefault("METRICS_CERT_NAME", "tls.crt"),
+			KeyName:        envOrDefault("METRICS_KEY_NAME", "tls.key"),
+			TLSOpts:        []func(*tls.Config){disableHTTP2},
 		},
 		LeaderElection:   enableLeaderElection,
 		LeaderElectionID: "a9d608ea.oracle.com",
@@ -139,338 +194,413 @@ func main() {
 			QPS:       1,
 		}),
 	}
+}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), opt)
-	if err != nil {
-		setupLog.Error(err, "unable to start manager")
-		os.Exit(1)
+type controllerSetupFn func(ctrl.Manager, int64) error
+
+func setupControllers(mgr ctrl.Manager, interval int64) error {
+	type controllerRegistration struct {
+		name     string
+		required bool
+		setup    controllerSetupFn
 	}
 
-	// Get Cache
-	cache := mgr.GetCache()
+	controllers := []controllerRegistration{
+		{name: "AutonomousDatabase", required: true, setup: setupAutonomousDatabaseController},
+		{name: "AutonomousDatabaseBackup", required: true, setup: setupAutonomousDatabaseBackupController},
+		{name: "AutonomousDatabaseRestore", required: true, setup: setupAutonomousDatabaseRestoreController},
+		{name: "AutonomousContainerDatabase", required: true, setup: setupAutonomousContainerDatabaseController},
+		{name: "SingleInstanceDatabase", required: true, setup: setupSingleInstanceDatabaseController},
+		{name: "ShardingDatabase", required: true, setup: setupShardingDatabaseController},
+		{name: "DbcsSystem", required: true, setup: setupDbcsSystemController},
+		{name: "OracleRestDataService", required: true, setup: setupOrdsController},
+		{name: "OracleRestart", required: true, setup: setupOracleRestartController},
+		{name: "PrivateAi", required: true, setup: setupPrivateAiController},
+		{name: "LRPDB", required: true, setup: setupLRPDBController},
+		{name: "LREST", required: true, setup: setupLRESTController},
+		{name: "DataguardBroker", required: true, setup: setupDataguardBrokerController},
+		{name: "OrdsSrvs", required: false, setup: setupOrdsSrvsController},
+		{name: "DatabaseObserver", required: true, setup: setupDatabaseObserverController},
+		// +kubebuilder:scaffold:builder
+		{name: "RacDatabase", required: true, setup: setupRacDatabaseController},
+		// +kubebuilder:scaffold:builder
+	}
 
-	// ADB family controllers
-	if err = (&databasecontroller.AutonomousDatabaseReconciler{
+	for _, controller := range controllers {
+		if err := controller.setup(mgr, interval); err != nil {
+			if controller.required {
+				return annotate(controller.name, err)
+			}
+			setupLog.Error(err, "unable to create controller", "controller", controller.name)
+		}
+	}
+
+	return nil
+}
+
+func setupAutonomousDatabaseController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.AutonomousDatabaseReconciler{
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("database").WithName("AutonomousDatabase"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabase"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabase")
-		os.Exit(1)
-	}
-	if err = (&databasecontroller.AutonomousDatabaseBackupReconciler{
+	}).SetupWithManager(mgr)
+}
+
+func setupAutonomousDatabaseBackupController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.AutonomousDatabaseBackupReconciler{
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseBackup"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabaseBackup"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabaseBackup")
-		os.Exit(1)
-	}
-	if err = (&databasecontroller.AutonomousDatabaseRestoreReconciler{
+	}).SetupWithManager(mgr)
+}
+
+func setupAutonomousDatabaseRestoreController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.AutonomousDatabaseRestoreReconciler{
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseRestore"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabaseRestore"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabaseRestore")
-		os.Exit(1)
-	}
-	if err = (&databasecontroller.AutonomousContainerDatabaseReconciler{
+	}).SetupWithManager(mgr)
+}
+
+func setupAutonomousContainerDatabaseController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.AutonomousContainerDatabaseReconciler{
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousContainerDatabase"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("AutonomousContainerDatabase"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "AutonomousContainerDatabase")
-		os.Exit(1)
-	}
+	}).SetupWithManager(mgr)
+}
 
-	if err = (&databasecontroller.SingleInstanceDatabaseReconciler{
+func setupSingleInstanceDatabaseController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.SingleInstanceDatabaseReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("SingleInstanceDatabase"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Recorder: mgr.GetEventRecorderFor("SingleInstanceDatabase"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "SingleInstanceDatabase")
-		os.Exit(1)
-	}
-	if err = (&databasecontroller.ShardingDatabaseReconciler{
+	}).SetupWithManager(mgr)
+}
+
+func setupShardingDatabaseController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.ShardingDatabaseReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("ShardingDatabase"),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("ShardingDatabase"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ShardingDatabase")
-		os.Exit(1)
-	}
-	if err = (&databasecontroller.DbcsSystemReconciler{
+	}).SetupWithManager(mgr)
+}
+
+func setupDbcsSystemController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.DbcsSystemReconciler{
 		KubeClient: mgr.GetClient(),
 		Logger:     ctrl.Log.WithName("controllers").WithName("database").WithName("DbcsSystem"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("DbcsSystem"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "DbcsSystem")
-		os.Exit(1)
-	}
-	if err = (&databasecontroller.OracleRestDataServiceReconciler{
+	}).SetupWithManager(mgr)
+}
+
+func setupOrdsController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.OracleRestDataServiceReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("OracleRestDataService"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Recorder: mgr.GetEventRecorderFor("OracleRestDataService"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "OracleRestDataService")
-		os.Exit(1)
-	}
+	}).SetupWithManager(mgr)
+}
 
-	if err = (&databasecontroller.OracleRestartReconciler{
+func setupOracleRestartController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.OracleRestartReconciler{
 		Client: mgr.GetClient(),
 		Log:    ctrl.Log.WithName("controllers").WithName("OracleRestart"),
 		Scheme: mgr.GetScheme(),
 		Config: mgr.GetConfig(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "OracleRestart")
-		os.Exit(1)
-	}
+	}).SetupWithManager(mgr)
+}
 
-	if err = (&privateaiv4controller.PrivateAiReconciler{
+func setupPrivateAiController(mgr ctrl.Manager, _ int64) error {
+	return (&privateaiv4controller.PrivateAiReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("privateai").WithName("PrivateAi"),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("PrivateAi"),
 		Config:   mgr.GetConfig(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PrivateAi")
-		os.Exit(1)
-	}
+	}).SetupWithManager(mgr)
+}
 
-	// Set RECONCILE_INTERVAL environment variable if you want to change the default value from 15 secs
-	interval := os.Getenv("RECONCILE_INTERVAL")
-	i, err := strconv.ParseInt(interval, 10, 64)
-	if err != nil {
-		i = 15
-		setupLog.Info("Setting default reconcile period for database-controller", "Secs", i)
-	}
-
-	// Set ENABLE_WEBHOOKS=false when we run locally to skip webhook part when testing just the controller. Not to be used in production.
-	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err = (&databasev1alpha1.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
-			os.Exit(1)
-		}
-		if err = (&databasev4.LRPDB{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "LRPDB")
-			os.Exit(1)
-		}
-		if err = (&databasev4.LREST{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "LREST")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev4.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev4.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
-			os.Exit(1)
-		}
-		if err = (&databasev4.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
-			os.Exit(1)
-		}
-		if err = (&databasev4.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
-			os.Exit(1)
-		}
-		if err = (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
-		}
-		if err = (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
-			os.Exit(1)
-		}
-		if err = (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
-			os.Exit(1)
-		}
-		if err = (&observabilityv1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
-			os.Exit(1)
-		}
-
-		if err = (&observabilityv4.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
-			os.Exit(1)
-		}
-		if err = (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev4.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
-			os.Exit(1)
-		}
-		if err = (&databasev4.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
-			os.Exit(1)
-		}
-		if err = (&databasev4.OracleRestart{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestart")
-			os.Exit(1)
-		}
-		if err = (&privateaiv4.PrivateAi{}).SetupPrivateAiWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "PrivateAi")
-			os.Exit(1)
-		}
-		if err = (&databasev4.RacDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "RacDatabase")
-			os.Exit(1)
-		}
-	}
-
-	// LRPDBR Reconciler
-	if err = (&databasecontroller.LRPDBReconciler{
+func setupLRPDBController(mgr ctrl.Manager, interval int64) error {
+	return (&databasecontroller.LRPDBReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Log:      ctrl.Log.WithName("controllers").WithName("LRPDB"),
-		Interval: time.Duration(i),
+		Interval: time.Duration(interval),
 		Recorder: mgr.GetEventRecorderFor("LRPDB"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LRPDB")
-		os.Exit(1)
-	}
+	}).SetupWithManager(mgr)
+}
 
-	// LREST Reconciler
-	if err = (&databasecontroller.LRESTReconciler{
+func setupLRESTController(mgr ctrl.Manager, interval int64) error {
+	return (&databasecontroller.LRESTReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Log:      ctrl.Log.WithName("controllers").WithName("LREST"),
-		Interval: time.Duration(i),
+		Interval: time.Duration(interval),
 		Recorder: mgr.GetEventRecorderFor("LREST"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LREST")
-		os.Exit(1)
-	}
+	}).SetupWithManager(mgr)
+}
 
-	if err = (&dataguardcontroller.DataguardBrokerReconciler{
+func setupDataguardBrokerController(mgr ctrl.Manager, _ int64) error {
+	return (&dataguardcontroller.DataguardBrokerReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("dataguard").WithName("DataguardBroker"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Recorder: mgr.GetEventRecorderFor("DataguardBroker"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "DataguardBroker")
-		os.Exit(1)
-	}
+	}).SetupWithManager(mgr)
+}
 
-	if err = (&databasecontroller.OrdsSrvsReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		// Config:   mgr.GetConfig(),
+func setupOrdsSrvsController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.OrdsSrvsReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("OrdsSrvs"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "OrdsSrvs")
-	}
+	}).SetupWithManager(mgr)
+}
 
-	// Observability DatabaseObserver Reconciler
-	if err = (&observabilitycontroller.DatabaseObserverReconciler{
+func setupDatabaseObserverController(mgr ctrl.Manager, _ int64) error {
+	return (&observabilitycontroller.DatabaseObserverReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("observability").WithName("DatabaseObserver"),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("DatabaseObserver"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "DatabaseObserver")
-		os.Exit(1)
-	}
-	// +kubebuilder:scaffold:builder
+	}).SetupWithManager(mgr)
+}
 
-	if err = (&databasecontroller.RacDatabaseReconciler{
+func setupRacDatabaseController(mgr ctrl.Manager, _ int64) error {
+	return (&databasecontroller.RacDatabaseReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("controllers").WithName("RacDatabase"),
 		Scheme:   mgr.GetScheme(),
 		Recorder: record.NewFakeRecorder(0), // disable event spams
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "RacDatabase")
-		os.Exit(1)
-	}
-	// +kubebuilder:scaffold:builder
+	}).SetupWithManager(mgr)
+}
 
-	indexFunc2 := func(obj client.Object) []string {
+type webhookSetupFn func(ctrl.Manager) error
+
+func setupWebhooks(mgr ctrl.Manager) error {
+	type webhookRegistration struct {
+		name  string
+		setup webhookSetupFn
+	}
+
+	webhooks := []webhookRegistration{
+		{name: "OracleRestDataService", setup: setupV1Alpha1OracleRestDataServiceWebhook},
+		{name: "LRPDB", setup: setupV4LRPDBWebhook},
+		{name: "LREST", setup: setupV4LRESTWebhook},
+		{name: "AutonomousDatabase", setup: setupV1Alpha1AutonomousDatabaseWebhook},
+		{name: "AutonomousDatabaseBackup", setup: setupV1Alpha1AutonomousDatabaseBackupWebhook},
+		{name: "AutonomousDatabaseRestore", setup: setupV1Alpha1AutonomousDatabaseRestoreWebhook},
+		{name: "AutonomousContainerDatabase", setup: setupV1Alpha1AutonomousContainerDatabaseWebhook},
+		{name: "AutonomousDatabase", setup: setupV4AutonomousDatabaseWebhook},
+		{name: "AutonomousDatabaseBackup", setup: setupV4AutonomousDatabaseBackupWebhook},
+		{name: "AutonomousDatabaseRestore", setup: setupV4AutonomousDatabaseRestoreWebhook},
+		{name: "AutonomousContainerDatabase", setup: setupV4AutonomousContainerDatabaseWebhook},
+		{name: "DataguardBroker", setup: setupV1Alpha1DataguardBrokerWebhook},
+		{name: "DbcsSystem", setup: setupV1Alpha1DbcsSystemWebhook},
+		{name: "ShardingDatabase", setup: setupV4ShardingDatabaseWebhook},
+		{name: "DatabaseObserver", setup: setupV1Alpha1DatabaseObserverWebhook},
+		{name: "DbcsSystem", setup: setupV4DbcsSystemWebhook},
+		{name: "DatabaseObserver", setup: setupV1DatabaseObserverWebhook},
+		{name: "DatabaseObserver", setup: setupV4DatabaseObserverWebhook},
+		{name: "SingleInstanceDatabase", setup: setupV4SingleInstanceDatabaseWebhook},
+		{name: "DataguardBroker", setup: setupV4DataguardBrokerWebhook},
+		{name: "OracleRestDataService", setup: setupV4OracleRestDataServiceWebhook},
+		{name: "OracleRestart", setup: setupV4OracleRestartWebhook},
+		{name: "PrivateAi", setup: setupV4PrivateAiWebhook},
+		{name: "RacDatabase", setup: setupV4RacDatabaseWebhook},
+	}
+
+	for _, webhook := range webhooks {
+		if err := webhook.setup(mgr); err != nil {
+			return annotate(webhook.name, err)
+		}
+	}
+
+	return nil
+}
+
+func setupV1Alpha1OracleRestDataServiceWebhook(mgr ctrl.Manager) error {
+	return (&databasev1alpha1.OracleRestDataService{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4LRPDBWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.LRPDB{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4LRESTWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.LREST{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV1Alpha1AutonomousDatabaseWebhook(mgr ctrl.Manager) error {
+	return (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV1Alpha1AutonomousDatabaseBackupWebhook(mgr ctrl.Manager) error {
+	return (&databasev1alpha1.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV1Alpha1AutonomousDatabaseRestoreWebhook(mgr ctrl.Manager) error {
+	return (&databasev1alpha1.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV1Alpha1AutonomousContainerDatabaseWebhook(mgr ctrl.Manager) error {
+	return (&databasev1alpha1.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4AutonomousDatabaseWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.AutonomousDatabase{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4AutonomousDatabaseBackupWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4AutonomousDatabaseRestoreWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4AutonomousContainerDatabaseWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV1Alpha1DataguardBrokerWebhook(mgr ctrl.Manager) error {
+	return (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV1Alpha1DbcsSystemWebhook(mgr ctrl.Manager) error {
+	return (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4ShardingDatabaseWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV1Alpha1DatabaseObserverWebhook(mgr ctrl.Manager) error {
+	return (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4DbcsSystemWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV1DatabaseObserverWebhook(mgr ctrl.Manager) error {
+	return (&observabilityv1.DatabaseObserver{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4DatabaseObserverWebhook(mgr ctrl.Manager) error {
+	return (&observabilityv4.DatabaseObserver{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4SingleInstanceDatabaseWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4DataguardBrokerWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.DataguardBroker{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4OracleRestDataServiceWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.OracleRestDataService{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4OracleRestartWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.OracleRestart{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4PrivateAiWebhook(mgr ctrl.Manager) error {
+	return (&privateaiv4.PrivateAi{}).SetupPrivateAiWebhookWithManager(mgr)
+}
+
+func setupV4RacDatabaseWebhook(mgr ctrl.Manager) error {
+	return (&databasev4.RacDatabase{}).SetupWebhookWithManager(mgr)
+}
+
+func setupIndexes(mgr ctrl.Manager) error {
+	indexFunc := func(obj client.Object) []string {
 		return []string{obj.(*databasev4.LRPDB).Spec.LRPDBName}
 	}
-	if err = cache.IndexField(context.TODO(), &databasev4.LRPDB{}, "spec.pdbName", indexFunc2); err != nil {
-		setupLog.Error(err, "unable to create index function for ", "controller", "LRPDB")
-		os.Exit(1)
+	if err := mgr.GetCache().IndexField(context.TODO(), &databasev4.LRPDB{}, "spec.pdbName", indexFunc); err != nil {
+		return annotate("LRPDB", err)
 	}
+	return nil
+}
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
+// parseReconcileInterval reads RECONCILE_INTERVAL and falls back to 15.
+func parseReconcileInterval() int64 {
+	interval := os.Getenv("RECONCILE_INTERVAL")
+	i, err := strconv.ParseInt(interval, 10, 64)
+	if err != nil {
+		i = 15
+		setupLog.Info("setting default reconcile period for database-controller", "Secs", i)
 	}
+	return i
 }
 
 // getWatchNamespace reads WATCH_NAMESPACE and returns the cache configuration per namespace.
 func getWatchNamespace() (map[string]cache.Config, error) {
-	// WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE
-	// which specifies the Namespace to watch.
-	// An empty value means the operator is running with cluster scope.
+	const watchNamespaceEnvVar = "WATCH_NAMESPACE"
 
-	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
-	var nsmap map[string]cache.Config
 	ns, found := os.LookupEnv(watchNamespaceEnvVar)
+	if !found || strings.TrimSpace(ns) == "" {
+		setupLog.Info(":CLUSTER SCOPED:")
+		return nil, nil
+	}
+
 	values := strings.Split(ns, ",")
-	if len(values) == 1 && values[0] == "" {
-		fmt.Printf(":CLUSTER SCOPED:\n")
+	nsmap := make(map[string]cache.Config, len(values))
+	for _, namespace := range values {
+		namespace = strings.TrimSpace(namespace)
+		if namespace == "" {
+			continue
+		}
+		nsmap[namespace] = cache.Config{}
+	}
+
+	if len(nsmap) == 0 {
+		setupLog.Info(":CLUSTER SCOPED:")
 		return nil, nil
 	}
-	fmt.Printf(":NAMESPACE SCOPED:\n")
-	fmt.Printf("WATCH LIST=%s\n", values)
-	nsmap = make(map[string]cache.Config, len(values))
-	if !found {
-		return nsmap, fmt.Errorf("%s must be set", watchNamespaceEnvVar)
-	}
 
-	if ns == "" {
-		return nil, nil
-	}
-
-	for _, ns := range values {
-		nsmap[ns] = cache.Config{}
-	}
-
+	setupLog.Info(":NAMESPACE SCOPED:", "WATCH LIST", values)
 	return nsmap, nil
+}
 
+func envOrDefault(key, def string) string {
+	if v, ok := os.LookupEnv(key); ok && strings.TrimSpace(v) != "" {
+		return strings.TrimSpace(v)
+	}
+	return def
+}
+
+func envBoolOrDefault(key string, def bool) bool {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return def
+	}
+
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "t", "yes", "y", "on":
+		return true
+	case "0", "false", "f", "no", "n", "off":
+		return false
+	default:
+		return def
+	}
+}
+
+func annotate(name string, err error) error {
+	return fmt.Errorf("%s: %w", name, err)
 }
