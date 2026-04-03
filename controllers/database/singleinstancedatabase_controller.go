@@ -1993,6 +1993,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}
 				return ns
 			}(),
+			HostAliases: func() []corev1.HostAlias {
+				if len(m.Spec.HostAliases) == 0 {
+					return nil
+				}
+				hostAliases := make([]corev1.HostAlias, len(m.Spec.HostAliases))
+				copy(hostAliases, m.Spec.HostAliases)
+				return hostAliases
+			}(),
 
 			SecurityContext: podSecurityContext,
 			ImagePullSecrets: []corev1.LocalObjectReference{

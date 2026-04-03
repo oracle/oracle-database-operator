@@ -92,6 +92,7 @@ type SingleInstanceDatabaseSpec struct {
 	Replicas int `json:"replicas,omitempty"`
 
 	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`
+	HostAliases   []corev1.HostAlias                  `json:"hostAliases,omitempty"`
 	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
 	TdePassword   SingleInstanceDatabaseAdminPassword `json:"tdePassword,omitempty"`
 	Image         SingleInstanceDatabaseImage         `json:"image"`

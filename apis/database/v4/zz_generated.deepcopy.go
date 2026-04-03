@@ -5375,6 +5375,13 @@ func (in *SingleInstanceDatabaseSpec) DeepCopyInto(out *SingleInstanceDatabaseSp
 			(*out)[key] = val
 		}
 	}
+	if in.HostAliases != nil {
+		in, out := &in.HostAliases, &out.HostAliases
+		*out = make([]corev1.HostAlias, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	in.AdminPassword.DeepCopyInto(&out.AdminPassword)
 	in.TdePassword.DeepCopyInto(&out.TdePassword)
 	out.Image = in.Image
