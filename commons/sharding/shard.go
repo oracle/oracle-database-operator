@@ -448,6 +448,8 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 	group := oraFsGroup
 	capsAdd := []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")}
 	capsDrop := []corev1.Capability{"ALL"}
+	// Unified DB readiness/liveness command used for catalog and shard.
+	dbCheckCmd := "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "
 
 	containerSpec := corev1.Container{
 		Name:  OraShardSpex.Name,
@@ -469,16 +471,20 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 
 		// Liveness: simple + reliable (PMON exists).
 		LivenessProbe: buildShellExecProbe(
-			pmonCheckCmd,
+			dbCheckCmd,
 			30,
 			livenessPeriod(instance),
-			10,
+			30,
 			3,
 		),
 
-		StartupProbe: buildShellExecProbe(pmonCheckCmd, 30, 20, 10, 60),
+		StartupProbe: buildShellExecProbe(dbCheckCmd, 30, 20, 30, 60),
 
-		ReadinessProbe: buildShellExecProbe(pmonCheckCmd, 60, 20, 10, 6),
+		ReadinessProbe: buildShellExecProbe(dbCheckCmd, 60, 20, 30, 6),
+		// Previously shard probes used pmonCheckCmd:
+		// LivenessProbe:  buildShellExecProbe(pmonCheckCmd, 30, livenessPeriod(instance), 10, 3)
+		// StartupProbe:   buildShellExecProbe(pmonCheckCmd, 30, 20, 10, 60)
+		// ReadinessProbe: buildShellExecProbe(pmonCheckCmd, 60, 20, 10, 6)
 
 		Env: buildEnvVarsSpec(
 			instance,
