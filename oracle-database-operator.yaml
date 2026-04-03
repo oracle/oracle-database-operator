@@ -15084,7 +15084,6 @@ spec:
             required:
             - catalog
             - dbImage
-            - gsm
             - gsmImage
             - shard
             type: object
@@ -17267,7 +17266,6 @@ spec:
             required:
             - catalog
             - dbImage
-            - gsm
             - gsmImage
             type: object
           status:

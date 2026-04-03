@@ -59,8 +59,8 @@ type ShardingDatabaseSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Shard                         []ShardSpec                  `json:"shard,omitempty"`
-	Catalog                       []CatalogSpec                `json:"catalog"` // The catalogSpes accept all the catalog parameters
-	Gsm                           []GsmSpec                    `json:"gsm"`     // The GsmSpec will accept all the Gsm parameter
+	Catalog                       []CatalogSpec                `json:"catalog"`       // The catalogSpes accept all the catalog parameters
+	Gsm                           []GsmSpec                    `json:"gsm,omitempty"` // The GsmSpec will accept all the Gsm parameter
 	GsmInfo                       *GsmInfo                     `json:"gsmInfo,omitempty"`
 	GsmResources                  *corev1.ResourceRequirements `json:"gsmResources,omitempty" protobuf:"bytes,1,opt,name=gsmResources"` // Optional default resources applied to each gsm[] entry when gsm[i].resources is not set
 	GsmServiceAnnotations         map[string]string            `json:"gsmServiceAnnotations,omitempty"`
