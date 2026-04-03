@@ -15084,6 +15084,7 @@ spec:
             required:
             - catalog
             - dbImage
+            - gsm
             - gsmImage
             - shard
             type: object
