@@ -4,10 +4,13 @@ import "strings"
 
 // DiskGroup is a neutral model used by shared ASM helpers.
 type DiskGroup struct {
-	Name       string
-	Type       string
-	Redundancy string
-	Disks      []string
+	Name               string
+	Type               string
+	Redundancy         string
+	Disks              []string
+	AutoUpdate         string
+	StorageClass       string
+	AsmStorageSizeInGb int
 }
 
 // DefaultsAdapter exposes only the operations required by ASM defaulting logic.

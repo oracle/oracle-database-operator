@@ -487,11 +487,14 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *RacDat
 	}
 
 	// Fields locked during ASM disk changes
-	lockedFields := []string{"hostSwStageLocation", "gridSwZipFile", "dbSwZipFile", "image"}
+	lockedFields := []string{"hostSwStageLocation", "swStagePvc", "swStagePvcMountLocation", "gridSwZipFile", "dbSwZipFile", "image", "racSwPrefix"}
 	// if isDiskChanged {
 	if oldCr.Spec.ConfigParams.HostSwStageLocation != newCr.Spec.ConfigParams.HostSwStageLocation ||
+		oldCr.Spec.ConfigParams.SwStagePvc != newCr.Spec.ConfigParams.SwStagePvc ||
+		oldCr.Spec.ConfigParams.SwStagePvcMountLocation != newCr.Spec.ConfigParams.SwStagePvcMountLocation ||
 		oldCr.Spec.ConfigParams.GridSwZipFile != newCr.Spec.ConfigParams.GridSwZipFile ||
 		oldCr.Spec.ConfigParams.DbSwZipFile != newCr.Spec.ConfigParams.DbSwZipFile ||
+		oldCr.Spec.RacSwPrefix != newCr.Spec.RacSwPrefix ||
 		oldCr.Spec.Image != newCr.Spec.Image {
 		return nil, apierrors.NewForbidden(
 			schema.GroupResource{Group: "database.oracle.com", Resource: "RacDatabase"},
@@ -717,25 +720,42 @@ func (r *RacDatabase) validateDbSecret() field.ErrorList {
 
 	var validationErrs field.ErrorList
 
-	if r.Spec.SshKeySecret != nil {
-		if r.Spec.DbSecret.Name != "" && strings.ToLower(r.Spec.DbSecret.EncryptionType) != "base64" {
-			if r.Spec.DbSecret.KeyFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("DbSecret").Child("KeyFileName"), r.Spec.DbSecret.KeyFileName,
-					"KeyFileName cannot be set to empty"))
-			}
+	if r.Spec.DbSecret == nil {
+		return nil
+	}
 
-			if r.Spec.DbSecret.PwdFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("DbSecret").Child("PwdFileName"), r.Spec.DbSecret.PwdFileName,
-					"PwdFileName cannot be set to empty"))
-			}
+	if r.Spec.DbSecret.Name == "" {
+		return nil
+	}
 
+	if r.Spec.DbSecret.SecretKey != "" {
+		return nil
+	}
+
+	if r.Spec.DbSecret.KeyFileName != "" || r.Spec.DbSecret.PwdFileName != "" {
+		if r.Spec.DbSecret.KeyFileName == "" {
+			validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("DbSecret").Child("KeyFileName"), r.Spec.DbSecret.KeyFileName,
+				"KeyFileName cannot be set to empty"))
 		}
-	}
-	if len(validationErrs) > 0 {
-		return validationErrs
+
+		if r.Spec.DbSecret.PwdFileName == "" {
+			validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("DbSecret").Child("PwdFileName"), r.Spec.DbSecret.PwdFileName,
+				"PwdFileName cannot be set to empty"))
+		}
+
+		if len(validationErrs) > 0 {
+			return validationErrs
+		}
+
+		return nil
 	}
 
-	return nil
+	validationErrs = append(validationErrs, field.Invalid(
+		field.NewPath("spec").Child("DbSecret"),
+		r.Spec.DbSecret,
+		"either 'key' OR ('keyFileName' and 'pwdFileName') must be specified",
+	))
+	return validationErrs
 }
 
 // validateTdeSecret validates TDE wallet secret references.
@@ -744,25 +764,42 @@ func (r *RacDatabase) validateTdeSecret() field.ErrorList {
 
 	var validationErrs field.ErrorList
 
-	if r.Spec.TdeWalletSecret != nil {
-		if r.Spec.TdeWalletSecret.Name != "" && strings.ToLower(r.Spec.TdeWalletSecret.EncryptionType) != "base64" {
-			if r.Spec.TdeWalletSecret.KeyFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"), r.Spec.TdeWalletSecret.KeyFileName,
-					"KeyFileName cannot be set to empty"))
-			}
+	if r.Spec.TdeWalletSecret == nil {
+		return nil
+	}
 
-			if r.Spec.DbSecret.PwdFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"), r.Spec.TdeWalletSecret.PwdFileName,
-					"PwdFileName cannot be set to empty"))
-			}
+	if r.Spec.TdeWalletSecret.Name == "" {
+		return nil
+	}
 
+	if r.Spec.TdeWalletSecret.SecretKey != "" {
+		return nil
+	}
+
+	if r.Spec.TdeWalletSecret.KeyFileName != "" || r.Spec.TdeWalletSecret.PwdFileName != "" {
+		if r.Spec.TdeWalletSecret.KeyFileName == "" {
+			validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"), r.Spec.TdeWalletSecret.KeyFileName,
+				"KeyFileName cannot be set to empty"))
 		}
-	}
-	if len(validationErrs) > 0 {
-		return validationErrs
+
+		if r.Spec.TdeWalletSecret.PwdFileName == "" {
+			validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"), r.Spec.TdeWalletSecret.PwdFileName,
+				"PwdFileName cannot be set to empty"))
+		}
+
+		if len(validationErrs) > 0 {
+			return validationErrs
+		}
+
+		return nil
 	}
 
-	return nil
+	validationErrs = append(validationErrs, field.Invalid(
+		field.NewPath("spec").Child("TdeWalletSecret"),
+		r.Spec.TdeWalletSecret,
+		"either 'key' OR ('keyFileName' and 'pwdFileName') must be specified",
+	))
+	return validationErrs
 }
 
 // validateServiceSpecs validates RAC service configuration settings.
@@ -1043,12 +1080,37 @@ func (r *RacDatabase) validateGeneric() field.ErrorList {
 		}
 
 		if !utils.CheckStatusFlag(r.Spec.UseNfsforSwStorage) {
-			if cfg.HostSwStageLocation == "" {
+			if cfg.SwStagePvc != "" || cfg.SwStagePvcMountLocation != "" {
+				if cfg.SwStagePvc == "" {
+					validationErrs = append(validationErrs,
+						field.Invalid(
+							field.NewPath("spec").Child("ConfigParams").Child("swStagePvc"),
+							cfg.SwStagePvc,
+							"swStagePvc must be specified when using PVC staging",
+						))
+				}
+				if cfg.SwStagePvcMountLocation == "" {
+					validationErrs = append(validationErrs,
+						field.Invalid(
+							field.NewPath("spec").Child("ConfigParams").Child("swStagePvcMountLocation"),
+							cfg.SwStagePvcMountLocation,
+							"swStagePvcMountLocation must be specified when using PVC staging",
+						))
+				}
+				if cfg.HostSwStageLocation != "" {
+					validationErrs = append(validationErrs,
+						field.Invalid(
+							field.NewPath("spec").Child("ConfigParams").Child("hostSwStageLocation"),
+							cfg.HostSwStageLocation,
+							"hostSwStageLocation cannot be used when swStagePvc is specified",
+						))
+				}
+			} else if cfg.HostSwStageLocation == "" {
 				validationErrs = append(validationErrs,
 					field.Invalid(
-						field.NewPath("spec").Child("ConfigParams").Child("HostSwStageLocation"),
-						cfg.HostSwStageLocation,
-						"HostSwStageLocation and StorageClass both cannot be empty. You must set one of them.",
+						field.NewPath("spec").Child("ConfigParams"),
+						cfg,
+						"either (swStagePvc + swStagePvcMountLocation) OR hostSwStageLocation must be specified",
 					))
 			}
 		}
@@ -1404,6 +1466,13 @@ func (r *RacDatabase) validateUpdateDbSecret(oldCr *RacDatabase) field.ErrorList
 					r.Spec.DbSecret.KeyFileName, "KeyFileName cannot be changed post creation"))
 		}
 
+		if r.Spec.DbSecret.SecretKey != "" && oldCr.Status.DbSecret.SecretKey != "" &&
+			!strings.EqualFold(oldCr.Status.DbSecret.SecretKey, r.Spec.DbSecret.SecretKey) {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("key"),
+					r.Spec.DbSecret.SecretKey, "key cannot be changed post creation"))
+		}
+
 		if r.Spec.DbSecret.PwdFileName != "" && oldCr.Status.DbSecret.PwdFileName != "" &&
 			!strings.EqualFold(oldCr.Status.DbSecret.PwdFileName, r.Spec.DbSecret.PwdFileName) {
 			validationErrs = append(validationErrs,
@@ -1464,6 +1533,13 @@ func (r *RacDatabase) validateUpdateTdeSecret(oldCr *RacDatabase) field.ErrorLis
 			validationErrs = append(validationErrs,
 				field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"),
 					r.Spec.TdeWalletSecret.KeyFileName, "KeyFileName cannot be changed post creation"))
+		}
+
+		if r.Spec.TdeWalletSecret.SecretKey != "" && oldCr.Status.TdeWalletSecret.SecretKey != "" &&
+			!strings.EqualFold(oldCr.Status.TdeWalletSecret.SecretKey, r.Spec.TdeWalletSecret.SecretKey) {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("key"),
+					r.Spec.TdeWalletSecret.SecretKey, "key cannot be changed post creation"))
 		}
 
 		if r.Spec.TdeWalletSecret.PwdFileName != "" && oldCr.Status.TdeWalletSecret.PwdFileName != "" &&

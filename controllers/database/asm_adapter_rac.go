@@ -2,8 +2,8 @@ package controllers
 
 import (
 	racdb "github.com/oracle/oracle-database-operator/apis/database/v4"
-	raccommon "github.com/oracle/oracle-database-operator/commons/crs/rac"
 	sharedasm "github.com/oracle/oracle-database-operator/commons/crs/asm"
+	raccommon "github.com/oracle/oracle-database-operator/commons/crs/rac"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -20,10 +20,13 @@ func (a *racAsmAdapter) GetDiskGroups() []sharedasm.DiskGroup {
 	out := make([]sharedasm.DiskGroup, 0, len(a.obj.Spec.AsmStorageDetails))
 	for _, dg := range a.obj.Spec.AsmStorageDetails {
 		out = append(out, sharedasm.DiskGroup{
-			Name:       dg.Name,
-			Type:       string(dg.Type),
-			Redundancy: dg.Redundancy,
-			Disks:      dg.Disks,
+			Name:               dg.Name,
+			Type:               string(dg.Type),
+			Redundancy:         dg.Redundancy,
+			Disks:              dg.Disks,
+			AutoUpdate:         dg.AutoUpdate,
+			StorageClass:       dg.StorageClass,
+			AsmStorageSizeInGb: dg.AsmStorageSizeInGb,
 		})
 	}
 	return out
@@ -33,10 +36,13 @@ func (a *racAsmAdapter) SetDiskGroups(in []sharedasm.DiskGroup) {
 	out := make([]racdb.AsmDiskGroupDetails, 0, len(in))
 	for _, dg := range in {
 		out = append(out, racdb.AsmDiskGroupDetails{
-			Name:       dg.Name,
-			Type:       racdb.AsmDiskDGTypes(dg.Type),
-			Redundancy: dg.Redundancy,
-			Disks:      dg.Disks,
+			Name:               dg.Name,
+			Type:               racdb.AsmDiskDGTypes(dg.Type),
+			Redundancy:         dg.Redundancy,
+			Disks:              dg.Disks,
+			AutoUpdate:         dg.AutoUpdate,
+			StorageClass:       dg.StorageClass,
+			AsmStorageSizeInGb: dg.AsmStorageSizeInGb,
 		})
 	}
 	a.obj.Spec.AsmStorageDetails = out

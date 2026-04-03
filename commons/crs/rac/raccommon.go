@@ -264,7 +264,6 @@ func VolumePVForASM(
 ) *corev1.PersistentVolume {
 	_ = dgIndex
 	_ = diskIdx
-	_ = diskGroupName
 	volumeBlock := corev1.PersistentVolumeBlock
 	pvName := GetAsmPvName(diskName, instance.Name)
 	labels := buildLabelsForAsmPv(instance, diskName)
@@ -282,13 +281,13 @@ func VolumePVForASM(
 			},
 		},
 	}
-	if len(instance.Spec.StorageClass) == 0 {
+	if storageClassName := storageClassForAsmDiskGroup(instance, diskGroupName); storageClassName == "" {
 		asmPv.Spec.NodeAffinity = getAsmNodeAffinity(instance)
 		asmPv.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{
 			Local: &corev1.LocalVolumeSource{Path: diskName},
 		}
 	} else {
-		asmPv.Spec.StorageClassName = instance.Spec.StorageClass
+		asmPv.Spec.StorageClassName = storageClassName
 	}
 	return asmPv
 }
@@ -300,7 +299,6 @@ func VolumePVCForASM(
 ) *corev1.PersistentVolumeClaim {
 	_ = dgIndex
 	_ = diskIdx
-	_ = diskGroupName
 	volumeBlock := corev1.PersistentVolumeBlock
 	asmPvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -318,10 +316,10 @@ func VolumePVCForASM(
 			},
 		},
 	}
-	if len(instance.Spec.StorageClass) == 0 {
+	if storageClassName := storageClassForAsmDiskGroup(instance, diskGroupName); storageClassName == "" {
 		asmPvc.Spec.Selector = &metav1.LabelSelector{MatchLabels: buildLabelsForAsmPv(instance, diskName)}
 	} else {
-		asmPvc.Spec.StorageClassName = &instance.Spec.StorageClass
+		asmPvc.Spec.StorageClassName = &storageClassName
 	}
 	return asmPvc
 }
@@ -342,6 +340,49 @@ func BuildDiskCheckDaemonSet(racDatabase *racdb.RacDatabase) *appsv1.DaemonSet {
 	return shareddiskcheck.BuildDaemonSet(racDatabase.Namespace, racDatabase.Spec.Image, labels, nodeAffinity, cmd, volumeMounts, volumes)
 }
 
+// CheckStorageClass reports whether ASM provisioning is using storage classes.
+func CheckStorageClass(racDatabase *racdb.RacDatabase) string {
+	types := []racdb.AsmDiskDGTypes{
+		racdb.CrsAsmDiskDg,
+		racdb.DbDataDiskDg,
+		racdb.DbRecoveryDiskDg,
+		racdb.RedoDiskDg,
+	}
+	for _, t := range types {
+		if GetStorageClassByType(racDatabase, t) != "" {
+			return "SC"
+		}
+	}
+	return "NOSC"
+}
+
+// GetStorageClassByType returns the storage class configured for the given ASM disk group type.
+func GetStorageClassByType(racDatabase *racdb.RacDatabase, dgType racdb.AsmDiskDGTypes) string {
+	for i := range racDatabase.Spec.AsmStorageDetails {
+		dg := &racDatabase.Spec.AsmStorageDetails[i]
+		if dg.Type == dgType {
+			if dg.StorageClass != "" {
+				return dg.StorageClass
+			}
+			break
+		}
+	}
+	return strings.TrimSpace(racDatabase.Spec.StorageClass)
+}
+
+func storageClassForAsmDiskGroup(racDatabase *racdb.RacDatabase, diskGroupName string) string {
+	for i := range racDatabase.Spec.AsmStorageDetails {
+		dg := &racDatabase.Spec.AsmStorageDetails[i]
+		if dg.Name == diskGroupName {
+			if dg.StorageClass != "" {
+				return dg.StorageClass
+			}
+			break
+		}
+	}
+	return strings.TrimSpace(racDatabase.Spec.StorageClass)
+}
+
 const maxNameLen = 63
 
 // sanitizeK8sName normalizes a string so it can be used as a Kubernetes object name.
@@ -357,6 +398,11 @@ func shortHash(text string, n int) string {
 // GetAsmPvcName builds the PVC name for the specified ASM disk and database.
 func GetAsmPvcName(diskPath, dbName string) string {
 	return sharednaming.AsmPVCName(diskPath, dbName, maxNameLen)
+}
+
+// GetClusterSwPvcName returns the generated StatefulSet PVC name for the RAC software home.
+func GetClusterSwPvcName(nodeName string) string {
+	return nodeName + "-oradata-sw-pvc"
 }
 
 // GetAsmPvName builds the PV name for the specified ASM disk and database.
@@ -633,11 +679,17 @@ func checkPv(pvName string, instance *racdb.RacDatabase, kClient client.Client) 
 
 // DelRacSwPvcClusterStyle deletes the software PVC for the given cluster node index.
 func DelRacSwPvcClusterStyle(instance *racdb.RacDatabase, clusterSpec *racdb.RacClusterDetailSpec, nodeIndex int, kClient client.Client, logger logr.Logger) error {
+	if instance.Spec.RacSwPrefix != "" {
+		return nil
+	}
 	nodeName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, nodeIndex+1)
-	pvcName := nodeName + "-oradata-sw-vol"
-
-	LogMessages("DEBUG", "Inside DelRacSwPvcClusterStyle and received param: "+GetFmtStr(pvcName), nil, instance, logger)
-	return deletePVCIfExists(instance, pvcName, kClient, logger)
+	for _, pvcName := range []string{GetClusterSwPvcName(nodeName), nodeName + "-oradata-sw-vol"} {
+		LogMessages("DEBUG", "Inside DelRacSwPvcClusterStyle and received param: "+GetFmtStr(pvcName), nil, instance, logger)
+		if err := deletePVCIfExists(instance, pvcName, kClient, logger); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func deletePVCIfExists(instance *racdb.RacDatabase, pvcName string, kClient client.Client, logger logr.Logger) error {
@@ -892,6 +944,11 @@ func getRacInitContainerCmd(resType string, name string, oraScriptMount string, 
 
 	// dynamically use annotated interfaces
 	initCmd += `
+		sysctl -w net.ipv4.conf.all.rp_filter=2 || true &&
+		sysctl -w net.ipv4.conf.default.rp_filter=2 || true &&
+		sysctl -w net.ipv4.conf.` + intf1 + `.rp_filter=2 || true &&
+		sysctl -w net.ipv4.conf.` + intf2 + `.rp_filter=2 || true &&
+
 		IP1=$(ip addr show ` + intf1 + ` | awk '/inet /{print $2}' | cut -d/ -f1) && 
 		IP2=$(ip addr show ` + intf2 + ` | awk '/inet /{print $2}' | cut -d/ -f1) && 
 
@@ -1465,10 +1522,14 @@ func GetDbSecret(instance *racdb.RacDatabase, name string, kClient client.Client
 	if err != nil {
 		return false, false, false
 	}
+	keyFileName := instance.Spec.DbSecret.KeyFileName
+	if keyFileName == "" {
+		keyFileName = instance.Spec.DbSecret.SecretKey
+	}
 	return sharedinstanceutil.DBSecretFlags(
 		secretFound.Data,
 		instance.Spec.DbSecret.PwdFileName,
-		instance.Spec.DbSecret.KeyFileName,
+		keyFileName,
 	)
 }
 
@@ -1481,11 +1542,15 @@ func GetTdeWalletSecret(instance *racdb.RacDatabase, name string, kClient client
 	if err != nil {
 		return false, false, false
 	} else {
+		keyFileName := instance.Spec.TdeWalletSecret.KeyFileName
+		if keyFileName == "" {
+			keyFileName = instance.Spec.TdeWalletSecret.SecretKey
+		}
 		for key := range secretFound.Data {
 			switch key {
 			case instance.Spec.TdeWalletSecret.PwdFileName:
 				commonospassflag = true
-			case instance.Spec.TdeWalletSecret.KeyFileName:
+			case keyFileName:
 				pwdkeyflag = true
 			case "pwdfile":
 				commonpwdfile = true

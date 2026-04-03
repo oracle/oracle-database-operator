@@ -205,7 +205,7 @@ func isRACFailedStatus(obj *racdb.RacDatabase) bool {
 //+kubebuilder:rbac:groups="database.oracle.com",resources=racdatabases,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="database.oracle.com",resources=racdatabases/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups="database.oracle.com",resources=racdatabases/finalizers,verbs=get;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;secrets;endpoints;services;events;configmaps;persistentvolumes;persistentvolumeclaims;namespaces,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;secrets;serviceaccounts;endpoints;services;events;configmaps;persistentvolumes;persistentvolumeclaims;namespaces,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="apps",resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups='',resources=statefulsets/finalizers,verbs=get;list;watch;create;update;patch;delete
 
@@ -595,7 +595,8 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 	}
 
 	shouldRunDiscovery :=
-		(len(removedAsmDisks) == 0) && (isNewSetup ||
+		raccommon.CheckStorageClass(racDatabase) == "NOSC" &&
+			(len(removedAsmDisks) == 0) && (isNewSetup ||
 			upgradeSetup ||
 			missingSize ||
 			len(addedAsmDisks) > 0 ||
@@ -661,7 +662,7 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 		}
 	}
 
-	if len(racDatabase.Status.AsmDiskGroups) == 0 {
+	if len(racDatabase.Status.AsmDiskGroups) == 0 && raccommon.CheckStorageClass(racDatabase) == "NOSC" {
 		return resultNq, completed, fmt.Errorf("no ASM disk group status available")
 	}
 	err = setRacDgFromStatusAndSpecWithMinimumDefaultsforRAC(racDatabase, r.Client, cName, fName)
@@ -714,31 +715,46 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 				break
 			}
 		}
-		if dgStatus == nil {
+		if dgStatus == nil && raccommon.CheckStorageClass(racDatabase) == "NOSC" {
 			r.Log.Info("ASM disk group not present in status, skipping", "diskGroup", groupName)
 			continue
 		}
 
+		isStatic := raccommon.CheckStorageClass(racDatabase) == "NOSC"
+
 		for diskIdx, diskName := range dgSpec.Disks {
 			var diskStatus *racdb.AsmDiskStatus
-			for i, d := range dgStatus.Disks {
-				if d.Name == diskName {
-					diskStatus = &dgStatus.Disks[i]
-					break
+			if isStatic {
+				for i, d := range dgStatus.Disks {
+					if d.Name == diskName {
+						diskStatus = &dgStatus.Disks[i]
+						break
+					}
+				}
+				if diskStatus == nil || !diskStatus.Valid || diskStatus.SizeInGb == 0 {
+					continue
 				}
 			}
-			if diskStatus == nil || !diskStatus.Valid || diskStatus.SizeInGb == 0 {
-				continue
+
+			var sizeStr string
+			if isStatic {
+				sizeStr = fmt.Sprintf("%dGi", diskStatus.SizeInGb)
+			} else {
+				if dgSpec.AsmStorageSizeInGb == 0 {
+					r.Log.Info("ASM disk group storage size not set for storage class provisioning, skipping", "diskGroup", groupName, "disk", diskName)
+					continue
+				}
+				sizeStr = fmt.Sprintf("%dGi", dgSpec.AsmStorageSizeInGb)
 			}
 
-			sizeStr := fmt.Sprintf("%dGi", diskStatus.SizeInGb)
-
-			pv := raccommon.VolumePVForASM(
-				racDatabase, dgIndex, diskIdx,
-				diskName, groupName, sizeStr,
-			)
-			if _, _, err = r.createOrReplaceAsmPv(ctx, racDatabase, pv, string(dgType)); err != nil {
-				return resultNq, completed, err
+			if isStatic {
+				pv := raccommon.VolumePVForASM(
+					racDatabase, dgIndex, diskIdx,
+					diskName, groupName, sizeStr,
+				)
+				if _, _, err = r.createOrReplaceAsmPv(ctx, racDatabase, pv, string(dgType)); err != nil {
+					return resultNq, completed, err
+				}
 			}
 
 			pvc := raccommon.VolumePVCForASM(
@@ -751,9 +767,11 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 		}
 	}
 
-	err = r.cleanupDaemonSet(racDatabase, ctx)
-	if err != nil {
-		return resultQ, completed, nilErr
+	if raccommon.CheckStorageClass(racDatabase) == "NOSC" {
+		err = r.cleanupDaemonSet(racDatabase, ctx)
+		if err != nil {
+			return resultQ, completed, nilErr
+		}
 	}
 
 	phase = racPhaseWorkloadSync
@@ -3705,10 +3723,20 @@ func (r *RacDatabaseReconciler) appendRACSecretEnv(instance *racdb.RacDatabase, 
 
 	if instance.Spec.DbSecret != nil && instance.Spec.DbSecret.Name != "" {
 		env.AddKV("SECRET_VOLUME", instance.Spec.DbSecret.PwdFileMountLocation)
-		commonpassflag, pwdkeyflag, _ := raccommon.GetDbSecret(instance, instance.Spec.DbSecret.Name, r.Client)
-		if commonpassflag && pwdkeyflag {
-			env.AddKV("DB_PWD_FILE", instance.Spec.DbSecret.PwdFileName)
-			env.AddKV("PWD_KEY", instance.Spec.DbSecret.KeyFileName)
+		keyFile := instance.Spec.DbSecret.KeyFileName
+		if keyFile == "" {
+			keyFile = instance.Spec.DbSecret.SecretKey
+		}
+		commonpassflag, pwdkeyflag, legacyPwdFile := raccommon.GetDbSecret(instance, instance.Spec.DbSecret.Name, r.Client)
+		if pwdkeyflag {
+			env.AddKV("PWD_KEY", keyFile)
+			if commonpassflag && instance.Spec.DbSecret.PwdFileName != "" {
+				env.AddKV("DB_PWD_FILE", instance.Spec.DbSecret.PwdFileName)
+			} else if legacyPwdFile {
+				env.AddKV("PASSWORD_FILE", "pwdfile")
+			} else {
+				env.AddKV("PASSWORD_FILE", "pwdfile")
+			}
 		} else {
 			env.AddKV("PASSWORD_FILE", "pwdfile")
 		}
@@ -3717,10 +3745,20 @@ func (r *RacDatabaseReconciler) appendRACSecretEnv(instance *racdb.RacDatabase, 
 	if instance.Spec.TdeWalletSecret != nil && instance.Spec.TdeWalletSecret.Name != "" {
 		env.AddKV("TDE_SECRET_VOLUME", instance.Spec.TdeWalletSecret.PwdFileMountLocation)
 		env.AddKV("SETUP_TDE_WALLET", "true")
-		tdepassflag, tdepwdkeyflag, _ := raccommon.GetTdeWalletSecret(instance, instance.Spec.TdeWalletSecret.Name, r.Client)
-		if tdepassflag && tdepwdkeyflag {
-			env.AddKV("TDE_PWD_FILE", instance.Spec.TdeWalletSecret.PwdFileName)
-			env.AddKV("TDE_PWD_KEY", instance.Spec.TdeWalletSecret.KeyFileName)
+		tdeKeyFile := instance.Spec.TdeWalletSecret.KeyFileName
+		if tdeKeyFile == "" {
+			tdeKeyFile = instance.Spec.TdeWalletSecret.SecretKey
+		}
+		tdepassflag, tdepwdkeyflag, legacyPwdFile := raccommon.GetTdeWalletSecret(instance, instance.Spec.TdeWalletSecret.Name, r.Client)
+		if tdepwdkeyflag {
+			env.AddKV("TDE_PWD_KEY", tdeKeyFile)
+			if tdepassflag && instance.Spec.TdeWalletSecret.PwdFileName != "" {
+				env.AddKV("TDE_PWD_FILE", instance.Spec.TdeWalletSecret.PwdFileName)
+			} else if legacyPwdFile {
+				env.AddKV("PASSWORD_FILE", "pwdfile")
+			} else {
+				env.AddKV("PASSWORD_FILE", "tdepwdfile")
+			}
 		} else {
 			env.AddKV("PASSWORD_FILE", "tdepwdfile")
 		}
@@ -3751,6 +3789,8 @@ func appendRACIdentityAndSoftwareEnv(cfg *racdb.RacInitParams, statusCfg *racdb.
 	}
 	if cfg.HostSwStageLocation != "" {
 		env.AddKV("STAGING_SOFTWARE_LOC", utils.OraSwStageLocation)
+	} else if cfg.SwStagePvcMountLocation != "" {
+		env.AddKV("STAGING_SOFTWARE_LOC", cfg.SwStagePvcMountLocation)
 	}
 	if cfg.RuPatchLocation != "" {
 		env.AddKV("APPLY_RU_LOCATION", utils.OraRuPatchStageLocation)

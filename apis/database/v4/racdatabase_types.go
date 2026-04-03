@@ -71,6 +71,8 @@ type RacDatabaseSpec struct {
 	UseNfsforSwStorage   string                       `json:"useNfsforSwStorage,omitempty"`
 	StorageClass         string                       `json:"storageClass,omitempty"`
 	StorageSizeInGB      int                          `json:"storageSizeInGB,omitempty"`
+	SwLocStorageSizeInGb int                          `json:"swLocStorageSizeInGb,omitempty"`
+	RacSwPrefix          string                       `json:"racSwPrefix,omitempty"`
 	Image                string                       `json:"image,omitempty"`
 	ImagePullSecret      string                       `json:"imagePullSecret,omitempty"`
 	ScriptsLocation      string                       `json:"scriptsLocation,omitempty"`
@@ -144,12 +146,14 @@ type RacInitParams struct {
 	OneOffLocation          string           `json:"oneOffLocation,omitempty"`
 	DbOneOffIds             string           `json:"dbOneOffIds,omitempty"`
 	GridOneOffIds           string           `json:"gridOneOffIds,omitempty"`
+	SwStagePvc              string           `json:"swStagePvc,omitempty"`
+	SwStagePvcMountLocation string           `json:"swStagePvcMountLocation,omitempty"`
 }
 
 // RacClusterDetailSpec defines cluster-wide configuration for new-style specs.
 type RacClusterDetailSpec struct {
 	NodeCount          int                `json:"nodeCount"`
-	RacHostSwLocation  string             `json:"racHostSwLocation"`
+	RacHostSwLocation  string             `json:"racHostSwLocation,omitempty"`
 	RacNodeName        string             `json:"racNodeName"`
 	BaseOnsTargetPort  int32              `json:"baseOnsTargetPort,omitempty"`
 	BaseLsnrTargetPort int32              `json:"baseLsnrTargetPort,omitempty"`
@@ -199,6 +203,7 @@ type MacvlanConfig struct {
 // files and keys.
 type RacDbPwdSecretDetails struct {
 	Name                 string `json:"name,omitempty"`        // Name of the secret.
+	SecretKey            string `json:"key,omitempty"`         // Simple secret key name.
 	KeyFileName          string `json:"keyFileName,omitempty"` // Name of the key.
 	PwdFileName          string `json:"pwdFileName,omitempty"`
 	PwdFileMountLocation string `json:"pwdFileMountLocation,omitempty"`
