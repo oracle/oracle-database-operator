@@ -108,14 +108,18 @@ func getLabelForShard(instance *databasev4.ShardingDatabase) string {
 }
 
 // BuildStatefulSetForShard builds the desired StatefulSet for a shard.
-func BuildStatefulSetForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *appsv1.StatefulSet {
+func BuildStatefulSetForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) (*appsv1.StatefulSet, error) {
+	spec, err := buildStatefulSpecForShard(instance, OraShardSpex)
+	if err != nil {
+		return nil, err
+	}
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForShard(),
 		ObjectMeta: buildObjectMetaForShard(instance, OraShardSpex),
-		Spec:       *buildStatefulSpecForShard(instance, OraShardSpex),
+		Spec:       *spec,
 	}
 
-	return sfset
+	return sfset, nil
 }
 
 // buildTypeMetaForShard returns static TypeMeta for StatefulSet.
@@ -137,7 +141,11 @@ func buildObjectMetaForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 }
 
 // buildStatefulSpecForShard constructs the StatefulSet spec for one shard.
-func buildStatefulSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *appsv1.StatefulSetSpec {
+func buildStatefulSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) (*appsv1.StatefulSetSpec, error) {
+	podSpec, err := buildPodSpecForShard(instance, OraShardSpex)
+	if err != nil {
+		return nil, err
+	}
 	replicas := shardReplicaCount
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraShardSpex.Name,
@@ -148,13 +156,13 @@ func buildStatefulSpecForShard(instance *databasev4.ShardingDatabase, OraShardSp
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: buildResourceLabelsForShard(instance, "sharding", OraShardSpex.Name),
 			},
-			Spec: *buildPodSpecForShard(instance, OraShardSpex),
+			Spec: *podSpec,
 		},
 		VolumeClaimTemplates: volumeClaimTemplatesForShard(instance, OraShardSpex),
 	}
 
 	sfsetspec.Replicas = &replicas
-	return sfsetspec
+	return sfsetspec, nil
 }
 
 // isStandbyShard reports whether the shard role requires standby bootstrap flow.
@@ -309,7 +317,7 @@ ls -l "${CFG_DIR}" || true
 }
 
 // buildPodSpecForShard builds the PodSpec for shard StatefulSet pods.
-func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *corev1.PodSpec {
+func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) (*corev1.PodSpec, error) {
 
 	user := oraRunAsUser
 	group := oraFsGroup
@@ -319,7 +327,10 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 		RunAsGroup:   &group,
 		FSGroup:      &group,
 	}, OraShardSpex.SecurityContext)
-	podSecurityContext = applyOracleMemorySysctls(podSecurityContext, OraShardSpex.Resources, OraShardSpex.EnvVars)
+	podSecurityContext, err := applyOracleMemorySysctls(podSecurityContext, OraShardSpex.Resources, OraShardSpex.EnvVars)
+	if err != nil {
+		return nil, err
+	}
 	spec := &corev1.PodSpec{
 		SecurityContext:    podSecurityContext,
 		Containers:         buildContainerSpecForShard(instance, OraShardSpex),
@@ -357,7 +368,7 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 		}
 	}
 
-	return spec
+	return spec, nil
 }
 
 // buildVolumeSpecForShard returns all volumes mounted by shard containers.
@@ -878,7 +889,11 @@ func UpdateProvForShard(instance *databasev4.ShardingDatabase, OraShardSpex data
 	}
 
 	if requiresUpdate {
-		if err := kClient.Update(context.Background(), BuildStatefulSetForShard(instance, OraShardSpex)); err != nil {
+		desired, err := BuildStatefulSetForShard(instance, OraShardSpex)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if err := kClient.Update(context.Background(), desired); err != nil {
 			msg := "Failed to update Shard StatefulSet StatefulSet.Name : " + sfSet.Name
 			LogMessages("Error", msg, nil, instance, logger)
 			return ctrl.Result{}, err

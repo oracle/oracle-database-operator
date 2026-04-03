@@ -507,7 +507,7 @@ type AdditionalPVCSpec struct {
 const (
 	DefaultPkeyopt          = "rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256"
 	DefaultSecretMountPath  = "/mnt/secrets"
-	DefaultGsmWalletRoot    = "$ORACLE_HOME/network/admin"
+	DefaultGsmWalletRoot    = "/opt/oracle/gsmdata/walletroot"
 	DefaultOraDataMountPath = "/opt/oracle/oradata"
 	DefaultGsmDataMountPath = "/opt/oracle/gsmdata"
 	DefaultDiagMountPath    = "/opt/oracle/diag"

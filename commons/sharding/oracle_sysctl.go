@@ -18,7 +18,7 @@ func applyOracleMemorySysctls(
 	podSecurityContext *corev1.PodSecurityContext,
 	resources *corev1.ResourceRequirements,
 	envVars []databasev4.EnvironmentVariable,
-) *corev1.PodSecurityContext {
+) (*corev1.PodSecurityContext, error) {
 	if podSecurityContext == nil {
 		podSecurityContext = &corev1.PodSecurityContext{}
 	}
@@ -26,6 +26,17 @@ func applyOracleMemorySysctls(
 	sgaBytes := extractInitMemoryBytes(envVars, initSgaSizeEnv)
 	pgaBytes := extractInitMemoryBytes(envVars, initPgaSizeEnv)
 	memLimit, hugePages := sharedresources.ExtractMemoryAndHugePagesBytes(resources)
+	userTuningHint := hugePages > 0 || hasOracleSysctlHint(podSecurityContext.Sysctls)
+
+	// If user did not request hugepages/sysctl tuning, do not auto-inject sysctls.
+	// Only enforce memory safety (SGA + PGA + 1Gi overhead).
+	if !userTuningHint {
+		if err := sharedresources.ValidateSgaPgaSafety(sgaBytes, pgaBytes, memLimit, hugePages, sharedresources.DefaultSafetyPct); err != nil {
+			return nil, err
+		}
+		return podSecurityContext, nil
+	}
+
 	userShmmax, userShmall := parseUserOracleSysctlOverrides(podSecurityContext.Sysctls)
 
 	sysctls, err := sharedresources.CalculateOracleSysctls(
@@ -36,12 +47,25 @@ func applyOracleMemorySysctls(
 		userShmmax,
 		userShmall,
 	)
-	if err != nil || len(sysctls) == 0 {
-		return podSecurityContext
+	if err != nil {
+		return nil, err
+	}
+	if len(sysctls) == 0 {
+		return podSecurityContext, nil
 	}
 
 	podSecurityContext.Sysctls = mergeOracleSysctls(podSecurityContext.Sysctls, sysctls)
-	return podSecurityContext
+	return podSecurityContext, nil
+}
+
+func hasOracleSysctlHint(sysctls []corev1.Sysctl) bool {
+	for i := range sysctls {
+		switch strings.TrimSpace(sysctls[i].Name) {
+		case "kernel.shmmax", "kernel.shmall", "kernel.sem", "kernel.shmmni":
+			return true
+		}
+	}
+	return false
 }
 
 func extractInitMemoryBytes(envVars []databasev4.EnvironmentVariable, envName string) int64 {

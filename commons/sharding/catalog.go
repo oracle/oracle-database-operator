@@ -93,14 +93,18 @@ func getLabelForCatalog(instance *databasev4.ShardingDatabase) string {
 	return instance.Name
 }
 
-func BuildStatefulSetForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) *appsv1.StatefulSet {
+func BuildStatefulSetForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) (*appsv1.StatefulSet, error) {
+	spec, err := buildStatefulSpecForCatalog(instance, OraCatalogSpex)
+	if err != nil {
+		return nil, err
+	}
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForCatalog(),
 		ObjectMeta: buildObjectMetaForCatalog(instance, OraCatalogSpex),
-		Spec:       *buildStatefulSpecForCatalog(instance, OraCatalogSpex),
+		Spec:       *spec,
 	}
 
-	return sfset
+	return sfset, nil
 }
 
 // Function to build TypeMeta
@@ -125,8 +129,12 @@ func buildObjectMetaForCatalog(instance *databasev4.ShardingDatabase, OraCatalog
 }
 
 // Function to build Stateful Specs
-func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) *appsv1.StatefulSetSpec {
+func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) (*appsv1.StatefulSetSpec, error) {
 	// building Stateful set Specs
+	podSpec, err := buildPodSpecForCatalog(instance, OraCatalogSpex)
+	if err != nil {
+		return nil, err
+	}
 	replicas := shardReplicaCount
 
 	sfsetspec := &appsv1.StatefulSetSpec{
@@ -138,7 +146,7 @@ func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatal
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: buildResourceLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 			},
-			Spec: *buildPodSpecForCatalog(instance, OraCatalogSpex),
+			Spec: *podSpec,
 		},
 		VolumeClaimTemplates: volumeClaimTemplatesForCatalog(instance, OraCatalogSpex),
 	}
@@ -150,12 +158,12 @@ func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatal
 	//           sfsetspec.Replicas = &OraCatalogSpex.OraCatalogSize
 	//      }
 
-	return sfsetspec
+	return sfsetspec, nil
 }
 
 // Function to build PodSpec
 
-func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) *corev1.PodSpec {
+func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) (*corev1.PodSpec, error) {
 
 	user := oraRunAsUser
 	group := oraFsGroup
@@ -165,7 +173,10 @@ func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpe
 		RunAsGroup:   &group,
 		FSGroup:      &group,
 	}, OraCatalogSpex.SecurityContext)
-	podSecurityContext = applyOracleMemorySysctls(podSecurityContext, OraCatalogSpex.Resources, OraCatalogSpex.EnvVars)
+	podSecurityContext, err := applyOracleMemorySysctls(podSecurityContext, OraCatalogSpex.Resources, OraCatalogSpex.EnvVars)
+	if err != nil {
+		return nil, err
+	}
 	spec := &corev1.PodSpec{
 		SecurityContext:    podSecurityContext,
 		Containers:         buildContainerSpecForCatalog(instance, OraCatalogSpex),
@@ -191,7 +202,7 @@ func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpe
 			spec.NodeSelector[key] = value
 		}
 	}
-	return spec
+	return spec, nil
 }
 
 // Function to build Volume Spec
@@ -544,7 +555,11 @@ func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 	**/
 
 	if requiresUpdate {
-		err := kClient.Update(context.Background(), BuildStatefulSetForCatalog(instance, OraCatalogSpex))
+		desired, err := BuildStatefulSetForCatalog(instance, OraCatalogSpex)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		err = kClient.Update(context.Background(), desired)
 		if err != nil {
 			msg = "Failed to update Catalog StatefulSet " + "StatefulSet.Name : " + sfSet.Name
 			LogMessages("Error", msg, nil, instance, logger)

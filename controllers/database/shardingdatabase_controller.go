@@ -421,9 +421,13 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 					message: "Catalog Name cannot be greater than 9 characters.",
 				}
 			}
+			catalogSts, err := shardingv1.BuildStatefulSetForCatalog(inst, oraCatalogSpec)
+			if err != nil {
+				return phaseResult{err: err, reason: "CatalogMemoryValidationFailed", message: err.Error()}
+			}
 			if _, err := r.deployStatefulSet(
 				inst,
-				shardingv1.BuildStatefulSetForCatalog(inst, oraCatalogSpec),
+				catalogSts,
 				"CATALOG",
 				oraCatalogSpec.Name,
 				oraCatalogSpec.Resources,
@@ -495,9 +499,13 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		if shardingv1.CheckIsDeleteFlag(oraShardSpec.IsDelete, inst, r.Log) {
 			continue
 		}
+		shardSts, err := shardingv1.BuildStatefulSetForShard(inst, oraShardSpec)
+		if err != nil {
+			return phaseResult{err: err, reason: "ShardMemoryValidationFailed", message: err.Error()}
+		}
 		if _, err := r.deployStatefulSet(
 			inst,
-			shardingv1.BuildStatefulSetForShard(inst, oraShardSpec),
+			shardSts,
 			"SHARD",
 			oraShardSpec.Name,
 			oraShardSpec.Resources,
@@ -5491,16 +5499,16 @@ func (r *ShardingDatabaseReconciler) validateShapeTargetReady(
 func (r *ShardingDatabaseReconciler) desiredStatefulSetForShapeTarget(
 	instance *databasev4.ShardingDatabase,
 	t shapeRollTarget,
-) *appsv1.StatefulSet {
+) (*appsv1.StatefulSet, error) {
 	switch t.kind {
 	case "CATALOG":
 		return shardingv1.BuildStatefulSetForCatalog(instance, instance.Spec.Catalog[t.specIdx])
 	case "GSM":
-		return shardingv1.BuildStatefulSetForGsm(instance, instance.Spec.Gsm[t.specIdx])
+		return shardingv1.BuildStatefulSetForGsm(instance, instance.Spec.Gsm[t.specIdx]), nil
 	case "SHARD":
 		return shardingv1.BuildStatefulSetForShard(instance, instance.Spec.Shard[t.specIdx])
 	default:
-		return nil
+		return nil, fmt.Errorf("unknown target kind %s", t.kind)
 	}
 }
 
@@ -5785,9 +5793,9 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 			return true, nil
 		}
 
-		desiredSts := r.desiredStatefulSetForShapeTarget(instance, t)
-		if desiredSts == nil {
-			return true, fmt.Errorf("unable to build desired StatefulSet for %s %s", t.kind, t.name)
+		desiredSts, err := r.desiredStatefulSetForShapeTarget(instance, t)
+		if err != nil {
+			return true, err
 		}
 
 		needsK8sRestart := statefulSetNeedsShapeRecreate(currSts, desiredSts)
@@ -5884,9 +5892,9 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShardTemplateChanges(instan
 			return true, nil
 		}
 
-		desiredSts := r.desiredStatefulSetForShapeTarget(instance, t)
-		if desiredSts == nil {
-			return true, fmt.Errorf("unable to build desired StatefulSet for %s %s", t.kind, t.name)
+		desiredSts, err := r.desiredStatefulSetForShapeTarget(instance, t)
+		if err != nil {
+			return true, err
 		}
 
 		if !statefulSetNeedsNonShapeShardTemplateRecreate(currSts, desiredSts) {

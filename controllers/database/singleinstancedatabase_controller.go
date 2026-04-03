@@ -141,6 +141,16 @@ func parseSIDBUserOracleSysctlOverrides(sysctls []corev1.Sysctl) (int64, int64) 
 	return shmmax, shmall
 }
 
+func sidbHasOracleSysctlHint(sysctls []corev1.Sysctl) bool {
+	for i := range sysctls {
+		switch strings.TrimSpace(sysctls[i].Name) {
+		case "kernel.shmmax", "kernel.shmall", "kernel.sem", "kernel.shmmni":
+			return true
+		}
+	}
+	return false
+}
+
 func mergeSIDBOracleSysctls(existing, calculated []corev1.Sysctl) []corev1.Sysctl {
 	out := make([]corev1.Sysctl, 0, len(existing)+len(calculated))
 	indexByName := make(map[string]int, len(existing)+len(calculated))
@@ -170,7 +180,7 @@ func mergeSIDBOracleSysctls(existing, calculated []corev1.Sysctl) []corev1.Sysct
 func buildSIDBPodSecurityContext(
 	m *dbapi.SingleInstanceDatabase,
 	containerResources corev1.ResourceRequirements,
-) *corev1.PodSecurityContext {
+) (*corev1.PodSecurityContext, error) {
 	defaultRunAsUser := int64(dbcommons.ORACLE_UID)
 	defaultRunAsGroup := int64(dbcommons.ORACLE_GUID)
 	defaultFSGroup := int64(dbcommons.ORACLE_GUID)
@@ -193,6 +203,14 @@ func buildSIDBPodSecurityContext(
 
 	sgaBytes, pgaBytes := sidbInitParamBytes(m)
 	memLimit, hugePages := sharedresources.ExtractMemoryAndHugePagesBytes(&containerResources)
+	userTuningHint := hugePages > 0 || sidbHasOracleSysctlHint(podSecurityContext.Sysctls)
+	if !userTuningHint {
+		if err := sharedresources.ValidateSgaPgaSafety(sgaBytes, pgaBytes, memLimit, hugePages, sharedresources.DefaultSafetyPct); err != nil {
+			return nil, err
+		}
+		return podSecurityContext, nil
+	}
+
 	userShmmax, userShmall := parseSIDBUserOracleSysctlOverrides(podSecurityContext.Sysctls)
 	sysctls, err := sharedresources.CalculateOracleSysctls(
 		sgaBytes,
@@ -202,11 +220,14 @@ func buildSIDBPodSecurityContext(
 		userShmmax,
 		userShmall,
 	)
-	if err == nil && len(sysctls) > 0 {
+	if err != nil {
+		return nil, err
+	}
+	if len(sysctls) > 0 {
 		podSecurityContext.Sysctls = mergeSIDBOracleSysctls(podSecurityContext.Sysctls, sysctls)
 	}
 
-	return podSecurityContext
+	return podSecurityContext, nil
 }
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases,verbs=get;list;watch;create;update;patch;delete
@@ -1273,10 +1294,13 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 //
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase,
-	requiredAffinity bool) *corev1.Pod {
+	requiredAffinity bool) (*corev1.Pod, error) {
 	walletDir := GetWalletDirFromSid(m.Spec.Sid)
 	containerResources := buildSIDBContainerResources(m)
-	podSecurityContext := buildSIDBPodSecurityContext(m, containerResources)
+	podSecurityContext, err := buildSIDBPodSecurityContext(m, containerResources)
+	if err != nil {
+		return nil, err
+	}
 
 	// POD spec
 	pod := &corev1.Pod{
@@ -2010,7 +2034,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	r.addTrueCacheBlobVolumeMount(pod, m, rp)
 	// Set SingleInstanceDatabase instance as the owner and controller
 	ctrl.SetControllerReference(m, pod, r.Scheme)
-	return pod
+	return pod, nil
 
 }
 
@@ -3012,9 +3036,13 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 	//  if Found < Required, create new pods, name of pods are generated randomly
 	for i := replicasFound; i < replicasReq; i++ {
 		// mandatory pod affinity if it is replica based patching or not the first pod
-		pod := r.instantiatePodSpec(m, n, rp, replicaPatching || !firstPod)
+		pod, err := r.instantiatePodSpec(m, n, rp, replicaPatching || !firstPod)
+		if err != nil {
+			log.Error(err, "Failed to instantiate pod spec")
+			return requeueY, err
+		}
 		log.Info("Creating a new "+m.Name+" POD", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
-		err := r.Create(ctx, pod)
+		err = r.Create(ctx, pod)
 		if err != nil {
 			log.Error(err, "Failed to create new "+m.Name+" POD", "pod.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			return requeueY, err

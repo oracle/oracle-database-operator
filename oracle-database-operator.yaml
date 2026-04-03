@@ -14610,6 +14610,8 @@ spec:
     kind: ShardingDatabase
     listKind: ShardingDatabaseList
     plural: shardingdatabases
+    shortNames:
+    - gdd
     singular: shardingdatabase
   scope: Namespaced
   versions:
@@ -14709,6 +14711,7 @@ spec:
                           type: object
                       type: object
                     storageSizeInGb:
+                      default: 50
                       format: int32
                       type: integer
                   required:
@@ -14822,6 +14825,7 @@ spec:
                           type: object
                       type: object
                     storageSizeInGb:
+                      default: 50
                       format: int32
                       type: integer
                   required:
@@ -15050,6 +15054,7 @@ spec:
                     shardSpace:
                       type: string
                     storageSizeInGb:
+                      default: 50
                       format: int32
                       type: integer
                   required:
@@ -15494,6 +15499,7 @@ spec:
                       - composite
                       type: string
                     storageSizeInGb:
+                      default: 50
                       format: int32
                       type: integer
                     useExistingCatalog:
@@ -15523,6 +15529,8 @@ spec:
                     required:
                     - passwordKey
                     type: object
+                  gsmWalletRoot:
+                    type: string
                   mountPath:
                     type: string
                   name:
@@ -15538,6 +15546,9 @@ spec:
                     required:
                     - passwordKey
                     type: object
+                  useGsmWallet:
+                    default: "true"
+                    type: string
                 required:
                 - dbAdmin
                 - name
@@ -15768,6 +15779,7 @@ spec:
                     shape:
                       type: string
                     storageSizeInGb:
+                      default: 50
                       format: int32
                       type: integer
                     traceLevel:
@@ -16339,6 +16351,7 @@ spec:
                           type: string
                       type: object
                     storageSizeInGb:
+                      default: 50
                       format: int32
                       type: integer
                     validateNetwork:
@@ -16687,6 +16700,7 @@ spec:
                           type: string
                       type: object
                     storageSizeInGb:
+                      default: 50
                       format: int32
                       type: integer
                   required:
@@ -19107,7 +19121,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -19124,7 +19138,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-mltp1
         imagePullPolicy: Always
         name: manager
         ports:
