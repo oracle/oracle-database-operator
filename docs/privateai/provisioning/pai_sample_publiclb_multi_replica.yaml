@@ -22,7 +22,7 @@ spec:
  # Configuration for Private AI
  paiConfigFile:
   # Configmap having the link for the AI Model File
-  name: privateaiconfigjson
+  name: multiconfigjson
   # Location inside the Pod to which the file containining the configmap will be mounted to
   mountLocation: /privateai/config
 
