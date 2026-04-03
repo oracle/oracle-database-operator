@@ -1225,7 +1225,6 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	sysStandbyReplicaCountByGroup := map[string]int32{}
 	sysRegionByGroup := map[string]string{}
 	sysGroupByRegion := map[string]string{}
-	sysStandbyGroupSeen := map[string]bool{}
 	userPrimarySourceCountBySpace := map[string]int32{}
 	userPrimaryReplicaCountBySpace := map[string]int32{}
 	userStandbyReplicaCountBySpace := map[string]int32{}
@@ -1365,7 +1364,6 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 						sysPrimaryReplicaCountByGroup[groupKey] += replicaCount
 					case "STANDBY", "ACTIVE_STANDBY":
 						sysStandbyReplicaCountByGroup[groupKey] += replicaCount
-						sysStandbyGroupSeen[groupKey] = true
 						if cfg := r.Spec.ShardInfo[pindex].StandbyConfig; cfg != nil && cfg.StandbyPerPrimary > 0 {
 							validationErrs = append(validationErrs,
 								field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("standbyConfig").Child("standbyPerPrimary"),
@@ -1585,11 +1583,18 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 								fmt.Sprintf("System sharding: standby shardGroup %s has %d standby databases but primary shardGroup %s has only %d primary databases", standbyGroup, standbyCount, primaryGroup, primaryReplicaCount)))
 					}
 				}
-				if len(sysStandbyGroupSeen) > 1 {
+				var totalStandbyReplicas int32
+				for standbyGroup, standbyCount := range sysStandbyReplicaCountByGroup {
+					if standbyGroup == primaryGroup {
+						continue
+					}
+					totalStandbyReplicas += standbyCount
+				}
+				if totalStandbyReplicas > 0 && totalStandbyReplicas != primaryReplicaCount {
 					validationErrs = append(validationErrs,
 						field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardGroupDetails").Child("name"),
-							len(sysStandbyGroupSeen),
-							"System sharding: only one standby shardGroup can be mapped to a primary shardGroup"))
+							totalStandbyReplicas,
+							fmt.Sprintf("System sharding: total standby databases across standby shardGroups must match primary shardGroup %s database count (%d), got %d", primaryGroup, primaryReplicaCount, totalStandbyReplicas)))
 				}
 			}
 		} else {

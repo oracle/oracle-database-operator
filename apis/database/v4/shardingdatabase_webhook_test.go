@@ -360,7 +360,25 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "system DG allows one primary group and one standby group within primary cardinality",
+			name: "system DG allows primary shardgroup without standby shardgroup",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        3,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "system DG allows one primary group and one standby group with 1:1 total mapping",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "SYSTEM",
 				ReplicationType: "DG",
@@ -376,7 +394,7 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 					},
 					{
 						ShardPreFixName: "sba",
-						ShardNum:        2,
+						ShardNum:        3,
 						ShardGroupDetails: &ShardGroupSpec{
 							Name:     "sg-ashburn",
 							Region:   "ashburn",
@@ -419,7 +437,7 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 			wantErr: "does not support standbyPerPrimary",
 		},
 		{
-			name: "system DG rejects multiple standby shardgroups for one primary shardgroup",
+			name: "system DG rejects standby totals that do not match primary total across standby shardgroups",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "SYSTEM",
 				ReplicationType: "DG",
@@ -453,7 +471,43 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "only one standby shardGroup can be mapped to a primary shardGroup",
+			wantErr: "total standby databases across standby shardGroups must match primary shardGroup",
+		},
+		{
+			name: "system DG allows multiple standby shardgroups when total standby equals primary total",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        3,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "sba",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-ashburn",
+							Region:   "ashburn",
+							DeployAs: "STANDBY",
+						},
+					},
+					{
+						ShardPreFixName: "sbc",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-chicago",
+							Region:   "chicago",
+							DeployAs: "ACTIVE_STANDBY",
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "system DG rejects multiple primary shardgroups",
@@ -935,6 +989,15 @@ func TestValidateShardInfoNormalizesDeployAsCaseForShardGroup(t *testing.T) {
 						Name:     "sg1",
 						Region:   "phx",
 						DeployAs: "primary",
+					},
+				},
+				{
+					ShardPreFixName: "s2",
+					ShardNum:        1,
+					ShardGroupDetails: &ShardGroupSpec{
+						Name:     "sg2",
+						Region:   "iad",
+						DeployAs: "standby",
 					},
 				},
 			},
