@@ -705,6 +705,10 @@ spec:
                         - value
                         type: object
                       type: array
+                    externalServiceAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     forFederatedDatabase:
                       type: boolean
                     force:
@@ -888,6 +892,10 @@ spec:
                               type: string
                           type: object
                       type: object
+                    serviceAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     shape:
                       type: string
                     sharding:
@@ -930,11 +938,27 @@ spec:
                     required:
                     - passwordKey
                     type: object
+                  encryptionType:
+                    type: string
                   gsmWalletRoot:
+                    type: string
+                  keyFileMountLocation:
+                    type: string
+                  keyFileName:
+                    type: string
+                  keySecretName:
                     type: string
                   mountPath:
                     type: string
                   name:
+                    type: string
+                  nsConfigMap:
+                    type: string
+                  nsSecret:
+                    type: string
+                  pwdFileMountLocation:
+                    type: string
+                  pwdFileName:
                     type: string
                   tde:
                     properties:
@@ -947,6 +971,10 @@ spec:
                     required:
                     - passwordKey
                     type: object
+                  tdeKeyFileName:
+                    type: string
+                  tdePwdFileName:
+                    type: string
                   useGsmWallet:
                     default: "true"
                     type: string
@@ -1012,6 +1040,10 @@ spec:
                         - value
                         type: object
                       type: array
+                    externalServiceAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     gsmConfigData:
                       properties:
                         mountPath:
@@ -1063,6 +1095,9 @@ spec:
                     remoteEndpoint:
                       type: string
                     remoteOns:
+                      format: int32
+                      type: integer
+                    replicas:
                       format: int32
                       type: integer
                     resources:
@@ -1177,6 +1212,10 @@ spec:
                               type: string
                           type: object
                       type: object
+                    serviceAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     shape:
                       type: string
                     storageSizeInGb:
@@ -1193,10 +1232,319 @@ spec:
                 type: array
               gsmDevMode:
                 type: string
+              gsmExternalServiceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
               gsmImage:
                 type: string
               gsmImagePullSecret:
                 type: string
+              gsmInfo:
+                properties:
+                  envVars:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        value:
+                          type: string
+                      required:
+                      - name
+                      - value
+                      type: object
+                    type: array
+                  externalServiceAnnotations:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  gsm:
+                    items:
+                      properties:
+                        additionalPVCs:
+                          items:
+                            properties:
+                              mountPath:
+                                type: string
+                              pvcName:
+                                type: string
+                              storageClass:
+                                type: string
+                              storageSizeInGb:
+                                format: int32
+                                type: integer
+                            required:
+                            - mountPath
+                            type: object
+                          type: array
+                        capabilities:
+                          properties:
+                            add:
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            drop:
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          type: object
+                        catalog:
+                          type: string
+                        directorName:
+                          type: string
+                        disableDefaultLogVolumeClaims:
+                          type: boolean
+                        encryption:
+                          type: string
+                        endpoint:
+                          type: string
+                        envVars:
+                          items:
+                            properties:
+                              name:
+                                type: string
+                              value:
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                        externalServiceAnnotations:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        gsmConfigData:
+                          properties:
+                            mountPath:
+                              type: string
+                            name:
+                              type: string
+                          type: object
+                        gsmNum:
+                          format: int32
+                          type: integer
+                        gsmPrefix:
+                          type: string
+                        imagePullPolicy:
+                          type: string
+                        isDelete:
+                          type: string
+                        label:
+                          type: string
+                        listener:
+                          format: int32
+                          type: integer
+                        localons:
+                          format: int32
+                          type: integer
+                        name:
+                          type: string
+                        nodeSelector:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        pvAnnotations:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        pvMatchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        pvcName:
+                          type: string
+                        pwd:
+                          type: string
+                        region:
+                          type: string
+                        regions:
+                          items:
+                            type: string
+                          type: array
+                        remoteEndpoint:
+                          type: string
+                        remoteOns:
+                          format: int32
+                          type: integer
+                        replicas:
+                          format: int32
+                          type: integer
+                        resources:
+                          properties:
+                            claims:
+                              items:
+                                properties:
+                                  name:
+                                    type: string
+                                  request:
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              type: object
+                          type: object
+                        securityContext:
+                          properties:
+                            appArmorProfile:
+                              properties:
+                                localhostProfile:
+                                  type: string
+                                type:
+                                  type: string
+                              required:
+                              - type
+                              type: object
+                            fsGroup:
+                              format: int64
+                              type: integer
+                            fsGroupChangePolicy:
+                              type: string
+                            runAsGroup:
+                              format: int64
+                              type: integer
+                            runAsNonRoot:
+                              type: boolean
+                            runAsUser:
+                              format: int64
+                              type: integer
+                            seLinuxChangePolicy:
+                              type: string
+                            seLinuxOptions:
+                              properties:
+                                level:
+                                  type: string
+                                role:
+                                  type: string
+                                type:
+                                  type: string
+                                user:
+                                  type: string
+                              type: object
+                            seccompProfile:
+                              properties:
+                                localhostProfile:
+                                  type: string
+                                type:
+                                  type: string
+                              required:
+                              - type
+                              type: object
+                            supplementalGroups:
+                              items:
+                                format: int64
+                                type: integer
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            supplementalGroupsPolicy:
+                              type: string
+                            sysctls:
+                              items:
+                                properties:
+                                  name:
+                                    type: string
+                                  value:
+                                    type: string
+                                required:
+                                - name
+                                - value
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            windowsOptions:
+                              properties:
+                                gmsaCredentialSpec:
+                                  type: string
+                                gmsaCredentialSpecName:
+                                  type: string
+                                hostProcess:
+                                  type: boolean
+                                runAsUserName:
+                                  type: string
+                              type: object
+                          type: object
+                        serviceAnnotations:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        shape:
+                          type: string
+                        storageSizeInGb:
+                          default: 50
+                          format: int32
+                          type: integer
+                        traceLevel:
+                          type: string
+                        wpwd:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  imagePullPolicy:
+                    type: string
+                  resources:
+                    properties:
+                      claims:
+                        items:
+                          properties:
+                            name:
+                              type: string
+                            request:
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                    type: object
+                  serviceAnnotations:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  storageSizeInGb:
+                    format: int32
+                    type: integer
+                type: object
               gsmResources:
                 properties:
                   claims:
@@ -1277,6 +1625,8 @@ spec:
                       type: string
                     preferredAll:
                       type: string
+                    prferredAll:
+                      type: string
                     regionFailover:
                       type: string
                     replayInitTime:
@@ -1307,11 +1657,105 @@ spec:
                   - name
                   type: object
                 type: array
+              gsmServiceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
+              gsmShardGroup:
+                items:
+                  properties:
+                    ShardSpace:
+                      type: string
+                    deployAs:
+                      enum:
+                      - PRIMARY
+                      - STANDBY
+                      - ACTIVE_STANDBY
+                      type: string
+                    isDelete:
+                      type: string
+                    name:
+                      type: string
+                    region:
+                      type: string
+                    repFactor:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    ru_mode:
+                      enum:
+                      - READWRITE
+                      - READONLY
+                      type: string
+                    shardGroupName:
+                      type: string
+                    shardSpace:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              gsmShardSpace:
+                items:
+                  properties:
+                    Chnuks:
+                      format: int32
+                      type: integer
+                    chunks:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    deployAs:
+                      enum:
+                      - PRIMARY
+                      - STANDBY
+                      - ACTIVE_STANDBY
+                      type: string
+                    name:
+                      type: string
+                    protectMode:
+                      enum:
+                      - MAXPROTECTION
+                      - MAXAVAILABILITY
+                      - MAXPERFORMANCE
+                      type: string
+                    protectionMode:
+                      type: string
+                    repFactor:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    repUnits:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    shardSpaceName:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              hostAliases:
+                items:
+                  properties:
+                    hostnames:
+                      items:
+                        type: string
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    ip:
+                      type: string
+                  required:
+                  - ip
+                  type: object
+                type: array
               imagePullPolicy:
                 type: string
               invitedNodeSubnetFlag:
                 type: string
               isClone:
+                type: boolean
+              isDataGuard:
                 type: boolean
               isDebug:
                 type: boolean
@@ -1403,6 +1847,8 @@ spec:
                     preferred:
                       type: string
                     preferredAll:
+                      type: string
+                    prferredAll:
                       type: string
                     regionFailover:
                       type: string
@@ -1502,6 +1948,10 @@ spec:
                         - value
                         type: object
                       type: array
+                    externalServiceAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     force:
                       type: boolean
                     ggService:
@@ -1671,6 +2121,10 @@ spec:
                               type: string
                           type: object
                       type: object
+                    serviceAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     shardConfigData:
                       properties:
                         mountPath:
@@ -1761,11 +2215,15 @@ spec:
                   - name
                   type: object
                 type: array
+              shardBuddyRegion:
+                type: string
               shardConfigName:
                 type: string
               shardGroup:
                 items:
                   properties:
+                    ShardSpace:
+                      type: string
                     deployAs:
                       enum:
                       - PRIMARY
@@ -1786,6 +2244,8 @@ spec:
                       enum:
                       - READWRITE
                       - READONLY
+                      type: string
+                    shardGroupName:
                       type: string
                     shardSpace:
                       type: string
@@ -1839,6 +2299,10 @@ spec:
                         - value
                         type: object
                       type: array
+                    externalServiceAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     primaryDatabaseRef:
                       properties:
                         cdbName:
@@ -1966,10 +2430,16 @@ spec:
                               type: string
                           type: object
                       type: object
+                    serviceAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     shape:
                       type: string
                     shardGroupDetails:
                       properties:
+                        ShardSpace:
+                          type: string
                         deployAs:
                           enum:
                           - PRIMARY
@@ -1991,6 +2461,8 @@ spec:
                           - READWRITE
                           - READONLY
                           type: string
+                        shardGroupName:
+                          type: string
                         shardSpace:
                           type: string
                       required:
@@ -2004,6 +2476,9 @@ spec:
                       type: string
                     shardSpaceDetails:
                       properties:
+                        Chnuks:
+                          format: int32
+                          type: integer
                         chunks:
                           format: int32
                           minimum: 1
@@ -2022,6 +2497,8 @@ spec:
                           - MAXAVAILABILITY
                           - MAXPERFORMANCE
                           type: string
+                        protectionMode:
+                          type: string
                         repFactor:
                           format: int32
                           minimum: 1
@@ -2030,6 +2507,8 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        shardSpaceName:
+                          type: string
                       required:
                       - name
                       type: object
@@ -2108,9 +2587,16 @@ spec:
                   - shardPreFixName
                   type: object
                 type: array
+              shardRegion:
+                items:
+                  type: string
+                type: array
               shardSpace:
                 items:
                   properties:
+                    Chnuks:
+                      format: int32
+                      type: integer
                     chunks:
                       format: int32
                       minimum: 1
@@ -2129,6 +2615,8 @@ spec:
                       - MAXAVAILABILITY
                       - MAXPERFORMANCE
                       type: string
+                    protectionMode:
+                      type: string
                     repFactor:
                       format: int32
                       minimum: 1
@@ -2137,6 +2625,8 @@ spec:
                       format: int32
                       minimum: 1
                       type: integer
+                    shardSpaceName:
+                      type: string
                   required:
                   - name
                   type: object
