@@ -278,9 +278,6 @@ func buildContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCata
 				Drop: []corev1.Capability{"ALL"},
 			}, OraCatalogSpex.Capabilities),
 		},
-		Resources: corev1.ResourceRequirements{
-			Requests: make(map[corev1.ResourceName]resource.Quantity),
-		},
 		VolumeMounts: buildVolumeMountSpecForCatalog(instance, OraCatalogSpex),
 		LivenessProbe: buildShellExecProbe(
 			dbCheckCmd,

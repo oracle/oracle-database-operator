@@ -5288,15 +5288,102 @@ func containerCapabilities(c corev1.Container) *corev1.Capabilities {
 	return c.SecurityContext.Capabilities
 }
 
-// statefulSetNeedsNonShapeShardTemplateRecreate detects shard pod template drift
-// for non-shape fields that require a shard pod restart.
-func statefulSetNeedsNonShapeShardTemplateRecreate(current, desired *appsv1.StatefulSet) bool {
+type managedPodSecurityContext struct {
+	RunAsNonRoot          *bool
+	RunAsUser             *int64
+	RunAsGroup            *int64
+	FSGroup               *int64
+	FSGroupChangePolicy   *corev1.PodFSGroupChangePolicy
+	SupplementalGroups    []int64
+	Sysctls               []corev1.Sysctl
+}
+
+func normalizeResourceRequirements(rr corev1.ResourceRequirements) corev1.ResourceRequirements {
+	out := rr.DeepCopy()
+	if len(out.Requests) == 0 {
+		out.Requests = nil
+	}
+	if len(out.Limits) == 0 {
+		out.Limits = nil
+	}
+	if len(out.Claims) == 0 {
+		out.Claims = nil
+	}
+	return *out
+}
+
+func normalizeCapabilities(caps *corev1.Capabilities) *corev1.Capabilities {
+	if caps == nil {
+		return nil
+	}
+	out := caps.DeepCopy()
+	if len(out.Add) == 0 {
+		out.Add = nil
+	}
+	if len(out.Drop) == 0 {
+		out.Drop = nil
+	}
+	sort.Slice(out.Add, func(i, j int) bool {
+		return out.Add[i] < out.Add[j]
+	})
+	sort.Slice(out.Drop, func(i, j int) bool {
+		return out.Drop[i] < out.Drop[j]
+	})
+	return out
+}
+
+func normalizeManagedPodSecurityContext(sc *corev1.PodSecurityContext) *managedPodSecurityContext {
+	if sc == nil {
+		return nil
+	}
+	out := &managedPodSecurityContext{}
+	if sc.RunAsNonRoot != nil {
+		v := *sc.RunAsNonRoot
+		out.RunAsNonRoot = &v
+	}
+	if sc.RunAsUser != nil {
+		v := *sc.RunAsUser
+		out.RunAsUser = &v
+	}
+	if sc.RunAsGroup != nil {
+		v := *sc.RunAsGroup
+		out.RunAsGroup = &v
+	}
+	if sc.FSGroup != nil {
+		v := *sc.FSGroup
+		out.FSGroup = &v
+	}
+	if sc.FSGroupChangePolicy != nil {
+		v := *sc.FSGroupChangePolicy
+		out.FSGroupChangePolicy = &v
+	}
+	if len(sc.SupplementalGroups) > 0 {
+		out.SupplementalGroups = append([]int64(nil), sc.SupplementalGroups...)
+		slices.Sort(out.SupplementalGroups)
+	}
+	if len(sc.Sysctls) > 0 {
+		out.Sysctls = append([]corev1.Sysctl(nil), sc.Sysctls...)
+		sort.Slice(out.Sysctls, func(i, j int) bool {
+			if out.Sysctls[i].Name == out.Sysctls[j].Name {
+				return out.Sysctls[i].Value < out.Sysctls[j].Value
+			}
+			return out.Sysctls[i].Name < out.Sysctls[j].Name
+		})
+	}
+	return out
+}
+
+func nonShapeShardTemplateDriftReasons(current, desired *appsv1.StatefulSet) []string {
 	if current == nil || desired == nil {
-		return false
+		return nil
 	}
 
-	if !reflect.DeepEqual(current.Spec.Template.Spec.SecurityContext, desired.Spec.Template.Spec.SecurityContext) {
-		return true
+	reasons := make([]string, 0, 3)
+	if !reflect.DeepEqual(
+		normalizeManagedPodSecurityContext(current.Spec.Template.Spec.SecurityContext),
+		normalizeManagedPodSecurityContext(desired.Spec.Template.Spec.SecurityContext),
+	) {
+		reasons = append(reasons, "securityContext")
 	}
 
 	desiredByName := map[string]corev1.Container{}
@@ -5304,22 +5391,42 @@ func statefulSetNeedsNonShapeShardTemplateRecreate(current, desired *appsv1.Stat
 		desiredByName[c.Name] = c
 	}
 
+	resourcesDrift := false
+	capabilitiesDrift := false
 	for _, curr := range current.Spec.Template.Spec.Containers {
 		want, ok := desiredByName[curr.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(curr.Resources, want.Resources) {
-			return true
+		if !resourcesDrift && !reflect.DeepEqual(
+			normalizeResourceRequirements(curr.Resources),
+			normalizeResourceRequirements(want.Resources),
+		) {
+			resourcesDrift = true
 		}
-
-		if !reflect.DeepEqual(containerCapabilities(curr), containerCapabilities(want)) {
-			return true
+		if !capabilitiesDrift && !reflect.DeepEqual(
+			normalizeCapabilities(containerCapabilities(curr)),
+			normalizeCapabilities(containerCapabilities(want)),
+		) {
+			capabilitiesDrift = true
+		}
+		if resourcesDrift && capabilitiesDrift {
+			break
 		}
 	}
+	if resourcesDrift {
+		reasons = append(reasons, "resources")
+	}
+	if capabilitiesDrift {
+		reasons = append(reasons, "capabilities")
+	}
+	return reasons
+}
 
-	return false
+// statefulSetNeedsNonShapeShardTemplateRecreate detects shard pod template drift
+// for non-shape fields that require a shard pod restart.
+func statefulSetNeedsNonShapeShardTemplateRecreate(current, desired *appsv1.StatefulSet) bool {
+	return len(nonShapeShardTemplateDriftReasons(current, desired)) > 0
 }
 
 func shapeTargetKeySet(targets []shapeRollTarget) map[string]bool {
@@ -5897,9 +6004,22 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShardTemplateChanges(instan
 			return true, err
 		}
 
-		if !statefulSetNeedsNonShapeShardTemplateRecreate(currSts, desiredSts) {
+		driftReasons := nonShapeShardTemplateDriftReasons(currSts, desiredSts)
+		if len(driftReasons) == 0 {
 			continue
 		}
+		r.logLegacy(
+			"INFO",
+			fmt.Sprintf(
+				"Ordered shard template rollout detected drift for %s %s: %s",
+				t.kind,
+				t.name,
+				strings.Join(driftReasons, ","),
+			),
+			nil,
+			instance,
+			r.Log,
+		)
 
 		if err := r.validateShapeTargetReady(instance, t); err != nil {
 			r.logLegacy("INFO", "Ordered shard template rollout waiting for "+t.kind+" "+t.name+" to become ready", nil, instance, r.Log)

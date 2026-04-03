@@ -464,9 +464,6 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 				Drop: capsDrop,
 			}, OraShardSpex.Capabilities),
 		},
-		Resources: corev1.ResourceRequirements{
-			Requests: make(map[corev1.ResourceName]resource.Quantity),
-		},
 		VolumeMounts: buildVolumeMountSpecForShard(instance, OraShardSpex),
 
 		// Liveness: simple + reliable (PMON exists).

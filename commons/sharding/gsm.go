@@ -272,9 +272,6 @@ func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex 
 				Drop: []corev1.Capability{"ALL"},
 			}, OraGsmSpex.Capabilities),
 		},
-		Resources: corev1.ResourceRequirements{
-			Requests: make(map[corev1.ResourceName]resource.Quantity),
-		},
 		VolumeMounts: buildVolumeMountSpecForGsm(instance, OraGsmSpex),
 		LivenessProbe: buildExecProbe(
 			getLivenessCmd("GSM"),
