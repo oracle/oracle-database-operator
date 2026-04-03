@@ -415,6 +415,19 @@ func (cr *RacDatabase) validateAsmStorage() field.ErrorList {
 
 	for idx, dg := range cr.Spec.AsmStorageDetails {
 		dp := field.NewPath("spec").Child("asmDiskGroupDetails").Index(idx)
+		effectiveStorageClass := strings.TrimSpace(dg.StorageClass)
+		if effectiveStorageClass == "" {
+			effectiveStorageClass = strings.TrimSpace(cr.Spec.StorageClass)
+		}
+		if effectiveStorageClass != "" && dg.AsmStorageSizeInGb <= 0 {
+			allErrs = append(allErrs,
+				field.Invalid(
+					dp.Child("asmStorageSizeInGb"),
+					dg.AsmStorageSizeInGb,
+					"asmStorageSizeInGb must be greater than zero when storageClass is configured for this disk group",
+				),
+			)
+		}
 
 		if gridRspSet {
 			// type: Can only be "OTHERS" or blank
@@ -887,6 +900,10 @@ func (r *RacDatabase) validateGeneric() field.ErrorList {
 			field.Invalid(field.NewPath("spec").Child("ConfigParams"), r.Spec.ConfigParams,
 				"ConfigParams cannot be set empty"))
 	} else {
+		if _, err := r.Spec.ResolveSwStorageMode(); err != nil {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec"), r.Spec, err.Error()))
+		}
 
 		cfg := r.Spec.ConfigParams
 
@@ -1080,32 +1097,15 @@ func (r *RacDatabase) validateGeneric() field.ErrorList {
 		}
 
 		if !utils.CheckStatusFlag(r.Spec.UseNfsforSwStorage) {
-			if cfg.SwStagePvc != "" || cfg.SwStagePvcMountLocation != "" {
-				if cfg.SwStagePvc == "" {
-					validationErrs = append(validationErrs,
-						field.Invalid(
-							field.NewPath("spec").Child("ConfigParams").Child("swStagePvc"),
-							cfg.SwStagePvc,
-							"swStagePvc must be specified when using PVC staging",
-						))
-				}
-				if cfg.SwStagePvcMountLocation == "" {
-					validationErrs = append(validationErrs,
-						field.Invalid(
-							field.NewPath("spec").Child("ConfigParams").Child("swStagePvcMountLocation"),
-							cfg.SwStagePvcMountLocation,
-							"swStagePvcMountLocation must be specified when using PVC staging",
-						))
-				}
-				if cfg.HostSwStageLocation != "" {
-					validationErrs = append(validationErrs,
-						field.Invalid(
-							field.NewPath("spec").Child("ConfigParams").Child("hostSwStageLocation"),
-							cfg.HostSwStageLocation,
-							"hostSwStageLocation cannot be used when swStagePvc is specified",
-						))
-				}
-			} else if cfg.HostSwStageLocation == "" {
+			mode, err := cfg.ResolveSwStageMode()
+			if err != nil {
+				validationErrs = append(validationErrs,
+					field.Invalid(
+						field.NewPath("spec").Child("ConfigParams"),
+						cfg,
+						err.Error(),
+					))
+			} else if mode == RacSwStageNone {
 				validationErrs = append(validationErrs,
 					field.Invalid(
 						field.NewPath("spec").Child("ConfigParams"),

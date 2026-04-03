@@ -185,6 +185,29 @@ func markRACFailedStatus(obj *racdb.RacDatabase) {
 	obj.Status.DbState = string(racdb.RACFailedState)
 }
 
+func effectiveAsmStorageClassForDG(dg racdb.AsmDiskGroupDetails, globalStorageClass string) string {
+	if sc := strings.TrimSpace(dg.StorageClass); sc != "" {
+		return sc
+	}
+	return strings.TrimSpace(globalStorageClass)
+}
+
+func isRawAsmDiskGroup(dg racdb.AsmDiskGroupDetails, globalStorageClass string) bool {
+	return effectiveAsmStorageClassForDG(dg, globalStorageClass) == ""
+}
+
+func hasAnyRawAsmDiskGroup(spec *racdb.RacDatabaseSpec) bool {
+	if spec == nil {
+		return false
+	}
+	for i := range spec.AsmStorageDetails {
+		if isRawAsmDiskGroup(spec.AsmStorageDetails[i], spec.StorageClass) {
+			return true
+		}
+	}
+	return false
+}
+
 func clearRACFailedStatus(obj *racdb.RacDatabase) {
 	if obj == nil {
 		return
@@ -593,12 +616,13 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 			break
 		}
 	}
+	hasRawDiskGroups := hasAnyRawAsmDiskGroup(&racDatabase.Spec)
 
 	shouldRunDiscovery :=
-		raccommon.CheckStorageClass(racDatabase) == "NOSC" &&
+		hasRawDiskGroups &&
 			(len(removedAsmDisks) == 0) && (isNewSetup ||
-			upgradeSetup ||
-			missingSize ||
+				upgradeSetup ||
+				missingSize ||
 			len(addedAsmDisks) > 0 ||
 			len(racDatabase.Status.AsmDiskGroups) == 0)
 
@@ -662,7 +686,7 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 		}
 	}
 
-	if len(racDatabase.Status.AsmDiskGroups) == 0 && raccommon.CheckStorageClass(racDatabase) == "NOSC" {
+	if len(racDatabase.Status.AsmDiskGroups) == 0 && hasRawDiskGroups {
 		return resultNq, completed, fmt.Errorf("no ASM disk group status available")
 	}
 	err = setRacDgFromStatusAndSpecWithMinimumDefaultsforRAC(racDatabase, r.Client, cName, fName)
@@ -679,22 +703,30 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 	for dgIndex, dgSpec := range racDatabase.Spec.AsmStorageDetails {
 		groupName := dgSpec.Name
 		dgType := dgSpec.Type
+		dgIsRaw := isRawAsmDiskGroup(dgSpec, racDatabase.Spec.StorageClass)
 
 		if dgType == racdb.OthersDiskDg {
 			for diskIdx, diskName := range dgSpec.Disks {
-				diskStatus, ok := diskStatusMap[diskName]
-				if !ok || !diskStatus.Valid || diskStatus.SizeInGb == 0 {
-					continue
-				}
-
-				sizeStr := fmt.Sprintf("%dGi", diskStatus.SizeInGb)
-
-				pv := raccommon.VolumePVForASM(
-					racDatabase, dgIndex, diskIdx,
-					diskName, groupName, sizeStr,
-				)
-				if _, _, err = r.createOrReplaceAsmPv(ctx, racDatabase, pv, string(dgType)); err != nil {
-					return resultNq, completed, err
+				var sizeStr string
+				if dgIsRaw {
+					diskStatus, ok := diskStatusMap[diskName]
+					if !ok || !diskStatus.Valid || diskStatus.SizeInGb == 0 {
+						continue
+					}
+					sizeStr = fmt.Sprintf("%dGi", diskStatus.SizeInGb)
+					pv := raccommon.VolumePVForASM(
+						racDatabase, dgIndex, diskIdx,
+						diskName, groupName, sizeStr,
+					)
+					if _, _, err = r.createOrReplaceAsmPv(ctx, racDatabase, pv, string(dgType)); err != nil {
+						return resultNq, completed, err
+					}
+				} else {
+					if dgSpec.AsmStorageSizeInGb == 0 {
+						r.Log.Info("ASM disk group storage size not set for storage class provisioning, skipping", "diskGroup", groupName, "disk", diskName)
+						continue
+					}
+					sizeStr = fmt.Sprintf("%dGi", dgSpec.AsmStorageSizeInGb)
 				}
 
 				pvc := raccommon.VolumePVCForASM(
@@ -715,16 +747,14 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 				break
 			}
 		}
-		if dgStatus == nil && raccommon.CheckStorageClass(racDatabase) == "NOSC" {
+		if dgStatus == nil && dgIsRaw {
 			r.Log.Info("ASM disk group not present in status, skipping", "diskGroup", groupName)
 			continue
 		}
 
-		isStatic := raccommon.CheckStorageClass(racDatabase) == "NOSC"
-
 		for diskIdx, diskName := range dgSpec.Disks {
 			var diskStatus *racdb.AsmDiskStatus
-			if isStatic {
+			if dgIsRaw {
 				for i, d := range dgStatus.Disks {
 					if d.Name == diskName {
 						diskStatus = &dgStatus.Disks[i]
@@ -737,7 +767,7 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 			}
 
 			var sizeStr string
-			if isStatic {
+			if dgIsRaw {
 				sizeStr = fmt.Sprintf("%dGi", diskStatus.SizeInGb)
 			} else {
 				if dgSpec.AsmStorageSizeInGb == 0 {
@@ -747,7 +777,7 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 				sizeStr = fmt.Sprintf("%dGi", dgSpec.AsmStorageSizeInGb)
 			}
 
-			if isStatic {
+			if dgIsRaw {
 				pv := raccommon.VolumePVForASM(
 					racDatabase, dgIndex, diskIdx,
 					diskName, groupName, sizeStr,
@@ -767,7 +797,7 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 		}
 	}
 
-	if raccommon.CheckStorageClass(racDatabase) == "NOSC" {
+	if hasRawDiskGroups {
 		err = r.cleanupDaemonSet(racDatabase, ctx)
 		if err != nil {
 			return resultQ, completed, nilErr
@@ -4903,7 +4933,7 @@ func (r *RacDatabaseReconciler) cleanupRacDatabase(
 			if err := raccommon.DelRacPvc(racDatabase, diskName, dg.Name, r.Client, r.Log); err != nil {
 				return err
 			}
-			if len(racDatabase.Spec.StorageClass) == 0 {
+			if isRawAsmDiskGroup(dg, racDatabase.Spec.StorageClass) {
 				if err := raccommon.DelRacPv(racDatabase, diskName, dg.Name, r.Client, r.Log); err != nil {
 					return err
 				}

@@ -89,6 +89,7 @@ func BuildStatefulSpecForRacCluster(
 ) *appsv1.StatefulSetSpec {
 	nodeName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, nodeIndex+1)
 	labels := buildLabelsForRac(instance, "RAC")
+	swMode, swModeErr := instance.Spec.ResolveSwStorageMode()
 
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: utils.OraSubDomain,
@@ -104,7 +105,7 @@ func BuildStatefulSpecForRacCluster(
 		},
 	}
 
-	if len(instance.Spec.StorageClass) != 0 {
+	if swModeErr == nil && swMode == racdb.RacSwStorageStorageClass {
 		sfsetspec.VolumeClaimTemplates = VolumeClaimTemplatesForRacCluster(instance, clusterSpec, nodeIndex)
 	}
 	sfsetspec.Template.Annotations = generateNetworkDetailsForCluster(instance, clusterSpec, nodeIndex, kClient)
@@ -213,7 +214,8 @@ func VolumeClaimTemplatesForRacCluster(
 			})
 		}
 	}
-	if len(instance.Spec.StorageClass) != 0 {
+	swMode, err := instance.Spec.ResolveSwStorageMode()
+	if err == nil && swMode == racdb.RacSwStorageStorageClass {
 		nodeName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, nodeIndex+1)
 		swPVCSizeInGi := instance.Spec.StorageSizeInGB
 		if instance.Spec.SwLocStorageSizeInGb > 0 {
@@ -634,7 +636,8 @@ func buildVolumeSpecForRacCluster(
 	})
 
 	// Host software volumes from ClusterDetails
-	if len(clusterSpec.RacHostSwLocation) != 0 {
+	swMode, swModeErr := instance.Spec.ResolveSwStorageMode()
+	if swModeErr == nil && swMode == racdb.RacSwStorageHostPath {
 		hostPath := fmt.Sprintf("%s/%s", clusterSpec.RacHostSwLocation, nodeName)
 		result = append(result, corev1.Volume{
 			Name: nodeName + "-oradata-sw-vol",
@@ -644,7 +647,7 @@ func buildVolumeSpecForRacCluster(
 				},
 			},
 		})
-	} else if instance.Spec.RacSwPrefix != "" {
+	} else if swModeErr == nil && swMode == racdb.RacSwStorageExistingPVC {
 		pvcName := fmt.Sprintf("%s%d", instance.Spec.RacSwPrefix, nodeIndex+1)
 		result = append(result, corev1.Volume{
 			Name: nodeName + "-oradata-sw-vol",
@@ -654,7 +657,7 @@ func buildVolumeSpecForRacCluster(
 				},
 			},
 		})
-	} else if len(instance.Spec.StorageClass) != 0 {
+	} else if swModeErr == nil && swMode == racdb.RacSwStorageStorageClass {
 		result = append(result, corev1.Volume{
 			Name: nodeName + "-oradata-sw-vol",
 			VolumeSource: corev1.VolumeSource{
@@ -665,8 +668,9 @@ func buildVolumeSpecForRacCluster(
 		})
 	}
 
-	// Optionally, HostSwStageLocation if needed from ConfigParams
-	if instance.Spec.ConfigParams != nil && instance.Spec.ConfigParams.SwStagePvc != "" {
+	// Optionally, software staging source.
+	swStageMode, swStageErr := instance.Spec.ConfigParams.ResolveSwStageMode()
+	if swStageErr == nil && swStageMode == racdb.RacSwStageExistingPVC {
 		result = append(result, corev1.Volume{
 			Name: nodeName + "-oradata-swstage-vol",
 			VolumeSource: corev1.VolumeSource{
@@ -675,7 +679,7 @@ func buildVolumeSpecForRacCluster(
 				},
 			},
 		})
-	} else if instance.Spec.ConfigParams != nil && instance.Spec.ConfigParams.HostSwStageLocation != "" {
+	} else if swStageErr == nil && swStageMode == racdb.RacSwStageHostPath {
 		result = append(result, corev1.Volume{
 			Name: nodeName + "-oradata-swstage-vol",
 			VolumeSource: corev1.VolumeSource{
@@ -957,7 +961,8 @@ func buildVolumeMountSpecForRacCluster(
 	})
 
 	// Host software location / existing PVC / StorageClass software volume
-	if len(clusterSpec.RacHostSwLocation) != 0 || instance.Spec.RacSwPrefix != "" || len(instance.Spec.StorageClass) != 0 {
+	swMode, swModeErr := instance.Spec.ResolveSwStorageMode()
+	if swModeErr == nil && swMode != racdb.RacSwStorageNone {
 		swMountPath := instance.Spec.ConfigParams.SwMountLocation
 		if swMountPath == "" {
 			swMountPath = utils.OraSwLocation
@@ -968,8 +973,8 @@ func buildVolumeMountSpecForRacCluster(
 		})
 	}
 
-	if instance.Spec.ConfigParams != nil &&
-		(instance.Spec.ConfigParams.SwStagePvc != "" || len(instance.Spec.ConfigParams.HostSwStageLocation) != 0) {
+	swStageMode, swStageErr := instance.Spec.ConfigParams.ResolveSwStageMode()
+	if swStageErr == nil && swStageMode != racdb.RacSwStageNone {
 		mountPath := utils.OraSwStageLocation
 		if instance.Spec.ConfigParams.SwStagePvcMountLocation != "" {
 			mountPath = instance.Spec.ConfigParams.SwStagePvcMountLocation

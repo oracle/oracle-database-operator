@@ -53,6 +53,8 @@
 package v4
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -95,6 +97,54 @@ type RacDatabaseSpec struct {
 	IsFailed             bool                         `json:"isFailed,omitempty"`
 	IsManual             bool                         `json:"isManual,omitempty"`
 	SrvAccountName       string                       `json:"serviceAccountName,omitempty"`
+}
+
+// RacSwStorageMode indicates how RAC software binaries are mounted.
+type RacSwStorageMode string
+
+const (
+	RacSwStorageNone         RacSwStorageMode = "none"
+	RacSwStorageHostPath     RacSwStorageMode = "hostPath"
+	RacSwStorageExistingPVC  RacSwStorageMode = "existingPVC"
+	RacSwStorageStorageClass RacSwStorageMode = "storageClass"
+)
+
+// ResolveSwStorageMode determines the configured software storage mechanism.
+// Exactly one of clusterDetails.racHostSwLocation, racSwPrefix, or storageClass may be set.
+func (spec *RacDatabaseSpec) ResolveSwStorageMode() (RacSwStorageMode, error) {
+	if spec == nil {
+		return RacSwStorageNone, nil
+	}
+	hostPath := ""
+	if spec.ClusterDetails != nil {
+		hostPath = strings.TrimSpace(spec.ClusterDetails.RacHostSwLocation)
+	}
+	pvcPrefix := strings.TrimSpace(spec.RacSwPrefix)
+	storageClass := strings.TrimSpace(spec.StorageClass)
+
+	var configured []string
+	if hostPath != "" {
+		configured = append(configured, "clusterDetails.racHostSwLocation")
+	}
+	if pvcPrefix != "" {
+		configured = append(configured, "racSwPrefix")
+	}
+	if storageClass != "" {
+		configured = append(configured, "storageClass")
+	}
+	if len(configured) > 1 {
+		return RacSwStorageNone, fmt.Errorf("software storage options are mutually exclusive; set only one of %s", strings.Join(configured, ", "))
+	}
+	switch {
+	case hostPath != "":
+		return RacSwStorageHostPath, nil
+	case pvcPrefix != "":
+		return RacSwStorageExistingPVC, nil
+	case storageClass != "":
+		return RacSwStorageStorageClass, nil
+	default:
+		return RacSwStorageNone, nil
+	}
 }
 
 // RacAsmDiskDetails captures ASM disk group configuration for legacy specs.
@@ -148,6 +198,43 @@ type RacInitParams struct {
 	GridOneOffIds           string           `json:"gridOneOffIds,omitempty"`
 	SwStagePvc              string           `json:"swStagePvc,omitempty"`
 	SwStagePvcMountLocation string           `json:"swStagePvcMountLocation,omitempty"`
+}
+
+// RacSwStageMode indicates how software staging artifacts are mounted.
+type RacSwStageMode string
+
+const (
+	RacSwStageNone        RacSwStageMode = "none"
+	RacSwStageHostPath    RacSwStageMode = "hostPath"
+	RacSwStageExistingPVC RacSwStageMode = "existingPVC"
+)
+
+// ResolveSwStageMode validates and determines software staging source.
+// swStagePvc and swStagePvcMountLocation must be set together and cannot be used with hostSwStageLocation.
+func (cfg *RacInitParams) ResolveSwStageMode() (RacSwStageMode, error) {
+	if cfg == nil {
+		return RacSwStageNone, nil
+	}
+	swStagePVC := strings.TrimSpace(cfg.SwStagePvc)
+	swStageMount := strings.TrimSpace(cfg.SwStagePvcMountLocation)
+	hostStage := strings.TrimSpace(cfg.HostSwStageLocation)
+
+	if (swStagePVC != "" || swStageMount != "") && hostStage != "" {
+		return RacSwStageNone, fmt.Errorf("hostSwStageLocation cannot be used when swStagePvc is specified")
+	}
+	if swStagePVC != "" || swStageMount != "" {
+		if swStagePVC == "" {
+			return RacSwStageNone, fmt.Errorf("swStagePvc must be specified when using PVC staging")
+		}
+		if swStageMount == "" {
+			return RacSwStageNone, fmt.Errorf("swStagePvcMountLocation must be specified when using PVC staging")
+		}
+		return RacSwStageExistingPVC, nil
+	}
+	if hostStage != "" {
+		return RacSwStageHostPath, nil
+	}
+	return RacSwStageNone, nil
 }
 
 // RacClusterDetailSpec defines cluster-wide configuration for new-style specs.
