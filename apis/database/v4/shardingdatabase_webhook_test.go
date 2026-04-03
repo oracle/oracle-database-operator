@@ -1341,7 +1341,7 @@ func TestDefaultAppliesInlineGsmResourcesTemplate(t *testing.T) {
 		Spec: ShardingDatabaseSpec{
 			Gsm: []GsmSpec{
 				{
-					StorageSizeInGb: 50,
+					StorageSizeInGb:  50,
 					ImagePulllPolicy: &pullAlways,
 					Resources: &corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
@@ -1352,8 +1352,8 @@ func TestDefaultAppliesInlineGsmResourcesTemplate(t *testing.T) {
 				},
 				{Name: "gsm1"},
 				{
-					Name:            "gsm2",
-					StorageSizeInGb: 60,
+					Name:             "gsm2",
+					StorageSizeInGb:  60,
 					ImagePulllPolicy: &pullIfNotPresent,
 					Resources: &corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
@@ -1398,6 +1398,85 @@ func TestDefaultAppliesInlineGsmResourcesTemplate(t *testing.T) {
 	if got := cr.Spec.Gsm[1].Resources.Limits.Cpu().String(); got != "1" {
 		t.Fatalf("expected gsm2 cpu limit to remain 1, got %s", got)
 	}
+}
+
+func TestDefaultMaterializesGsmInfoWrapper(t *testing.T) {
+	pullAlways := corev1.PullAlways
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			GsmResources: &corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("1"),
+				},
+			},
+			GsmInfo: &GsmInfo{
+				Resources: &corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU: resource.MustParse("2"),
+					},
+				},
+				StorageSizeInGb:  55,
+				ImagePulllPolicy: &pullAlways,
+				EnvVars: []EnvironmentVariable{
+					{Name: "A", Value: "1"},
+					{Name: "B", Value: "2"},
+				},
+				ServiceAnnotations: map[string]string{
+					"tier": "common",
+				},
+				Gsm: []GsmSpec{
+					{
+						Name: "gsm1",
+						EnvVars: []EnvironmentVariable{
+							{Name: "B", Value: "22"},
+							{Name: "C", Value: "3"},
+						},
+						ServiceAnnotations: map[string]string{
+							"tier": "item",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := cr.Default(context.Background(), cr); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+
+	if len(cr.Spec.Gsm) != 1 {
+		t.Fatalf("expected one gsm entry from gsmInfo.gsm, got %d", len(cr.Spec.Gsm))
+	}
+	if cr.Spec.Gsm[0].Resources == nil || cr.Spec.Gsm[0].Resources.Limits.Cpu().String() != "2" {
+		t.Fatalf("expected gsm resources to come from gsmInfo.resources")
+	}
+	if cr.Spec.Gsm[0].StorageSizeInGb != 55 {
+		t.Fatalf("expected gsm storageSizeInGb 55, got %d", cr.Spec.Gsm[0].StorageSizeInGb)
+	}
+	if cr.Spec.Gsm[0].ImagePulllPolicy == nil || *cr.Spec.Gsm[0].ImagePulllPolicy != corev1.PullAlways {
+		t.Fatalf("expected gsm imagePullPolicy Always, got %v", cr.Spec.Gsm[0].ImagePulllPolicy)
+	}
+	if got := envVarValue(cr.Spec.Gsm[0].EnvVars, "A"); got != "1" {
+		t.Fatalf("expected env A=1, got %q", got)
+	}
+	if got := envVarValue(cr.Spec.Gsm[0].EnvVars, "B"); got != "22" {
+		t.Fatalf("expected env B=22 from item override, got %q", got)
+	}
+	if got := envVarValue(cr.Spec.Gsm[0].EnvVars, "C"); got != "3" {
+		t.Fatalf("expected env C=3, got %q", got)
+	}
+	if got := cr.Spec.Gsm[0].ServiceAnnotations["tier"]; got != "item" {
+		t.Fatalf("expected serviceAnnotations tier=item, got %q", got)
+	}
+}
+
+func envVarValue(envs []EnvironmentVariable, key string) string {
+	for _, e := range envs {
+		if e.Name == key {
+			return e.Value
+		}
+	}
+	return ""
 }
 
 func TestDefaultDbSecretGsmWalletDefaults(t *testing.T) {

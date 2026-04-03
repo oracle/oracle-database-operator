@@ -191,6 +191,8 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj *ShardingDatabase) e
 			cr.Spec.Catalog[i].Resources = cfg.ResourceRequirements()
 		}
 	}
+
+	applyGsmInfoDefaults(&cr.Spec)
 	gsmInlineDefaults := extractAndStripInlineGsmDefaults(&cr.Spec)
 	gsmDefaultResources := cr.Spec.GsmResources
 	if gsmInlineDefaults.resources != nil {
@@ -220,6 +222,57 @@ type inlineGsmDefaults struct {
 	resources       *corev1.ResourceRequirements
 	storageSizeInGb int32
 	imagePullPolicy *corev1.PullPolicy
+}
+
+func applyGsmInfoDefaults(spec *ShardingDatabaseSpec) {
+	if spec == nil || spec.GsmInfo == nil || len(spec.GsmInfo.Gsm) == 0 {
+		return
+	}
+
+	common := spec.GsmInfo
+	materialized := make([]GsmSpec, len(common.Gsm))
+	for i := range common.Gsm {
+		item := common.Gsm[i]
+
+		if item.Resources == nil {
+			if common.Resources != nil {
+				item.Resources = common.Resources.DeepCopy()
+			} else if spec.GsmResources != nil {
+				item.Resources = spec.GsmResources.DeepCopy()
+			}
+		}
+
+		if item.StorageSizeInGb <= 0 && common.StorageSizeInGb > 0 {
+			item.StorageSizeInGb = common.StorageSizeInGb
+		}
+
+		if item.ImagePulllPolicy == nil && common.ImagePulllPolicy != nil {
+			p := *common.ImagePulllPolicy
+			item.ImagePulllPolicy = &p
+		}
+
+		item.EnvVars = upsertEnvVars(append([]EnvironmentVariable(nil), common.EnvVars...), item.EnvVars, true)
+		item.ServiceAnnotations = mergeStringMapLocal(common.ServiceAnnotations, item.ServiceAnnotations)
+		item.ExternalServiceAnnotations = mergeStringMapLocal(common.ExternalServiceAnnotations, item.ExternalServiceAnnotations)
+
+		materialized[i] = item
+	}
+
+	spec.Gsm = materialized
+}
+
+func mergeStringMapLocal(base map[string]string, overlay map[string]string) map[string]string {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(base)+len(overlay))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range overlay {
+		out[k] = v
+	}
+	return out
 }
 
 func extractAndStripInlineGsmDefaults(spec *ShardingDatabaseSpec) inlineGsmDefaults {
@@ -2331,6 +2384,8 @@ func (r *ShardingDatabase) initShardsSpec() error {
 			if len(r.Spec.ShardInfo[pindex].AdditionalPVCs) > 0 {
 				r.Spec.Shard[shardIndex].AdditionalPVCs = append([]AdditionalPVCSpec(nil), r.Spec.ShardInfo[pindex].AdditionalPVCs...)
 			}
+			r.Spec.Shard[shardIndex].ServiceAnnotations = r.Spec.ShardInfo[pindex].ServiceAnnotations
+			r.Spec.Shard[shardIndex].ExternalServiceAnnotations = r.Spec.ShardInfo[pindex].ExternalServiceAnnotations
 			r.Spec.Shard[shardIndex].SecurityContext = r.Spec.ShardInfo[pindex].SecurityContext
 			r.Spec.Shard[shardIndex].Capabilities = r.Spec.ShardInfo[pindex].Capabilities
 			fmt.Println("ShardName=[" + r.Spec.Shard[shardIndex].Name + "]")
@@ -2387,6 +2442,8 @@ func mergeDesiredAndExistingShards(existing []ShardSpec, desired []ShardSpec) []
 			merged.Resources = d.Resources
 			merged.AdditionalPVCs = d.AdditionalPVCs
 			merged.DisableDefaultLogVolumeClaims = d.DisableDefaultLogVolumeClaims
+			merged.ServiceAnnotations = d.ServiceAnnotations
+			merged.ExternalServiceAnnotations = d.ExternalServiceAnnotations
 			merged.SecurityContext = d.SecurityContext
 			merged.Capabilities = d.Capabilities
 			// preserve controller-marked delete flag if already set

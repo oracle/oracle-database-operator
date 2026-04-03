@@ -170,6 +170,7 @@ func buildPodSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databa
 			RunAsGroup:   &group,
 			FSGroup:      &group,
 		}, OraGsmSpex.SecurityContext),
+		HostAliases:        cloneHostAliases(instance.Spec.HostAliases),
 		Containers:         buildContainerSpecForGsm(instance, OraGsmSpex),
 		Volumes:            buildVolumeSpecForGsm(instance, OraGsmSpex),
 		ServiceAccountName: instance.Spec.SrvAccountName,
@@ -445,6 +446,7 @@ func buildSvcObjectMetaForGsm(instance *databasev4.ShardingDatabase, replicaCoun
 		Name:            svcName,
 		Namespace:       instance.Namespace,
 		Labels:          labels,
+		Annotations:     resolveGsmServiceAnnotations(instance, OraGsmSpex, svctype),
 		OwnerReferences: buildOwnerRefForGsm(instance),
 	}
 	return objmeta

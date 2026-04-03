@@ -179,6 +179,7 @@ func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpe
 	}
 	spec := &corev1.PodSpec{
 		SecurityContext:    podSecurityContext,
+		HostAliases:        cloneHostAliases(instance.Spec.HostAliases),
 		Containers:         buildContainerSpecForCatalog(instance, OraCatalogSpex),
 		Volumes:            buildVolumeSpecForCatalog(instance, OraCatalogSpex),
 		ServiceAccountName: instance.Spec.SrvAccountName,
@@ -495,6 +496,7 @@ func buildSvcObjectMetaForCatalog(instance *databasev4.ShardingDatabase, replica
 		Namespace:       instance.Namespace,
 		OwnerReferences: buildOwnerRefForCatalog(instance),
 		Labels:          labels,
+		Annotations:     resolveCatalogServiceAnnotations(instance, OraCatalogSpex, svctype),
 	}
 	return objmeta
 }

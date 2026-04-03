@@ -333,6 +333,7 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 	}
 	spec := &corev1.PodSpec{
 		SecurityContext:    podSecurityContext,
+		HostAliases:        cloneHostAliases(instance.Spec.HostAliases),
 		Containers:         buildContainerSpecForShard(instance, OraShardSpex),
 		Volumes:            buildVolumeSpecForShard(instance, OraShardSpex),
 		ServiceAccountName: instance.Spec.SrvAccountName,
@@ -834,6 +835,7 @@ func buildSvcObjectMetaForShard(instance *databasev4.ShardingDatabase, replicaCo
 		Name:            shardServiceName(replicaCount, OraShardSpex, svctype),
 		Namespace:       instance.Namespace,
 		Labels:          labels,
+		Annotations:     resolveShardServiceAnnotations(instance, OraShardSpex, svctype),
 		OwnerReferences: buildOwnerRefForShard(instance),
 	}
 }
