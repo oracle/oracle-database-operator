@@ -4,11 +4,35 @@ build-operator:
     IMAGE: "$DOCKER_REPO:$CI_COMMIT_SHORT_SHA"
     OP_YAML: oracle-database-operator.yaml
     BUILD_INTERNAL: "true"
+    GOLANG_VERSION: "1.26.1"
   script:
-    - export GOLANG_VERSION=1.26.1
-    - export GOROOT=$(go${GOLANG_VERSION} env GOROOT)
-    - export PATH="${GOROOT}/bin:${PATH}"
-    - export TMPDIR=/scratch/tmp
+    - |
+      case "$(uname -m)" in
+        x86_64) GOARCH=amd64 ;;
+        aarch64|arm64) GOARCH=arm64 ;;
+        *)
+          echo "Unsupported runner architecture: $(uname -m)" >&2
+          exit 1
+          ;;
+      esac
+
+      if command -v go >/dev/null 2>&1 && go version | grep -q "go${GOLANG_VERSION} "; then
+        export GOROOT="$(go env GOROOT)"
+      else
+        echo "Bootstrapping Go ${GOLANG_VERSION} for linux/${GOARCH}"
+        curl -fsSL -o /tmp/go.tgz "https://go.dev/dl/go${GOLANG_VERSION}.linux-${GOARCH}.tar.gz"
+        rm -rf "$(pwd)/.go"
+        mkdir -p "$(pwd)/.go"
+        tar -C "$(pwd)/.go" -xzf /tmp/go.tgz
+        rm -f /tmp/go.tgz
+        export GOROOT="$(pwd)/.go/go"
+      fi
+
+      export PATH="${GOROOT}/bin:${PATH}"
+      export GOTOOLCHAIN=local
+    - go version
+    - go env GOTOOLCHAIN GOVERSION GOROOT
+
     # --------------------------------
     # Install linting tools locally
     # --------------------------------
@@ -79,4 +103,4 @@ cleanup:
   stage: .post
   script:
     - echo "Clean up downloaded binaries"
-    - rm -rf bin/
+    - rm -rf bin/ .go/
