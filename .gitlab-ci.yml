@@ -8,7 +8,7 @@ build-operator:
     - export GOLANG_VERSION=1.26.1
     - export GOROOT=$(go${GOLANG_VERSION} env GOROOT)
     - export PATH="${GOROOT}/bin:${PATH}"
-
+    - export TMPDIR=/scratch/tmp
     # --------------------------------
     # Install linting tools locally
     # --------------------------------
