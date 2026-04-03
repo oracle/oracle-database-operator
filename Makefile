@@ -23,7 +23,7 @@
 # ==============================================================================
 
 # Operator version
-VERSION ?= 2.0
+VERSION ?= 2.2
 
 # Primary controller image reference used by deploy/image-build/image-push
 IMG ?= controller:latest
