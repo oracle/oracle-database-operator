@@ -5,16 +5,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestSIDBUnit_GetPrimaryDatabaseConnectStringPrefersStandbyConfig(t *testing.T) {
@@ -146,6 +146,91 @@ func TestSIDBUnit_InstantiatePVCSpecMalformedVolumeClaimAnnotationDoesNotPanic(t
 	}
 	if len(pvc.Annotations) != 0 {
 		t.Fatalf("expected malformed annotation to be ignored, got annotations: %v", pvc.Annotations)
+	}
+}
+
+func TestSIDBUnit_InstantiatePodSpecCopiesHostAliases(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb1", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "ORCLCDB",
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+			HostAliases: []corev1.HostAlias{
+				{
+					IP:        "10.10.10.10",
+					Hostnames: []string{"database.example.com", "db-alias.example.com"},
+				},
+				{
+					IP:        "10.10.10.11",
+					Hostnames: []string{"analytics.example.com"},
+				},
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+	if len(pod.Spec.HostAliases) != len(sidb.Spec.HostAliases) {
+		t.Fatalf("expected %d host aliases, got %d", len(sidb.Spec.HostAliases), len(pod.Spec.HostAliases))
+	}
+	if pod.Spec.HostAliases[0].IP != "10.10.10.10" || len(pod.Spec.HostAliases[0].Hostnames) != 2 {
+		t.Fatalf("unexpected first host alias: %#v", pod.Spec.HostAliases[0])
+	}
+	if pod.Spec.HostAliases[1].IP != "10.10.10.11" || len(pod.Spec.HostAliases[1].Hostnames) != 1 || pod.Spec.HostAliases[1].Hostnames[0] != "analytics.example.com" {
+		t.Fatalf("unexpected second host alias: %#v", pod.Spec.HostAliases[1])
+	}
+}
+
+func TestSIDBUnit_InstantiateTrueCachePodSpecCopiesSIDBHostAliases(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "tc1", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "truecache",
+			Sid:      "ORCLCDB",
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+			HostAliases: []corev1.HostAlias{
+				{
+					IP:        "10.10.10.20",
+					Hostnames: []string{"primary.example.com", "primary-vip.example.com"},
+				},
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+	if len(pod.Spec.HostAliases) != 1 {
+		t.Fatalf("expected 1 host alias, got %d", len(pod.Spec.HostAliases))
+	}
+	if pod.Spec.HostAliases[0].IP != "10.10.10.20" {
+		t.Fatalf("expected sidb host alias to be copied to truecache pod, got %#v", pod.Spec.HostAliases[0])
+	}
+	if len(pod.Spec.HostAliases[0].Hostnames) != 2 || pod.Spec.HostAliases[0].Hostnames[0] != "primary.example.com" || pod.Spec.HostAliases[0].Hostnames[1] != "primary-vip.example.com" {
+		t.Fatalf("unexpected truecache pod host alias hostnames: %#v", pod.Spec.HostAliases[0])
 	}
 }
 

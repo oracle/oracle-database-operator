@@ -590,6 +590,20 @@ spec:
                 type: boolean
               forceLog:
                 type: boolean
+              hostAliases:
+                items:
+                  properties:
+                    hostnames:
+                      items:
+                        type: string
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    ip:
+                      type: string
+                  required:
+                  - ip
+                  type: object
+                type: array
               image:
                 properties:
                   prebuiltDB:
