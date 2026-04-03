@@ -2,8 +2,8 @@ package controllers
 
 import (
 	oraclerestartdb "github.com/oracle/oracle-database-operator/apis/database/v4"
-	oraclerestartcommon "github.com/oracle/oracle-database-operator/commons/crs/restart"
 	sharedasm "github.com/oracle/oracle-database-operator/commons/crs/asm"
+	oraclerestartcommon "github.com/oracle/oracle-database-operator/commons/crs/restart"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -20,10 +20,13 @@ func (a *oracleRestartAsmAdapter) GetDiskGroups() []sharedasm.DiskGroup {
 	out := make([]sharedasm.DiskGroup, 0, len(a.obj.Spec.AsmStorageDetails))
 	for _, dg := range a.obj.Spec.AsmStorageDetails {
 		out = append(out, sharedasm.DiskGroup{
-			Name:       dg.Name,
-			Type:       string(dg.Type),
-			Redundancy: dg.Redundancy,
-			Disks:      dg.Disks,
+			Name:               dg.Name,
+			Type:               string(dg.Type),
+			Redundancy:         dg.Redundancy,
+			Disks:              dg.Disks,
+			AutoUpdate:         dg.AutoUpdate,
+			StorageClass:       dg.StorageClass,
+			AsmStorageSizeInGb: dg.AsmStorageSizeInGb,
 		})
 	}
 	return out
@@ -33,10 +36,13 @@ func (a *oracleRestartAsmAdapter) SetDiskGroups(in []sharedasm.DiskGroup) {
 	out := make([]oraclerestartdb.AsmDiskGroupDetails, 0, len(in))
 	for _, dg := range in {
 		out = append(out, oraclerestartdb.AsmDiskGroupDetails{
-			Name:       dg.Name,
-			Type:       oraclerestartdb.AsmDiskDGTypes(dg.Type),
-			Redundancy: dg.Redundancy,
-			Disks:      dg.Disks,
+			Name:               dg.Name,
+			Type:               oraclerestartdb.AsmDiskDGTypes(dg.Type),
+			Redundancy:         dg.Redundancy,
+			Disks:              dg.Disks,
+			AutoUpdate:         dg.AutoUpdate,
+			StorageClass:       dg.StorageClass,
+			AsmStorageSizeInGb: dg.AsmStorageSizeInGb,
 		})
 	}
 	a.obj.Spec.AsmStorageDetails = out

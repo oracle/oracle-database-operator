@@ -13497,10 +13497,16 @@ spec:
                     type: string
                   swMountLocation:
                     type: string
+                  swStagePvc:
+                    type: string
+                  swStagePvcMountLocation:
+                    type: string
                 type: object
               dbSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string
@@ -13643,7 +13649,6 @@ spec:
                     type: object
                 required:
                 - nodeCount
-                - racHostSwLocation
                 - racNodeName
                 type: object
               isDebug:
@@ -13668,6 +13673,8 @@ spec:
                 - path
                 - server
                 type: object
+              racSwPrefix:
+                type: string
               readinessProbe:
                 properties:
                   exec:
@@ -13949,9 +13956,13 @@ spec:
                 type: string
               storageSizeInGB:
                 type: integer
+              swLocStorageSizeInGb:
+                type: integer
               tdeWalletSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string
@@ -14124,12 +14135,18 @@ spec:
                     type: string
                   swMountLocation:
                     type: string
+                  swStagePvc:
+                    type: string
+                  swStagePvcMountLocation:
+                    type: string
                 type: object
               connectString:
                 type: string
               dbSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string
@@ -14574,6 +14591,8 @@ spec:
               tdeWalletSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string
@@ -18509,6 +18528,7 @@ rules:
   - pods/log
   - replicasets
   - secrets
+  - serviceaccounts
   - services
   verbs:
   - create
@@ -19610,7 +19630,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -19626,8 +19646,8 @@ spec:
         - /manager
         env:
         - name: WATCH_NAMESPACE
-          value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-mltp1
+          value: "oracle-database-operator-system,rac"
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
         imagePullPolicy: Always
         name: manager
         ports:

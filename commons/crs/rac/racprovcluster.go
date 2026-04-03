@@ -129,17 +129,11 @@ func buildPodSpecForRacCluster(
 		Affinity:       getNodeAffinityForRacCluster(kClient, instance, clusterSpec, nodeIndex),
 	}
 	if instance.Spec.SecurityContext != nil {
-		spec.SecurityContext = instance.Spec.SecurityContext
+		spec.SecurityContext = instance.Spec.SecurityContext.DeepCopy()
 	} else {
-		spec.SecurityContext = &corev1.PodSecurityContext{
-			Sysctls: []corev1.Sysctl{
-				{
-					Name:  "net.ipv4.conf.all.rp_filter",
-					Value: "2",
-				},
-			},
-		}
+		spec.SecurityContext = &corev1.PodSecurityContext{}
 	}
+	spec.SecurityContext.Sysctls = mergeRacRequiredSysctls(spec.SecurityContext.Sysctls)
 	// Add service account name if specified
 	if instance.Spec.SrvAccountName != "" {
 		spec.ServiceAccountName = instance.Spec.SrvAccountName
@@ -151,6 +145,33 @@ func buildPodSpecForRacCluster(
 		}
 	}
 	return spec
+}
+
+func mergeRacRequiredSysctls(existing []corev1.Sysctl) []corev1.Sysctl {
+	required := []corev1.Sysctl{
+		{Name: "net.ipv4.conf.all.rp_filter", Value: "2"},
+		{Name: "net.ipv4.conf.default.rp_filter", Value: "2"},
+	}
+
+	out := make([]corev1.Sysctl, 0, len(existing)+len(required))
+	indexByName := make(map[string]int, len(existing)+len(required))
+
+	for i := range existing {
+		name := strings.TrimSpace(existing[i].Name)
+		indexByName[name] = len(out)
+		out = append(out, existing[i])
+	}
+
+	for i := range required {
+		name := required[i].Name
+		if _, ok := indexByName[name]; ok {
+			continue
+		}
+		indexByName[name] = len(out)
+		out = append(out, required[i])
+	}
+
+	return out
 }
 
 // CreateServiceAccountIfNotExists ensures the configured service account exists in the namespace.
@@ -191,6 +212,34 @@ func VolumeClaimTemplatesForRacCluster(
 				},
 			})
 		}
+	}
+	if len(instance.Spec.StorageClass) != 0 {
+		nodeName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, nodeIndex+1)
+		swPVCSizeInGi := instance.Spec.StorageSizeInGB
+		if instance.Spec.SwLocStorageSizeInGb > 0 {
+			swPVCSizeInGi = instance.Spec.SwLocStorageSizeInGb
+		}
+		if swPVCSizeInGi <= 0 {
+			swPVCSizeInGi = 100
+		}
+		claims = append(claims, corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      GetClusterSwPvcName(nodeName),
+				Namespace: instance.Namespace,
+				Labels:    buildLabelsForRac(instance, "RAC"),
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{
+					corev1.ReadWriteOnce,
+				},
+				StorageClassName: &instance.Spec.StorageClass,
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", swPVCSizeInGi)),
+					},
+				},
+			},
+		})
 	}
 	return claims
 }
@@ -595,10 +644,38 @@ func buildVolumeSpecForRacCluster(
 				},
 			},
 		})
+	} else if instance.Spec.RacSwPrefix != "" {
+		pvcName := fmt.Sprintf("%s%d", instance.Spec.RacSwPrefix, nodeIndex+1)
+		result = append(result, corev1.Volume{
+			Name: nodeName + "-oradata-sw-vol",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: pvcName,
+				},
+			},
+		})
+	} else if len(instance.Spec.StorageClass) != 0 {
+		result = append(result, corev1.Volume{
+			Name: nodeName + "-oradata-sw-vol",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: GetClusterSwPvcName(nodeName),
+				},
+			},
+		})
 	}
 
 	// Optionally, HostSwStageLocation if needed from ConfigParams
-	if instance.Spec.ConfigParams != nil && instance.Spec.ConfigParams.HostSwStageLocation != "" {
+	if instance.Spec.ConfigParams != nil && instance.Spec.ConfigParams.SwStagePvc != "" {
+		result = append(result, corev1.Volume{
+			Name: nodeName + "-oradata-swstage-vol",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: instance.Spec.ConfigParams.SwStagePvc,
+				},
+			},
+		})
+	} else if instance.Spec.ConfigParams != nil && instance.Spec.ConfigParams.HostSwStageLocation != "" {
 		result = append(result, corev1.Volume{
 			Name: nodeName + "-oradata-swstage-vol",
 			VolumeSource: corev1.VolumeSource{
@@ -879,8 +956,8 @@ func buildVolumeMountSpecForRacCluster(
 		MountPath: utils.OraWritableEnvFile,
 	})
 
-	// Host software location
-	if len(clusterSpec.RacHostSwLocation) != 0 {
+	// Host software location / existing PVC / StorageClass software volume
+	if len(clusterSpec.RacHostSwLocation) != 0 || instance.Spec.RacSwPrefix != "" || len(instance.Spec.StorageClass) != 0 {
 		swMountPath := instance.Spec.ConfigParams.SwMountLocation
 		if swMountPath == "" {
 			swMountPath = utils.OraSwLocation
@@ -889,17 +966,17 @@ func buildVolumeMountSpecForRacCluster(
 			Name:      nodeName + "-oradata-sw-vol",
 			MountPath: swMountPath,
 		})
-	} else if len(instance.Spec.StorageClass) != 0 {
-		result = append(result, corev1.VolumeMount{
-			Name:      nodeName + "-oradata-sw-vol",
-			MountPath: instance.Spec.ConfigParams.SwMountLocation,
-		})
 	}
 
-	if instance.Spec.ConfigParams != nil && len(instance.Spec.ConfigParams.HostSwStageLocation) != 0 {
+	if instance.Spec.ConfigParams != nil &&
+		(instance.Spec.ConfigParams.SwStagePvc != "" || len(instance.Spec.ConfigParams.HostSwStageLocation) != 0) {
+		mountPath := utils.OraSwStageLocation
+		if instance.Spec.ConfigParams.SwStagePvcMountLocation != "" {
+			mountPath = instance.Spec.ConfigParams.SwStagePvcMountLocation
+		}
 		result = append(result, corev1.VolumeMount{
 			Name:      nodeName + "-oradata-swstage-vol",
-			MountPath: utils.OraSwStageLocation,
+			MountPath: mountPath,
 		})
 	}
 
