@@ -49,7 +49,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -107,19 +106,7 @@ func buildSvcPortsDef(instance *privateaiv4.PrivateAi) []corev1.ServicePort {
 
 // Function to generate the port mapping
 func generatePortMapping(portMapping privateaiv4.PaiPortMapping) string {
-	return generateName(fmt.Sprintf("%s-%d-%d-", "tcp",
-		portMapping.Port, portMapping.TargetPort))
-}
-
-// Function to generate the Name
-func generateName(base string) string {
-	maxNameLength := 50
-	randomLength := 5
-	maxGeneratedLength := maxNameLength - randomLength
-	if len(base) > maxGeneratedLength {
-		base = base[:maxGeneratedLength]
-	}
-	return fmt.Sprintf("%s%s", base, rand.String(randomLength))
+	return fmt.Sprintf("tcp-%d-%d", portMapping.Port, portMapping.TargetPort)
 }
 
 func GetFmtStr(pstr string,

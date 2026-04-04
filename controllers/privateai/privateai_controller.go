@@ -40,17 +40,19 @@ package privateai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
 	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
+	k8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
+	sharedk8sutil "github.com/oracle/oracle-database-operator/commons/k8sutil"
+	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 	aicommons "github.com/oracle/oracle-database-operator/commons/privateai"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,9 +82,25 @@ var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 25 * time.Se
 var requeueN ctrl.Result = ctrl.Result{}
 
 var resultNq = ctrl.Result{Requeue: false}
-var resultQ = ctrl.Result{Requeue: true, RequeueAfter: 40 * time.Second}
 
 const PrivateAiFinalizer = "privateai.oracle.com/privateaifinalizer"
+
+const (
+	phaseInit         = "InitFetch"
+	phaseDeletion     = "Deletion"
+	phaseValidation   = "Validation"
+	phaseDependencies = "Dependencies"
+	phaseWorkloadSync = "WorkloadSync"
+	phaseFinalize     = "StatusFinalize"
+)
+
+type reconcileState struct {
+	phase         string
+	completed     bool
+	blocked       bool
+	updateLock    bool
+	updateLockMsg string
+}
 
 // +kubebuilder:rbac:groups=privateai.oracle.com,resources=privateais,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=privateai.oracle.com,resources=privateais/status,verbs=get;update;patch
@@ -92,168 +110,83 @@ const PrivateAiFinalizer = "privateai.oracle.com/privateaifinalizer"
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
-
-	r.Log.Info("Reconcile requested")
-	var result ctrl.Result
-	var err error
-	completed := false
-	blocked := false
+func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+	log := logf.FromContext(ctx).WithValues("namespace", req.Namespace, "name", req.Name)
+	state := &reconcileState{phase: phaseInit}
 
 	privateAiInst := &privateaiv4.PrivateAi{}
-	defer r.updateReconcileStatus(privateAiInst, ctx, &result, &err, &blocked, &completed)
-
-	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, privateAiInst)
-	if err != nil {
+	if err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, privateAiInst); err != nil {
 		if apierrors.IsNotFound(err) {
-			r.Log.Info("Resource not found")
+			log.Info("resource not found")
 			return requeueN, nil
 		}
-		r.Log.Error(err, err.Error())
+		log.Error(err, "failed to fetch PrivateAi")
 		return requeueY, err
 	}
 
-	// Manage resource cleanup when deletion has been requested.
-	if err, inProgress := r.managePrivateAiDeletion(privateAiInst); err != nil {
-		result = resultNq
-		if inProgress {
-			return result, nil
+	defer func() {
+		if statusErr := r.updateReconcileStatus(privateAiInst, ctx, result, err, state); statusErr != nil {
+			log.Error(statusErr, "failed to update reconcile status")
+			if err == nil {
+				err = statusErr
+				result = requeueY
+			}
 		}
+	}()
+
+	if result, err = r.runPhase(ctx, log, state, phaseDeletion, func() (ctrl.Result, error) {
+		inProgress, delErr := r.managePrivateAiDeletion(ctx, privateAiInst)
+		if delErr != nil {
+			return resultNq, delErr
+		}
+		if inProgress {
+			state.blocked = true
+			log.Info("deletion in progress")
+			return requeueN, nil
+		}
+		return requeueN, nil
+	}); err != nil || result.Requeue {
 		return result, err
 	}
 
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
-	if err != nil {
-		r.Log.Error(err, err.Error())
-		return result, err
-	}
-
-	// aicommons.resetState()
-
-	// Allow to go inside only if status is Available or completed.
-
-	if privateAiInst.Status.Status == privateaiv4.StatusPending || privateAiInst.Status.Status == privateaiv4.StatusUpdating || privateAiInst.Status.Status == privateaiv4.StatusError {
-		r.Log.Info("Checking Status for " + privateAiInst.Name + ". privateAiInst.Status.Status set to " + privateAiInst.Status.Status)
+	if locked, lockMsg, lockErr := r.shouldBlockForUpdateLock(privateAiInst); lockErr != nil {
+		return resultNq, lockErr
+	} else if locked {
+		state.blocked = true
+		log.Info("reconcile blocked by controller update lock", "reason", lockpolicy.DefaultUpdateLockReason, "message", lockMsg)
 		return requeueY, nil
 	}
 
-	/* Initialize Status */
 	if privateAiInst.Status.Status == "" {
 		privateAiInst.Status.Status = privateaiv4.StatusPending
 		privateAiInst.Status.Replicas = 0
 		privateAiInst.Status.ReleaseUpdate = privateaiv4.ValueUnavailable
-		r.Status().Update(ctx, privateAiInst)
 	}
 
-	authEnabled := parseBoolFlag(privateAiInst.Spec.PaiEnableAuthentication)
-	externalSvcEnabled := parseBoolFlag(privateAiInst.Spec.IsExternalSvc)
-	storageEnabled := privateAiInst.Spec.StorageClass != ""
-
-	if authEnabled {
-		if _, err := r.ensureSecret(ctx, req, privateAiInst); err != nil {
-			return resultNq, err
-		}
+	if result, err = r.runPhase(ctx, log, state, phaseValidation, func() (ctrl.Result, error) {
+		return r.validate(privateAiInst, ctx, req)
+	}); err != nil || result.Requeue {
+		return result, err
 	}
 
-	if privateAiInst.Spec.PaiConfigFile != nil &&
-		privateAiInst.Spec.PaiConfigFile.Name != "" &&
-		privateAiInst.Spec.PaiConfigFile.MountLocation != "" {
-		if _, err := r.ensureConfigMap(ctx, req, privateAiInst); err != nil {
-			return resultNq, err
-		}
-	}
-	// First validate
-	result, err = r.validate(privateAiInst, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Spec validation failed, Reconcile queued")
-		return result, nil
-	}
-	if err != nil {
-		r.Log.Info("Spec validation failed")
-		return result, nil
+	if result, err = r.runPhase(ctx, log, state, phaseDependencies, func() (ctrl.Result, error) {
+		return r.reconcileDependencies(ctx, req, privateAiInst)
+	}); err != nil || result.Requeue {
+		return result, err
 	}
 
-	// Create PVC
-	if storageEnabled {
-		// ensurePVCs verifies that all required PersistentVolumeClaims (PVCs) exist for the given PrivateAI instance.
-		// It creates any missing PVCs and returns an error if the operation fails.
-		if _, err := r.ensurePVCs(ctx, privateAiInst); err != nil {
-			return resultNq, err
-		}
+	if result, err = r.runPhase(ctx, log, state, phaseWorkloadSync, func() (ctrl.Result, error) {
+		return r.reconcileWorkload(ctx, req, privateAiInst, state)
+	}); err != nil || result.Requeue {
+		return result, err
 	}
 
-	// ensureServices verifies that the required Kubernetes Services are created and configured for the PrivateAI instance.
-	// It takes the provided context, PrivateAI instance, and a flag indicating whether external service access is enabled.
-	// Returns an error if the service creation or configuration fails.
-	if _, err := r.ensureServices(ctx, privateAiInst, "local"); err != nil {
-		return resultNq, err
-	}
-
-	// Populate LoadBalancerIP in status from the external service (if enabled)
-	if externalSvcEnabled {
-		if _, err := r.ensureServices(ctx, privateAiInst, "external"); err != nil {
-			return resultNq, err
-		}
-	}
-
-	// desiredDeploy constructs and returns a Deployment object configured for the PrivateAI instance.
-	// It uses the provided privateAiInst to build the desired deployment specification with appropriate
-	// settings, replicas, and container configuration for the PrivateAI workload.
-	desiredDeploy := aicommons.BuildDeploySetForPrivateAI(privateAiInst)
-	foundDeploy, err := r.checkAiDeploymentSet(desiredDeploy.Name, desiredDeploy.Namespace)
-	if apierrors.IsNotFound(err) {
-		result, err = r.deployPrivateAiDeploymentSet(privateAiInst, desiredDeploy)
-		if err != nil {
-			return resultNq, err
-		}
-	} else if err != nil {
-		return resultNq, err
-	} else {
-		podList := &corev1.PodList{}
-		listOpts := []client.ListOption{
-			client.InNamespace(privateAiInst.Namespace),
-		}
-		if foundDeploy.Spec.Selector != nil {
-			listOpts = append(listOpts, client.MatchingLabels(foundDeploy.Spec.Selector.MatchLabels))
-		}
-		if err := r.Client.List(ctx, podList, listOpts...); err != nil {
-			return resultNq, err
-		}
-
-		var firstPod *corev1.Pod
-		if len(podList.Items) > 0 {
-			firstPod = &podList.Items[0]
-		}
-
-		if _, err := aicommons.ManageReplicas(r, privateAiInst, r.Client, r.Config, foundDeploy, podList, ctx, req, r.Log); err != nil {
-			return resultNq, err
-		}
-
-		if firstPod != nil {
-			podIP := firstPod.Status.PodIP
-			hostIP := firstPod.Status.HostIP
-			if privateAiInst.Status.PodIP != podIP || privateAiInst.Status.NodeIP != hostIP {
-				privateAiInst.Status.PodIP = podIP
-				privateAiInst.Status.NodeIP = hostIP
-				if err := r.Status().Update(ctx, privateAiInst); err != nil {
-					return resultNq, err
-				}
-			}
-		}
-
-		if _, err := aicommons.UpdateDeploySetForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, foundDeploy, firstPod, r.Log); err != nil {
-			return resultNq, err
-		}
-	}
-
-	completed = true
-	r.Log.Info("Reconcile completed")
-
-	return resultQ, nil
+	state.completed = true
+	_, _ = r.runPhase(ctx, log, state, phaseFinalize, func() (ctrl.Result, error) {
+		return requeueN, nil
+	})
+	log.Info("reconcile completed")
+	return requeueN, nil
 }
 
 // #############################################################################
@@ -261,32 +194,31 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 //	Update each reconcile condtion/status
 //
 // #############################################################################
-func (r *PrivateAiReconciler) updateReconcileStatus(m *privateaiv4.PrivateAi, ctx context.Context,
-	result *ctrl.Result, err *error, blocked *bool, completed *bool) {
-
-	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, m)
-
+func (r *PrivateAiReconciler) updateReconcileStatus(
+	m *privateaiv4.PrivateAi,
+	ctx context.Context,
+	result ctrl.Result,
+	recErr error,
+	state *reconcileState,
+) error {
 	m.Status.Replicas = int(m.Spec.Replicas)
-	if m.Status.Status != "" {
-		if m.Status.Status != privateaiv4.StatusReady {
-			r.Log.Info("Changing status from " + m.Status.Status + " to " + privateaiv4.StatusReady)
-		}
+	if state.completed {
+		m.Status.Status = privateaiv4.StatusReady
+		m.Status.ReleaseUpdate = "V2.0"
 	}
-	m.Status.Status = privateaiv4.StatusReady
-	m.Status.ReleaseUpdate = "V2.0"
-	//m.Status.ApiKey = m.Spec.PaiSecret.Name
-	//m.Status.PodIP =
-	// m.Status.LoadBalancerIP =
+	if recErr != nil {
+		m.Status.Status = privateaiv4.StatusError
+	}
 
-	errMsg := func() string {
-		if *err != nil {
-			return (*err).Error()
-		}
-		return "no reconcile errors"
-	}()
+	errMsg := "no reconcile errors"
+	if recErr != nil {
+		errMsg = recErr.Error()
+	}
+
 	var condition metav1.Condition
-	if *completed {
+	hasPrimaryCondition := true
+	switch {
+	case state.completed:
 		condition = metav1.Condition{
 			Type:               privateaiv4.ReconcileCompelete,
 			LastTransitionTime: metav1.Now(),
@@ -295,7 +227,7 @@ func (r *PrivateAiReconciler) updateReconcileStatus(m *privateaiv4.PrivateAi, ct
 			Message:            errMsg,
 			Status:             metav1.ConditionTrue,
 		}
-	} else if *blocked {
+	case state.blocked:
 		condition = metav1.Condition{
 			Type:               privateaiv4.ReconcileBlocked,
 			LastTransitionTime: metav1.Now(),
@@ -304,7 +236,7 @@ func (r *PrivateAiReconciler) updateReconcileStatus(m *privateaiv4.PrivateAi, ct
 			Message:            errMsg,
 			Status:             metav1.ConditionTrue,
 		}
-	} else if result.Requeue {
+	case result.Requeue:
 		condition = metav1.Condition{
 			Type:               privateaiv4.ReconcileQueued,
 			LastTransitionTime: metav1.Now(),
@@ -313,7 +245,7 @@ func (r *PrivateAiReconciler) updateReconcileStatus(m *privateaiv4.PrivateAi, ct
 			Message:            errMsg,
 			Status:             metav1.ConditionTrue,
 		}
-	} else if *err != nil {
+	case recErr != nil:
 		condition = metav1.Condition{
 			Type:               privateaiv4.ReconcileError,
 			LastTransitionTime: metav1.Now(),
@@ -322,13 +254,48 @@ func (r *PrivateAiReconciler) updateReconcileStatus(m *privateaiv4.PrivateAi, ct
 			Message:            errMsg,
 			Status:             metav1.ConditionTrue,
 		}
-	} else {
-		return
+	default:
+		hasPrimaryCondition = false
 	}
-	if len(m.Status.Conditions) > 0 {
+	if hasPrimaryCondition {
 		meta.RemoveStatusCondition(&m.Status.Conditions, condition.Type)
+		meta.SetStatusCondition(&m.Status.Conditions, condition)
 	}
-	meta.SetStatusCondition(&m.Status.Conditions, condition)
+
+	// Maintain a controller update-lock condition for rollout-impacting changes.
+	// The lock blocks newer generations unless break-glass override is enabled.
+	lockConditionChanged := false
+	if state.updateLock {
+		lockCond := metav1.Condition{
+			Type:               lockpolicy.DefaultReconcilingConditionType,
+			Status:             metav1.ConditionTrue,
+			Reason:             lockpolicy.DefaultUpdateLockReason,
+			ObservedGeneration: m.GetGeneration(),
+			LastTransitionTime: metav1.Now(),
+			Message:            state.updateLockMsg,
+		}
+		meta.RemoveStatusCondition(&m.Status.Conditions, lockCond.Type)
+		meta.SetStatusCondition(&m.Status.Conditions, lockCond)
+		lockConditionChanged = true
+	} else if existing := lockpolicy.FindStatusCondition(m.Status.Conditions, lockpolicy.DefaultReconcilingConditionType); existing != nil && existing.Status == metav1.ConditionTrue && (state.completed || recErr != nil) {
+		releaseCond := metav1.Condition{
+			Type:               lockpolicy.DefaultReconcilingConditionType,
+			Status:             metav1.ConditionFalse,
+			Reason:             "UpdateSettled",
+			ObservedGeneration: m.GetGeneration(),
+			LastTransitionTime: metav1.Now(),
+			Message:            "controller update lock released",
+		}
+		meta.RemoveStatusCondition(&m.Status.Conditions, releaseCond.Type)
+		meta.SetStatusCondition(&m.Status.Conditions, releaseCond)
+		lockConditionChanged = true
+	}
+
+	if !hasPrimaryCondition && !lockConditionChanged {
+		return nil
+	}
+
+	return r.Status().Update(ctx, m)
 }
 
 // #############################################################################
@@ -349,6 +316,107 @@ func (r *PrivateAiReconciler) validate(m *privateaiv4.PrivateAi, ctx context.Con
 
 }
 
+func (r *PrivateAiReconciler) runPhase(
+	ctx context.Context,
+	log logr.Logger,
+	state *reconcileState,
+	phase string,
+	fn func() (ctrl.Result, error),
+) (ctrl.Result, error) {
+	state.phase = phase
+	phaseLog := log.WithValues("phase", phase)
+	start := time.Now()
+	phaseLog.Info("phase started")
+	result, err := fn()
+	if err != nil {
+		phaseLog.Error(err, "phase failed", "duration", time.Since(start).String())
+		return result, err
+	}
+	phaseLog.Info("phase completed", "duration", time.Since(start).String(), "requeue", result.Requeue, "requeueAfter", result.RequeueAfter.String())
+	return result, nil
+}
+
+func (r *PrivateAiReconciler) reconcileDependencies(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (ctrl.Result, error) {
+	authEnabled := parseBoolFlag(privateAiInst.Spec.PaiEnableAuthentication)
+	externalSvcEnabled := parseBoolFlag(privateAiInst.Spec.IsExternalSvc)
+	storageEnabled := privateAiInst.Spec.StorageClass != ""
+
+	if authEnabled {
+		if _, err := r.ensureSecret(ctx, req, privateAiInst); err != nil {
+			return resultNq, err
+		}
+	}
+	if privateAiInst.Spec.PaiConfigFile != nil &&
+		privateAiInst.Spec.PaiConfigFile.Name != "" &&
+		privateAiInst.Spec.PaiConfigFile.MountLocation != "" {
+		if _, err := r.ensureConfigMap(ctx, req, privateAiInst); err != nil {
+			return resultNq, err
+		}
+	}
+	if storageEnabled {
+		if _, err := r.ensurePVCs(ctx, privateAiInst); err != nil {
+			return resultNq, err
+		}
+	}
+	if _, err := r.ensureServices(ctx, privateAiInst, "local"); err != nil {
+		return resultNq, err
+	}
+	if externalSvcEnabled {
+		if _, err := r.ensureServices(ctx, privateAiInst, "external"); err != nil {
+			return resultNq, err
+		}
+	}
+	return requeueN, nil
+}
+
+func (r *PrivateAiReconciler) reconcileWorkload(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi, state *reconcileState) (ctrl.Result, error) {
+	desiredDeploy := aicommons.BuildDeploySetForPrivateAI(privateAiInst)
+	r.waitForScheme()
+	controllerutil.SetControllerReference(privateAiInst, desiredDeploy, r.Scheme)
+	foundDeploy, depResult, err := k8sobjects.ReconcileDeployment(ctx, r.Client, privateAiInst.Namespace, desiredDeploy, nil)
+	if err != nil {
+		return resultNq, err
+	}
+	if depResult.Created {
+		return requeueY, nil
+	}
+	if changed, msg := requiresRolloutUpdate(privateAiInst, foundDeploy); changed {
+		state.updateLock = true
+		state.updateLockMsg = msg
+	}
+
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{client.InNamespace(privateAiInst.Namespace)}
+	if foundDeploy.Spec.Selector != nil {
+		listOpts = append(listOpts, client.MatchingLabels(foundDeploy.Spec.Selector.MatchLabels))
+	}
+	if err := r.Client.List(ctx, podList, listOpts...); err != nil {
+		return resultNq, err
+	}
+
+	var firstPod *corev1.Pod
+	if len(podList.Items) > 0 {
+		firstPod = &podList.Items[0]
+	}
+
+	if _, err := aicommons.ManageReplicas(r, privateAiInst, r.Client, r.Config, foundDeploy, podList, ctx, req, r.Log); err != nil {
+		return resultNq, err
+	}
+
+	if firstPod != nil {
+		podIP := firstPod.Status.PodIP
+		hostIP := firstPod.Status.HostIP
+		if privateAiInst.Status.PodIP != podIP || privateAiInst.Status.NodeIP != hostIP {
+			privateAiInst.Status.PodIP = podIP
+			privateAiInst.Status.NodeIP = hostIP
+		}
+	}
+	if _, err := aicommons.UpdateDeploySetForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, foundDeploy, firstPod, r.Log); err != nil {
+		return resultNq, err
+	}
+	return requeueN, nil
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *PrivateAiReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -357,140 +425,9 @@ func (r *PrivateAiReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 50}).
+		Owns(&corev1.PersistentVolumeClaim{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
 		Complete(r)
-}
-
-// ###################### Event Filter Predicate ######################
-func (r *PrivateAiReconciler) checkAiDeploymentSet(name string,
-	namespace string,
-) (*appsv1.Deployment, error) {
-
-	found := &appsv1.Deployment{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{
-		Name:      name,
-		Namespace: namespace,
-	}, found)
-
-	if err != nil {
-		return found, err
-	}
-	return found, nil
-
-}
-
-// This function deploy the DeploymentSet
-func (r *PrivateAiReconciler) deployPrivateAiDeploymentSet(instance *privateaiv4.PrivateAi,
-	dep *appsv1.Deployment,
-) (ctrl.Result, error) {
-
-	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	message := "Inside the deployDeploymentSet function"
-	aicommons.LogMessages("DEBUG", message, nil, instance, r.Log)
-
-	r.waitForScheme()
-	controllerutil.SetControllerReference(instance, dep, r.Scheme)
-	_, err := r.checkAiDeploymentSet(dep.Name, instance.Namespace)
-	jsn, _ := json.Marshal(dep)
-	aicommons.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
-
-	if err != nil && errors.IsNotFound(err) {
-
-		// Create the DeploymentSet
-		reqLogger.Info("Creating Deployment for PrivateAI")
-		err = r.Client.Create(context.TODO(), dep)
-
-		message := "Inside the create Deployment set block to create DeploymentSet " + aicommons.GetFmtStr(dep.Name)
-		aicommons.LogMessages("DEBUG", message, nil, instance, r.Log)
-
-		if err != nil {
-			// DeploymentSet failed
-			reqLogger.Error(err, "Failed to create DeploymentSet", "DeploymentSet.space", dep.Namespace, "DeploymentSet.Name", dep.Name)
-			//instance.Status.ShardStatus[dep.Name] = "Deployment Failed"
-			return ctrl.Result{}, err
-		}
-	} else if err != nil {
-		// Error that isn't due to the StaefulSet not existing
-		reqLogger.Error(err, "Failed to get DeploymentSet")
-		return ctrl.Result{}, err
-	}
-
-	message = "DeploymentSet Exist " + aicommons.GetFmtStr(dep.Name) + " already exist"
-	aicommons.LogMessages("DEBUG", message, nil, instance, r.Log)
-
-	return ctrl.Result{}, nil
-}
-
-// createService creates a Kubernetes Service resource for the PrivateAi instance.
-// It configures the service with appropriate ports and selectors to expose the PrivateAi
-// deployment within the cluster. Returns an error if the service creation fails.
-func (r *PrivateAiReconciler) createService(instance *privateaiv4.PrivateAi,
-	dep *corev1.Service,
-) (ctrl.Result, error) {
-	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	ctx := context.TODO()
-
-	r.waitForScheme()
-	controllerutil.SetControllerReference(instance, dep, r.Scheme)
-
-	_, err := aicommons.CheckSvc(dep.Name, instance, r.Client)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating service", "Service.namespace", dep.Namespace, "Service.name", dep.Name)
-		if jsn, merr := json.Marshal(dep); merr == nil {
-			aicommons.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
-		}
-		if err := r.Client.Create(ctx, dep); err != nil {
-			reqLogger.Error(err, "Failed to create Service", "Service.namespace", dep.Namespace, "Service.name", dep.Name)
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	message := "Service already Exist " + aicommons.GetFmtStr(dep.Name) + " already exist"
-	aicommons.LogMessages("DEBUG", message, nil, instance, r.Log)
-	return ctrl.Result{}, nil
-}
-
-// createPvc creates a PersistentVolumeClaim for the PrivateAi instance if it does not already exist.
-// It sets the controller reference to establish ownership, attempts to retrieve an existing PVC,
-// and creates a new one if not found. The function logs the PVC configuration and any errors encountered.
-// Returns a reconciliation result with Requeue set to true if the PVC was successfully created,
-// indicating that reconciliation should be rerun. Returns an error if the PVC creation fails
-// or if there is an unexpected error retrieving the PVC.
-func (r *PrivateAiReconciler) createPvc(instance *privateaiv4.PrivateAi,
-	dep *corev1.PersistentVolumeClaim,
-) (ctrl.Result, error) {
-	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	r.waitForScheme()
-	controllerutil.SetControllerReference(instance, dep, r.Scheme)
-	found := &corev1.PersistentVolumeClaim{}
-
-	err := r.Client.Get(context.TODO(), types.NamespacedName{
-		Name:      dep.Name,
-		Namespace: instance.Namespace,
-	}, found)
-
-	jsn, _ := json.Marshal(dep)
-	aicommons.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
-	if err != nil && errors.IsNotFound(err) {
-		// Create the Service
-		reqLogger.Info("Creating PVC")
-		err = r.Client.Create(context.TODO(), dep)
-		if err != nil {
-			// Service creation failed
-			reqLogger.Error(err, "Failed to create PVC", "PVC.namespace", dep.Namespace, "PVC.Name", dep.Name)
-			return ctrl.Result{}, err
-		} else {
-			// Service creation was successful
-			return ctrl.Result{Requeue: true}, nil
-		}
-	} else if err != nil {
-		// Error that isn't due to the Service not existing
-		reqLogger.Error(err, "Failed to find the  Service details")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
 }
 
 // managePrivateAiDeletion handles the deletion lifecycle of a PrivateAi resource.
@@ -516,7 +453,7 @@ func (r *PrivateAiReconciler) createPvc(instance *privateaiv4.PrivateAi,
 //
 // Note: When deletion is in progress (bool=true), the returned error is informational
 // and should not be treated as a critical failure.
-func (r *PrivateAiReconciler) managePrivateAiDeletion(instance *privateaiv4.PrivateAi) (error, bool) {
+func (r *PrivateAiReconciler) managePrivateAiDeletion(ctx context.Context, instance *privateaiv4.PrivateAi) (bool, error) {
 
 	isPrivateToBeDeleted := instance.GetDeletionTimestamp() != nil
 	if isPrivateToBeDeleted {
@@ -524,52 +461,34 @@ func (r *PrivateAiReconciler) managePrivateAiDeletion(instance *privateaiv4.Priv
 			// Run finalization logic for finalizer. If the
 			// finalization logic fails, don't remove the finalizer so
 			// that we can retry during the next reconciliation.
-			if err := r.finalizePrivateAi(instance); err != nil {
-				return err, false
+			if err := r.finalizePrivateAi(ctx, instance); err != nil {
+				return true, err
 			}
 
 			// Remove finalizer. Once all finalizers have been
 			// removed, the object will be deleted.
-			controllerutil.RemoveFinalizer(instance, PrivateAiFinalizer)
-			err := r.Client.Update(context.TODO(), instance)
-			if err != nil {
-				return err, false
+			if err := sharedk8sutil.RemoveFinalizerAndPatch(r.Client, instance, PrivateAiFinalizer); err != nil {
+				return true, err
 			}
 		}
-		// Send true because delete is in progress and it is a custom delete message
-		// We don't need to print custom err stack as we are deleting the topology
-		return fmt.Errorf("delete of the privateai topology is in progress"), true
+		// Deletion is in progress; there is nothing else to reconcile for this cycle.
+		return true, nil
 	}
 
 	// Add finalizer for this CR
 	if instance.DeletionTimestamp == nil {
 		if !controllerutil.ContainsFinalizer(instance, PrivateAiFinalizer) {
-			if err := r.addFinalizer(instance); err != nil {
-				return err, false
+			if err := sharedk8sutil.AddFinalizerAndPatch(r.Client, instance, PrivateAiFinalizer); err != nil {
+				return false, err
 			}
 		}
 	}
 
-	return nil, false
+	return false, nil
 }
 
-func (r *PrivateAiReconciler) addFinalizer(instance *privateaiv4.PrivateAi) error {
-	reqLogger := r.Log.WithValues("instance.Namespace", instance.Namespace, "instance.Name", instance.Name)
-	controllerutil.AddFinalizer(instance, PrivateAiFinalizer)
-
-	// Update CR
-	err := r.Client.Update(context.TODO(), instance)
-	if err != nil {
-		reqLogger.Error(err, "Failed to update privateai Database  with finalizer")
-		return err
-	}
-	return nil
-}
-
-func (r *PrivateAiReconciler) finalizePrivateAi(instance *privateaiv4.PrivateAi) error {
-	ctx := context.Background()
-
-	if depSet, err := aicommons.CheckDepSet(instance, r.Client); err == nil {
+func (r *PrivateAiReconciler) finalizePrivateAi(ctx context.Context, instance *privateaiv4.PrivateAi) error {
+	if depSet, err := r.getDeployment(ctx, instance.Name, instance.Namespace); err == nil {
 		if err := r.Client.Delete(ctx, depSet); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
@@ -577,29 +496,48 @@ func (r *PrivateAiReconciler) finalizePrivateAi(instance *privateaiv4.PrivateAi)
 		return err
 	}
 
-	if instance.Spec.IsDeleteOraPvc && len(instance.Spec.StorageClass) > 0 {
-		pvcName := instance.Name + "-oradata-vol4-" + instance.Name + "-0"
-		if err := aicommons.DelPvc(pvcName, instance, r.Client, r.Log); err != nil && !apierrors.IsNotFound(err) {
-			return err
-		}
-	}
-
-	if exSvcEnabled, err := strconv.ParseBool(instance.Spec.IsExternalSvc); err == nil && exSvcEnabled {
-		if svc, err := aicommons.CheckSvc(instance.Name+"-svc", instance, r.Client); err == nil {
-			if err := r.Client.Delete(ctx, svc); err != nil && !apierrors.IsNotFound(err) {
+	if instance.Spec.IsDeleteOraPvc {
+		claims := aicommons.VolumeClaimTemplatesForPrivateAi(instance)
+		for i := range claims {
+			pvc := &corev1.PersistentVolumeClaim{}
+			if err := r.Client.Get(ctx, types.NamespacedName{Name: claims[i].Name, Namespace: instance.Namespace}, pvc); err != nil {
+				if !apierrors.IsNotFound(err) {
+					return err
+				}
+				continue
+			}
+			if err := r.Client.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
-		} else if err != nil && !apierrors.IsNotFound(err) {
-			return err
 		}
 	}
 
-	if svc, err := aicommons.CheckSvc(instance.Name, instance, r.Client); err == nil {
+	serviceNames := []string{
+		aicommons.GetSvcName(instance.Name, "local"),
+		aicommons.GetSvcName(instance.Name, "external"),
+		instance.Name,
+		instance.Name + "-svc",
+	}
+	seen := map[string]struct{}{}
+	for _, svcName := range serviceNames {
+		if svcName == "" {
+			continue
+		}
+		if _, ok := seen[svcName]; ok {
+			continue
+		}
+		seen[svcName] = struct{}{}
+
+		svc := &corev1.Service{}
+		if err := r.Client.Get(ctx, types.NamespacedName{Name: svcName, Namespace: instance.Namespace}, svc); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return err
+			}
+			continue
+		}
 		if err := r.Client.Delete(ctx, svc); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
-	} else if err != nil && !apierrors.IsNotFound(err) {
-		return err
 	}
 
 	return nil
@@ -624,19 +562,13 @@ func (r *PrivateAiReconciler) ensureConfigMap(ctx context.Context, req ctrl.Requ
 	currentVersion := privateAiInst.Status.PaiConfigMap.ResourceVersion
 	latestVersion := aicommons.GetConfigMapResourceVersion(cfg.Name, privateAiInst, r.Client, r.Log)
 
-	if latestVersion == "" {
+	if latestVersion == "" || latestVersion == "None" {
 		privateAiInst.Status.PaiConfigMap.ResourceVersion = latestVersion
-		if err := r.Status().Update(ctx, privateAiInst); err != nil {
-			return ctrl.Result{}, err
-		}
 		return ctrl.Result{}, nil
 	}
 
 	if currentVersion == "" {
 		privateAiInst.Status.PaiConfigMap.ResourceVersion = latestVersion
-		if err := r.Status().Update(ctx, privateAiInst); err != nil {
-			return ctrl.Result{}, err
-		}
 		return ctrl.Result{}, nil
 	}
 
@@ -645,25 +577,18 @@ func (r *PrivateAiReconciler) ensureConfigMap(ctx context.Context, req ctrl.Requ
 	}
 
 	privateAiInst.Status.Status = privateaiv4.StatusUpdating
-	if err := r.Status().Update(ctx, privateAiInst); err != nil {
-		return ctrl.Result{}, err
-	}
 
 	r.Log.Info("ConfigMap change detected", "configMap", cfg.Name)
 
-	if deploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace); err == nil {
+	if deploy, err := r.getDeployment(ctx, privateAiInst.Name, privateAiInst.Namespace); err == nil {
 		if err := aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, deploy, ctx, req, r.Log); err != nil {
 			privateAiInst.Status.Status = privateaiv4.StatusError
-			_ = r.Status().Update(context.Background(), privateAiInst)
 			r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
 			return ctrl.Result{}, err
 		}
 	}
 
 	privateAiInst.Status.PaiConfigMap.ResourceVersion = latestVersion
-	if err := r.Status().Update(ctx, privateAiInst); err != nil {
-		return ctrl.Result{}, err
-	}
 
 	return ctrl.Result{}, nil
 }
@@ -693,17 +618,6 @@ func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request
 
 	if currentVersion == "" {
 		privateAiInst.Status.PaiSecret.ResourceVersion = latestVersion
-		if err := r.Status().Update(ctx, privateAiInst); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	}
-
-	if currentVersion == "" {
-		privateAiInst.Status.PaiSecret.ResourceVersion = latestVersion
-		if err := r.Status().Update(ctx, privateAiInst); err != nil {
-			return ctrl.Result{}, err
-		}
 		return ctrl.Result{}, nil
 	}
 
@@ -712,25 +626,18 @@ func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request
 	}
 
 	privateAiInst.Status.Status = privateaiv4.StatusUpdating
-	if err := r.Status().Update(ctx, privateAiInst); err != nil {
-		return ctrl.Result{}, err
-	}
 
 	r.Log.Info("Secret change detected", "secret", secretName)
 
-	if deploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace); err == nil {
+	if deploy, err := r.getDeployment(ctx, privateAiInst.Name, privateAiInst.Namespace); err == nil {
 		if err := aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, deploy, ctx, req, r.Log); err != nil {
 			privateAiInst.Status.Status = privateaiv4.StatusError
-			_ = r.Status().Update(context.Background(), privateAiInst)
 			r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
 			return ctrl.Result{}, err
 		}
 	}
 
 	privateAiInst.Status.PaiSecret.ResourceVersion = latestVersion
-	if err := r.Status().Update(ctx, privateAiInst); err != nil {
-		return ctrl.Result{}, err
-	}
 
 	return ctrl.Result{}, nil
 }
@@ -744,10 +651,12 @@ func (r *PrivateAiReconciler) ensurePVCs(ctx context.Context, privateAiInst *pri
 	claims := aicommons.VolumeClaimTemplatesForPrivateAi(privateAiInst)
 
 	for i := 0; i < len(claims); i++ {
-		result, err := r.createPvc(privateAiInst, &claims[i])
+		claim := &claims[i]
+		r.waitForScheme()
+		controllerutil.SetControllerReference(privateAiInst, claim, r.Scheme)
+		_, _, err := k8sobjects.EnsurePersistentVolumeClaim(ctx, r.Client, claim)
 		if err != nil {
-			result = resultNq
-			return result, err
+			return resultNq, err
 		}
 	}
 	return ctrl.Result{}, nil
@@ -769,21 +678,27 @@ func (r *PrivateAiReconciler) ensurePVCs(ctx context.Context, privateAiInst *pri
 func (r *PrivateAiReconciler) ensureServices(ctx context.Context, privateAiInst *privateaiv4.PrivateAi, svcType string) (ctrl.Result, error) {
 	// Create internal service
 	sSvc := aicommons.BuildServiceDefForPrivateAi(privateAiInst, svcType)
-	result, err := r.createService(privateAiInst, sSvc)
+	r.waitForScheme()
+	controllerutil.SetControllerReference(privateAiInst, sSvc, r.Scheme)
+	_, err := k8sobjects.EnsureService(ctx, r.Client, privateAiInst.Namespace, sSvc, k8sobjects.ServiceSyncOptions{
+		NodePortMerge:             k8sobjects.NodePortMergeByNamePortAndProtocol,
+		SyncOwnerReferences:       true,
+		SyncSessionAffinityCfg:    true,
+		SyncPublishNotReady:       true,
+		SyncInternalTrafficPolicy: true,
+		SyncLoadBalancerFields:    true,
+		SyncHealthCheckNodePort:   true,
+	})
 	if err != nil {
-		result = resultNq
-		return result, err
+		return resultNq, err
 	}
 	pexlSvc, err := aicommons.CheckSvc(aicommons.GetSvcName(privateAiInst.Name, svcType), privateAiInst, r.Client)
-	if err == nil {
-		_, err = aicommons.UpdateSvcForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, sSvc, pexlSvc, r.Log)
-		if err != nil {
-			return resultNq, err
-		}
+	if err != nil {
+		return resultNq, err
 	}
 	if svcType == "external" {
-		if err == nil && len(sSvc.Status.LoadBalancer.Ingress) > 0 {
-			ingress := sSvc.Status.LoadBalancer.Ingress[0]
+		if len(pexlSvc.Status.LoadBalancer.Ingress) > 0 {
+			ingress := pexlSvc.Status.LoadBalancer.Ingress[0]
 
 			lb := ingress.IP
 			if lb == "" {
@@ -792,7 +707,6 @@ func (r *PrivateAiReconciler) ensureServices(ctx context.Context, privateAiInst 
 
 			if privateAiInst.Status.LoadBalancerIP != lb {
 				privateAiInst.Status.LoadBalancerIP = lb
-				_ = r.Status().Update(ctx, privateAiInst)
 			}
 		}
 	}
@@ -804,4 +718,61 @@ func parseBoolFlag(flag string) bool {
 		return false
 	}
 	return val
+}
+
+func (r *PrivateAiReconciler) getDeployment(ctx context.Context, name, namespace string) (*appsv1.Deployment, error) {
+	found := &appsv1.Deployment{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, found); err != nil {
+		return found, err
+	}
+	return found, nil
+}
+
+func (r *PrivateAiReconciler) shouldBlockForUpdateLock(inst *privateaiv4.PrivateAi) (bool, string, error) {
+	locked, lockGen, lockMsg := lockpolicy.IsControllerUpdateLocked(
+		inst.Status.Conditions,
+		lockpolicy.DefaultReconcilingConditionType,
+		lockpolicy.DefaultUpdateLockReason,
+	)
+	if !locked {
+		return false, "", nil
+	}
+	// Same generation can continue to reconcile and finish the in-flight update.
+	if inst.Generation <= lockGen {
+		return false, "", nil
+	}
+
+	overrideEnabled, overrideMsg := lockpolicy.IsUpdateLockOverrideEnabled(inst.GetAnnotations(), lockpolicy.DefaultOverrideAnnotation)
+	if overrideEnabled {
+		r.Log.Info("update lock override accepted", "annotation", lockpolicy.DefaultOverrideAnnotation, "message", overrideMsg)
+		return false, "", nil
+	}
+
+	msg := fmt.Sprintf("previous update in progress at generation %d. %s", lockGen, lockMsg)
+	return true, msg, nil
+}
+
+func requiresRolloutUpdate(inst *privateaiv4.PrivateAi, foundDeploy *appsv1.Deployment) (bool, string) {
+	if foundDeploy == nil {
+		return false, ""
+	}
+	containerName := foundDeploy.Name
+	var current *corev1.Container
+	for i := range foundDeploy.Spec.Template.Spec.Containers {
+		if foundDeploy.Spec.Template.Spec.Containers[i].Name == containerName {
+			current = &foundDeploy.Spec.Template.Spec.Containers[i]
+			break
+		}
+	}
+	if current == nil {
+		return false, ""
+	}
+
+	if desired := inst.Spec.PaiImage; desired != "" && desired != current.Image {
+		return true, "controller update lock: image rollout in progress"
+	}
+	if desired := inst.Spec.Resources; desired != nil && !reflect.DeepEqual(current.Resources, *desired) {
+		return true, "controller update lock: resource rollout in progress"
+	}
+	return false, ""
 }

@@ -527,16 +527,12 @@ func ManageReplicas(
 
 	logger.Info("Deployment replicas mismatch. Updating deployment...")
 	instance.Status.Status = privateaiv4.StatusUpdating
-	if err := kClient.Status().Update(ctx, instance); err != nil {
-		return ctrl.Result{}, err
-	}
 
 	updated := deploy.DeepCopy()
 	updated.Spec.Replicas = pointer.Int32(desired)
 	if err := kClient.Update(context.Background(), updated); err != nil {
 		LogMessages("ERROR", "Failed to update Deployment with new replica count", err, instance, logger)
 		instance.Status.Status = privateaiv4.StatusError
-		_ = kClient.Status().Update(ctx, instance)
 		return ctrl.Result{}, err
 	}
 
@@ -555,21 +551,24 @@ func UpdateSvcForPrivateAI(
 	logger logr.Logger,
 ) (ctrl.Result, error) {
 	_ = paiSpec
+	_ = config
 
-	if !servicesEqual(newSvc, oldSvc) {
+	if servicesEqual(newSvc, oldSvc) {
 		return ctrl.Result{}, nil
 	}
 
 	LogMessages("INFO", "Svc definition change detected ...", nil, instance, logger)
 	instance.Status.Status = privateaiv4.StatusUpdating
-	if err := kClient.Status().Update(context.Background(), instance); err != nil {
-		return ctrl.Result{}, err
-	}
 
-	if err := kClient.Update(context.Background(), newSvc); err != nil {
+	toUpdate := oldSvc.DeepCopy()
+	toUpdate.ObjectMeta.Annotations = newSvc.ObjectMeta.Annotations
+	toUpdate.ObjectMeta.Labels = newSvc.ObjectMeta.Labels
+	toUpdate.Spec.Ports = newSvc.Spec.Ports
+	toUpdate.Spec.Selector = newSvc.Spec.Selector
+	toUpdate.Spec.LoadBalancerIP = newSvc.Spec.LoadBalancerIP
+	if err := kClient.Update(context.Background(), toUpdate); err != nil {
 		LogMessages("ERROR", "Failed to update service spec", err, instance, logger)
 		instance.Status.Status = privateaiv4.StatusError
-		_ = kClient.Status().Update(context.Background(), instance)
 		return ctrl.Result{}, err
 	}
 
@@ -577,14 +576,10 @@ func UpdateSvcForPrivateAI(
 }
 
 func servicesEqual(newSvc, oldSvc *corev1.Service) bool {
-	updateStatus := false
-	if !reflect.DeepEqual(oldSvc.ObjectMeta.Annotations, newSvc.ObjectMeta.Annotations) ||
-		!reflect.DeepEqual(oldSvc.Annotations, newSvc.Annotations) ||
-		!reflect.DeepEqual(oldSvc.Labels, newSvc.Labels) ||
-		!reflect.DeepEqual(oldSvc.Spec.LoadBalancerIP, newSvc.Spec.LoadBalancerIP) {
-		updateStatus = true
-	}
-	return updateStatus
+	return reflect.DeepEqual(oldSvc.ObjectMeta.Annotations, newSvc.ObjectMeta.Annotations) &&
+		reflect.DeepEqual(oldSvc.Annotations, newSvc.Annotations) &&
+		reflect.DeepEqual(oldSvc.Labels, newSvc.Labels) &&
+		reflect.DeepEqual(oldSvc.Spec.LoadBalancerIP, newSvc.Spec.LoadBalancerIP)
 }
 
 // Update Section
@@ -647,9 +642,6 @@ func UpdateDeploySetForPrivateAI(
 	}
 
 	instance.Status.Status = privateaiv4.StatusUpdating
-	if err := kClient.Status().Update(context.Background(), instance); err != nil {
-		return ctrl.Result{}, err
-	}
 
 	updated := deploy.DeepCopy()
 	for i := range updated.Spec.Template.Spec.Containers {
@@ -670,7 +662,6 @@ func UpdateDeploySetForPrivateAI(
 	if err := kClient.Update(context.Background(), updated); err != nil {
 		LogMessages("ERROR", "Failed to update deployment with new spec", err, instance, logger)
 		instance.Status.Status = privateaiv4.StatusError
-		_ = kClient.Status().Update(context.Background(), instance)
 		return ctrl.Result{}, err
 	}
 
