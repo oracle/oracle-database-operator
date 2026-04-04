@@ -1,5 +1,7 @@
 stages:
   - build
+  - e2e
 
 include:
   - local: .gitlab/ci/build-oper.yml
+  - local: .gitlab/ci/sharding/e2e-sharding.yaml

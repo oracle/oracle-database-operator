@@ -1,0 +1,46 @@
+e2e-sharding-system:
+  stage: e2e
+  tags:
+    - runner-sharding-e2e
+  needs:
+    - job: build-operator
+  variables:
+    OP_IMAGE: "$DOCKER_REPO:$CI_COMMIT_SHORT_SHA"
+    E2E_PROFILE: "smoke"
+    E2E_NAMESPACE: "e2e-sharding-${CI_PIPELINE_ID}"
+    SHARDING_NAME: "sdb-system"
+  before_script:
+    - export KUBECONFIG="$KUBECONFIG_SHARDING"
+    - kubectl version --client
+    - kubectl cluster-info
+    - kubectl create ns "$E2E_NAMESPACE" || true
+  script:
+    - kubectl -n oracle-database-operator-system set image deploy/oracle-database-operator-controller-manager manager="$OP_IMAGE"
+    - kubectl -n oracle-database-operator-system rollout status deploy/oracle-database-operator-controller-manager --timeout=300s
+    - chmod +x test/e2e/controllers/sharding/scripts/run.sh
+    - test/e2e/controllers/sharding/scripts/run.sh --namespace "$E2E_NAMESPACE" --profile "$E2E_PROFILE" --name "$SHARDING_NAME"
+  after_script:
+    - mkdir -p artifacts/sharding
+    - kubectl -n "$E2E_NAMESPACE" get all,pvc -o wide > artifacts/sharding/get-all.txt || true
+    - kubectl get pv -o wide > artifacts/sharding/get-pv.txt || true
+    - kubectl -n "$E2E_NAMESPACE" get shardingdatabase "$SHARDING_NAME" -o yaml > artifacts/sharding/shardingdatabase.yaml || true
+    - kubectl -n "$E2E_NAMESPACE" describe shardingdatabase "$SHARDING_NAME" > artifacts/sharding/describe-shardingdatabase.txt || true
+    - kubectl -n "$E2E_NAMESPACE" describe pods > artifacts/sharding/describe-pods.txt || true
+    - kubectl -n "$E2E_NAMESPACE" get events --sort-by=.lastTimestamp > artifacts/sharding/events.txt || true
+    - kubectl -n oracle-database-operator-system logs deploy/oracle-database-operator-controller-manager --all-containers=true > artifacts/sharding/operator.log || true
+    - |
+      if [ "${KEEP_NS_ON_FAIL}" != "true" ] || [ "$CI_JOB_STATUS" = "success" ]; then
+        kubectl delete ns "$E2E_NAMESPACE" --wait=false || true
+      fi
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/sharding/
+      - test/e2e/controllers/sharding/results/
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $RUN_SHARDING_E2E == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $RUN_SHARDING_E2E == "true"'
+    - if: '$CI_MERGE_REQUEST_ID && $RUN_SHARDING_E2E == "true"'
+      when: manual
+    - when: never
