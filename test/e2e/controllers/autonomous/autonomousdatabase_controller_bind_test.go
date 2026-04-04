@@ -50,8 +50,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	e2ebehavior "github.com/oracle/oracle-database-operator/test/e2e/behavior"
-	e2eutil "github.com/oracle/oracle-database-operator/test/e2e/util"
+	e2ebehavior "github.com/oracle/oracle-database-operator/test/e2e/controllers/autonomous/behavior"
+	e2eutil "github.com/oracle/oracle-database-operator/test/e2e/controllers/autonomous/util"
 	// +kubebuilder:scaffold:imports
 )
 

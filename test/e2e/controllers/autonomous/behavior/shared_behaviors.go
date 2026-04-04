@@ -60,7 +60,7 @@ import (
 	"strings"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	e2eutil "github.com/oracle/oracle-database-operator/test/e2e/util"
+	e2eutil "github.com/oracle/oracle-database-operator/test/e2e/controllers/autonomous/util"
 )
 
 /**************************************************************
