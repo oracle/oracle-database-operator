@@ -158,22 +158,22 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 		// PoolConfigMap
 		poolName := strings.ToLower(ordssrvs.Spec.PoolSettings[poolIndex].PoolName)
 
-		// tnsadmin 
-		tnsadminEntry:=conditionalEntry("db.tnsDirectory", ordsSABase + "/config/databases/" + poolName + "/network/admin/");
-		
+		// tnsadmin
+		tnsadminEntry := conditionalEntry("db.tnsDirectory", ordsSABase+"/config/databases/"+poolName+"/network/admin/")
+
 		// Pool Zip Wallet
 		var zipWalletPathEntry string
 		if ordssrvs.Spec.PoolSettings[poolIndex].DBWalletSecret != nil {
-			tnsadminEntry="";
-			zipWalletPathEntry = conditionalEntry("db.wallet.zip.path", ordsSABase + "/config/databases/" + poolName + "/network/admin/" + ordssrvs.Spec.PoolSettings[poolIndex].DBWalletSecret.WalletName );
-		} 
+			tnsadminEntry = ""
+			zipWalletPathEntry = conditionalEntry("db.wallet.zip.path", ordsSABase+"/config/databases/"+poolName+"/network/admin/"+ordssrvs.Spec.PoolSettings[poolIndex].DBWalletSecret.WalletName)
+		}
 
 		// Shared Zip Wallets
 		// using shared zip wallet in fixed path /opt/oracle/sa/zipwallets
-		sharedZipWalletEntry:=""
+		sharedZipWalletEntry := ""
 		if ordssrvs.Spec.GlobalSettings.ZipWalletsSecretName != "" && ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletName != "" {
-		  tnsadminEntry="";
-		  sharedZipWalletEntry=conditionalEntry("db.wallet.zip.path", "/opt/oracle/sa/zipwallets/"+ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletName);
+			tnsadminEntry = ""
+			sharedZipWalletEntry = conditionalEntry("db.wallet.zip.path", "/opt/oracle/sa/zipwallets/"+ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletName)
 		}
 
 		defData = map[string]string{
@@ -233,7 +233,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("restEnabledSql.active", ordssrvs.Spec.PoolSettings[poolIndex].RestEnabledSqlActive) +
 				conditionalEntry("db.wallet.zip.service", ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletService) +
 				tnsadminEntry +
-				zipWalletPathEntry + 
+				zipWalletPathEntry +
 				sharedZipWalletEntry +
 				// Disabled (but not forgotten)
 				// conditionalEntry("autoupgrade.api.aulocation", ords.Spec.PoolSettings[poolIndex].AutoupgradeAPIAulocation) +

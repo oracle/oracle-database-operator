@@ -621,8 +621,8 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 	shouldRunDiscovery :=
 		hasRawDiskGroups &&
 			(len(removedAsmDisks) == 0) && (isNewSetup ||
-				upgradeSetup ||
-				missingSize ||
+			upgradeSetup ||
+			missingSize ||
 			len(addedAsmDisks) > 0 ||
 			len(racDatabase.Status.AsmDiskGroups) == 0)
 

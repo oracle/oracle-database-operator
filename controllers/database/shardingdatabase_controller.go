@@ -5289,13 +5289,13 @@ func containerCapabilities(c corev1.Container) *corev1.Capabilities {
 }
 
 type managedPodSecurityContext struct {
-	RunAsNonRoot          *bool
-	RunAsUser             *int64
-	RunAsGroup            *int64
-	FSGroup               *int64
-	FSGroupChangePolicy   *corev1.PodFSGroupChangePolicy
-	SupplementalGroups    []int64
-	Sysctls               []corev1.Sysctl
+	RunAsNonRoot        *bool
+	RunAsUser           *int64
+	RunAsGroup          *int64
+	FSGroup             *int64
+	FSGroupChangePolicy *corev1.PodFSGroupChangePolicy
+	SupplementalGroups  []int64
+	Sysctls             []corev1.Sysctl
 }
 
 func normalizeResourceRequirements(rr corev1.ResourceRequirements) corev1.ResourceRequirements {
