@@ -43,6 +43,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -1295,7 +1296,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	}
 	if m.Status.OrdsReference != "" &&
 		(m.Status.Persistence.Oradata != nil || m.Status.Persistence.Size != "") &&
-		m.Status.Persistence != m.Spec.Persistence {
+		!reflect.DeepEqual(m.Status.Persistence, m.Spec.Persistence) {
 		eventMsgs = append(eventMsgs, "uninstall ORDS to change Peristence")
 	}
 	if len(eventMsgs) > 0 {
@@ -1668,8 +1669,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			},
 		},
 		Spec: corev1.PodSpec{
-				Affinity: func() *corev1.Affinity {
-					if oradataCfg.AccessMode == "ReadWriteOnce" {
+			Affinity: func() *corev1.Affinity {
+				if oradataCfg.AccessMode == "ReadWriteOnce" {
 					if requiredAffinity {
 						return &corev1.Affinity{
 							PodAffinity: &corev1.PodAffinity{
@@ -1727,18 +1728,18 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			Volumes: func() []corev1.Volume {
 				adminPwdSecretFileName := GetAdminPasswordSecretFileName(m)
 				volumes := []corev1.Volume{{
-						Name: "datafiles-vol",
-						VolumeSource: func() corev1.VolumeSource {
-							if !hasOradataPersistence(m) {
-								return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
-							}
-							/* Persistence is specified */
-							return corev1.VolumeSource{
-								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: getOradataClaimName(m),
-									ReadOnly:  false,
-								},
-							}
+					Name: "datafiles-vol",
+					VolumeSource: func() corev1.VolumeSource {
+						if !hasOradataPersistence(m) {
+							return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+						}
+						/* Persistence is specified */
+						return corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: getOradataClaimName(m),
+								ReadOnly:  false,
+							},
+						}
 					}(),
 				}, {
 					Name: "oracle-pwd-vol",
@@ -1810,9 +1811,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					})
 				}
-					if HasTDEPasswordSecret(m) {
-						tdeSecretFileName := GetTDEPasswordSecretFileName(m)
-						volumes = append(volumes, corev1.Volume{
+				if HasTDEPasswordSecret(m) {
+					tdeSecretFileName := GetTDEPasswordSecretFileName(m)
+					volumes = append(volumes, corev1.Volume{
 						Name: "tde-wallet-pwd-vol",
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
@@ -1822,23 +1823,23 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 									Path: tdeSecretFileName,
 								}},
 							},
+						},
+					})
+				}
+				if hasFraPersistence(m) {
+					volumes = append(volumes, corev1.Volume{
+						Name: "fra-vol",
+						VolumeSource: corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: getFraClaimName(m),
+								ReadOnly:  false,
 							},
-						})
-					}
-					if hasFraPersistence(m) {
-						volumes = append(volumes, corev1.Volume{
-							Name: "fra-vol",
-							VolumeSource: corev1.VolumeSource{
-								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: getFraClaimName(m),
-									ReadOnly:  false,
-								},
-							},
-						})
-					}
-					for i := range m.Spec.AdditionalPVCs {
-						pvcName := strings.TrimSpace(m.Spec.AdditionalPVCs[i].PvcName)
-						if pvcName == "" {
+						},
+					})
+				}
+				for i := range m.Spec.Persistence.AdditionalPVCs {
+					pvcName := strings.TrimSpace(m.Spec.Persistence.AdditionalPVCs[i].PvcName)
+					if pvcName == "" {
 						continue
 					}
 					volumes = append(volumes, corev1.Volume{
@@ -1961,7 +1962,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			}(),
 			InitContainers: func() []corev1.Container {
 				initContainers := []corev1.Container{}
-					if hasOradataPersistence(m) && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
+				if hasOradataPersistence(m) && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
 					initContainers = append(initContainers, corev1.Container{
 						Name:    "init-permissions",
 						Image:   m.Spec.Image.PullFrom,
@@ -2115,7 +2116,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				VolumeMounts: func() []corev1.VolumeMount {
 					adminPwdSecretFileName := GetAdminPasswordSecretFileName(m)
 					mounts := []corev1.VolumeMount{}
-						if hasOradataPersistence(m) {
+					if hasOradataPersistence(m) {
 						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: "/opt/oracle/oradata",
 							Name:      "datafiles-vol",
@@ -2185,9 +2186,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							MountPath: getFraMountPath(m),
 						})
 					}
-					for i := range m.Spec.AdditionalPVCs {
-						mountPath := strings.TrimSpace(m.Spec.AdditionalPVCs[i].MountPath)
-						pvcName := strings.TrimSpace(m.Spec.AdditionalPVCs[i].PvcName)
+					for i := range m.Spec.Persistence.AdditionalPVCs {
+						mountPath := strings.TrimSpace(m.Spec.Persistence.AdditionalPVCs[i].MountPath)
+						pvcName := strings.TrimSpace(m.Spec.Persistence.AdditionalPVCs[i].PvcName)
 						if mountPath == "" || pvcName == "" {
 							continue
 						}
@@ -2699,23 +2700,23 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 			}(),
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes: func() []corev1.PersistentVolumeAccessMode {
-					var accessMode []corev1.PersistentVolumeAccessMode
-					accessMode = append(accessMode, corev1.PersistentVolumeAccessMode(oradataCfg.AccessMode))
-					return accessMode
-				}(),
-				Resources: corev1.VolumeResourceRequirements{
-					Requests: map[corev1.ResourceName]resource.Quantity{
-						// Requests describes the minimum amount of compute resources required
-						"storage": resource.MustParse(oradataCfg.Size),
-					},
+			AccessModes: func() []corev1.PersistentVolumeAccessMode {
+				var accessMode []corev1.PersistentVolumeAccessMode
+				accessMode = append(accessMode, corev1.PersistentVolumeAccessMode(oradataCfg.AccessMode))
+				return accessMode
+			}(),
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: map[corev1.ResourceName]resource.Quantity{
+					// Requests describes the minimum amount of compute resources required
+					"storage": resource.MustParse(oradataCfg.Size),
 				},
-				StorageClassName: &oradataCfg.StorageClass,
-				VolumeName:       oradataCfg.DatafilesVolume,
-				Selector: func() *metav1.LabelSelector {
-					if oradataCfg.StorageClass != "oci" {
-						return nil
-					}
+			},
+			StorageClassName: &oradataCfg.StorageClass,
+			VolumeName:       oradataCfg.DatafilesVolume,
+			Selector: func() *metav1.LabelSelector {
+				if oradataCfg.StorageClass != "oci" {
+					return nil
+				}
 				return &metav1.LabelSelector{
 					MatchLabels: func() map[string]string {
 						ns := make(map[string]string)
@@ -2905,9 +2906,9 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 		if pvc.Spec.StorageClassName != nil {
 			currentStorageClassName = *pvc.Spec.StorageClassName
 		}
-			if currentStorageClassName != oradataCfg.StorageClass ||
-				(oradataCfg.DatafilesVolume != "" && pvc.Spec.VolumeName != oradataCfg.DatafilesVolume) ||
-				pvc.Spec.AccessModes[0] != corev1.PersistentVolumeAccessMode(oradataCfg.AccessMode) {
+		if currentStorageClassName != oradataCfg.StorageClass ||
+			(oradataCfg.DatafilesVolume != "" && pvc.Spec.VolumeName != oradataCfg.DatafilesVolume) ||
+			pvc.Spec.AccessModes[0] != corev1.PersistentVolumeAccessMode(oradataCfg.AccessMode) {
 			// PV change use cases which would trigger recreation of SIDB pods are :-
 			// 1. Change in storage class
 			// 2. Change in volume name
@@ -2928,7 +2929,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 			}
 			pvcDeleted = true
 
-			} else if pvc.Spec.Resources.Requests["storage"] != resource.MustParse(oradataCfg.Size) {
+		} else if pvc.Spec.Resources.Requests["storage"] != resource.MustParse(oradataCfg.Size) {
 			// check the storage class of the pvc
 			// if the storage class doesn't support resize the throw an error event and try expanding via deleting and recreating the pv and pods
 			if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName == "" {
@@ -2948,7 +2949,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 				return requeueN, fmt.Errorf("the storage class %s doesn't support volume expansion", storageClassName)
 			}
 
-				newPVCSize := resource.MustParse(oradataCfg.Size)
+			newPVCSize := resource.MustParse(oradataCfg.Size)
 			newPVCSizeAdd := &newPVCSize
 			if newPVCSizeAdd.Cmp(pvc.Spec.Resources.Requests["storage"]) < 0 {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Cannot Resize PVC", "Forbidden: field can not be less than previous value")
@@ -2956,7 +2957,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 			}
 
 			// Expanding the persistent volume claim
-				pvc.Spec.Resources.Requests["storage"] = resource.MustParse(oradataCfg.Size)
+			pvc.Spec.Resources.Requests["storage"] = resource.MustParse(oradataCfg.Size)
 			log.Info("Updating PVC", "pvc", pvc.Name, "volume", pvc.Spec.VolumeName)
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, "Updating PVC - volume expansion", "Resizing the pvc for storage expansion")
 			err = r.Update(ctx, pvc)
@@ -2968,7 +2969,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 		} else {
 
 			log.Info("Found Existing PVC", "Name", pvc.Name)
-				return requeueN, nil
+			return requeueN, nil
 
 		}
 	}
@@ -6012,9 +6013,9 @@ func isRestoreFSPathVolumeBacked(m *dbapi.SingleInstanceDatabase, path string) b
 	if hasOradataPersistence(m) && isPathUnder(restoreDefaultDataRoot, path) {
 		return true
 	}
-	for i := range m.Spec.AdditionalPVCs {
-		mountPath := strings.TrimSpace(m.Spec.AdditionalPVCs[i].MountPath)
-		pvcName := strings.TrimSpace(m.Spec.AdditionalPVCs[i].PvcName)
+	for i := range m.Spec.Persistence.AdditionalPVCs {
+		mountPath := strings.TrimSpace(m.Spec.Persistence.AdditionalPVCs[i].MountPath)
+		pvcName := strings.TrimSpace(m.Spec.Persistence.AdditionalPVCs[i].PvcName)
 		if mountPath == "" || pvcName == "" {
 			continue
 		}

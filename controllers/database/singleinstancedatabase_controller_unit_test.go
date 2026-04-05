@@ -155,11 +155,11 @@ func TestSIDBUnit_IsRestoreFSPathVolumeBacked(t *testing.T) {
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			Persistence: dbapi.SingleInstanceDatabasePersistence{
 				Size: "10Gi",
-			},
-			AdditionalPVCs: []dbapi.AdditionalPVCSpec{
-				{
-					MountPath: "/mnt/backup",
-					PvcName:   "backup-pvc",
+				AdditionalPVCs: []dbapi.AdditionalPVCSpec{
+					{
+						MountPath: "/mnt/backup",
+						PvcName:   "backup-pvc",
+					},
 				},
 			},
 		},

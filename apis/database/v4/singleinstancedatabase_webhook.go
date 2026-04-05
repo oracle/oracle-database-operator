@@ -130,7 +130,7 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 		sidb.Spec.TrueCacheServices = make([]string, 0)
 	}
 	defaultSIDBPersistence(&sidb.Spec.Persistence)
-	defaultSIDBAdditionalPVCs(&sidb.Spec.AdditionalPVCs)
+	defaultSIDBAdditionalPVCs(&sidb.Spec.Persistence.AdditionalPVCs)
 	defaultSIDBRestoreSpec(&sidb.Spec.Restore)
 
 	return nil
@@ -630,19 +630,19 @@ func defaultSIDBAdditionalPVCs(pvcs *[]AdditionalPVCSpec) {
 
 func validateSingleInstanceDatabaseAdditionalPVCs(sidb *SingleInstanceDatabase) field.ErrorList {
 	var allErrs field.ErrorList
-	basePath := field.NewPath("spec").Child("additionalPVCs")
+	basePath := field.NewPath("spec").Child("persistence").Child("additionalPVCs")
 	seenMountPaths := map[string]struct{}{}
 
-	for i := range sidb.Spec.AdditionalPVCs {
+	for i := range sidb.Spec.Persistence.AdditionalPVCs {
 		itemPath := basePath.Index(i)
-		mountPath := strings.TrimSpace(sidb.Spec.AdditionalPVCs[i].MountPath)
-		pvcName := strings.TrimSpace(sidb.Spec.AdditionalPVCs[i].PvcName)
+		mountPath := strings.TrimSpace(sidb.Spec.Persistence.AdditionalPVCs[i].MountPath)
+		pvcName := strings.TrimSpace(sidb.Spec.Persistence.AdditionalPVCs[i].PvcName)
 		if mountPath == "" {
 			allErrs = append(allErrs, field.Required(itemPath.Child("mountPath"), "mountPath must be set"))
 			continue
 		}
 		if !strings.HasPrefix(mountPath, "/") {
-			allErrs = append(allErrs, field.Invalid(itemPath.Child("mountPath"), sidb.Spec.AdditionalPVCs[i].MountPath, "mountPath must be an absolute path"))
+			allErrs = append(allErrs, field.Invalid(itemPath.Child("mountPath"), sidb.Spec.Persistence.AdditionalPVCs[i].MountPath, "mountPath must be an absolute path"))
 		}
 		if _, exists := seenMountPaths[mountPath]; exists {
 			allErrs = append(allErrs, field.Duplicate(itemPath.Child("mountPath"), mountPath))
@@ -650,7 +650,7 @@ func validateSingleInstanceDatabaseAdditionalPVCs(sidb *SingleInstanceDatabase) 
 			seenMountPaths[mountPath] = struct{}{}
 		}
 
-		if pvcName == "" && sidb.Spec.AdditionalPVCs[i].StorageSizeInGb <= 0 && mountPath != DefaultDiagMountPath {
+		if pvcName == "" && sidb.Spec.Persistence.AdditionalPVCs[i].StorageSizeInGb <= 0 && mountPath != DefaultDiagMountPath {
 			allErrs = append(allErrs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when pvcName is not provided"))
 		}
 	}

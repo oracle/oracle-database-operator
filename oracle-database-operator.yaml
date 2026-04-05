@@ -17975,22 +17975,6 @@ spec:
             type: object
           spec:
             properties:
-              additionalPVCs:
-                items:
-                  properties:
-                    mountPath:
-                      type: string
-                    pvcName:
-                      type: string
-                    storageClass:
-                      type: string
-                    storageSizeInGb:
-                      format: int32
-                      type: integer
-                  required:
-                  - mountPath
-                  type: object
-                type: array
               adminPassword:
                 properties:
                   keepSecret:
@@ -18197,6 +18181,22 @@ spec:
                     - ReadWriteOnce
                     - ReadWriteMany
                     type: string
+                  additionalPVCs:
+                    items:
+                      properties:
+                        mountPath:
+                          type: string
+                        pvcName:
+                          type: string
+                        storageClass:
+                          type: string
+                        storageSizeInGb:
+                          format: int32
+                          type: integer
+                      required:
+                      - mountPath
+                      type: object
+                    type: array
                   datafilesVolumeName:
                     type: string
                   fra:
@@ -18755,6 +18755,22 @@ spec:
                     - ReadWriteOnce
                     - ReadWriteMany
                     type: string
+                  additionalPVCs:
+                    items:
+                      properties:
+                        mountPath:
+                          type: string
+                        pvcName:
+                          type: string
+                        storageClass:
+                          type: string
+                        storageSizeInGb:
+                          format: int32
+                          type: integer
+                      required:
+                      - mountPath
+                      type: object
+                    type: array
                   datafilesVolumeName:
                     type: string
                   fra:

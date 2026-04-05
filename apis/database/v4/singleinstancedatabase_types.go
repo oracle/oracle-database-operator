@@ -112,7 +112,6 @@ type SingleInstanceDatabaseSpec struct {
 	// Deprecated: use resourceRequirements for full Kubernetes resource support including hugepages.
 	Resources                     SingleInstanceDatabaseResources `json:"resources,omitempty"`
 	ResourceRequirements          *corev1.ResourceRequirements    `json:"resourceRequirements,omitempty" protobuf:"bytes,1,opt,name=resourceRequirements"`
-	AdditionalPVCs                []AdditionalPVCSpec             `json:"additionalPVCs,omitempty"`
 	DisableDefaultDiagVolumeClaim bool                            `json:"disableDefaultDiagVolumeClaim,omitempty"`
 	SecurityContext               *corev1.PodSecurityContext      `json:"securityContext,omitempty"`
 	Capabilities                  *corev1.Capabilities            `json:"capabilities,omitempty"`
@@ -313,6 +312,8 @@ type SingleInstanceDatabasePersistence struct {
 	Oradata *SingleInstanceDatabasePersistenceOradata `json:"oradata,omitempty"`
 	// Fra config for fast recovery area volume.
 	Fra *SingleInstanceDatabasePersistenceFra `json:"fra,omitempty"`
+	// Additional PVCs for custom mount paths.
+	AdditionalPVCs []AdditionalPVCSpec `json:"additionalPVCs,omitempty"`
 
 	// Deprecated: use persistence.oradata.size.
 	Size string `json:"size,omitempty"`
