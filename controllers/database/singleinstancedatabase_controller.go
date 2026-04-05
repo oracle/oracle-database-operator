@@ -104,6 +104,131 @@ var ErrAdminPasswordSecretNotFound error = errors.New("Admin password secret for
 
 const sidbInitParamUnitBytes = int64(1024 * 1024)
 
+const (
+	restoreOCIConfigMountDir       = "/opt/oracle/oci/config"
+	restoreOCIPrivateKeyMountDir   = "/opt/oracle/oci/keys"
+	restoreSourceWalletMountDir    = "/opt/oracle/source-wallet"
+	restoreSourceWalletPwdMountDir = "/run/secrets/source-wallet-pwd"
+	restoreBackupModuleMountDir    = "/opt/oracle/oci/installer"
+	restoreDecryptPwdMountDir      = "/run/secrets/rman-decrypt"
+	restoreDefaultDataRoot         = "/opt/oracle/oradata"
+	defaultFRAMountPath            = "/opt/oracle/oradata/fast_recovery_area"
+)
+
+type sidbOradataPersistenceConfig struct {
+	PvcName         string
+	Size            string
+	StorageClass    string
+	AccessMode      string
+	DatafilesVolume string
+}
+
+type sidbFraPersistenceConfig struct {
+	PvcName          string
+	Size             string
+	StorageClass     string
+	AccessMode       string
+	MountPath        string
+	RecoveryAreaSize string
+}
+
+func getOradataPersistenceConfig(m *dbapi.SingleInstanceDatabase) sidbOradataPersistenceConfig {
+	cfg := sidbOradataPersistenceConfig{}
+	if m == nil {
+		return cfg
+	}
+	if p := m.Spec.Persistence.Oradata; p != nil {
+		cfg.PvcName = strings.TrimSpace(p.PvcName)
+		cfg.Size = strings.TrimSpace(p.Size)
+		cfg.StorageClass = strings.TrimSpace(p.StorageClass)
+		cfg.AccessMode = strings.TrimSpace(p.AccessMode)
+	} else {
+		cfg.Size = strings.TrimSpace(m.Spec.Persistence.Size)
+		cfg.StorageClass = strings.TrimSpace(m.Spec.Persistence.StorageClass)
+		cfg.AccessMode = strings.TrimSpace(m.Spec.Persistence.AccessMode)
+	}
+	cfg.DatafilesVolume = strings.TrimSpace(m.Spec.Persistence.DatafilesVolumeName)
+	return cfg
+}
+
+func hasOradataPersistence(m *dbapi.SingleInstanceDatabase) bool {
+	cfg := getOradataPersistenceConfig(m)
+	return cfg.PvcName != "" || cfg.Size != ""
+}
+
+func isManagedOradataPVC(m *dbapi.SingleInstanceDatabase) bool {
+	cfg := getOradataPersistenceConfig(m)
+	return cfg.PvcName == "" && cfg.Size != ""
+}
+
+func getOradataClaimName(m *dbapi.SingleInstanceDatabase) string {
+	cfg := getOradataPersistenceConfig(m)
+	if cfg.PvcName != "" {
+		return cfg.PvcName
+	}
+	return m.Name
+}
+
+func getFraPersistenceConfig(m *dbapi.SingleInstanceDatabase) sidbFraPersistenceConfig {
+	cfg := sidbFraPersistenceConfig{}
+	if m == nil || m.Spec.Persistence.Fra == nil {
+		return cfg
+	}
+	cfg.PvcName = strings.TrimSpace(m.Spec.Persistence.Fra.PvcName)
+	cfg.Size = strings.TrimSpace(m.Spec.Persistence.Fra.Size)
+	cfg.StorageClass = strings.TrimSpace(m.Spec.Persistence.Fra.StorageClass)
+	cfg.AccessMode = strings.TrimSpace(m.Spec.Persistence.Fra.AccessMode)
+	cfg.MountPath = strings.TrimSpace(m.Spec.Persistence.Fra.MountPath)
+	cfg.RecoveryAreaSize = strings.TrimSpace(m.Spec.Persistence.Fra.RecoveryAreaSize)
+	return cfg
+}
+
+func hasFraPersistence(m *dbapi.SingleInstanceDatabase) bool {
+	cfg := getFraPersistenceConfig(m)
+	return cfg.PvcName != "" || cfg.Size != ""
+}
+
+func isManagedFraPVC(m *dbapi.SingleInstanceDatabase) bool {
+	cfg := getFraPersistenceConfig(m)
+	return cfg.PvcName == "" && cfg.Size != ""
+}
+
+func getFraClaimName(m *dbapi.SingleInstanceDatabase) string {
+	cfg := getFraPersistenceConfig(m)
+	if cfg.PvcName != "" {
+		return cfg.PvcName
+	}
+	return m.Name + "-fra"
+}
+
+func getFraMountPath(m *dbapi.SingleInstanceDatabase) string {
+	cfg := getFraPersistenceConfig(m)
+	if cfg.MountPath != "" {
+		return cfg.MountPath
+	}
+	return defaultFRAMountPath
+}
+
+func getFraRecoveryAreaSize(m *dbapi.SingleInstanceDatabase) string {
+	cfg := getFraPersistenceConfig(m)
+	if cfg.RecoveryAreaSize != "" {
+		return cfg.RecoveryAreaSize
+	}
+	if cfg.Size != "" {
+		return cfg.Size
+	}
+	return "50G"
+}
+
+func buildSetDBRecoveryDestSQL(location, size string) string {
+	escapedLocation := strings.ReplaceAll(location, "'", "''")
+	escapedSize := strings.ReplaceAll(size, "'", "''")
+	return "SHOW PARAMETER db_recovery_file_dest;" +
+		"\nALTER SYSTEM SET db_recovery_file_dest_size=" + escapedSize + " scope=both sid='*';" +
+		"\nALTER SYSTEM SET db_recovery_file_dest='" + escapedLocation + "' scope=both sid='*';" +
+		"\nSHOW PARAMETER db_recovery_file_dest;"
+}
+
 func buildSIDBContainerResources(m *dbapi.SingleInstanceDatabase) corev1.ResourceRequirements {
 	if m.Spec.ResourceRequirements != nil {
 		return *m.Spec.ResourceRequirements.DeepCopy()
@@ -175,6 +300,82 @@ func mergeSIDBOracleSysctls(existing, calculated []corev1.Sysctl) []corev1.Sysct
 	}
 
 	return out
+}
+
+func getTcpsEnabled(m *dbapi.SingleInstanceDatabase) bool {
+	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && m.Spec.Security.TCPS.Enabled {
+		return true
+	}
+	if m.Spec.TCPS != nil && m.Spec.TCPS.Enabled {
+		return true
+	}
+	return m.Spec.EnableTCPS
+}
+
+func getTcpsListenerPort(m *dbapi.SingleInstanceDatabase) int {
+	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && m.Spec.Security.TCPS.ListenerPort != 0 {
+		return m.Spec.Security.TCPS.ListenerPort
+	}
+	if m.Spec.TCPS != nil && m.Spec.TCPS.ListenerPort != 0 {
+		return m.Spec.TCPS.ListenerPort
+	}
+	return m.Spec.TcpsListenerPort
+}
+
+func getTcpsTlsSecret(m *dbapi.SingleInstanceDatabase) string {
+	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && strings.TrimSpace(m.Spec.Security.TCPS.TlsSecret) != "" {
+		return strings.TrimSpace(m.Spec.Security.TCPS.TlsSecret)
+	}
+	if m.Spec.TCPS != nil && strings.TrimSpace(m.Spec.TCPS.TlsSecret) != "" {
+		return strings.TrimSpace(m.Spec.TCPS.TlsSecret)
+	}
+	return strings.TrimSpace(m.Spec.TcpsTlsSecret)
+}
+
+func getTcpsCertRenewInterval(m *dbapi.SingleInstanceDatabase) string {
+	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && strings.TrimSpace(m.Spec.Security.TCPS.CertRenewInterval) != "" {
+		return strings.TrimSpace(m.Spec.Security.TCPS.CertRenewInterval)
+	}
+	if m.Spec.TCPS != nil && strings.TrimSpace(m.Spec.TCPS.CertRenewInterval) != "" {
+		return strings.TrimSpace(m.Spec.TCPS.CertRenewInterval)
+	}
+	return strings.TrimSpace(m.Spec.TcpsCertRenewInterval)
+}
+
+func getTcpsCertsLocation(m *dbapi.SingleInstanceDatabase) string {
+	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil {
+		custom := strings.TrimSpace(m.Spec.Security.TCPS.CertMountLocation)
+		if custom != "" {
+			return custom
+		}
+	}
+	if m.Spec.TCPS != nil {
+		custom := strings.TrimSpace(m.Spec.TCPS.CertMountLocation)
+		if custom != "" {
+			return custom
+		}
+	}
+
+	defaultLocation := dbcommons.TlsCertsLocation
+	for _, env := range m.Spec.EnvVars {
+		if env.Name == "TCPS_CERTS_LOCATION" {
+			custom := strings.TrimSpace(env.Value)
+			if custom != "" {
+				return custom
+			}
+		}
+	}
+	return defaultLocation
+}
+
+func getTcpsPeerConfig(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabaseTCPSPeer {
+	if m == nil {
+		return nil
+	}
+	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && m.Spec.Security.TCPS.Peer != nil {
+		return m.Spec.Security.TCPS.Peer
+	}
+	return nil
 }
 
 func buildSIDBPodSecurityContext(
@@ -349,6 +550,17 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	result, err = r.runSIDBPhase(req, "ensure_datafiles_pvc", func() (ctrl.Result, error) {
 		return r.createOrReplacePVCforDatafilesVol(ctx, req, phaseCtx.singleInstanceDatabase)
+	})
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+	if err != nil {
+		return result, err
+	}
+
+	result, err = r.runSIDBPhase(req, "ensure_fra_pvc", func() (ctrl.Result, error) {
+		return r.createOrReplacePVCforFRAVol(ctx, req, phaseCtx.singleInstanceDatabase)
 	})
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
@@ -743,8 +955,8 @@ func (r *SingleInstanceDatabaseReconciler) ensureTrueCacheBlob(
 		_ = r.Status().Update(ctx, sidb)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
-	if sidb.Spec.TdePassword.SecretName == "" || sidb.Spec.TdePassword.SecretKey == "" {
-		err := errors.New("spec.tdePassword.secretName and spec.tdePassword.secretKey are required when trueCache.generateEnabled=true")
+	if !HasTDEPasswordSecret(sidb) {
+		err := errors.New("spec.security.secrets.tde.secretName and spec.security.secrets.tde.secretKey are required when trueCache.generateEnabled=true")
 		meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
 			Type:               "TrueCacheBlobReady",
 			Status:             metav1.ConditionFalse,
@@ -800,11 +1012,13 @@ func (r *SingleInstanceDatabaseReconciler) ensureTrueCacheBlob(
 		}
 	}
 
+	tdePasswordFilePath := GetTDEPasswordSecretMountPath(sidb)
 	cmd := fmt.Sprintf(
-		"cat /run/secrets/%[1]s | $ORACLE_HOME/bin/dbca -configureDatabase -prepareTrueCacheConfigFile -sourceDB %[2]s -trueCacheBlobLocation %[3]s -tdeWalletPassword \"$(cat /run/secrets/%[1]s)\" -silent",
-		sidb.Spec.TdePassword.SecretKey,
+		"cat %q | $ORACLE_HOME/bin/dbca -configureDatabase -prepareTrueCacheConfigFile -sourceDB %[2]s -trueCacheBlobLocation %[3]s -tdeWalletPassword \"$(cat %q)\" -silent",
+		tdePasswordFilePath,
 		sidb.Spec.Sid,
 		blobPath,
+		tdePasswordFilePath,
 	)
 	if out, err := dbcommons.ExecCommand(r, r.Config, primaryPod.Name, primaryPod.Namespace, sidb.Name, ctx, req, false, "sh", "-c", cmd); err != nil {
 		logger.Error(err, "TrueCache blob DBCA command failed", "pod", primaryPod.Name, "output", strings.TrimSpace(out))
@@ -1067,7 +1281,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 		eventMsgs = append(eventMsgs, m.Spec.Edition+" edition supports only one replica")
 	}
 	//  If no persistence, ensure Replicas=1
-	if m.Spec.Persistence.Size == "" && m.Spec.Replicas > 1 {
+	if !hasOradataPersistence(m) && m.Spec.Replicas > 1 {
 		eventMsgs = append(eventMsgs, "replicas should be 1 if no persistence is specified")
 	}
 	if m.Status.Sid != "" && !strings.EqualFold(m.Spec.Sid, m.Status.Sid) {
@@ -1079,7 +1293,9 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	if m.Status.Pdbname != "" && !strings.EqualFold(m.Status.Pdbname, m.Spec.Pdbname) {
 		eventMsgs = append(eventMsgs, "pdbName cannot be updated")
 	}
-	if m.Status.OrdsReference != "" && m.Status.Persistence.Size != "" && m.Status.Persistence != m.Spec.Persistence {
+	if m.Status.OrdsReference != "" &&
+		(m.Status.Persistence.Oradata != nil || m.Status.Persistence.Size != "") &&
+		m.Status.Persistence != m.Spec.Persistence {
 		eventMsgs = append(eventMsgs, "uninstall ORDS to change Peristence")
 	}
 	if len(eventMsgs) > 0 {
@@ -1092,7 +1308,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	// Validating the secret. Pre-built db doesnt need secret
 	if !m.Spec.Image.PrebuiltDB && m.Status.DatafilesCreated != "true" {
 		secret := &corev1.Secret{}
-		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
+		err = r.Get(ctx, types.NamespacedName{Name: GetAdminPasswordSecretName(m), Namespace: m.Namespace}, secret)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				// Secret not found
@@ -1104,6 +1320,28 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 			}
 			r.Log.Error(err, "Unable to get the secret. Requeueing..")
 			return requeueY, err
+		}
+	}
+
+	if err = ValidateRestoreSpecRefs(r, m, ctx); err != nil {
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
+		m.Status.Status = dbcommons.StatusError
+		return requeueN, err
+	}
+	if oradataPVC := strings.TrimSpace(getOradataPersistenceConfig(m).PvcName); oradataPVC != "" {
+		pvc := &corev1.PersistentVolumeClaim{}
+		if err = r.Get(ctx, types.NamespacedName{Name: oradataPVC, Namespace: m.Namespace}, pvc); err != nil {
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", fmt.Sprintf("persistence.oradata.pvcName %q not found: %v", oradataPVC, err))
+			m.Status.Status = dbcommons.StatusError
+			return requeueN, err
+		}
+	}
+	if fraPVC := strings.TrimSpace(getFraPersistenceConfig(m).PvcName); fraPVC != "" {
+		pvc := &corev1.PersistentVolumeClaim{}
+		if err = r.Get(ctx, types.NamespacedName{Name: fraPVC, Namespace: m.Namespace}, pvc); err != nil {
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", fmt.Sprintf("persistence.fra.pvcName %q not found: %v", fraPVC, err))
+			m.Status.Status = dbcommons.StatusError
+			return requeueN, err
 		}
 	}
 
@@ -1288,6 +1526,119 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	return requeueN, nil
 }
 
+func ValidateRestoreSpecRefs(r *SingleInstanceDatabaseReconciler, m *dbapi.SingleInstanceDatabase, ctx context.Context) error {
+	restore := getRestoreSpec(m)
+	if restore == nil {
+		return nil
+	}
+	mode := strings.ToLower(strings.TrimSpace(m.Spec.CreateAs))
+	if mode != "" && mode != "primary" {
+		return fmt.Errorf("spec.restore is supported only when createAs=primary")
+	}
+
+	switch getRestoreSourceType(m) {
+	case "objectStore":
+		if restore.ObjectStore == nil {
+			return fmt.Errorf("spec.restore.objectStore is required")
+		}
+		if restore.FileSystem != nil {
+			return fmt.Errorf("spec.restore.fileSystem must not be set with objectStore")
+		}
+		if err := validateRestoreConfigMapRefExists(r, ctx, m.Namespace, restore.ObjectStore.OCIConfig); err != nil {
+			return fmt.Errorf("spec.restore.objectStore.ociConfig: %w", err)
+		}
+		if err := validateRestoreSecretRefExists(r, ctx, m.Namespace, restore.ObjectStore.PrivateKey); err != nil {
+			return fmt.Errorf("spec.restore.objectStore.privateKey: %w", err)
+		}
+		if err := validateRestoreSecretRefExists(r, ctx, m.Namespace, restore.ObjectStore.SourceDBWallet); err != nil {
+			return fmt.Errorf("spec.restore.objectStore.sourceDbWallet: %w", err)
+		}
+		if err := validateRestoreSecretRefExists(r, ctx, m.Namespace, restore.ObjectStore.SourceDBWalletPw); err != nil {
+			return fmt.Errorf("spec.restore.objectStore.sourceDbWalletPassword: %w", err)
+		}
+		if err := validateRestoreConfigMapRefExists(r, ctx, m.Namespace, restore.ObjectStore.BackupModuleConf); err != nil {
+			return fmt.Errorf("spec.restore.objectStore.backupModuleConfig: %w", err)
+		}
+		if restore.ObjectStore.EncryptedBackup != nil && restore.ObjectStore.EncryptedBackup.Enabled {
+			if err := validateRestoreSecretRefExists(r, ctx, m.Namespace, restore.ObjectStore.EncryptedBackup.DecryptPasswordSecret); err != nil {
+				return fmt.Errorf("spec.restore.objectStore.encryptedBackup.decryptPasswordSecret: %w", err)
+			}
+		}
+	case "fileSystem":
+		if restore.FileSystem == nil {
+			return fmt.Errorf("spec.restore.fileSystem is required")
+		}
+		if restore.ObjectStore != nil {
+			return fmt.Errorf("spec.restore.objectStore must not be set with fileSystem")
+		}
+		backupPath := strings.TrimSpace(restore.FileSystem.BackupPath)
+		if backupPath == "" {
+			return fmt.Errorf("spec.restore.fileSystem.backupPath is required")
+		}
+		if !isRestoreFSPathVolumeBacked(m, backupPath) {
+			return fmt.Errorf("spec.restore.fileSystem.backupPath %q is not under a mounted persistent path; use /opt/oracle/oradata or an additionalPVC with pvcName", backupPath)
+		}
+		if catalogStartWith := getRestoreCatalogStartWith(m); catalogStartWith != "" && !isRestoreFSPathVolumeBacked(m, catalogStartWith) {
+			return fmt.Errorf("spec.restore.fileSystem.catalogStartWith %q is not under a mounted persistent path", catalogStartWith)
+		}
+		if err := validateRestoreSecretRefExists(r, ctx, m.Namespace, restore.FileSystem.SourceDBWallet); err != nil {
+			return fmt.Errorf("spec.restore.fileSystem.sourceDbWallet: %w", err)
+		}
+		if err := validateRestoreSecretRefExists(r, ctx, m.Namespace, restore.FileSystem.SourceDBWalletPw); err != nil {
+			return fmt.Errorf("spec.restore.fileSystem.sourceDbWalletPassword: %w", err)
+		}
+		if restore.FileSystem.EncryptedBackup != nil && restore.FileSystem.EncryptedBackup.Enabled {
+			if err := validateRestoreSecretRefExists(r, ctx, m.Namespace, restore.FileSystem.EncryptedBackup.DecryptPasswordSecret); err != nil {
+				return fmt.Errorf("spec.restore.fileSystem.encryptedBackup.decryptPasswordSecret: %w", err)
+			}
+		}
+	case "invalid":
+		return fmt.Errorf("spec.restore.objectStore and spec.restore.fileSystem are mutually exclusive")
+	default:
+		return fmt.Errorf("exactly one of spec.restore.objectStore or spec.restore.fileSystem must be set")
+	}
+
+	return nil
+}
+
+func validateRestoreSecretRefExists(r *SingleInstanceDatabaseReconciler, ctx context.Context, namespace string, ref *dbapi.SingleInstanceDatabaseSecretKeyRef) error {
+	if ref == nil {
+		return nil
+	}
+	secretName := strings.TrimSpace(ref.SecretName)
+	secretKey := strings.TrimSpace(ref.Key)
+	if secretName == "" || secretKey == "" {
+		return fmt.Errorf("secretName and key are required")
+	}
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: secretName}, secret); err != nil {
+		return err
+	}
+	if _, ok := secret.Data[secretKey]; !ok {
+		return fmt.Errorf("key %q not found in secret %q", secretKey, secretName)
+	}
+	return nil
+}
+
+func validateRestoreConfigMapRefExists(r *SingleInstanceDatabaseReconciler, ctx context.Context, namespace string, ref *dbapi.SingleInstanceDatabaseConfigMapKeyRef) error {
+	if ref == nil {
+		return nil
+	}
+	configMapName := strings.TrimSpace(ref.ConfigMapName)
+	configMapKey := strings.TrimSpace(ref.Key)
+	if configMapName == "" || configMapKey == "" {
+		return fmt.Errorf("configMapName and key are required")
+	}
+	configMap := &corev1.ConfigMap{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: configMapName}, configMap); err != nil {
+		return err
+	}
+	if _, ok := configMap.Data[configMapKey]; !ok {
+		return fmt.Errorf("key %q not found in configMap %q", configMapKey, configMapName)
+	}
+	return nil
+}
+
 // #############################################################################
 //
 //	Instantiate POD spec from SingleInstanceDatabase spec
@@ -1296,6 +1647,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase,
 	requiredAffinity bool) (*corev1.Pod, error) {
 	walletDir := GetWalletDirFromSid(m.Spec.Sid)
+	oradataCfg := getOradataPersistenceConfig(m)
 	containerResources := buildSIDBContainerResources(m)
 	podSecurityContext, err := buildSIDBPodSecurityContext(m, containerResources)
 	if err != nil {
@@ -1316,8 +1668,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			},
 		},
 		Spec: corev1.PodSpec{
-			Affinity: func() *corev1.Affinity {
-				if m.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+				Affinity: func() *corev1.Affinity {
+					if oradataCfg.AccessMode == "ReadWriteOnce" {
 					if requiredAffinity {
 						return &corev1.Affinity{
 							PodAffinity: &corev1.PodAffinity{
@@ -1373,42 +1725,44 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}
 			}(),
 			Volumes: func() []corev1.Volume {
+				adminPwdSecretFileName := GetAdminPasswordSecretFileName(m)
 				volumes := []corev1.Volume{{
-					Name: "datafiles-vol",
-					VolumeSource: func() corev1.VolumeSource {
-						if m.Spec.Persistence.Size == "" {
-							return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
-						}
-						/* Persistence is specified */
-						return corev1.VolumeSource{
-							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: m.Name,
-								ReadOnly:  false,
-							},
-						}
+						Name: "datafiles-vol",
+						VolumeSource: func() corev1.VolumeSource {
+							if !hasOradataPersistence(m) {
+								return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+							}
+							/* Persistence is specified */
+							return corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: getOradataClaimName(m),
+									ReadOnly:  false,
+								},
+							}
 					}(),
 				}, {
 					Name: "oracle-pwd-vol",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: m.Spec.AdminPassword.SecretName,
+							SecretName: GetAdminPasswordSecretName(m),
 							Optional:   func() *bool { i := (m.Spec.Edition != "express" && m.Spec.Edition != "free"); return &i }(),
 							Items: []corev1.KeyToPath{{
-								Key:  m.Spec.AdminPassword.SecretKey,
-								Path: "oracle_pwd",
+								Key:  adminPwdSecretFileName,
+								Path: adminPwdSecretFileName,
 							}},
 						},
 					},
 				}, {
 					Name: "tls-secret-vol",
 					VolumeSource: func() corev1.VolumeSource {
-						if m.Spec.TcpsTlsSecret == "" {
+						tcpsTlsSecret := getTcpsTlsSecret(m)
+						if tcpsTlsSecret == "" {
 							return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
 						}
 						/* tls-secret is specified */
 						return corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
-								SecretName: m.Spec.TcpsTlsSecret,
+								SecretName: tcpsTlsSecret,
 								Optional:   func() *bool { i := true; return &i }(),
 								Items: []corev1.KeyToPath{
 									{
@@ -1456,26 +1810,158 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					})
 				}
-				if m.Spec.TdePassword.SecretName != "" && m.Spec.TdePassword.SecretKey != "" {
-					volumes = append(volumes, corev1.Volume{
+					if HasTDEPasswordSecret(m) {
+						tdeSecretFileName := GetTDEPasswordSecretFileName(m)
+						volumes = append(volumes, corev1.Volume{
 						Name: "tde-wallet-pwd-vol",
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
-								SecretName: m.Spec.TdePassword.SecretName,
+								SecretName: GetTDEPasswordSecretName(m),
 								Items: []corev1.KeyToPath{{
-									Key:  m.Spec.TdePassword.SecretKey,
-									Path: m.Spec.TdePassword.SecretKey,
+									Key:  tdeSecretFileName,
+									Path: tdeSecretFileName,
 								}},
+							},
+							},
+						})
+					}
+					if hasFraPersistence(m) {
+						volumes = append(volumes, corev1.Volume{
+							Name: "fra-vol",
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: getFraClaimName(m),
+									ReadOnly:  false,
+								},
+							},
+						})
+					}
+					for i := range m.Spec.AdditionalPVCs {
+						pvcName := strings.TrimSpace(m.Spec.AdditionalPVCs[i].PvcName)
+						if pvcName == "" {
+						continue
+					}
+					volumes = append(volumes, corev1.Volume{
+						Name: sidbAdditionalPVCVolumeName(i),
+						VolumeSource: corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: pvcName,
 							},
 						},
 					})
+				}
+				if restore := getRestoreSpec(m); restore != nil {
+					if restoreUsesObjectStore(m) && restore.ObjectStore != nil {
+						if ref := restore.ObjectStore.OCIConfig; ref != nil && strings.TrimSpace(ref.ConfigMapName) != "" && strings.TrimSpace(ref.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-oci-config-vol",
+								VolumeSource: corev1.VolumeSource{
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{Name: strings.TrimSpace(ref.ConfigMapName)},
+										Items:                []corev1.KeyToPath{{Key: strings.TrimSpace(ref.Key), Path: strings.TrimSpace(ref.Key)}},
+									},
+								},
+							})
+						}
+						if ref := restore.ObjectStore.PrivateKey; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-private-key-vol",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: strings.TrimSpace(ref.SecretName),
+										Items:      []corev1.KeyToPath{{Key: strings.TrimSpace(ref.Key), Path: strings.TrimSpace(ref.Key)}},
+									},
+								},
+							})
+						}
+						if ref := restore.ObjectStore.SourceDBWallet; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-source-wallet-vol",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: strings.TrimSpace(ref.SecretName),
+										Items:      []corev1.KeyToPath{{Key: strings.TrimSpace(ref.Key), Path: strings.TrimSpace(ref.Key)}},
+									},
+								},
+							})
+						}
+						if ref := restore.ObjectStore.SourceDBWalletPw; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-source-wallet-pwd-vol",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: strings.TrimSpace(ref.SecretName),
+										Items:      []corev1.KeyToPath{{Key: strings.TrimSpace(ref.Key), Path: strings.TrimSpace(ref.Key)}},
+									},
+								},
+							})
+						}
+						if ref := restore.ObjectStore.BackupModuleConf; ref != nil && strings.TrimSpace(ref.ConfigMapName) != "" && strings.TrimSpace(ref.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-backup-module-vol",
+								VolumeSource: corev1.VolumeSource{
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{Name: strings.TrimSpace(ref.ConfigMapName)},
+										Items:                []corev1.KeyToPath{{Key: strings.TrimSpace(ref.Key), Path: strings.TrimSpace(ref.Key)}},
+									},
+								},
+							})
+						}
+						if enc := restore.ObjectStore.EncryptedBackup; enc != nil && enc.Enabled && enc.DecryptPasswordSecret != nil &&
+							strings.TrimSpace(enc.DecryptPasswordSecret.SecretName) != "" && strings.TrimSpace(enc.DecryptPasswordSecret.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-rman-decrypt-vol",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: strings.TrimSpace(enc.DecryptPasswordSecret.SecretName),
+										Items:      []corev1.KeyToPath{{Key: strings.TrimSpace(enc.DecryptPasswordSecret.Key), Path: strings.TrimSpace(enc.DecryptPasswordSecret.Key)}},
+									},
+								},
+							})
+						}
+					} else if restoreUsesFileSystem(m) && restore.FileSystem != nil {
+						if ref := restore.FileSystem.SourceDBWallet; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-source-wallet-vol",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: strings.TrimSpace(ref.SecretName),
+										Items:      []corev1.KeyToPath{{Key: strings.TrimSpace(ref.Key), Path: strings.TrimSpace(ref.Key)}},
+									},
+								},
+							})
+						}
+						if ref := restore.FileSystem.SourceDBWalletPw; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-source-wallet-pwd-vol",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: strings.TrimSpace(ref.SecretName),
+										Items:      []corev1.KeyToPath{{Key: strings.TrimSpace(ref.Key), Path: strings.TrimSpace(ref.Key)}},
+									},
+								},
+							})
+						}
+						if enc := restore.FileSystem.EncryptedBackup; enc != nil && enc.Enabled && enc.DecryptPasswordSecret != nil &&
+							strings.TrimSpace(enc.DecryptPasswordSecret.SecretName) != "" && strings.TrimSpace(enc.DecryptPasswordSecret.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-rman-decrypt-vol",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: strings.TrimSpace(enc.DecryptPasswordSecret.SecretName),
+										Items:      []corev1.KeyToPath{{Key: strings.TrimSpace(enc.DecryptPasswordSecret.Key), Path: strings.TrimSpace(enc.DecryptPasswordSecret.Key)}},
+									},
+								},
+							})
+						}
+					}
 				}
 
 				return volumes
 			}(),
 			InitContainers: func() []corev1.Container {
 				initContainers := []corev1.Container{}
-				if m.Spec.Persistence.Size != "" && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
+					if hasOradataPersistence(m) && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
 					initContainers = append(initContainers, corev1.Container{
 						Name:    "init-permissions",
 						Image:   m.Spec.Image.PullFrom,
@@ -1513,8 +1999,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}
 				/* Wallet only for edition barring express and free editions, non-prebuiltDB */
 				// Run init-wallet for standby as well, so DBCA can consume seeded DB credentials from wallet.
-				// standbyConfig.walletSecretRef is for TDE wallet and should not disable DB credential wallet seeding.
-				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB && !m.Spec.AdminPassword.SkipInitWallet {
+				// Standby TDE wallet import inputs are independent from DB credential wallet seeding.
+				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB && !GetAdminPasswordSkipInitWallet(m) {
 					initContainers = append(initContainers, corev1.Container{
 						Name:  "init-wallet",
 						Image: m.Spec.Image.PullFrom,
@@ -1627,25 +2113,26 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					}
 				}(),
 				VolumeMounts: func() []corev1.VolumeMount {
+					adminPwdSecretFileName := GetAdminPasswordSecretFileName(m)
 					mounts := []corev1.VolumeMount{}
-					if m.Spec.Persistence.Size != "" {
+						if hasOradataPersistence(m) {
 						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: "/opt/oracle/oradata",
 							Name:      "datafiles-vol",
 						})
 					}
-					if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB || m.Spec.AdminPassword.SkipInitWallet {
+					if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB || GetAdminPasswordSkipInitWallet(m) {
 						// mounts pwd as secrets for express edition, prebuilt db, or explicit secret-mount mode
 						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: GetAdminPasswordSecretMountPath(m),
 							ReadOnly:  true,
 							Name:      "oracle-pwd-vol",
-							SubPath:   "oracle_pwd",
+							SubPath:   adminPwdSecretFileName,
 						})
 					}
-					if m.Spec.TcpsTlsSecret != "" {
+					if getTcpsTlsSecret(m) != "" {
 						mounts = append(mounts, corev1.VolumeMount{
-							MountPath: dbcommons.TlsCertsLocation,
+							MountPath: getTcpsCertsLocation(m),
 							ReadOnly:  true,
 							Name:      "tls-secret-vol",
 						})
@@ -1683,17 +2170,73 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name:      "standby-wallet-secret-vol",
 						})
 					}
-					if m.Spec.TdePassword.SecretName != "" && m.Spec.TdePassword.SecretKey != "" {
+					if HasTDEPasswordSecret(m) {
+						tdeSecretFileName := GetTDEPasswordSecretFileName(m)
 						mounts = append(mounts, corev1.VolumeMount{
 							Name:      "tde-wallet-pwd-vol",
-							MountPath: "/run/secrets/" + m.Spec.TdePassword.SecretKey,
-							SubPath:   m.Spec.TdePassword.SecretKey,
+							MountPath: GetTDEPasswordSecretMountPath(m),
+							SubPath:   tdeSecretFileName,
 							ReadOnly:  true,
 						})
+					}
+					if hasFraPersistence(m) {
+						mounts = append(mounts, corev1.VolumeMount{
+							Name:      "fra-vol",
+							MountPath: getFraMountPath(m),
+						})
+					}
+					for i := range m.Spec.AdditionalPVCs {
+						mountPath := strings.TrimSpace(m.Spec.AdditionalPVCs[i].MountPath)
+						pvcName := strings.TrimSpace(m.Spec.AdditionalPVCs[i].PvcName)
+						if mountPath == "" || pvcName == "" {
+							continue
+						}
+						mounts = append(mounts, corev1.VolumeMount{
+							Name:      sidbAdditionalPVCVolumeName(i),
+							MountPath: mountPath,
+						})
+					}
+					if restore := getRestoreSpec(m); restore != nil {
+						if restoreUsesObjectStore(m) {
+							if restore.ObjectStore != nil {
+								if ref := restore.ObjectStore.OCIConfig; ref != nil && strings.TrimSpace(ref.ConfigMapName) != "" && strings.TrimSpace(ref.Key) != "" {
+									mounts = append(mounts, corev1.VolumeMount{Name: "restore-oci-config-vol", MountPath: restoreOCIConfigMountDir, ReadOnly: true})
+								}
+								if ref := restore.ObjectStore.PrivateKey; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+									mounts = append(mounts, corev1.VolumeMount{Name: "restore-private-key-vol", MountPath: restoreOCIPrivateKeyMountDir, ReadOnly: true})
+								}
+								if ref := restore.ObjectStore.SourceDBWallet; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+									mounts = append(mounts, corev1.VolumeMount{Name: "restore-source-wallet-vol", MountPath: restoreSourceWalletMountDir, ReadOnly: true})
+								}
+								if ref := restore.ObjectStore.SourceDBWalletPw; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+									mounts = append(mounts, corev1.VolumeMount{Name: "restore-source-wallet-pwd-vol", MountPath: restoreSourceWalletPwdMountDir, ReadOnly: true})
+								}
+								if ref := restore.ObjectStore.BackupModuleConf; ref != nil && strings.TrimSpace(ref.ConfigMapName) != "" && strings.TrimSpace(ref.Key) != "" {
+									mounts = append(mounts, corev1.VolumeMount{Name: "restore-backup-module-vol", MountPath: restoreBackupModuleMountDir, ReadOnly: true})
+								}
+								if enc := restore.ObjectStore.EncryptedBackup; enc != nil && enc.Enabled && enc.DecryptPasswordSecret != nil &&
+									strings.TrimSpace(enc.DecryptPasswordSecret.SecretName) != "" && strings.TrimSpace(enc.DecryptPasswordSecret.Key) != "" {
+									mounts = append(mounts, corev1.VolumeMount{Name: "restore-rman-decrypt-vol", MountPath: restoreDecryptPwdMountDir, ReadOnly: true})
+								}
+							}
+						} else if restoreUsesFileSystem(m) && restore.FileSystem != nil {
+							if ref := restore.FileSystem.SourceDBWallet; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+								mounts = append(mounts, corev1.VolumeMount{Name: "restore-source-wallet-vol", MountPath: restoreSourceWalletMountDir, ReadOnly: true})
+							}
+							if ref := restore.FileSystem.SourceDBWalletPw; ref != nil && strings.TrimSpace(ref.SecretName) != "" && strings.TrimSpace(ref.Key) != "" {
+								mounts = append(mounts, corev1.VolumeMount{Name: "restore-source-wallet-pwd-vol", MountPath: restoreSourceWalletPwdMountDir, ReadOnly: true})
+							}
+							if enc := restore.FileSystem.EncryptedBackup; enc != nil && enc.Enabled && enc.DecryptPasswordSecret != nil &&
+								strings.TrimSpace(enc.DecryptPasswordSecret.SecretName) != "" && strings.TrimSpace(enc.DecryptPasswordSecret.Key) != "" {
+								mounts = append(mounts, corev1.VolumeMount{Name: "restore-rman-decrypt-vol", MountPath: restoreDecryptPwdMountDir, ReadOnly: true})
+							}
+						}
 					}
 					return mounts
 				}(),
 				Env: func() []corev1.EnvVar {
+					adminPwdSecretFileName := GetAdminPasswordSecretFileName(m)
+					adminPwdSecretMountRoot := GetAdminPasswordSecretMountRoot(m)
 					if m.Spec.CreateAs == "truecache" {
 						envs := []corev1.EnvVar{
 							{
@@ -1711,6 +2254,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							{
 								Name:  "ORACLE_CHARACTERSET",
 								Value: m.Spec.Charset,
+							},
+							{
+								Name:  "SECRETS_BASE_DIR",
+								Value: adminPwdSecretMountRoot,
+							},
+							{
+								Name:  "ORACLE_PWD_SECRET_NAME",
+								Value: adminPwdSecretFileName,
 							},
 							{
 								Name:  "ORACLE_EDITION",
@@ -1745,43 +2296,43 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: fmt.Sprintf("%s.%s.svc.cluster.local", m.Name, m.Namespace),
 							},
 						}
-						if rp != nil && rp.Spec.AdminPassword.SecretName != "" && rp.Spec.AdminPassword.SecretKey != "" {
+						if rp != nil && GetAdminPasswordSecretName(rp) != "" && GetAdminPasswordSecretFileName(rp) != "" {
 							envs = append(envs, corev1.EnvVar{
 								Name: "ORACLE_PWD",
 								ValueFrom: &corev1.EnvVarSource{
 									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: rp.Spec.AdminPassword.SecretName},
-										Key:                  rp.Spec.AdminPassword.SecretKey,
+										LocalObjectReference: corev1.LocalObjectReference{Name: GetAdminPasswordSecretName(rp)},
+										Key:                  GetAdminPasswordSecretFileName(rp),
 									},
 								},
 							})
-						} else if m.Spec.AdminPassword.SecretName != "" && m.Spec.AdminPassword.SecretKey != "" {
+						} else if GetAdminPasswordSecretName(m) != "" && GetAdminPasswordSecretFileName(m) != "" {
 							envs = append(envs, corev1.EnvVar{
 								Name: "ORACLE_PWD",
 								ValueFrom: &corev1.EnvVarSource{
 									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: m.Spec.AdminPassword.SecretName},
-										Key:                  m.Spec.AdminPassword.SecretKey,
+										LocalObjectReference: corev1.LocalObjectReference{Name: GetAdminPasswordSecretName(m)},
+										Key:                  GetAdminPasswordSecretFileName(m),
 									},
 								},
 							})
 						}
-						if m.Spec.TdePassword.SecretName != "" && m.Spec.TdePassword.SecretKey != "" {
+						if HasTDEPasswordSecret(m) {
 							envs = append(envs, corev1.EnvVar{
 								Name: "TDE_WALLET_PWD",
 								ValueFrom: &corev1.EnvVarSource{
 									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{Name: m.Spec.TdePassword.SecretName},
-										Key:                  m.Spec.TdePassword.SecretKey,
+										LocalObjectReference: corev1.LocalObjectReference{Name: GetTDEPasswordSecretName(m)},
+										Key:                  GetTDEPasswordSecretFileName(m),
 									},
 								},
 							})
 						}
-						return mergeSIDBEnvVars(envs, m.Spec.EnvVars)
+						return mergeSIDBEnvVarsWithSecurity(m, envs)
 					}
 					// adding XE support, useful for dev/test/CI-CD
 					if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
-						return mergeSIDBEnvVars([]corev1.EnvVar{
+						return mergeSIDBEnvVarsWithSecurity(m, []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
 								Value: m.Name,
@@ -1795,14 +2346,22 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: m.Spec.Charset,
 							},
 							{
+								Name:  "SECRETS_BASE_DIR",
+								Value: adminPwdSecretMountRoot,
+							},
+							{
+								Name:  "ORACLE_PWD_SECRET_NAME",
+								Value: adminPwdSecretFileName,
+							},
+							{
 								Name:  "ORACLE_EDITION",
 								Value: m.Spec.Edition,
 							},
-						}, m.Spec.EnvVars)
+						})
 					}
 					if m.Spec.CreateAs == "clone" {
 						// Clone DB use-case
-						return mergeSIDBEnvVars([]corev1.EnvVar{
+						return mergeSIDBEnvVarsWithSecurity(m, []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
 								Value: m.Name,
@@ -1818,6 +2377,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							{
 								Name:  "WALLET_DIR",
 								Value: walletDir,
+							},
+							{
+								Name:  "SECRETS_BASE_DIR",
+								Value: adminPwdSecretMountRoot,
+							},
+							{
+								Name:  "ORACLE_PWD_SECRET_NAME",
+								Value: adminPwdSecretFileName,
 							},
 							{
 								Name: "PRIMARY_DB_CONN_STR",
@@ -1837,7 +2404,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Name:  "SKIP_DATAPATCH",
 								Value: "true",
 							},
-						}, m.Spec.EnvVars)
+						})
 
 					} else if m.Spec.CreateAs == "standby" {
 						standbyEnv := []corev1.EnvVar{
@@ -1856,6 +2423,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							{
 								Name:  "WALLET_DIR",
 								Value: walletDir,
+							},
+							{
+								Name:  "SECRETS_BASE_DIR",
+								Value: adminPwdSecretMountRoot,
+							},
+							{
+								Name:  "ORACLE_PWD_SECRET_NAME",
+								Value: adminPwdSecretFileName,
 							},
 							{
 								Name:  "PRIMARY_DB_CONN_STR",
@@ -1907,10 +2482,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								})
 							}
 						}
-						return mergeSIDBEnvVars(standbyEnv, m.Spec.EnvVars)
+						return mergeSIDBEnvVarsWithSecurity(m, standbyEnv)
 					}
 
-					return mergeSIDBEnvVars([]corev1.EnvVar{
+					return mergeSIDBEnvVarsWithSecurity(m, []corev1.EnvVar{
 						{
 							Name:  "SVC_HOST",
 							Value: m.Name,
@@ -1940,6 +2515,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								}
 								return walletDir
 							}(),
+						},
+						{
+							Name:  "SECRETS_BASE_DIR",
+							Value: adminPwdSecretMountRoot,
+						},
+						{
+							Name:  "ORACLE_PWD_SECRET_NAME",
+							Value: adminPwdSecretFileName,
 						},
 						{
 							Name:  "ORACLE_PDB",
@@ -1975,7 +2558,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name:  "SKIP_DATAPATCH",
 							Value: "true",
 						},
-					}, m.Spec.EnvVars)
+					})
 
 				}(),
 
@@ -2027,7 +2610,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				TopologyKey: "kubernetes.io/hostname",
 			},
 		}
-		if m.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+		if getOradataPersistenceConfig(m).AccessMode == "ReadWriteOnce" {
 			pod.Spec.Affinity.PodAntiAffinity = &corev1.PodAntiAffinity{
 				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
 					weightedPodAffinityTerm,
@@ -2089,6 +2672,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 //
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleInstanceDatabase) *corev1.PersistentVolumeClaim {
+	oradataCfg := getOradataPersistenceConfig(m)
 
 	pvc := &corev1.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{
@@ -2115,23 +2699,23 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 			}(),
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: func() []corev1.PersistentVolumeAccessMode {
-				var accessMode []corev1.PersistentVolumeAccessMode
-				accessMode = append(accessMode, corev1.PersistentVolumeAccessMode(m.Spec.Persistence.AccessMode))
-				return accessMode
-			}(),
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: map[corev1.ResourceName]resource.Quantity{
-					// Requests describes the minimum amount of compute resources required
-					"storage": resource.MustParse(m.Spec.Persistence.Size),
+				AccessModes: func() []corev1.PersistentVolumeAccessMode {
+					var accessMode []corev1.PersistentVolumeAccessMode
+					accessMode = append(accessMode, corev1.PersistentVolumeAccessMode(oradataCfg.AccessMode))
+					return accessMode
+				}(),
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: map[corev1.ResourceName]resource.Quantity{
+						// Requests describes the minimum amount of compute resources required
+						"storage": resource.MustParse(oradataCfg.Size),
+					},
 				},
-			},
-			StorageClassName: &m.Spec.Persistence.StorageClass,
-			VolumeName:       m.Spec.Persistence.DatafilesVolumeName,
-			Selector: func() *metav1.LabelSelector {
-				if m.Spec.Persistence.StorageClass != "oci" {
-					return nil
-				}
+				StorageClassName: &oradataCfg.StorageClass,
+				VolumeName:       oradataCfg.DatafilesVolume,
+				Selector: func() *metav1.LabelSelector {
+					if oradataCfg.StorageClass != "oci" {
+						return nil
+					}
 				return &metav1.LabelSelector{
 					MatchLabels: func() map[string]string {
 						ns := make(map[string]string)
@@ -2147,6 +2731,38 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 		},
 	}
 	// Set SingleInstanceDatabase instance as the owner and controller
+	ctrl.SetControllerReference(m, pvc, r.Scheme)
+	return pvc
+}
+
+func (r *SingleInstanceDatabaseReconciler) instantiateFRAPVCSpec(m *dbapi.SingleInstanceDatabase) *corev1.PersistentVolumeClaim {
+	fraCfg := getFraPersistenceConfig(m)
+
+	pvc := &corev1.PersistentVolumeClaim{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "PersistentVolumeClaim",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getFraClaimName(m),
+			Namespace: m.Namespace,
+			Labels: map[string]string{
+				"app": m.Name,
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: func() []corev1.PersistentVolumeAccessMode {
+				var accessMode []corev1.PersistentVolumeAccessMode
+				accessMode = append(accessMode, corev1.PersistentVolumeAccessMode(fraCfg.AccessMode))
+				return accessMode
+			}(),
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: map[corev1.ResourceName]resource.Quantity{
+					"storage": resource.MustParse(fraCfg.Size),
+				},
+			},
+			StorageClassName: &fraCfg.StorageClass,
+		},
+	}
 	ctrl.SetControllerReference(m, pvc, r.Scheme)
 	return pvc
 }
@@ -2271,9 +2887,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 
 	log := r.Log.WithValues("createPVC Datafiles-Vol", req.NamespacedName)
+	oradataCfg := getOradataPersistenceConfig(m)
 
 	// Don't create PVC if persistence is not chosen
-	if m.Spec.Persistence.Size == "" {
+	if oradataCfg.PvcName != "" || oradataCfg.Size == "" {
 		return requeueN, nil
 	}
 
@@ -2288,9 +2905,9 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 		if pvc.Spec.StorageClassName != nil {
 			currentStorageClassName = *pvc.Spec.StorageClassName
 		}
-		if currentStorageClassName != m.Spec.Persistence.StorageClass ||
-			(m.Spec.Persistence.DatafilesVolumeName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.DatafilesVolumeName) ||
-			pvc.Spec.AccessModes[0] != corev1.PersistentVolumeAccessMode(m.Spec.Persistence.AccessMode) {
+			if currentStorageClassName != oradataCfg.StorageClass ||
+				(oradataCfg.DatafilesVolume != "" && pvc.Spec.VolumeName != oradataCfg.DatafilesVolume) ||
+				pvc.Spec.AccessModes[0] != corev1.PersistentVolumeAccessMode(oradataCfg.AccessMode) {
 			// PV change use cases which would trigger recreation of SIDB pods are :-
 			// 1. Change in storage class
 			// 2. Change in volume name
@@ -2311,7 +2928,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 			}
 			pvcDeleted = true
 
-		} else if pvc.Spec.Resources.Requests["storage"] != resource.MustParse(m.Spec.Persistence.Size) {
+			} else if pvc.Spec.Resources.Requests["storage"] != resource.MustParse(oradataCfg.Size) {
 			// check the storage class of the pvc
 			// if the storage class doesn't support resize the throw an error event and try expanding via deleting and recreating the pv and pods
 			if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName == "" {
@@ -2331,7 +2948,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 				return requeueN, fmt.Errorf("the storage class %s doesn't support volume expansion", storageClassName)
 			}
 
-			newPVCSize := resource.MustParse(m.Spec.Persistence.Size)
+				newPVCSize := resource.MustParse(oradataCfg.Size)
 			newPVCSizeAdd := &newPVCSize
 			if newPVCSizeAdd.Cmp(pvc.Spec.Resources.Requests["storage"]) < 0 {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Cannot Resize PVC", "Forbidden: field can not be less than previous value")
@@ -2339,7 +2956,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 			}
 
 			// Expanding the persistent volume claim
-			pvc.Spec.Resources.Requests["storage"] = resource.MustParse(m.Spec.Persistence.Size)
+				pvc.Spec.Resources.Requests["storage"] = resource.MustParse(oradataCfg.Size)
 			log.Info("Updating PVC", "pvc", pvc.Name, "volume", pvc.Spec.VolumeName)
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, "Updating PVC - volume expansion", "Resizing the pvc for storage expansion")
 			err = r.Update(ctx, pvc)
@@ -2351,11 +2968,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 		} else {
 
 			log.Info("Found Existing PVC", "Name", pvc.Name)
-			if m.Spec.Persistence.DbFilesPvc == "" {
-				m.Status.Persistence.DbFilesPvc = pvc.Name
-				_ = r.Status().Update(ctx, m)
-			}
-			return requeueN, nil
+				return requeueN, nil
 
 		}
 	}
@@ -2373,6 +2986,102 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 	} else if err != nil {
 		log.Error(err, "Failed to get PVC")
 		return requeueY, err
+	}
+
+	return requeueN, nil
+}
+
+func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforFRAVol(ctx context.Context, req ctrl.Request,
+	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
+
+	log := r.Log.WithValues("createPVC FRA-Vol", req.NamespacedName)
+	fraCfg := getFraPersistenceConfig(m)
+
+	if !hasFraPersistence(m) {
+		return requeueN, nil
+	}
+
+	claimName := getFraClaimName(m)
+	pvc := &corev1.PersistentVolumeClaim{}
+	err := r.Get(ctx, types.NamespacedName{Name: claimName, Namespace: m.Namespace}, pvc)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			if !isManagedFraPVC(m) {
+				return requeueN, fmt.Errorf("fra pvc %q not found", claimName)
+			}
+			pvc = r.instantiateFRAPVCSpec(m)
+			log.Info("Creating a new FRA PVC", "PVC.Namespace", pvc.Namespace, "PVC.Name", pvc.Name)
+			if createErr := r.Create(ctx, pvc); createErr != nil {
+				log.Error(createErr, "Failed to create new FRA PVC", "PVC.Namespace", pvc.Namespace, "PVC.Name", pvc.Name)
+				return requeueY, createErr
+			}
+			return requeueN, nil
+		}
+		log.Error(err, "Failed to get FRA PVC")
+		return requeueY, err
+	}
+
+	if isManagedFraPVC(m) {
+		currentStorageClassName := ""
+		if pvc.Spec.StorageClassName != nil {
+			currentStorageClassName = *pvc.Spec.StorageClassName
+		}
+		if currentStorageClassName != fraCfg.StorageClass ||
+			(len(pvc.Spec.AccessModes) > 0 && pvc.Spec.AccessModes[0] != corev1.PersistentVolumeAccessMode(fraCfg.AccessMode)) {
+			result, delErr := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
+			if result.Requeue {
+				return result, delErr
+			}
+			log.Info("Deleting FRA PVC for immutable field changes", "name", pvc.Name)
+			if delErr = r.Delete(ctx, pvc); delErr != nil {
+				log.Error(delErr, "Failed to delete FRA PVC", "Pvc.Name", pvc.Name)
+				return requeueN, delErr
+			}
+			newPVC := r.instantiateFRAPVCSpec(m)
+			log.Info("Recreating FRA PVC", "PVC.Namespace", newPVC.Namespace, "PVC.Name", newPVC.Name)
+			if createErr := r.Create(ctx, newPVC); createErr != nil {
+				log.Error(createErr, "Failed to recreate FRA PVC", "PVC.Namespace", newPVC.Namespace, "PVC.Name", newPVC.Name)
+				return requeueY, createErr
+			}
+			return requeueN, nil
+		}
+	}
+	if fraCfg.PvcName != "" {
+		// Referenced FRA PVC is user-managed; controller only validates existence and mounts it.
+		return requeueN, nil
+	}
+
+	if fraCfg.Size == "" {
+		return requeueN, nil
+	}
+	desiredSize := resource.MustParse(fraCfg.Size)
+	currentSize := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+	if desiredSize.Cmp(currentSize) == 0 {
+		return requeueN, nil
+	}
+	if desiredSize.Cmp(currentSize) < 0 {
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, "Cannot Resize FRA PVC", "Forbidden: field can not be less than previous value")
+		return requeueN, fmt.Errorf("resizing FRA PVC to lower size is not allowed")
+	}
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName == "" {
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, "FRA PVC not resizable", "Cannot resize FRA PVC as storage class is either nil or default")
+		return requeueN, fmt.Errorf("cannot resize FRA PVC as storage class is either nil or default")
+	}
+	storageClassName := *pvc.Spec.StorageClassName
+	storageClass := &storagev1.StorageClass{}
+	if err = r.Get(ctx, types.NamespacedName{Name: storageClassName}, storageClass); err != nil {
+		return requeueY, fmt.Errorf("error while fetching storage class %q: %w", storageClassName, err)
+	}
+	if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, "FRA PVC not resizable", "The storage class doesn't support volume expansion")
+		return requeueN, fmt.Errorf("the storage class %s doesn't support volume expansion", storageClassName)
+	}
+	pvc.Spec.Resources.Requests[corev1.ResourceStorage] = desiredSize
+	log.Info("Updating FRA PVC - volume expansion", "pvc", pvc.Name)
+	r.Recorder.Eventf(m, corev1.EventTypeNormal, "Updating FRA PVC - volume expansion", "Resizing the FRA pvc for storage expansion")
+	if err = r.Update(ctx, pvc); err != nil {
+		log.Error(err, "Error while updating FRA PVC")
+		return requeueY, fmt.Errorf("error while updating FRA PVC")
 	}
 
 	return requeueN, nil
@@ -2409,12 +3118,14 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			return dbcommons.CONTAINER_LISTENER_PORT
 		}
 	}()
+	tcpsEnabled := getTcpsEnabled(m)
+	tcpsListenerPort := getTcpsListenerPort(m)
 
 	// tcpsSvcPort is the intended port for extSvc taken from singleinstancedatabase YAML file for TCPS connection
 	// If loadBalancer is true, it would be the listener port otherwise it would be node port
 	tcpsSvcPort := func() int32 {
-		if m.Spec.TcpsListenerPort != 0 {
-			return int32(m.Spec.TcpsListenerPort)
+		if tcpsListenerPort != 0 {
+			return int32(tcpsListenerPort)
 		} else {
 			return dbcommons.CONTAINER_TCPS_PORT
 		}
@@ -2457,7 +3168,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	} else {
 		// Counting required number of ports in extSvc
 		requiredPorts := 2
-		if m.Spec.EnableTCPS && m.Spec.ListenerPort != 0 {
+		if tcpsEnabled && m.Spec.ListenerPort != 0 {
 			requiredPorts = 3
 		}
 
@@ -2478,13 +3189,13 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			patchSvc = true
 		}
 
-		if (m.Spec.ListenerPort != 0 && svcPort != targetPorts[1]) || (m.Spec.EnableTCPS && m.Spec.TcpsListenerPort != 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1]) {
+		if (m.Spec.ListenerPort != 0 && svcPort != targetPorts[1]) || (tcpsEnabled && tcpsListenerPort != 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1]) {
 			patchSvc = true
 		}
 
 		if m.Spec.LoadBalancer {
-			if m.Spec.EnableTCPS {
-				if m.Spec.TcpsListenerPort == 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1] {
+			if tcpsEnabled {
+				if tcpsListenerPort == 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1] {
 					patchSvc = true
 				}
 			} else {
@@ -2493,8 +3204,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 				}
 			}
 		} else {
-			if m.Spec.EnableTCPS {
-				if m.Spec.TcpsListenerPort == 0 && tcpsSvcPort != extSvc.Spec.Ports[len(targetPorts)-1].TargetPort.IntVal {
+			if tcpsEnabled {
+				if tcpsListenerPort == 0 && tcpsSvcPort != extSvc.Spec.Ports[len(targetPorts)-1].TargetPort.IntVal {
 					patchSvc = true
 				}
 			} else {
@@ -2516,7 +3227,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			// Payload formation for patching the service
 			var payload string
 			if m.Spec.LoadBalancer {
-				if m.Spec.EnableTCPS {
+				if tcpsEnabled {
 					if m.Spec.ListenerPort != 0 {
 						payload = fmt.Sprintf(dbcommons.ThreePortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrPort, svcPort), fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
 					} else {
@@ -2526,12 +3237,12 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 					payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrPort, svcPort))
 				}
 			} else {
-				if m.Spec.EnableTCPS {
-					if m.Spec.ListenerPort != 0 && m.Spec.TcpsListenerPort != 0 {
+				if tcpsEnabled {
+					if m.Spec.ListenerPort != 0 && tcpsListenerPort != 0 {
 						payload = fmt.Sprintf(dbcommons.ThreePortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort), fmt.Sprintf(dbcommons.TcpsNodePort, tcpsSvcPort))
 					} else if m.Spec.ListenerPort != 0 {
 						payload = fmt.Sprintf(dbcommons.ThreePortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort), fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
-					} else if m.Spec.TcpsListenerPort != 0 {
+					} else if tcpsListenerPort != 0 {
 						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.TcpsNodePort, tcpsSvcPort))
 					} else {
 						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
@@ -2575,7 +3286,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		}
 
 		if m.Spec.LoadBalancer {
-			if m.Spec.EnableTCPS {
+			if tcpsEnabled {
 				if m.Spec.ListenerPort != 0 {
 					ports = append(ports, corev1.ServicePort{
 						Name:       "listener",
@@ -2599,7 +3310,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 				})
 			}
 		} else {
-			if m.Spec.EnableTCPS {
+			if tcpsEnabled {
 				if m.Spec.ListenerPort != 0 {
 					ports = append(ports, corev1.ServicePort{
 						Name:     "listener",
@@ -2613,7 +3324,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 					Protocol: corev1.ProtocolTCP,
 					Port:     dbcommons.CONTAINER_TCPS_PORT,
 				})
-				if m.Spec.TcpsListenerPort != 0 {
+				if tcpsListenerPort != 0 {
 					ports[len(ports)-1].NodePort = tcpsSvcPort
 				}
 			} else {
@@ -2671,7 +3382,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			m.Status.ConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
 			m.Status.PdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(pdbName)
 			m.Status.OemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[0].Port) + "/em"
-			if m.Spec.EnableTCPS {
+			if tcpsEnabled {
 				m.Status.TcpsConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(sid)
 				m.Status.TcpsPdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(pdbName)
 			}
@@ -2683,7 +3394,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			m.Status.ConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(sid)
 			m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(pdbName)
 			m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[0].NodePort) + "/em"
-			if m.Spec.EnableTCPS {
+			if tcpsEnabled {
 				m.Status.TcpsConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(sid)
 				m.Status.TcpsPdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(pdbName)
 			}
@@ -2903,7 +3614,7 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 		return requeueN, nil
 	}
 	// Explicit secret-mount mode bypasses wallet seeding.
-	if m.Spec.AdminPassword.SkipInitWallet {
+	if GetAdminPasswordSkipInitWallet(m) {
 		return requeueN, nil
 	}
 
@@ -2985,7 +3696,7 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	// Querying the secret
 	r.Log.Info("Querying the database secret ...")
 	secret := &corev1.Secret{}
-	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
+	err = r.Get(ctx, types.NamespacedName{Name: GetAdminPasswordSecretName(m), Namespace: m.Namespace}, secret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			r.Log.Info("Secret not found")
@@ -2998,7 +3709,7 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	}
 
 	// Execing into the pods and creating the wallet
-	adminPassword := string(secret.Data[m.Spec.AdminPassword.SecretKey])
+	adminPassword := string(secret.Data[GetAdminPasswordSecretFileName(m)])
 
 	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, walletContainer,
 		ctx, req, true, "bash", "-c", fmt.Sprintf("%s && %s && %s",
@@ -3260,14 +3971,14 @@ func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceD
 
 	// Deleting the secret and then deleting the wallet
 	// If the secret is not found it means that the secret and wallet both are deleted, hence no need to requeue
-	if m.Spec.AdminPassword.KeepSecret != nil && !*m.Spec.AdminPassword.KeepSecret {
+	if !GetAdminPasswordKeepSecret(m) {
 		r.Log.Info("Querying the database secret ...")
 		secret := &corev1.Secret{}
-		err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
+		err := r.Get(ctx, types.NamespacedName{Name: GetAdminPasswordSecretName(m), Namespace: m.Namespace}, secret)
 		if err == nil {
 			err := r.Delete(ctx, secret)
 			if err == nil {
-				r.Log.Info("Deleted the secret : " + m.Spec.AdminPassword.SecretName)
+				r.Log.Info("Deleted the secret : " + GetAdminPasswordSecretName(m))
 			}
 		}
 	}
@@ -3344,12 +4055,15 @@ func (r *SingleInstanceDatabaseReconciler) updateClientWallet(m *dbapi.SingleIns
 func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDatabase,
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
 	eventReason := "Configuring TCPS"
+	tcpsEnabled := getTcpsEnabled(m)
+	tcpsTlsSecret := getTcpsTlsSecret(m)
+	tcpsCertRenewInterval := getTcpsCertRenewInterval(m)
 
-	if (m.Spec.EnableTCPS) &&
+	if (tcpsEnabled) &&
 		((!m.Status.IsTcpsEnabled) || // TCPS Enabled from a TCP state
-			(m.Spec.TcpsTlsSecret != "" && m.Status.TcpsTlsSecret == "") || // TCPS Secret is added in spec
-			(m.Spec.TcpsTlsSecret == "" && m.Status.TcpsTlsSecret != "") || // TCPS Secret is removed in spec
-			(m.Spec.TcpsTlsSecret != "" && m.Status.TcpsTlsSecret != "" && m.Spec.TcpsTlsSecret != m.Status.TcpsTlsSecret)) { //TCPS secret is changed
+			(tcpsTlsSecret != "" && m.Status.TcpsTlsSecret == "") || // TCPS Secret is added in spec
+			(tcpsTlsSecret == "" && m.Status.TcpsTlsSecret != "") || // TCPS Secret is removed in spec
+			(tcpsTlsSecret != "" && m.Status.TcpsTlsSecret != "" && tcpsTlsSecret != m.Status.TcpsTlsSecret)) { //TCPS secret is changed
 
 		// Set status to Updating, except when an error has been thrown from configTCPS script
 		if m.Status.Status != dbcommons.StatusError {
@@ -3361,12 +4075,13 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
 		var TcpsCommand = dbcommons.EnableTcpsCMD
-		if m.Spec.TcpsTlsSecret != "" { // case when tls secret is either added or changed
-			TcpsCommand = "export TCPS_CERTS_LOCATION=" + dbcommons.TlsCertsLocation + " && " + dbcommons.EnableTcpsCMD
+		if tcpsTlsSecret != "" { // case when tls secret is either added or changed
+			tcpsCertsLocation := getTcpsCertsLocation(m)
+			TcpsCommand = "export TCPS_CERTS_LOCATION='" + tcpsCertsLocation + "' && " + dbcommons.EnableTcpsCMD
 
 			// Checking for tls-secret mount in pods
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
-				ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.PodMountsCmd, dbcommons.TlsCertsLocation))
+				ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.PodMountsCmd, tcpsCertsLocation))
 			r.Log.Info("Mount Check Output")
 			r.Log.Info(out)
 			if err != nil {
@@ -3375,7 +4090,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			}
 
 			if (m.Status.TcpsTlsSecret != "") || // case when TCPS Secret is changed
-				(!strings.Contains(out, dbcommons.TlsCertsLocation)) { // if mount is not there in pod
+				(!strings.Contains(out, tcpsCertsLocation)) { // if mount is not there in pod
 				// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
 				result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
 				if result.Requeue {
@@ -3401,10 +4116,10 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
 		m.Status.IsTcpsEnabled = true
 		m.Status.ClientWalletLoc = fmt.Sprintf(dbcommons.ClientWalletLocation, m.Spec.Sid)
-		// m.Spec.TcpsTlsSecret can be empty or non-empty
+		// tcpsTlsSecret can be empty or non-empty
 		// Store secret name in case of tls-secret addition or change, otherwise would be ""
-		if m.Spec.TcpsTlsSecret != "" {
-			m.Status.TcpsTlsSecret = m.Spec.TcpsTlsSecret
+		if tcpsTlsSecret != "" {
+			m.Status.TcpsTlsSecret = tcpsTlsSecret
 		} else {
 			m.Status.TcpsTlsSecret = ""
 		}
@@ -3414,7 +4129,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		eventMsg = "TCPS Enabled."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
-		requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
+		requeueDuration, _ := time.ParseDuration(tcpsCertRenewInterval)
 		requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
 		phaseCtx.futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 
@@ -3424,7 +4139,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			r.Log.Error(err, "Error in updating tnsnames.ora in clientWallet...")
 			return requeueY, nil
 		}
-	} else if !m.Spec.EnableTCPS && m.Status.IsTcpsEnabled {
+	} else if !tcpsEnabled && m.Status.IsTcpsEnabled {
 		// Disable TCPS
 		m.Status.Status = dbcommons.StatusUpdating
 		r.Status().Update(ctx, m)
@@ -3450,11 +4165,11 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		eventMsg = "TCPS Disabled."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
-	} else if m.Spec.EnableTCPS && m.Status.IsTcpsEnabled && m.Spec.TcpsCertRenewInterval != "" {
+	} else if tcpsEnabled && m.Status.IsTcpsEnabled && tcpsCertRenewInterval != "" {
 		// Cert Renewal Logic
 		certCreationTimestamp, _ := time.Parse(time.RFC3339, m.Status.CertCreationTimestamp)
 		duration := time.Since(certCreationTimestamp)
-		allowdDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
+		allowdDuration, _ := time.ParseDuration(tcpsCertRenewInterval)
 		if duration > allowdDuration {
 			m.Status.Status = dbcommons.StatusUpdating
 			r.Status().Update(ctx, m)
@@ -3473,16 +4188,16 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			eventMsg := "TCPS Certificates Renewed at time %s,"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg, time.Now().Format(time.RFC3339))
 
-			requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
+			requeueDuration, _ := time.ParseDuration(tcpsCertRenewInterval)
 			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
 			phaseCtx.futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 		}
-		if m.Status.CertRenewInterval != m.Spec.TcpsCertRenewInterval {
-			requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
+		if m.Status.CertRenewInterval != tcpsCertRenewInterval {
+			requeueDuration, _ := time.ParseDuration(tcpsCertRenewInterval)
 			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
 			phaseCtx.futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 
-			m.Status.CertRenewInterval = m.Spec.TcpsCertRenewInterval
+			m.Status.CertRenewInterval = tcpsCertRenewInterval
 		}
 		// update clientWallet
 		err := r.updateClientWallet(m, readyPod, ctx, req)
@@ -3490,7 +4205,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			r.Log.Error(err, "Error in updating tnsnames.ora clientWallet...")
 			return requeueY, nil
 		}
-	} else if m.Spec.EnableTCPS && m.Status.IsTcpsEnabled && m.Spec.TcpsCertRenewInterval == "" {
+	} else if tcpsEnabled && m.Status.IsTcpsEnabled && tcpsCertRenewInterval == "" {
 		// update clientWallet
 		err := r.updateClientWallet(m, readyPod, ctx, req)
 		if err != nil {
@@ -3663,9 +4378,11 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	//#################################################################################################
 
 	if m.Spec.ArchiveLog != nil && *m.Spec.ArchiveLog && !archiveLogStatus {
+		fraMountPath := getFraMountPath(m)
+		fraRecoveryAreaSize := getFraRecoveryAreaSize(m)
 
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
-			ctx, req, false, "bash", "-c", dbcommons.CreateDBRecoveryDestCMD)
+			ctx, req, false, "bash", "-c", fmt.Sprintf("mkdir -p %q", fraMountPath))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -3674,7 +4391,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 		log.Info(out)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.SetDBRecoveryDestSQL, dbcommons.SQLPlusCLI))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", buildSetDBRecoveryDestSQL(fraMountPath, fraRecoveryAreaSize), dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -4166,10 +4883,10 @@ func convertPhysicalStdToSnapshotStdDB(r *SingleInstanceDatabaseReconciler, sing
 	// Exception handling
 	// Get Admin password for current primary database
 	var adminPasswordSecret corev1.Secret
-	if err := r.Get(context.TODO(), types.NamespacedName{Name: singleInstanceDatabase.Spec.AdminPassword.SecretName, Namespace: singleInstanceDatabase.Namespace}, &adminPasswordSecret); err != nil {
+	if err := r.Get(context.TODO(), types.NamespacedName{Name: GetAdminPasswordSecretName(singleInstanceDatabase), Namespace: singleInstanceDatabase.Namespace}, &adminPasswordSecret); err != nil {
 		return err
 	}
-	var adminPassword string = string(adminPasswordSecret.Data[singleInstanceDatabase.Spec.AdminPassword.SecretKey])
+	var adminPassword string = string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
 
 	// Connect to 'primarySid' db using dgmgrl and switchover to 'targetSidbSid' db to make 'targetSidbSid' db primary
 	if _, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c", fmt.Sprintf(dbcommons.CreateAdminPasswordFile, adminPassword)); err != nil {
@@ -4203,13 +4920,13 @@ func convertSnapshotStdToPhysicalStdDB(r *SingleInstanceDatabaseReconciler, sing
 	}
 
 	var adminPasswordSecret corev1.Secret
-	if err := r.Get(context.TODO(), types.NamespacedName{Name: singleInstanceDatabase.Spec.AdminPassword.SecretName, Namespace: singleInstanceDatabase.Namespace}, &adminPasswordSecret); err != nil {
+	if err := r.Get(context.TODO(), types.NamespacedName{Name: GetAdminPasswordSecretName(singleInstanceDatabase), Namespace: singleInstanceDatabase.Namespace}, &adminPasswordSecret); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ErrAdminPasswordSecretNotFound
 		}
 		return err
 	}
-	var adminPassword string = string(adminPasswordSecret.Data[singleInstanceDatabase.Spec.AdminPassword.SecretKey])
+	var adminPassword string = string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
 
 	// Connect to 'primarySid' db using dgmgrl and switchover to 'targetSidbSid' db to make 'targetSidbSid' db primary
 	_, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
@@ -4297,11 +5014,11 @@ func GetDatabaseAdminPassword(r client.Reader, d *dbapi.SingleInstanceDatabase, 
 
 	adminPasswordSecret := &corev1.Secret{}
 	adminPassword := ""
-	err := r.Get(ctx, types.NamespacedName{Name: d.Spec.AdminPassword.SecretName, Namespace: d.Namespace}, adminPasswordSecret)
+	err := r.Get(ctx, types.NamespacedName{Name: GetAdminPasswordSecretName(d), Namespace: d.Namespace}, adminPasswordSecret)
 	if err != nil {
 		return adminPassword, err
 	}
-	adminPassword = string(adminPasswordSecret.Data[d.Spec.AdminPassword.SecretKey])
+	adminPassword = string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(d)])
 	return adminPassword, nil
 }
 
@@ -5027,38 +5744,38 @@ func GetPrimaryDatabaseDetails(m *dbapi.SingleInstanceDatabase) *dbapi.SingleIns
 }
 
 func GetStandbyWalletSecretRef(m *dbapi.SingleInstanceDatabase) string {
-	if m == nil || m.Spec.StandbyConfig == nil {
-		return ""
-	}
-	return strings.TrimSpace(m.Spec.StandbyConfig.WalletSecretRef)
+	return GetTDEPasswordSecretName(m)
 }
 
 func GetStandbyWalletMountPath(m *dbapi.SingleInstanceDatabase) string {
-	if m == nil || m.Spec.StandbyConfig == nil {
-		return "/mnt/standby-wallet"
-	}
-	if p := strings.TrimSpace(m.Spec.StandbyConfig.WalletMountPath); p != "" {
-		return p
+	if tde := getTDEPasswordConfig(m); tde != nil {
+		if mountPath := strings.TrimSpace(tde.MountPath); mountPath != "" {
+			return mountPath
+		}
 	}
 	return "/mnt/standby-wallet"
 }
 
 func GetStandbyWalletZipFileKey(m *dbapi.SingleInstanceDatabase) string {
-	if m == nil || m.Spec.StandbyConfig == nil {
-		return ""
+	if tde := getTDEPasswordConfig(m); tde != nil {
+		if key := strings.TrimSpace(tde.WalletZipFileKey); key != "" {
+			return key
+		}
 	}
-	return strings.TrimSpace(m.Spec.StandbyConfig.WalletZipFileKey)
+	return ""
 }
 
 func GetStandbyTDEWalletRoot(m *dbapi.SingleInstanceDatabase) string {
+	if tde := getTDEPasswordConfig(m); tde != nil {
+		if root := strings.TrimSpace(tde.WalletRoot); root != "" {
+			return root
+		}
+	}
 	if m == nil || m.Spec.StandbyConfig == nil {
 		if m != nil {
 			return GetWalletDirFromSid(m.Spec.Sid)
 		}
 		return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
-	}
-	if p := strings.TrimSpace(m.Spec.StandbyConfig.StandbyTDEWalletRoot); p != "" {
-		return p
 	}
 	return GetWalletDirFromSid(m.Spec.Sid)
 }
@@ -5075,14 +5792,237 @@ func GetAdminPasswordSecretMountRoot(m *dbapi.SingleInstanceDatabase) string {
 	if m == nil {
 		return "/run/secrets"
 	}
-	if mountRoot := strings.TrimSpace(m.Spec.AdminPassword.MountPath); mountRoot != "" {
+	if mountRoot := strings.TrimSpace(getAdminPasswordSecretMountPathOverride(m)); mountRoot != "" {
 		return strings.TrimRight(mountRoot, "/")
 	}
 	return "/run/secrets"
 }
 
 func GetAdminPasswordSecretMountPath(m *dbapi.SingleInstanceDatabase) string {
-	return GetAdminPasswordSecretMountRoot(m) + "/oracle_pwd"
+	return GetAdminPasswordSecretMountRoot(m) + "/" + GetAdminPasswordSecretFileName(m)
+}
+
+func GetAdminPasswordSecretFileName(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return "oracle_pwd"
+	}
+	if secretKey := strings.TrimSpace(getAdminPasswordSecretKey(m)); secretKey != "" {
+		return secretKey
+	}
+	return "oracle_pwd"
+}
+
+func GetAdminPasswordSecretName(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	return strings.TrimSpace(getAdminPasswordSecretName(m))
+}
+
+func GetAdminPasswordSkipInitWallet(m *dbapi.SingleInstanceDatabase) bool {
+	if m == nil {
+		return false
+	}
+	if admin := getAdminPasswordConfig(m); admin != nil {
+		return admin.SkipInitWallet
+	}
+	return false
+}
+
+func GetAdminPasswordKeepSecret(m *dbapi.SingleInstanceDatabase) bool {
+	if m == nil {
+		return true
+	}
+	if admin := getAdminPasswordConfig(m); admin != nil && admin.KeepSecret != nil {
+		return *admin.KeepSecret
+	}
+	return true
+}
+
+func HasTDEPasswordSecret(m *dbapi.SingleInstanceDatabase) bool {
+	return GetTDEPasswordSecretName(m) != "" && GetTDEPasswordSecretFileName(m) != ""
+}
+
+func GetTDEPasswordSecretName(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	if tde := getTDEPasswordConfig(m); tde != nil {
+		return strings.TrimSpace(tde.SecretName)
+	}
+	return ""
+}
+
+func GetTDEPasswordSecretFileName(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	if tde := getTDEPasswordConfig(m); tde != nil {
+		return strings.TrimSpace(tde.SecretKey)
+	}
+	return ""
+}
+
+func GetTDEPasswordSecretMountRoot(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return "/run/secrets"
+	}
+	if tde := getTDEPasswordConfig(m); tde != nil {
+		if mountRoot := strings.TrimSpace(tde.MountPath); mountRoot != "" {
+			return strings.TrimRight(mountRoot, "/")
+		}
+	}
+	return "/run/secrets"
+}
+
+func GetTDEPasswordSecretMountPath(m *dbapi.SingleInstanceDatabase) string {
+	return GetTDEPasswordSecretMountRoot(m) + "/" + GetTDEPasswordSecretFileName(m)
+}
+
+func getAdminPasswordConfig(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabaseAdminPassword {
+	if m == nil {
+		return nil
+	}
+	if m.Spec.Security != nil && m.Spec.Security.Secrets != nil && m.Spec.Security.Secrets.Admin != nil {
+		return m.Spec.Security.Secrets.Admin
+	}
+	return &m.Spec.AdminPassword
+}
+
+func getTDEPasswordConfig(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabasePasswordSecret {
+	if m == nil {
+		return nil
+	}
+	if m.Spec.Security != nil && m.Spec.Security.Secrets != nil && m.Spec.Security.Secrets.TDE != nil {
+		return m.Spec.Security.Secrets.TDE
+	}
+	return nil
+}
+
+func getAdminPasswordSecretName(m *dbapi.SingleInstanceDatabase) string {
+	if admin := getAdminPasswordConfig(m); admin != nil {
+		return admin.SecretName
+	}
+	return ""
+}
+
+func getAdminPasswordSecretKey(m *dbapi.SingleInstanceDatabase) string {
+	if admin := getAdminPasswordConfig(m); admin != nil {
+		return admin.SecretKey
+	}
+	return ""
+}
+
+func getAdminPasswordSecretMountPathOverride(m *dbapi.SingleInstanceDatabase) string {
+	if admin := getAdminPasswordConfig(m); admin != nil {
+		return admin.MountPath
+	}
+	return ""
+}
+
+func getRestoreSpec(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabaseRestoreSpec {
+	if m == nil || m.Spec.Restore == nil {
+		return nil
+	}
+	return m.Spec.Restore
+}
+
+func getRestoreSourceType(m *dbapi.SingleInstanceDatabase) string {
+	restore := getRestoreSpec(m)
+	if restore == nil {
+		return ""
+	}
+	hasObjectStore := restore.ObjectStore != nil
+	hasFileSystem := restore.FileSystem != nil
+	switch {
+	case hasObjectStore && !hasFileSystem:
+		return "objectStore"
+	case hasFileSystem && !hasObjectStore:
+		return "fileSystem"
+	case hasObjectStore && hasFileSystem:
+		return "invalid"
+	default:
+		return ""
+	}
+}
+
+func restoreUsesObjectStore(m *dbapi.SingleInstanceDatabase) bool {
+	return getRestoreSourceType(m) == "objectStore"
+}
+
+func restoreUsesFileSystem(m *dbapi.SingleInstanceDatabase) bool {
+	return getRestoreSourceType(m) == "fileSystem"
+}
+
+func getRestoreTargetDataRoot(m *dbapi.SingleInstanceDatabase) string {
+	restore := getRestoreSpec(m)
+	if restore != nil && restore.Target != nil {
+		if dataRoot := strings.TrimSpace(restore.Target.DataRoot); dataRoot != "" {
+			return dataRoot
+		}
+	}
+	return restoreDefaultDataRoot
+}
+
+func getRestoreTargetWalletRoot(m *dbapi.SingleInstanceDatabase) string {
+	restore := getRestoreSpec(m)
+	if restore != nil && restore.Target != nil {
+		if walletRoot := strings.TrimSpace(restore.Target.WalletRoot); walletRoot != "" {
+			return walletRoot
+		}
+	}
+	sid := strings.ToUpper(strings.TrimSpace(m.Spec.Sid))
+	if sid == "" {
+		return "/opt/oracle/oradata/${ORACLE_SID}/wallets"
+	}
+	return fmt.Sprintf("/opt/oracle/oradata/%s/wallets", sid)
+}
+
+func getRestoreCatalogStartWith(m *dbapi.SingleInstanceDatabase) string {
+	restore := getRestoreSpec(m)
+	if restore == nil || restore.FileSystem == nil {
+		return ""
+	}
+	if catalog := strings.TrimSpace(restore.FileSystem.CatalogStartWith); catalog != "" {
+		return catalog
+	}
+	return strings.TrimSpace(restore.FileSystem.BackupPath)
+}
+
+func sidbAdditionalPVCVolumeName(index int) string {
+	return fmt.Sprintf("additional-pvc-%d", index)
+}
+
+func isPathUnder(basePath, targetPath string) bool {
+	base := filepath.Clean(strings.TrimSpace(basePath))
+	target := filepath.Clean(strings.TrimSpace(targetPath))
+	if base == "." || target == "." || base == "" || target == "" {
+		return false
+	}
+	if base == "/" {
+		return strings.HasPrefix(target, "/")
+	}
+	return target == base || strings.HasPrefix(target, base+"/")
+}
+
+func isRestoreFSPathVolumeBacked(m *dbapi.SingleInstanceDatabase, path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	if hasOradataPersistence(m) && isPathUnder(restoreDefaultDataRoot, path) {
+		return true
+	}
+	for i := range m.Spec.AdditionalPVCs {
+		mountPath := strings.TrimSpace(m.Spec.AdditionalPVCs[i].MountPath)
+		pvcName := strings.TrimSpace(m.Spec.AdditionalPVCs[i].PvcName)
+		if mountPath == "" || pvcName == "" {
+			continue
+		}
+		if isPathUnder(mountPath, path) {
+			return true
+		}
+	}
+	return false
 }
 
 func getTrueCacheServices(m *dbapi.SingleInstanceDatabase) []string {
@@ -5197,6 +6137,169 @@ func mergeSIDBEnvVars(base []corev1.EnvVar, extra []corev1.EnvVar) []corev1.EnvV
 	return merged
 }
 
+func buildSIDBSecurityScriptEnvVars(m *dbapi.SingleInstanceDatabase) []corev1.EnvVar {
+	envs := make([]corev1.EnvVar, 0)
+
+	if getTcpsEnabled(m) {
+		tcpsCertsLocation := getTcpsCertsLocation(m)
+		if strings.TrimSpace(tcpsCertsLocation) != "" {
+			envs = append(envs,
+				corev1.EnvVar{Name: "TCPS_CERTS_LOCATION", Value: tcpsCertsLocation},
+				corev1.EnvVar{Name: "TCPS_TLS_SECRET_MOUNT_PATH", Value: tcpsCertsLocation},
+			)
+		}
+		if peer := getTcpsPeerConfig(m); peer != nil && peer.Enabled {
+			peerPort := peer.Port
+			if peerPort == 0 {
+				peerPort = 2484
+			}
+			envs = append(envs,
+				corev1.EnvVar{Name: "DG_PEER_ENABLED", Value: "true"},
+				corev1.EnvVar{Name: "DG_PEER_ALIAS", Value: strings.TrimSpace(peer.Alias)},
+				corev1.EnvVar{Name: "DG_PEER_HOST", Value: strings.TrimSpace(peer.Host)},
+				corev1.EnvVar{Name: "DG_PEER_PORT", Value: strconv.Itoa(peerPort)},
+				corev1.EnvVar{Name: "DG_PEER_SERVICE", Value: strings.TrimSpace(peer.Service)},
+			)
+			if sslServerDN := strings.TrimSpace(peer.SSLServerDN); sslServerDN != "" {
+				envs = append(envs, corev1.EnvVar{Name: "DG_PEER_SSL_SERVER_DN", Value: sslServerDN})
+			}
+		}
+	}
+
+	if HasTDEPasswordSecret(m) {
+		tdeSecretMountRoot := GetTDEPasswordSecretMountRoot(m)
+		tdeSecretKey := GetTDEPasswordSecretFileName(m)
+		envs = append(envs,
+			corev1.EnvVar{Name: "TDE_ENABLED", Value: "true"},
+			corev1.EnvVar{Name: "SECRET_BASE_DIR", Value: tdeSecretMountRoot},
+			corev1.EnvVar{Name: "ORACLE_TDE_PWD_SECRET_NAME", Value: tdeSecretKey},
+			corev1.EnvVar{Name: "ORACLE_TDE_SECRET_FILE", Value: GetTDEPasswordSecretMountPath(m)},
+		)
+		if tde := getTDEPasswordConfig(m); tde != nil {
+			if walletRoot := strings.TrimSpace(tde.WalletRoot); walletRoot != "" {
+				envs = append(envs, corev1.EnvVar{Name: "TDE_WALLET_ROOT", Value: walletRoot})
+			}
+		}
+	}
+
+	return envs
+}
+
+func buildSIDBRestoreScriptEnvVars(m *dbapi.SingleInstanceDatabase) []corev1.EnvVar {
+	restore := getRestoreSpec(m)
+	if restore == nil {
+		return nil
+	}
+
+	envs := []corev1.EnvVar{
+		{Name: "RESTORE_ENABLED", Value: "true"},
+		{Name: "RESTORE_SOURCE_TYPE", Value: getRestoreSourceType(m)},
+		{Name: "RESTORE_DATA_ROOT", Value: getRestoreTargetDataRoot(m)},
+		{Name: "RESTORE_WALLET_ROOT", Value: getRestoreTargetWalletRoot(m)},
+	}
+
+	if restore.Options != nil {
+		if sourceDBName := strings.TrimSpace(restore.Options.SourceDBName); sourceDBName != "" {
+			envs = append(envs, corev1.EnvVar{Name: "SOURCE_DB_NAME", Value: sourceDBName})
+		}
+		if restore.Options.ForceOpcReinstall != nil {
+			envs = append(envs, corev1.EnvVar{Name: "FORCE_OPC_REINSTALL", Value: strconv.FormatBool(*restore.Options.ForceOpcReinstall)})
+		}
+		if restore.Options.RunCrosscheck != nil {
+			envs = append(envs, corev1.EnvVar{Name: "RMAN_RUN_CROSSCHECK", Value: strconv.FormatBool(*restore.Options.RunCrosscheck)})
+		}
+		if restore.Options.RunValidateOnly != nil {
+			envs = append(envs, corev1.EnvVar{Name: "RMAN_VALIDATE_ONLY", Value: strconv.FormatBool(*restore.Options.RunValidateOnly)})
+		}
+	}
+
+	if restoreUsesObjectStore(m) && restore.ObjectStore != nil {
+		envs = append(envs, corev1.EnvVar{Name: "CLONE_DB_FROM_OBJ_BACKUP", Value: "true"})
+
+		if ref := restore.ObjectStore.OCIConfig; ref != nil {
+			key := strings.TrimSpace(ref.Key)
+			if key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "OCI_CONFIG_FILE", Value: filepath.Join(restoreOCIConfigMountDir, key)})
+			}
+		}
+		if ref := restore.ObjectStore.PrivateKey; ref != nil {
+			key := strings.TrimSpace(ref.Key)
+			if key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "PVT_KEY_PATH", Value: filepath.Join(restoreOCIPrivateKeyMountDir, key)})
+			}
+		}
+		if ref := restore.ObjectStore.SourceDBWallet; ref != nil {
+			key := strings.TrimSpace(ref.Key)
+			if key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "SOURCE_DB_WALLET", Value: filepath.Join(restoreSourceWalletMountDir, key)})
+			}
+		}
+		if ref := restore.ObjectStore.SourceDBWalletPw; ref != nil {
+			key := strings.TrimSpace(ref.Key)
+			if key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "SOURCE_DB_WALLET_PWDFILE", Value: filepath.Join(restoreSourceWalletPwdMountDir, key)})
+			}
+		}
+		if ref := restore.ObjectStore.BackupModuleConf; ref != nil {
+			key := strings.TrimSpace(ref.Key)
+			if key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "BACKUP_CONFIG_FILE", Value: filepath.Join(restoreBackupModuleMountDir, key)})
+			}
+		}
+		if id := restore.ObjectStore.BackupIdentity; id != nil {
+			if bucket := strings.TrimSpace(id.BucketName); bucket != "" {
+				envs = append(envs, corev1.EnvVar{Name: "BUCKET_NAME", Value: bucket})
+			}
+			if dbid := strings.TrimSpace(id.DBID); dbid != "" {
+				envs = append(envs, corev1.EnvVar{Name: "DBID", Value: dbid})
+			}
+			if compartment := strings.TrimSpace(id.CompartmentOCID); compartment != "" {
+				envs = append(envs, corev1.EnvVar{Name: "COMPARTMENT_OCID", Value: compartment})
+			}
+		}
+		if enc := restore.ObjectStore.EncryptedBackup; enc != nil && enc.Enabled && enc.DecryptPasswordSecret != nil {
+			if key := strings.TrimSpace(enc.DecryptPasswordSecret.Key); key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "RMAN_DECRYPT_PWD_FILE", Value: filepath.Join(restoreDecryptPwdMountDir, key)})
+			}
+		}
+	}
+
+	if restoreUsesFileSystem(m) && restore.FileSystem != nil {
+		envs = append(envs,
+			corev1.EnvVar{Name: "CLONE_DB_FROM_FS_BACKUP", Value: "true"},
+			corev1.EnvVar{Name: "FS_BACKUP_PATH", Value: strings.TrimSpace(restore.FileSystem.BackupPath)},
+		)
+		if catalog := getRestoreCatalogStartWith(m); catalog != "" {
+			envs = append(envs, corev1.EnvVar{Name: "FS_BACKUP_CATALOG_START_WITH", Value: catalog})
+		}
+		if ref := restore.FileSystem.SourceDBWallet; ref != nil {
+			key := strings.TrimSpace(ref.Key)
+			if key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "SOURCE_DB_WALLET", Value: filepath.Join(restoreSourceWalletMountDir, key)})
+			}
+		}
+		if ref := restore.FileSystem.SourceDBWalletPw; ref != nil {
+			key := strings.TrimSpace(ref.Key)
+			if key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "SOURCE_DB_WALLET_PWDFILE", Value: filepath.Join(restoreSourceWalletPwdMountDir, key)})
+			}
+		}
+		if enc := restore.FileSystem.EncryptedBackup; enc != nil && enc.Enabled && enc.DecryptPasswordSecret != nil {
+			if key := strings.TrimSpace(enc.DecryptPasswordSecret.Key); key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "RMAN_DECRYPT_PWD_FILE", Value: filepath.Join(restoreDecryptPwdMountDir, key)})
+			}
+		}
+	}
+
+	return envs
+}
+
+func mergeSIDBEnvVarsWithSecurity(m *dbapi.SingleInstanceDatabase, base []corev1.EnvVar) []corev1.EnvVar {
+	merged := append(base, buildSIDBSecurityScriptEnvVars(m)...)
+	merged = append(merged, buildSIDBRestoreScriptEnvVars(m)...)
+	return mergeSIDBEnvVars(merged, m.Spec.EnvVars)
+}
+
 func ValidateStandbyWalletSecretRef(r *SingleInstanceDatabaseReconciler, m *dbapi.SingleInstanceDatabase, ctx context.Context) error {
 	secretName := GetStandbyWalletSecretRef(m)
 	if secretName == "" {
@@ -5205,14 +6308,14 @@ func ValidateStandbyWalletSecretRef(r *SingleInstanceDatabaseReconciler, m *dbap
 
 	secret := &corev1.Secret{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: secretName}, secret); err != nil {
-		return fmt.Errorf("standbyConfig.walletSecretRef %q not found: %w", secretName, err)
+		return fmt.Errorf("security.secrets.tde.secretName %q not found: %w", secretName, err)
 	}
 	if len(secret.Data) == 0 {
-		return fmt.Errorf("standbyConfig.walletSecretRef %q has no data", secretName)
+		return fmt.Errorf("security.secrets.tde.secretName %q has no data", secretName)
 	}
 	if zipKey := GetStandbyWalletZipFileKey(m); zipKey != "" {
 		if _, ok := secret.Data[zipKey]; !ok {
-			return fmt.Errorf("standbyConfig.walletZipFileKey %q not found in secret %q", zipKey, secretName)
+			return fmt.Errorf("security.secrets.tde.walletZipFileKey %q not found in secret %q", zipKey, secretName)
 		}
 	}
 	return nil
