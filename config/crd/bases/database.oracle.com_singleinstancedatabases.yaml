@@ -479,8 +479,6 @@ spec:
                 - clone
                 - truecache
                 type: string
-              dbFilesPvc:
-                type: string
               disableDefaultDiagVolumeClaim:
                 type: boolean
               edition:
@@ -647,15 +645,43 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
-                  dbFilesPvc:
-                    type: string
+                  fra:
+                    properties:
+                      accessMode:
+                        enum:
+                        - ReadWriteOnce
+                        - ReadWriteMany
+                        type: string
+                      mountPath:
+                        type: string
+                      pvcName:
+                        type: string
+                      recoveryAreaSize:
+                        type: string
+                      size:
+                        type: string
+                      storageClass:
+                        type: string
+                    type: object
+                  oradata:
+                    properties:
+                      accessMode:
+                        enum:
+                        - ReadWriteOnce
+                        - ReadWriteMany
+                        type: string
+                      pvcName:
+                        type: string
+                      size:
+                        type: string
+                      storageClass:
+                        type: string
+                    type: object
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
-                    type: string
-                  stagePvc:
                     type: string
                   storageClass:
                     type: string
@@ -715,6 +741,182 @@ spec:
                       cpu:
                         type: string
                       memory:
+                        type: string
+                    type: object
+                type: object
+              restore:
+                properties:
+                  fileSystem:
+                    properties:
+                      backupPath:
+                        type: string
+                      catalogStartWith:
+                        type: string
+                      encryptedBackup:
+                        properties:
+                          decryptPasswordSecret:
+                            properties:
+                              key:
+                                type: string
+                              secretName:
+                                type: string
+                            type: object
+                          enabled:
+                            type: boolean
+                        type: object
+                      sourceDbWallet:
+                        properties:
+                          key:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      sourceDbWalletPassword:
+                        properties:
+                          key:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                    type: object
+                  objectStore:
+                    properties:
+                      backupIdentity:
+                        properties:
+                          bucketName:
+                            type: string
+                          compartmentOcid:
+                            type: string
+                          dbid:
+                            type: string
+                        type: object
+                      backupModuleConfig:
+                        properties:
+                          configMapName:
+                            type: string
+                          key:
+                            type: string
+                        type: object
+                      encryptedBackup:
+                        properties:
+                          decryptPasswordSecret:
+                            properties:
+                              key:
+                                type: string
+                              secretName:
+                                type: string
+                            type: object
+                          enabled:
+                            type: boolean
+                        type: object
+                      ociConfig:
+                        properties:
+                          configMapName:
+                            type: string
+                          key:
+                            type: string
+                        type: object
+                      privateKey:
+                        properties:
+                          key:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      sourceDbWallet:
+                        properties:
+                          key:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      sourceDbWalletPassword:
+                        properties:
+                          key:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                    type: object
+                  options:
+                    properties:
+                      forceOpcReinstall:
+                        type: boolean
+                      runCrosscheck:
+                        type: boolean
+                      runValidateOnly:
+                        type: boolean
+                      sourceDbName:
+                        type: string
+                    type: object
+                  target:
+                    properties:
+                      dataRoot:
+                        type: string
+                      walletRoot:
+                        type: string
+                    type: object
+                type: object
+              security:
+                properties:
+                  secrets:
+                    properties:
+                      admin:
+                        properties:
+                          keepSecret:
+                            type: boolean
+                          mountPath:
+                            type: string
+                          secretKey:
+                            default: oracle_pwd
+                            type: string
+                          secretName:
+                            type: string
+                          skipInitWallet:
+                            type: boolean
+                        required:
+                        - secretName
+                        type: object
+                      tde:
+                        properties:
+                          mountPath:
+                            type: string
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                          walletRoot:
+                            type: string
+                          walletZipFileKey:
+                            type: string
+                        type: object
+                    type: object
+                  tcps:
+                    properties:
+                      certMountLocation:
+                        type: string
+                      certRenewInterval:
+                        type: string
+                      enabled:
+                        type: boolean
+                      listenerPort:
+                        type: integer
+                      peer:
+                        properties:
+                          alias:
+                            type: string
+                          enabled:
+                            type: boolean
+                          host:
+                            type: string
+                          port:
+                            type: integer
+                          service:
+                            type: string
+                          sslServerDN:
+                            type: string
+                        type: object
+                      tlsSecret:
                         type: string
                     type: object
                 type: object
@@ -807,8 +1009,6 @@ spec:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
-              stagePvc:
-                type: string
               standbyConfig:
                 properties:
                   primaryConnectString:
@@ -828,13 +1028,33 @@ spec:
                       sid:
                         type: string
                     type: object
-                  standbyTDEWalletRoot:
+                type: object
+              tcps:
+                properties:
+                  certMountLocation:
                     type: string
-                  walletMountPath:
+                  certRenewInterval:
                     type: string
-                  walletSecretRef:
-                    type: string
-                  walletZipFileKey:
+                  enabled:
+                    type: boolean
+                  listenerPort:
+                    type: integer
+                  peer:
+                    properties:
+                      alias:
+                        type: string
+                      enabled:
+                        type: boolean
+                      host:
+                        type: string
+                      port:
+                        type: integer
+                      service:
+                        type: string
+                      sslServerDN:
+                        type: string
+                    type: object
+                  tlsSecret:
                     type: string
                 type: object
               tcpsCertRenewInterval:
@@ -843,22 +1063,6 @@ spec:
                 type: integer
               tcpsTlsSecret:
                 type: string
-              tdePassword:
-                properties:
-                  keepSecret:
-                    type: boolean
-                  mountPath:
-                    type: string
-                  secretKey:
-                    default: oracle_pwd
-                    type: string
-                  secretName:
-                    type: string
-                  skipInitWallet:
-                    type: boolean
-                required:
-                - secretName
-                type: object
               trueCache:
                 properties:
                   blobConfigMapKey:
@@ -999,15 +1203,43 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
-                  dbFilesPvc:
-                    type: string
+                  fra:
+                    properties:
+                      accessMode:
+                        enum:
+                        - ReadWriteOnce
+                        - ReadWriteMany
+                        type: string
+                      mountPath:
+                        type: string
+                      pvcName:
+                        type: string
+                      recoveryAreaSize:
+                        type: string
+                      size:
+                        type: string
+                      storageClass:
+                        type: string
+                    type: object
+                  oradata:
+                    properties:
+                      accessMode:
+                        enum:
+                        - ReadWriteOnce
+                        - ReadWriteMany
+                        type: string
+                      pvcName:
+                        type: string
+                      size:
+                        type: string
+                      storageClass:
+                        type: string
+                    type: object
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
-                    type: string
-                  stagePvc:
                     type: string
                   storageClass:
                     type: string

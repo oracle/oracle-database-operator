@@ -235,7 +235,11 @@ func buildContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Co
 		container.Resources = *instance.Spec.Resources
 	}
 
-	return []corev1.Container{container}
+	containers := []corev1.Container{container}
+	if sidecar := buildLogSidecarForPrivateAI(instance, instance.Name+"-backend-log-sidecar"); sidecar != nil {
+		containers = append(containers, *sidecar)
+	}
+	return containers
 }
 
 func resolveServicePort(spec *privateaiv4.PrivateAiSpec) (int32, corev1.URIScheme, bool, bool) {
@@ -315,8 +319,8 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 	}
 
 	volumes = append(volumes, corev1.Volume{
-		Name:         fmt.Sprintf("%s-logs-vol", instance.Name),
-		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		Name:         privateAiLogVolumeName(instance),
+		VolumeSource: corev1.VolumeSource{EmptyDir: privateAiLogEmptyDir(instance)},
 	})
 
 	return volumes
@@ -350,14 +354,9 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 
 	mounts = append(mounts, pvcVolumeMounts(instance, false)...)
 
-	logMount := defaultLogMount
-	if instance.Spec.PaiLogLocation != "" {
-		logMount = instance.Spec.PaiLogLocation
-	}
-
 	mounts = append(mounts, corev1.VolumeMount{
-		Name:      fmt.Sprintf("%s-logs-vol", instance.Name),
-		MountPath: logMount,
+		Name:      privateAiLogVolumeName(instance),
+		MountPath: privateAiLogMountPath(instance),
 	})
 
 	return mounts
@@ -503,6 +502,239 @@ func buildSvcLabelsForPrivateAi(instance *privateaiv4.PrivateAi, svcType string)
 	labels := buildLabelsForPrivateAi(instance)
 	labels["app.kubernetes.io/servicetype"] = svcType
 	return labels
+}
+
+func IsGatewayEnabled(instance *privateaiv4.PrivateAi) bool {
+	return instance.Spec.Gateway != nil && strings.TrimSpace(instance.Spec.Gateway.Image) != ""
+}
+
+func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.Deployment {
+	if !IsGatewayEnabled(instance) {
+		return nil
+	}
+	replicas := int32(1)
+	if instance.Spec.Gateway.Replicas > 0 {
+		replicas = instance.Spec.Gateway.Replicas
+	}
+	labels := buildGatewayLabelsForPrivateAi(instance)
+	imagePullPolicy := corev1.PullIfNotPresent
+	if instance.Spec.Gateway.ImagePullPolicy != "" {
+		imagePullPolicy = instance.Spec.Gateway.ImagePullPolicy
+	}
+	port := gatewayServicePort(instance)
+
+	gatewayContainer := corev1.Container{
+		Name:            gatewayDeploymentName(instance),
+		Image:           instance.Spec.Gateway.Image,
+		ImagePullPolicy: imagePullPolicy,
+		Ports: []corev1.ContainerPort{{
+			ContainerPort: port,
+			Protocol:      corev1.ProtocolTCP,
+		}},
+		Env:          buildGatewayEnvVars(instance),
+		VolumeMounts: []corev1.VolumeMount{{Name: privateAiLogVolumeName(instance), MountPath: privateAiLogMountPath(instance)}},
+	}
+	if instance.Spec.Gateway.Resources != nil {
+		gatewayContainer.Resources = *instance.Spec.Gateway.Resources
+	}
+
+	containers := []corev1.Container{gatewayContainer}
+	if sidecar := buildLogSidecarForPrivateAI(instance, gatewayDeploymentName(instance)+"-log-sidecar"); sidecar != nil {
+		containers = append(containers, *sidecar)
+	}
+
+	return &appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{Kind: "Deployment", APIVersion: "apps/v1"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            gatewayDeploymentName(instance),
+			Namespace:       instance.Namespace,
+			OwnerReferences: getOwnerRefPrivateAI(instance),
+			Labels:          labels,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: pointer.Int32(replicas),
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      labels,
+					Annotations: map[string]string{restartAnnotationKey: time.Now().UTC().Format(time.RFC3339)},
+				},
+				Spec: corev1.PodSpec{
+					Containers: containers,
+					Volumes: []corev1.Volume{{
+						Name:         privateAiLogVolumeName(instance),
+						VolumeSource: corev1.VolumeSource{EmptyDir: privateAiLogEmptyDir(instance)},
+					}},
+				},
+			},
+		},
+	}
+}
+
+func BuildGatewayServiceDefForPrivateAI(instance *privateaiv4.PrivateAi, serviceKind string) *corev1.Service {
+	if !IsGatewayEnabled(instance) {
+		return nil
+	}
+	labels := buildGatewayLabelsForPrivateAi(instance)
+	selector := buildGatewayLabelsForPrivateAi(instance)
+
+	spec := gatewayServiceSpec(instance, serviceKind)
+	svcPort := spec.Port
+	targetPort := spec.TargetPort
+	if svcPort <= 0 {
+		svcPort = gatewayServicePort(instance)
+	}
+	if targetPort <= 0 {
+		targetPort = gatewayServicePort(instance)
+	}
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            gatewayServiceName(instance, serviceKind),
+			Namespace:       instance.Namespace,
+			OwnerReferences: getOwnerRefPrivateAI(instance),
+			Labels:          labels,
+			Annotations:     map[string]string{},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: selector,
+			Ports: []corev1.ServicePort{{
+				Name:       generatePortMapping(privateaiv4.PaiPortMapping{Port: svcPort, TargetPort: targetPort}),
+				Protocol:   corev1.ProtocolTCP,
+				Port:       svcPort,
+				TargetPort: intstr.FromInt(int(targetPort)),
+			}},
+		},
+	}
+
+	switch serviceKind {
+	case "external":
+		if spec.ServiceType == "" {
+			service.Spec.Type = corev1.ServiceTypeLoadBalancer
+		} else {
+			service.Spec.Type = spec.ServiceType
+		}
+		for k, v := range spec.Annotations {
+			service.ObjectMeta.Annotations[k] = v
+		}
+	default:
+		service.Spec.Type = corev1.ServiceTypeClusterIP
+		for k, v := range spec.Annotations {
+			service.ObjectMeta.Annotations[k] = v
+		}
+	}
+
+	return service
+}
+
+func IsGatewayServiceEnabled(instance *privateaiv4.PrivateAi, serviceKind string) bool {
+	if !IsGatewayEnabled(instance) {
+		return false
+	}
+	spec := gatewayServiceSpec(instance, serviceKind)
+	if spec.Enabled == nil {
+		return serviceKind == "internal"
+	}
+	return *spec.Enabled
+}
+
+func gatewayDeploymentName(instance *privateaiv4.PrivateAi) string {
+	return instance.Name + "-gateway"
+}
+
+func gatewayServiceName(instance *privateaiv4.PrivateAi, serviceKind string) string {
+	if serviceKind == "external" {
+		return instance.Name + "-gateway-ext"
+	}
+	return instance.Name + "-gateway"
+}
+
+func buildGatewayLabelsForPrivateAi(instance *privateaiv4.PrivateAi) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/instance":       fmt.Sprintf("PrivateAi-%s", instance.Name),
+		"app.kubernetes.io/name":           instance.Name,
+		"app.kubernetes.io/component":      "Oml-PrivateAi-" + instance.Name + "-gateway",
+		"app.kubernetes.io/managed-by":     "Oracle-Database-Operator",
+		"app.kubernetes.io/offline-status": "false",
+	}
+}
+
+func buildGatewayEnvVars(instance *privateaiv4.PrivateAi) []corev1.EnvVar {
+	if instance.Spec.Gateway == nil || len(instance.Spec.Gateway.EnvVars) == 0 {
+		return nil
+	}
+	out := make([]corev1.EnvVar, 0, len(instance.Spec.Gateway.EnvVars))
+	for _, e := range instance.Spec.Gateway.EnvVars {
+		if strings.TrimSpace(e.Name) == "" {
+			continue
+		}
+		out = append(out, corev1.EnvVar{Name: e.Name, Value: e.Value})
+	}
+	return out
+}
+
+func gatewayServiceSpec(instance *privateaiv4.PrivateAi, serviceKind string) privateaiv4.GatewayServiceSpec {
+	if instance.Spec.Gateway == nil {
+		return privateaiv4.GatewayServiceSpec{}
+	}
+	if serviceKind == "external" {
+		return instance.Spec.Gateway.ExternalService
+	}
+	return instance.Spec.Gateway.InternalService
+}
+
+func gatewayServicePort(instance *privateaiv4.PrivateAi) int32 {
+	spec := gatewayServiceSpec(instance, "internal")
+	if spec.TargetPort > 0 {
+		return spec.TargetPort
+	}
+	if spec.Port > 0 {
+		return spec.Port
+	}
+	return 8080
+}
+
+func privateAiLogVolumeName(instance *privateaiv4.PrivateAi) string {
+	if instance.Spec.Logging != nil && strings.TrimSpace(instance.Spec.Logging.VolumeName) != "" {
+		return instance.Spec.Logging.VolumeName
+	}
+	return fmt.Sprintf("%s-logs-vol", instance.Name)
+}
+
+func privateAiLogMountPath(instance *privateaiv4.PrivateAi) string {
+	if instance.Spec.Logging != nil && strings.TrimSpace(instance.Spec.Logging.VolumeMount) != "" {
+		return instance.Spec.Logging.VolumeMount
+	}
+	if strings.TrimSpace(instance.Spec.PaiLogLocation) != "" {
+		return instance.Spec.PaiLogLocation
+	}
+	return defaultLogMount
+}
+
+func privateAiLogEmptyDir(instance *privateaiv4.PrivateAi) *corev1.EmptyDirVolumeSource {
+	empty := &corev1.EmptyDirVolumeSource{}
+	if instance.Spec.Logging != nil && strings.TrimSpace(instance.Spec.Logging.VolumeSizeLimit) != "" {
+		if quantity, err := resource.ParseQuantity(instance.Spec.Logging.VolumeSizeLimit); err == nil {
+			empty.SizeLimit = &quantity
+		}
+	}
+	return empty
+}
+
+func buildLogSidecarForPrivateAI(instance *privateaiv4.PrivateAi, name string) *corev1.Container {
+	if instance.Spec.Logging == nil || !instance.Spec.Logging.Enabled || strings.TrimSpace(instance.Spec.Logging.SidecarImage) == "" {
+		return nil
+	}
+	logPath := privateAiLogMountPath(instance)
+	return &corev1.Container{
+		Name:            name,
+		Image:           instance.Spec.Logging.SidecarImage,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command:         []string{"/bin/sh", "-c"},
+		Args: []string{
+			fmt.Sprintf("while true; do if ls %s/* >/dev/null 2>&1; then tail -n+1 -F %s/*; else sleep 2; fi; done", logPath, logPath),
+		},
+		VolumeMounts: []corev1.VolumeMount{{Name: privateAiLogVolumeName(instance), MountPath: logPath}},
+	}
 }
 
 // Update Section

@@ -91,6 +91,8 @@ type PrivateAiSpec struct {
 	PaiInternalLB   string            `json:"paiInternalLB,omitempty"`
 	PailbAnnotation map[string]string `json:"pailbAnnotation,omitempty"`
 	WorkerNodes     []string          `json:"workerNodes,omitempty"`
+	Gateway         *GatewaySpec      `json:"gateway,omitempty"`
+	Logging         *LoggingSpec      `json:"logging,omitempty"`
 }
 
 // Secret Details
@@ -110,6 +112,32 @@ type PaiServiceSpec struct {
 	PortMappings []PaiPortMapping `json:"portMappings,omitempty"` // Port mappings for the service that is created
 	SvcName      string           `json:"name,omitempty"`
 	SvcType      string           `json:"svcType,omitempty"`
+}
+
+type GatewaySpec struct {
+	Image           string                       `json:"image,omitempty"`
+	Replicas        int32                        `json:"replicas,omitempty"`
+	ImagePullPolicy corev1.PullPolicy            `json:"imagePullPolicy,omitempty"`
+	Resources       *corev1.ResourceRequirements `json:"resources,omitempty"`
+	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`
+	InternalService GatewayServiceSpec           `json:"internalService,omitempty"`
+	ExternalService GatewayServiceSpec           `json:"externalService,omitempty"`
+}
+
+type GatewayServiceSpec struct {
+	Enabled     *bool              `json:"enabled,omitempty"`
+	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
+	Port        int32              `json:"port,omitempty"`
+	TargetPort  int32              `json:"targetPort,omitempty"`
+	Annotations map[string]string  `json:"annotations,omitempty"`
+}
+
+type LoggingSpec struct {
+	Enabled         bool   `json:"enabled,omitempty"`
+	SidecarImage    string `json:"sidecarImage,omitempty"`
+	VolumeName      string `json:"volumeName,omitempty"`
+	VolumeMount     string `json:"volumeMount,omitempty"`
+	VolumeSizeLimit string `json:"volumeSizeLimit,omitempty"`
 }
 
 // Config Map
@@ -146,6 +174,9 @@ type PrivateAiStatus struct {
 	ClusterIP      string          `json:"clusterIP,omitempty"`
 	PaiSecret      SecretStatus    `json:"paiSecret,omitempty"`
 	PaiConfigMap   ConfigMapStatus `json:"paiConfigMap,omitempty"`
+	Mode           string          `json:"mode,omitempty"`
+	Gateway        GatewayStatus   `json:"gateway,omitempty"`
+	Logging        LoggingStatus   `json:"logging,omitempty"`
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
@@ -165,6 +196,19 @@ type ConfigMapStatus struct {
 	Name            string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 }
 
+type GatewayStatus struct {
+	Enabled          bool   `json:"enabled,omitempty"`
+	ReadyReplicas    int32  `json:"readyReplicas,omitempty"`
+	InternalService  string `json:"internalService,omitempty"`
+	ExternalService  string `json:"externalService,omitempty"`
+	ExternalEndpoint string `json:"externalEndpoint,omitempty"`
+}
+
+type LoggingStatus struct {
+	Enabled      bool   `json:"enabled,omitempty"`
+	SidecarImage string `json:"sidecarImage,omitempty"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 //+kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type=string
@@ -173,6 +217,8 @@ type ConfigMapStatus struct {
 //+kubebuilder:printcolumn:JSONPath=".status.podIP",name="PodIP",type=string
 //+kubebuilder:printcolumn:JSONPath=".status.loadBalancerIP",name="LbIP",type=string
 //+kubebuilder:printcolumn:JSONPath=".status.releaseUpdate",name="ReleaseUpdate",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.mode",name="Mode",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.gateway.readyReplicas",name="GatewayReady",type=number,priority=1
 
 // PrivateAi is the Schema for the privateais API.
 type PrivateAi struct {

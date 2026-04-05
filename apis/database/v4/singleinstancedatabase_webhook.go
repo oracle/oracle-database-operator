@@ -94,9 +94,10 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 		}
 	}
 
-	if sidb.Spec.AdminPassword.KeepSecret == nil {
+	adminPassword := sidbAdminPasswordSpec(sidb)
+	if adminPassword != nil && adminPassword.KeepSecret == nil {
 		keepSecret := true
-		sidb.Spec.AdminPassword.KeepSecret = &keepSecret
+		adminPassword.KeepSecret = &keepSecret
 	}
 
 	if sidb.Spec.CreateAs == "" {
@@ -128,7 +129,9 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 	if sidb.Spec.TrueCacheServices == nil {
 		sidb.Spec.TrueCacheServices = make([]string, 0)
 	}
+	defaultSIDBPersistence(&sidb.Spec.Persistence)
 	defaultSIDBAdditionalPVCs(&sidb.Spec.AdditionalPVCs)
+	defaultSIDBRestoreSpec(&sidb.Spec.Restore)
 
 	return nil
 }
@@ -136,6 +139,107 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-singleinstancedatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=singleinstancedatabases,versions=v4,name=vsingleinstancedatabasev4.kb.io,admissionReviewVersions={v1,v1beta1}
 
 var _ admission.Validator[*SingleInstanceDatabase] = &SingleInstanceDatabase{}
+
+func sidbTcpsEnabled(sidb *SingleInstanceDatabase) bool {
+	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && sidb.Spec.Security.TCPS.Enabled {
+		return true
+	}
+	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.Enabled {
+		return true
+	}
+	return sidb.Spec.EnableTCPS
+}
+
+func sidbTcpsListenerPort(sidb *SingleInstanceDatabase) int {
+	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && sidb.Spec.Security.TCPS.ListenerPort != 0 {
+		return sidb.Spec.Security.TCPS.ListenerPort
+	}
+	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.ListenerPort != 0 {
+		return sidb.Spec.TCPS.ListenerPort
+	}
+	return sidb.Spec.TcpsListenerPort
+}
+
+func sidbTcpsTlsSecret(sidb *SingleInstanceDatabase) string {
+	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && strings.TrimSpace(sidb.Spec.Security.TCPS.TlsSecret) != "" {
+		return strings.TrimSpace(sidb.Spec.Security.TCPS.TlsSecret)
+	}
+	if sidb.Spec.TCPS != nil && strings.TrimSpace(sidb.Spec.TCPS.TlsSecret) != "" {
+		return strings.TrimSpace(sidb.Spec.TCPS.TlsSecret)
+	}
+	return strings.TrimSpace(sidb.Spec.TcpsTlsSecret)
+}
+
+func sidbTcpsCertRenewInterval(sidb *SingleInstanceDatabase) string {
+	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && strings.TrimSpace(sidb.Spec.Security.TCPS.CertRenewInterval) != "" {
+		return strings.TrimSpace(sidb.Spec.Security.TCPS.CertRenewInterval)
+	}
+	if sidb.Spec.TCPS != nil && strings.TrimSpace(sidb.Spec.TCPS.CertRenewInterval) != "" {
+		return strings.TrimSpace(sidb.Spec.TCPS.CertRenewInterval)
+	}
+	return strings.TrimSpace(sidb.Spec.TcpsCertRenewInterval)
+}
+
+func sidbTcpsPeerConfig(sidb *SingleInstanceDatabase) *SingleInstanceDatabaseTCPSPeer {
+	if sidb == nil {
+		return nil
+	}
+	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && sidb.Spec.Security.TCPS.Peer != nil {
+		return sidb.Spec.Security.TCPS.Peer
+	}
+	return nil
+}
+
+func sidbAdminPasswordSpec(sidb *SingleInstanceDatabase) *SingleInstanceDatabaseAdminPassword {
+	if sidb == nil {
+		return nil
+	}
+	if sidb.Spec.Security != nil && sidb.Spec.Security.Secrets != nil && sidb.Spec.Security.Secrets.Admin != nil {
+		return sidb.Spec.Security.Secrets.Admin
+	}
+	return &sidb.Spec.AdminPassword
+}
+
+func sidbTDESecretSpec(sidb *SingleInstanceDatabase) *SingleInstanceDatabasePasswordSecret {
+	if sidb == nil {
+		return nil
+	}
+	if sidb.Spec.Security != nil && sidb.Spec.Security.Secrets != nil && sidb.Spec.Security.Secrets.TDE != nil {
+		return sidb.Spec.Security.Secrets.TDE
+	}
+	return nil
+}
+
+func sidbOradataPersistence(sidb *SingleInstanceDatabase) *SingleInstanceDatabasePersistenceOradata {
+	if sidb == nil {
+		return nil
+	}
+	if sidb.Spec.Persistence.Oradata != nil {
+		return sidb.Spec.Persistence.Oradata
+	}
+	if sidb.Spec.Persistence.Size == "" && sidb.Spec.Persistence.StorageClass == "" && sidb.Spec.Persistence.AccessMode == "" {
+		return nil
+	}
+	return &SingleInstanceDatabasePersistenceOradata{
+		Size:         sidb.Spec.Persistence.Size,
+		StorageClass: sidb.Spec.Persistence.StorageClass,
+		AccessMode:   sidb.Spec.Persistence.AccessMode,
+	}
+}
+
+func defaultSIDBPersistence(p *SingleInstanceDatabasePersistence) {
+	if p == nil {
+		return
+	}
+	if p.Fra != nil {
+		if strings.TrimSpace(p.Fra.MountPath) == "" {
+			p.Fra.MountPath = "/opt/oracle/oradata/fast_recovery_area"
+		}
+		if strings.TrimSpace(p.Fra.PvcName) == "" && strings.TrimSpace(p.Fra.RecoveryAreaSize) == "" && strings.TrimSpace(p.Fra.Size) != "" {
+			p.Fra.RecoveryAreaSize = strings.TrimSpace(p.Fra.Size)
+		}
+	}
+}
 
 func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj *SingleInstanceDatabase) (admission.Warnings, error) {
 	sidb := obj
@@ -192,7 +296,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 		}
 	}
 
-	if newSidb.Spec.EnableTCPS {
+	if sidbTcpsEnabled(newSidb) {
 		if oldSidb.Status.DgBroker != nil {
 			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps when dataguard broker is configured"))
 		} else if len(oldSidb.Status.StandbyDatabases) != 0 {
@@ -222,15 +326,62 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		}
 	}
 
-	if sidb.Spec.Persistence.Size == "" && (sidb.Spec.Persistence.AccessMode != "" || sidb.Spec.Persistence.StorageClass != "" || sidb.Spec.Persistence.DatafilesVolumeName != "") {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), sidb.Spec.Persistence.Size, "size is required when persistence settings are specified"))
+	oradata := sidbOradataPersistence(sidb)
+	if sidb.Spec.Persistence.Oradata != nil && (sidb.Spec.Persistence.Size != "" || sidb.Spec.Persistence.StorageClass != "" || sidb.Spec.Persistence.AccessMode != "") {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("persistence"), "do not mix deprecated persistence size/storageClass/accessMode with persistence.oradata"))
 	}
-	if sidb.Spec.Persistence.Size != "" {
-		if sidb.Spec.Persistence.AccessMode == "" {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("persistence").Child("accessMode"), sidb.Spec.Persistence.AccessMode, "accessMode is required when persistence size is set"))
+	if oradata != nil {
+		oradataPath := field.NewPath("spec").Child("persistence").Child("oradata")
+		if sidb.Spec.Persistence.Oradata == nil {
+			oradataPath = field.NewPath("spec").Child("persistence")
 		}
-		if sidb.Spec.Persistence.AccessMode != "ReadWriteMany" && sidb.Spec.Persistence.AccessMode != "ReadWriteOnce" {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("persistence").Child("accessMode"), sidb.Spec.Persistence.AccessMode, "must be ReadWriteOnce or ReadWriteMany"))
+		hasPvcName := strings.TrimSpace(oradata.PvcName) != ""
+		hasDynamic := strings.TrimSpace(oradata.Size) != ""
+		if hasPvcName && (strings.TrimSpace(oradata.Size) != "" || strings.TrimSpace(oradata.StorageClass) != "") {
+			allErrs = append(allErrs, field.Forbidden(oradataPath, "pvcName is mutually exclusive with size/storageClass"))
+		}
+		if !hasPvcName && !hasDynamic && strings.TrimSpace(sidb.Spec.Persistence.DatafilesVolumeName) != "" {
+			allErrs = append(allErrs, field.Invalid(oradataPath.Child("size"), oradata.Size, "size is required when datafilesVolumeName is specified without pvcName"))
+		}
+		if hasDynamic {
+			if strings.TrimSpace(oradata.AccessMode) == "" {
+				allErrs = append(allErrs, field.Invalid(oradataPath.Child("accessMode"), oradata.AccessMode, "accessMode is required when size is set"))
+			}
+			if strings.TrimSpace(oradata.AccessMode) != "" &&
+				oradata.AccessMode != "ReadWriteMany" && oradata.AccessMode != "ReadWriteOnce" {
+				allErrs = append(allErrs, field.Invalid(oradataPath.Child("accessMode"), oradata.AccessMode, "must be ReadWriteOnce or ReadWriteMany"))
+			}
+		}
+	}
+	if sidb.Spec.Persistence.Fra != nil {
+		fra := sidb.Spec.Persistence.Fra
+		fraPath := field.NewPath("spec").Child("persistence").Child("fra")
+		hasPvcName := strings.TrimSpace(fra.PvcName) != ""
+		hasDynamic := strings.TrimSpace(fra.Size) != ""
+		if hasPvcName && (strings.TrimSpace(fra.Size) != "" || strings.TrimSpace(fra.StorageClass) != "" || strings.TrimSpace(fra.AccessMode) != "") {
+			allErrs = append(allErrs, field.Forbidden(fraPath, "pvcName is mutually exclusive with size/storageClass/accessMode"))
+		}
+		if mountPath := strings.TrimSpace(fra.MountPath); mountPath != "" && !strings.HasPrefix(mountPath, "/") {
+			allErrs = append(allErrs, field.Invalid(fraPath.Child("mountPath"), fra.MountPath, "mountPath must be an absolute path"))
+		}
+		if !hasPvcName && !hasDynamic {
+			allErrs = append(allErrs, field.Required(fraPath.Child("size"), "size is required when pvcName is not provided"))
+		}
+		if !hasPvcName && hasDynamic && strings.TrimSpace(fra.AccessMode) == "" {
+			allErrs = append(allErrs, field.Required(fraPath.Child("accessMode"), "accessMode is required when size is set"))
+		}
+		if hasPvcName && strings.TrimSpace(fra.RecoveryAreaSize) == "" {
+			allErrs = append(allErrs, field.Required(fraPath.Child("recoveryAreaSize"), "required when pvcName is set"))
+		}
+		if !hasPvcName && strings.TrimSpace(fra.RecoveryAreaSize) == "" && hasDynamic {
+			// defaulted in defaulter; no-op here
+		}
+		if strings.TrimSpace(fra.RecoveryAreaSize) != "" && strings.TrimSpace(fra.Size) != "" {
+			fraSize, errSize := resource.ParseQuantity(strings.TrimSpace(fra.Size))
+			recoverySize, errRecovery := resource.ParseQuantity(strings.TrimSpace(fra.RecoveryAreaSize))
+			if errSize == nil && errRecovery == nil && recoverySize.Cmp(fraSize) > 0 {
+				allErrs = append(allErrs, field.Invalid(fraPath.Child("recoveryAreaSize"), fra.RecoveryAreaSize, "must be less than or equal to fra.size"))
+			}
 		}
 	}
 	if sidb.Spec.Persistence.VolumeClaimAnnotation != "" {
@@ -245,6 +396,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(sidb.Spec.CreateAs))
+	allErrs = append(allErrs, validateSIDBRestoreSpec(sidb, mode)...)
 	if mode == "clone" && resolvePrimaryRefForCloneOrStandby(sidb) == "" {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primaryDatabaseRef"), sidb.Spec.PrimaryDatabaseRef, "primary reference is required for clone"))
 	}
@@ -278,17 +430,14 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		}
 	}
 
-	if sidb.Spec.StandbyConfig != nil {
-		cfg := sidb.Spec.StandbyConfig
-		if strings.TrimSpace(cfg.WalletSecretRef) == "" {
-			if strings.TrimSpace(cfg.WalletMountPath) != "" {
-				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig").Child("walletMountPath"), cfg.WalletMountPath, "walletMountPath requires walletSecretRef"))
+	if tde := sidbTDESecretSpec(sidb); tde != nil {
+		tdeSecretName := strings.TrimSpace(tde.SecretName)
+		if tdeSecretName == "" {
+			if strings.TrimSpace(tde.WalletZipFileKey) != "" {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("security").Child("secrets").Child("tde").Child("walletZipFileKey"), tde.WalletZipFileKey, "walletZipFileKey requires secretName"))
 			}
-			if strings.TrimSpace(cfg.WalletZipFileKey) != "" {
-				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig").Child("walletZipFileKey"), cfg.WalletZipFileKey, "walletZipFileKey requires walletSecretRef"))
-			}
-			if strings.TrimSpace(cfg.StandbyTDEWalletRoot) != "" {
-				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig").Child("standbyTDEWalletRoot"), cfg.StandbyTDEWalletRoot, "standbyTDEWalletRoot requires walletSecretRef"))
+			if strings.TrimSpace(tde.WalletRoot) != "" {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("security").Child("secrets").Child("tde").Child("walletRoot"), tde.WalletRoot, "walletRoot requires secretName"))
 			}
 		}
 	}
@@ -298,7 +447,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		if sidb.Spec.Edition == "express" || sidb.Spec.Edition == "free" {
 			valMsg = "should be 1 for express/free edition"
 		}
-		if sidb.Spec.Persistence.Size == "" {
+		if oradata == nil || (strings.TrimSpace(oradata.Size) == "" && strings.TrimSpace(oradata.PvcName) == "") {
 			valMsg = "should be 1 when persistence size is not specified"
 		}
 		if valMsg != "" {
@@ -310,33 +459,56 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("trueCacheServices"), sidb.Spec.TrueCacheServices, "only supported when createAs=truecache"))
 	}
 
-	if sidb.Spec.EnableTCPS && sidb.Spec.TcpsCertRenewInterval != "" {
-		duration, err := time.ParseDuration(sidb.Spec.TcpsCertRenewInterval)
+	tcpsEnabled := sidbTcpsEnabled(sidb)
+	tcpsTlsSecret := sidbTcpsTlsSecret(sidb)
+	tcpsCertRenewInterval := sidbTcpsCertRenewInterval(sidb)
+	tcpsListenerPort := sidbTcpsListenerPort(sidb)
+
+	if tcpsEnabled && tcpsCertRenewInterval != "" {
+		duration, err := time.ParseDuration(tcpsCertRenewInterval)
 		if err != nil {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), sidb.Spec.TcpsCertRenewInterval, "invalid duration"))
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), tcpsCertRenewInterval, "invalid duration"))
 		} else {
 			maxLimit, _ := time.ParseDuration("8760h")
 			minLimit, _ := time.ParseDuration("24h")
 			if duration > maxLimit || duration < minLimit {
-				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), sidb.Spec.TcpsCertRenewInterval, "must be in range 24h to 8760h"))
+				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), tcpsCertRenewInterval, "must be in range 24h to 8760h"))
 			}
 		}
 	}
-	if !sidb.Spec.EnableTCPS && sidb.Spec.TcpsTlsSecret != "" {
+	if !tcpsEnabled && tcpsTlsSecret != "" {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("tcpsTlsSecret"), "allowed only when enableTCPS=true"))
 	}
-	if sidb.Spec.TcpsTlsSecret != "" && sidb.Spec.TcpsCertRenewInterval != "" {
+	if tcpsTlsSecret != "" && tcpsCertRenewInterval != "" {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("tcpsCertRenewInterval"), "not applicable when tcpsTlsSecret is provided"))
 	}
-	if sidb.Spec.EnableTCPS && sidb.Spec.ListenerPort != 0 && sidb.Spec.TcpsListenerPort != 0 && sidb.Spec.ListenerPort == sidb.Spec.TcpsListenerPort {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), sidb.Spec.TcpsListenerPort, "listenerPort and tcpsListenerPort cannot be equal"))
+	if tcpsEnabled && sidb.Spec.ListenerPort != 0 && tcpsListenerPort != 0 && sidb.Spec.ListenerPort == tcpsListenerPort {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "listenerPort and tcpsListenerPort cannot be equal"))
 	}
 	if !sidb.Spec.LoadBalancer {
 		if sidb.Spec.ListenerPort != 0 && (sidb.Spec.ListenerPort < 30000 || sidb.Spec.ListenerPort > 32767) {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("listenerPort"), sidb.Spec.ListenerPort, "must be in 30000-32767 for NodePort"))
 		}
-		if sidb.Spec.EnableTCPS && sidb.Spec.TcpsListenerPort != 0 && (sidb.Spec.TcpsListenerPort < 30000 || sidb.Spec.TcpsListenerPort > 32767) {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), sidb.Spec.TcpsListenerPort, "must be in 30000-32767 for NodePort"))
+		if tcpsEnabled && tcpsListenerPort != 0 && (tcpsListenerPort < 30000 || tcpsListenerPort > 32767) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "must be in 30000-32767 for NodePort"))
+		}
+	}
+	if tcpsPeer := sidbTcpsPeerConfig(sidb); tcpsPeer != nil && tcpsPeer.Enabled {
+		peerPath := field.NewPath("spec").Child("security").Child("tcps").Child("peer")
+		if !tcpsEnabled {
+			allErrs = append(allErrs, field.Forbidden(peerPath.Child("enabled"), "allowed only when TCPS is enabled"))
+		}
+		if strings.TrimSpace(tcpsPeer.Alias) == "" {
+			allErrs = append(allErrs, field.Required(peerPath.Child("alias"), "required when peer.enabled=true"))
+		}
+		if strings.TrimSpace(tcpsPeer.Host) == "" {
+			allErrs = append(allErrs, field.Required(peerPath.Child("host"), "required when peer.enabled=true"))
+		}
+		if strings.TrimSpace(tcpsPeer.Service) == "" {
+			allErrs = append(allErrs, field.Required(peerPath.Child("service"), "required when peer.enabled=true"))
+		}
+		if tcpsPeer.Port < 0 || tcpsPeer.Port > 65535 {
+			allErrs = append(allErrs, field.Invalid(peerPath.Child("port"), tcpsPeer.Port, "must be in 0-65535"))
 		}
 	}
 
@@ -349,6 +521,52 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	allErrs = append(allErrs, validateSingleInstanceDatabaseResourceFields(sidb)...)
 	allErrs = append(allErrs, validateSingleInstanceDatabaseAdditionalPVCs(sidb)...)
 
+	return allErrs
+}
+
+func defaultSIDBRestoreSpec(restore **SingleInstanceDatabaseRestoreSpec) {
+	if restore == nil || *restore == nil {
+		return
+	}
+	r := *restore
+	if r.FileSystem != nil {
+		r.FileSystem.BackupPath = strings.TrimSpace(r.FileSystem.BackupPath)
+		r.FileSystem.CatalogStartWith = strings.TrimSpace(r.FileSystem.CatalogStartWith)
+		if r.FileSystem.CatalogStartWith == "" {
+			r.FileSystem.CatalogStartWith = r.FileSystem.BackupPath
+		}
+	}
+}
+
+func validateSIDBRestoreSpec(sidb *SingleInstanceDatabase, mode string) field.ErrorList {
+	var allErrs field.ErrorList
+	if sidb.Spec.Restore == nil {
+		return allErrs
+	}
+	restorePath := field.NewPath("spec").Child("restore")
+	if mode != "" && mode != "primary" {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("createAs"), sidb.Spec.CreateAs, "restore is supported only when createAs=primary"))
+	}
+	hasObjectStore := sidb.Spec.Restore.ObjectStore != nil
+	hasFileSystem := sidb.Spec.Restore.FileSystem != nil
+	if hasObjectStore && hasFileSystem {
+		allErrs = append(allErrs, field.Forbidden(restorePath, "objectStore and fileSystem are mutually exclusive"))
+	}
+	if !hasObjectStore && !hasFileSystem {
+		allErrs = append(allErrs, field.Required(restorePath, "exactly one of objectStore or fileSystem must be specified"))
+	}
+
+	if hasFileSystem && strings.TrimSpace(sidb.Spec.Restore.FileSystem.BackupPath) == "" {
+		allErrs = append(allErrs, field.Required(restorePath.Child("fileSystem").Child("backupPath"), "backupPath is required"))
+	}
+	if hasObjectStore {
+		if ref := sidb.Spec.Restore.ObjectStore.OCIConfig; ref == nil || strings.TrimSpace(ref.ConfigMapName) == "" || strings.TrimSpace(ref.Key) == "" {
+			allErrs = append(allErrs, field.Required(restorePath.Child("objectStore").Child("ociConfig"), "configMapName and key are required"))
+		}
+		if ref := sidb.Spec.Restore.ObjectStore.PrivateKey; ref == nil || strings.TrimSpace(ref.SecretName) == "" || strings.TrimSpace(ref.Key) == "" {
+			allErrs = append(allErrs, field.Required(restorePath.Child("objectStore").Child("privateKey"), "secretName and key are required"))
+		}
+	}
 	return allErrs
 }
 

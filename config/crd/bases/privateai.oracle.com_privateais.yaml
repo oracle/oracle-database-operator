@@ -34,6 +34,14 @@ spec:
       name: ReleaseUpdate
       priority: 1
       type: string
+    - jsonPath: .status.mode
+      name: Mode
+      priority: 1
+      type: string
+    - jsonPath: .status.gateway.readyReplicas
+      name: GatewayReady
+      priority: 1
+      type: number
     name: v4
     schema:
       openAPIV3Schema:
@@ -58,6 +66,95 @@ spec:
                   - value
                   type: object
                 type: array
+              gateway:
+                properties:
+                  envVars:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        value:
+                          type: string
+                      required:
+                      - name
+                      - value
+                      type: object
+                    type: array
+                  externalService:
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      enabled:
+                        type: boolean
+                      port:
+                        format: int32
+                        type: integer
+                      serviceType:
+                        type: string
+                      targetPort:
+                        format: int32
+                        type: integer
+                    type: object
+                  image:
+                    type: string
+                  imagePullPolicy:
+                    type: string
+                  internalService:
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      enabled:
+                        type: boolean
+                      port:
+                        format: int32
+                        type: integer
+                      serviceType:
+                        type: string
+                      targetPort:
+                        format: int32
+                        type: integer
+                    type: object
+                  replicas:
+                    format: int32
+                    type: integer
+                  resources:
+                    properties:
+                      claims:
+                        items:
+                          properties:
+                            name:
+                              type: string
+                            request:
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                    type: object
+                type: object
               isDebug:
                 type: boolean
               isDeleteOraPvc:
@@ -72,6 +169,19 @@ spec:
                 type: string
               livenessCheckPeriod:
                 type: integer
+              logging:
+                properties:
+                  enabled:
+                    type: boolean
+                  sidecarImage:
+                    type: string
+                  volumeMount:
+                    type: string
+                  volumeName:
+                    type: string
+                  volumeSizeLimit:
+                    type: string
+                type: object
               nodePortSvc:
                 items:
                   properties:
@@ -308,7 +418,30 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              gateway:
+                properties:
+                  enabled:
+                    type: boolean
+                  externalEndpoint:
+                    type: string
+                  externalService:
+                    type: string
+                  internalService:
+                    type: string
+                  readyReplicas:
+                    format: int32
+                    type: integer
+                type: object
               loadBalancerIP:
+                type: string
+              logging:
+                properties:
+                  enabled:
+                    type: boolean
+                  sidecarImage:
+                    type: string
+                type: object
+              mode:
                 type: string
               paiConfigMap:
                 properties:

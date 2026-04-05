@@ -82,8 +82,12 @@ func TestSIDBUnit_ValidateStandbyWalletSecretRef(t *testing.T) {
 		sidb := &dbapi.SingleInstanceDatabase{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "ns1"},
 			Spec: dbapi.SingleInstanceDatabaseSpec{
-				StandbyConfig: &dbapi.SingleInstanceDatabaseStandbyConfig{
-					WalletSecretRef: "does-not-exist",
+				Security: &dbapi.SingleInstanceDatabaseSecurity{
+					Secrets: &dbapi.SingleInstanceDatabaseSecrets{
+						TDE: &dbapi.SingleInstanceDatabasePasswordSecret{
+							SecretName: "does-not-exist",
+						},
+					},
 				},
 			},
 		}
@@ -96,9 +100,13 @@ func TestSIDBUnit_ValidateStandbyWalletSecretRef(t *testing.T) {
 		sidb := &dbapi.SingleInstanceDatabase{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "ns1"},
 			Spec: dbapi.SingleInstanceDatabaseSpec{
-				StandbyConfig: &dbapi.SingleInstanceDatabaseStandbyConfig{
-					WalletSecretRef:  "wallet-secret",
-					WalletZipFileKey: "missing.zip",
+				Security: &dbapi.SingleInstanceDatabaseSecurity{
+					Secrets: &dbapi.SingleInstanceDatabaseSecrets{
+						TDE: &dbapi.SingleInstanceDatabasePasswordSecret{
+							SecretName:       "wallet-secret",
+							WalletZipFileKey: "missing.zip",
+						},
+					},
 				},
 			},
 		}
@@ -111,9 +119,13 @@ func TestSIDBUnit_ValidateStandbyWalletSecretRef(t *testing.T) {
 		sidb := &dbapi.SingleInstanceDatabase{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "ns1"},
 			Spec: dbapi.SingleInstanceDatabaseSpec{
-				StandbyConfig: &dbapi.SingleInstanceDatabaseStandbyConfig{
-					WalletSecretRef:  "wallet-secret",
-					WalletZipFileKey: "wallet.zip",
+				Security: &dbapi.SingleInstanceDatabaseSecurity{
+					Secrets: &dbapi.SingleInstanceDatabaseSecrets{
+						TDE: &dbapi.SingleInstanceDatabasePasswordSecret{
+							SecretName:       "wallet-secret",
+							WalletZipFileKey: "wallet.zip",
+						},
+					},
 				},
 			},
 		}
@@ -121,6 +133,110 @@ func TestSIDBUnit_ValidateStandbyWalletSecretRef(t *testing.T) {
 			t.Fatalf("expected valid wallet secret ref, got err: %v", err)
 		}
 	})
+}
+
+func TestSIDBUnit_GetRestoreCatalogStartWithDefaults(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Restore: &dbapi.SingleInstanceDatabaseRestoreSpec{
+				FileSystem: &dbapi.SingleInstanceDatabaseRestoreFileSystemSpec{
+					BackupPath: "/mnt/backup",
+				},
+			},
+		},
+	}
+	if got := getRestoreCatalogStartWith(sidb); got != "/mnt/backup" {
+		t.Fatalf("expected catalogStartWith default to backupPath, got %q", got)
+	}
+}
+
+func TestSIDBUnit_IsRestoreFSPathVolumeBacked(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Persistence: dbapi.SingleInstanceDatabasePersistence{
+				Size: "10Gi",
+			},
+			AdditionalPVCs: []dbapi.AdditionalPVCSpec{
+				{
+					MountPath: "/mnt/backup",
+					PvcName:   "backup-pvc",
+				},
+			},
+		},
+	}
+	if !isRestoreFSPathVolumeBacked(sidb, "/opt/oracle/oradata/rman") {
+		t.Fatalf("expected /opt/oracle/oradata path to be treated as volume-backed when persistence is enabled")
+	}
+	if !isRestoreFSPathVolumeBacked(sidb, "/mnt/backup/full") {
+		t.Fatalf("expected additionalPVC mount path to be treated as volume-backed")
+	}
+	if isRestoreFSPathVolumeBacked(sidb, "/tmp/random") {
+		t.Fatalf("expected unrelated path to be treated as non volume-backed")
+	}
+}
+
+func TestSIDBUnit_ValidateRestoreSpecRefsObjectStore(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	ctx := context.Background()
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "ociconfig", Namespace: "ns1"},
+				Data:       map[string]string{"oci.env": "DBID=123"},
+			},
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "sshkeysecret", Namespace: "ns1"},
+				Data:       map[string][]byte{"oci_api_key.pem": []byte("key")},
+			},
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "sourcedbtde", Namespace: "ns1"},
+				Data:       map[string][]byte{"source-wallet.tar.gz": []byte("wallet")},
+			},
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "sourcedbwalletpwd", Namespace: "ns1"},
+				Data:       map[string][]byte{"wallet_pwd": []byte("pwd")},
+			},
+		).Build(),
+		Log: logr.Discard(),
+	}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "primary",
+			Restore: &dbapi.SingleInstanceDatabaseRestoreSpec{
+				ObjectStore: &dbapi.SingleInstanceDatabaseRestoreObjectStoreSpec{
+					OCIConfig:        &dbapi.SingleInstanceDatabaseConfigMapKeyRef{ConfigMapName: "ociconfig", Key: "oci.env"},
+					PrivateKey:       &dbapi.SingleInstanceDatabaseSecretKeyRef{SecretName: "sshkeysecret", Key: "oci_api_key.pem"},
+					SourceDBWallet:   &dbapi.SingleInstanceDatabaseSecretKeyRef{SecretName: "sourcedbtde", Key: "source-wallet.tar.gz"},
+					SourceDBWalletPw: &dbapi.SingleInstanceDatabaseSecretKeyRef{SecretName: "sourcedbwalletpwd", Key: "wallet_pwd"},
+				},
+			},
+		},
+	}
+	if err := ValidateRestoreSpecRefs(reconciler, sidb, ctx); err != nil {
+		t.Fatalf("expected restore refs to validate, got err: %v", err)
+	}
+}
+
+func TestSIDBUnit_FraMountPathAndRecoverySizeDefaults(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Persistence: dbapi.SingleInstanceDatabasePersistence{
+				Fra: &dbapi.SingleInstanceDatabasePersistenceFra{
+					Size: "120Gi",
+				},
+			},
+		},
+	}
+	if got := getFraMountPath(sidb); got != "/opt/oracle/oradata/fast_recovery_area" {
+		t.Fatalf("unexpected FRA mount path default: %q", got)
+	}
+	if got := getFraRecoveryAreaSize(sidb); got != "120Gi" {
+		t.Fatalf("expected FRA recovery area size to default from fra.size, got %q", got)
+	}
 }
 
 func TestSIDBUnit_InstantiatePVCSpecMalformedVolumeClaimAnnotationDoesNotPanic(t *testing.T) {
