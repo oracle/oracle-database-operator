@@ -209,6 +209,7 @@ func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpe
 // Function to build Volume Spec
 func buildVolumeSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.Volume {
 	var result []corev1.Volume
+	dshmSizeLimit := resource.MustParse("4Gi")
 	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.DisableDefaultLogVolumeClaims, OraCatalogSpex.AdditionalPVCs)
 	result = []corev1.Volume{
 		{
@@ -222,7 +223,10 @@ func buildVolumeSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalog
 		{
 			Name: OraCatalogSpex.Name + "oradshm-vol6",
 			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium:    corev1.StorageMediumMemory,
+					SizeLimit: &dshmSizeLimit,
+				},
 			},
 		},
 	}

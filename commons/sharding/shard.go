@@ -375,6 +375,7 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 // buildVolumeSpecForShard returns all volumes mounted by shard containers.
 func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Volume {
 	var result []corev1.Volume
+	dshmSizeLimit := resource.MustParse("4Gi")
 	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.DisableDefaultLogVolumeClaims, OraShardSpex.AdditionalPVCs)
 	result = []corev1.Volume{
 		{
@@ -388,7 +389,10 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 		{
 			Name: OraShardSpex.Name + "oradshm-vol6",
 			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium:    corev1.StorageMediumMemory,
+					SizeLimit: &dshmSizeLimit,
+				},
 			},
 		},
 	}
