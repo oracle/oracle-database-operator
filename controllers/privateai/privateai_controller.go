@@ -104,10 +104,14 @@ type reconcileState struct {
 	updateLockMsg string
 }
 
-// +kubebuilder:rbac:groups=privateai.oracle.com,resources=privateais,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=privateai.oracle.com,resources=privateais,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=privateai.oracle.com,resources=privateais/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=privateai.oracle.com,resources=privateais/finalizers,verbs=update
-// +kubebuilder:rbac:groups=core,resources=pods;pods/log;pods/exec;secrets;containers;services;events;configmaps;persistentvolumeclaims;namespaces,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups=core,resources=configmaps;secrets,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to

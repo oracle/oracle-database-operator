@@ -392,29 +392,33 @@ type webhookSetupFn func(ctrl.Manager) error
 
 func setupWebhooks(mgr ctrl.Manager) error {
 	type webhookRegistration struct {
-		name  string
-		setup webhookSetupFn
+		name       string
+		apiVersion string
+		deprecated bool
+		setup      webhookSetupFn
 	}
 
 	webhooks := []webhookRegistration{
-		{name: "OracleRestDataService", setup: setupV1Alpha1OracleRestDataServiceWebhook},
+		{name: "OracleRestDataService", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1OracleRestDataServiceWebhook},
 		{name: "LRPDB", setup: setupV4LRPDBWebhook},
 		{name: "LREST", setup: setupV4LRESTWebhook},
-		{name: "AutonomousDatabase", setup: setupV1Alpha1AutonomousDatabaseWebhook},
-		{name: "AutonomousDatabaseBackup", setup: setupV1Alpha1AutonomousDatabaseBackupWebhook},
-		{name: "AutonomousDatabaseRestore", setup: setupV1Alpha1AutonomousDatabaseRestoreWebhook},
-		{name: "AutonomousContainerDatabase", setup: setupV1Alpha1AutonomousContainerDatabaseWebhook},
+		{name: "AutonomousDatabase", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1AutonomousDatabaseWebhook},
+		{name: "AutonomousDatabaseBackup", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1AutonomousDatabaseBackupWebhook},
+		{name: "AutonomousDatabaseRestore", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1AutonomousDatabaseRestoreWebhook},
+		{name: "AutonomousContainerDatabase", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1AutonomousContainerDatabaseWebhook},
 		{name: "AutonomousDatabase", setup: setupV4AutonomousDatabaseWebhook},
 		{name: "AutonomousDatabaseBackup", setup: setupV4AutonomousDatabaseBackupWebhook},
 		{name: "AutonomousDatabaseRestore", setup: setupV4AutonomousDatabaseRestoreWebhook},
 		{name: "AutonomousContainerDatabase", setup: setupV4AutonomousContainerDatabaseWebhook},
-		{name: "DataguardBroker", setup: setupV1Alpha1DataguardBrokerWebhook},
-		{name: "DbcsSystem", setup: setupV1Alpha1DbcsSystemWebhook},
+		{name: "DataguardBroker", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1DataguardBrokerWebhook},
+		{name: "DbcsSystem", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1DbcsSystemWebhook},
+		{name: "ShardingDatabase", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1ShardingDatabaseWebhook},
 		{name: "ShardingDatabase", setup: setupV4ShardingDatabaseWebhook},
-		{name: "DatabaseObserver", setup: setupV1Alpha1DatabaseObserverWebhook},
+		{name: "DatabaseObserver", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1DatabaseObserverWebhook},
 		{name: "DbcsSystem", setup: setupV4DbcsSystemWebhook},
 		{name: "DatabaseObserver", setup: setupV1DatabaseObserverWebhook},
 		{name: "DatabaseObserver", setup: setupV4DatabaseObserverWebhook},
+		{name: "SingleInstanceDatabase", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1SingleInstanceDatabaseWebhook},
 		{name: "SingleInstanceDatabase", setup: setupV4SingleInstanceDatabaseWebhook},
 		{name: "DataguardBroker", setup: setupV4DataguardBrokerWebhook},
 		{name: "OracleRestDataService", setup: setupV4OracleRestDataServiceWebhook},
@@ -423,10 +427,21 @@ func setupWebhooks(mgr ctrl.Manager) error {
 		{name: "RacDatabase", setup: setupV4RacDatabaseWebhook},
 	}
 
+	deprecatedRegistered := make([]string, 0)
 	for _, webhook := range webhooks {
+		if webhook.deprecated {
+			deprecatedRegistered = append(deprecatedRegistered, webhook.name+"/"+webhook.apiVersion)
+		}
 		if err := webhook.setup(mgr); err != nil {
 			return annotate(webhook.name, err)
 		}
+	}
+	if len(deprecatedRegistered) > 0 {
+		setupLog.Info(
+			"deprecated webhooks registered for backward compatibility; plan migration to v4",
+			"count", len(deprecatedRegistered),
+			"registrations", strings.Join(deprecatedRegistered, ","),
+		)
 	}
 
 	return nil
@@ -484,6 +499,10 @@ func setupV1Alpha1DbcsSystemWebhook(mgr ctrl.Manager) error {
 	return (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr)
 }
 
+func setupV1Alpha1ShardingDatabaseWebhook(mgr ctrl.Manager) error {
+	return (&databasev1alpha1.ShardingDatabase{}).SetupWebhookWithManager(mgr)
+}
+
 func setupV4ShardingDatabaseWebhook(mgr ctrl.Manager) error {
 	return (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr)
 }
@@ -502,6 +521,10 @@ func setupV1DatabaseObserverWebhook(mgr ctrl.Manager) error {
 
 func setupV4DatabaseObserverWebhook(mgr ctrl.Manager) error {
 	return (&observabilityv4.DatabaseObserver{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV1Alpha1SingleInstanceDatabaseWebhook(mgr ctrl.Manager) error {
+	return (&databasev1alpha1.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr)
 }
 
 func setupV4SingleInstanceDatabaseWebhook(mgr ctrl.Manager) error {

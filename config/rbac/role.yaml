@@ -226,8 +226,6 @@ rules:
   resources:
   - privateais
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch
