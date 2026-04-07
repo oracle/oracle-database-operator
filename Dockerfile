@@ -65,7 +65,8 @@ COPY  apis/ apis/
 COPY  commons/ commons/
 COPY  controllers/ controllers/
 
-RUN go mod download && \
+RUN go mod vendor && \
+    go mod download && \
     sync
 
 # Build manager (debug flags when DEBUG=true) and optionally install dlv
