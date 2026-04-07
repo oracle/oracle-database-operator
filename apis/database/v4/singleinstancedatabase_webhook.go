@@ -49,6 +49,7 @@ import (
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -555,8 +556,32 @@ func validateSIDBRestoreSpec(sidb *SingleInstanceDatabase, mode string) field.Er
 		if ref := sidb.Spec.Restore.ObjectStore.PrivateKey; ref == nil || strings.TrimSpace(ref.SecretName) == "" || strings.TrimSpace(ref.Key) == "" {
 			allErrs = append(allErrs, field.Required(restorePath.Child("objectStore").Child("privateKey"), "secretName and key are required"))
 		}
+		if sidb.Spec.Restore.ObjectStore.BackupIdentity == nil || strings.TrimSpace(sidb.Spec.Restore.ObjectStore.BackupIdentity.DBID) == "" {
+			allErrs = append(allErrs, field.Required(restorePath.Child("objectStore").Child("backupIdentity").Child("dbid"), "dbid is required"))
+		}
+	}
+	if hasFileSystem {
+		if !hasSIDBEnvVar(sidb.Spec.EnvVars, "DBID") {
+			allErrs = append(allErrs, field.Required(field.NewPath("spec").Child("envVars"), "DBID env var is required when restore.fileSystem is used"))
+		}
 	}
 	return allErrs
+}
+
+func hasSIDBEnvVar(envs []corev1.EnvVar, name string) bool {
+	target := strings.TrimSpace(name)
+	if target == "" {
+		return false
+	}
+	for i := range envs {
+		if strings.TrimSpace(envs[i].Name) != target {
+			continue
+		}
+		if strings.TrimSpace(envs[i].Value) != "" || envs[i].ValueFrom != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func validateSingleInstanceDatabaseResourceFields(sidb *SingleInstanceDatabase) field.ErrorList {

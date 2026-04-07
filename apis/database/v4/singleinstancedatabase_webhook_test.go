@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -138,5 +139,46 @@ func TestSIDBWebhookStandbyRejectsTrueCacheSpec(t *testing.T) {
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
 		t.Fatalf("expected validation error for trueCache on standby")
+	}
+}
+
+func TestSIDBWebhookRestoreObjectStoreRequiresDBID(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Restore = &SingleInstanceDatabaseRestoreSpec{
+		ObjectStore: &SingleInstanceDatabaseRestoreObjectStoreSpec{
+			OCIConfig:  &SingleInstanceDatabaseConfigMapKeyRef{ConfigMapName: "ociconfig", Key: "oci.env"},
+			PrivateKey: &SingleInstanceDatabaseSecretKeyRef{SecretName: "sshkeysecret", Key: "oci_api_key.pem"},
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when restore.objectStore.backupIdentity.dbid is missing")
+	}
+}
+
+func TestSIDBWebhookRestoreFileSystemRequiresDBIDEnvVar(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Restore = &SingleInstanceDatabaseRestoreSpec{
+		FileSystem: &SingleInstanceDatabaseRestoreFileSystemSpec{
+			BackupPath: "/mnt/backup",
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when DBID env var is missing for restore.fileSystem")
+	}
+}
+
+func TestSIDBWebhookRestoreFileSystemWithDBIDEnvVarPasses(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Restore = &SingleInstanceDatabaseRestoreSpec{
+		FileSystem: &SingleInstanceDatabaseRestoreFileSystemSpec{
+			BackupPath: "/mnt/backup",
+		},
+	}
+	sidb.Spec.EnvVars = []corev1.EnvVar{{Name: "DBID", Value: "1234567890"}}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got: %v", errs)
 	}
 }
