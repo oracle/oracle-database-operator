@@ -1,11 +1,11 @@
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022 - 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl.
 #
 
 # Build the manager binary
 # syntax=docker/dockerfile:1.7
 #
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2022 - 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl.
 #
 
@@ -65,6 +65,10 @@ COPY  apis/ apis/
 COPY  commons/ commons/
 COPY  controllers/ controllers/
 
+RUN go mod vendor && \
+    go mod download && \
+    sync
+
 # Build manager (debug flags when DEBUG=true) and optionally install dlv
 RUN --mount=type=cache,target=/go-cache \
     --mount=type=cache,target=/gomod-cache \
@@ -89,11 +93,11 @@ LABEL provider="Oracle" \
       issues="https://github.com/oracle/oracle-database-operator/issues" \
       maintainer="paramdeep.saini@oracle.com, sanjay.singh@oracle.com, kuassi.mensah@oracle.com" \
       version="2.0" \
-      description="DB Operator Image V2.0" \
+      description="DB Operator Image V2.2" \
       vendor="Oracle Corporation" \
       release="2.0" \
       summary="Oracle Database Operator 2.0" \
-      name="oracle-database-operator.v2.0"
+      name="oracle-database-operator.v2.2"
 
 ARG CI_COMMIT_SHA
 ARG CI_COMMIT_BRANCH
