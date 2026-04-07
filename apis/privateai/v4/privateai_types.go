@@ -117,16 +117,18 @@ type PaiServiceSpec struct {
 type GatewaySpec struct {
 	Image string `json:"image,omitempty"`
 	// +kubebuilder:validation:Enum=nginx;litellm
-	Type            string                       `json:"type,omitempty"`
-	ContainerPort   int32                        `json:"containerPort,omitempty"`
-	ConfigMap       PaiConfigMap                 `json:"configMap,omitempty"`
-	ConfigFileKey   string                       `json:"configFileKey,omitempty"`
-	Replicas        int32                        `json:"replicas,omitempty"`
-	ImagePullPolicy corev1.PullPolicy            `json:"imagePullPolicy,omitempty"`
-	Resources       *corev1.ResourceRequirements `json:"resources,omitempty"`
-	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`
-	InternalService GatewayServiceSpec           `json:"internalService,omitempty"`
-	ExternalService GatewayServiceSpec           `json:"externalService,omitempty"`
+	Type             string                       `json:"type,omitempty"`
+	ContainerPort    int32                        `json:"containerPort,omitempty"`
+	TLSSecretName    string                       `json:"tlsSecretName,omitempty"`
+	TLSMountLocation string                       `json:"tlsMountLocation,omitempty"`
+	ConfigMap        PaiConfigMap                 `json:"configMap,omitempty"`
+	ConfigFileKey    string                       `json:"configFileKey,omitempty"`
+	Replicas         int32                        `json:"replicas,omitempty"`
+	ImagePullPolicy  corev1.PullPolicy            `json:"imagePullPolicy,omitempty"`
+	Resources        *corev1.ResourceRequirements `json:"resources,omitempty"`
+	EnvVars          []EnvironmentVariable        `json:"envVars,omitempty"`
+	InternalService  GatewayServiceSpec           `json:"internalService,omitempty"`
+	ExternalService  GatewayServiceSpec           `json:"externalService,omitempty"`
 }
 
 type GatewayServiceSpec struct {

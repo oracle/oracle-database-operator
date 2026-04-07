@@ -545,6 +545,13 @@ func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.
 			ReadOnly:  true,
 		})
 	}
+	if tlsSecretName, tlsMountPath := gatewayTLSSecretDetails(instance); tlsSecretName != "" && tlsMountPath != "" {
+		gatewayContainer.VolumeMounts = append(gatewayContainer.VolumeMounts, corev1.VolumeMount{
+			Name:      gatewayTLSVolumeName(instance),
+			MountPath: tlsMountPath,
+			ReadOnly:  true,
+		})
+	}
 	if instance.Spec.Gateway.Resources != nil {
 		gatewayContainer.Resources = *instance.Spec.Gateway.Resources
 	}
@@ -566,6 +573,14 @@ func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.
 					LocalObjectReference: corev1.LocalObjectReference{Name: cfgName},
 					Items:                []corev1.KeyToPath{{Key: cfgKey, Path: cfgKey}},
 				},
+			},
+		})
+	}
+	if tlsSecretName, tlsMountPath := gatewayTLSSecretDetails(instance); tlsSecretName != "" && tlsMountPath != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: gatewayTLSVolumeName(instance),
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{SecretName: tlsSecretName},
 			},
 		})
 	}
@@ -728,6 +743,10 @@ func gatewayConfigVolumeName(instance *privateaiv4.PrivateAi) string {
 	return gatewayDeploymentName(instance) + "-config"
 }
 
+func gatewayTLSVolumeName(instance *privateaiv4.PrivateAi) string {
+	return gatewayDeploymentName(instance) + "-tls"
+}
+
 func gatewayConfigMapDetails(instance *privateaiv4.PrivateAi) (name, mountPath, key string) {
 	if instance.Spec.Gateway == nil {
 		return "", "", ""
@@ -739,6 +758,15 @@ func gatewayConfigMapDetails(instance *privateaiv4.PrivateAi) (name, mountPath, 
 		key = "nginx.conf"
 	}
 	return name, mountPath, key
+}
+
+func gatewayTLSSecretDetails(instance *privateaiv4.PrivateAi) (name, mountPath string) {
+	if instance.Spec.Gateway == nil {
+		return "", ""
+	}
+	name = strings.TrimSpace(instance.Spec.Gateway.TLSSecretName)
+	mountPath = strings.TrimSpace(instance.Spec.Gateway.TLSMountLocation)
+	return name, mountPath
 }
 
 func isGatewayTypeNginx(instance *privateaiv4.PrivateAi) bool {

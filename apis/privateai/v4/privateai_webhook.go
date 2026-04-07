@@ -41,6 +41,7 @@ package v4
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -146,6 +147,11 @@ func (d *PrivateAi) Default(ctx context.Context, obj *PrivateAi) error {
 		if privateai.Spec.Gateway.ConfigMap.MountLocation == "" && strings.EqualFold(privateai.Spec.Gateway.Type, "nginx") {
 			privateai.Spec.Gateway.ConfigMap.MountLocation = "/etc/nginx/nginx.conf"
 		}
+		if strings.TrimSpace(privateai.Spec.Gateway.TLSSecretName) != "" &&
+			strings.TrimSpace(privateai.Spec.Gateway.TLSMountLocation) == "" &&
+			strings.EqualFold(privateai.Spec.Gateway.Type, "nginx") {
+			privateai.Spec.Gateway.TLSMountLocation = "/etc/nginx/tls"
+		}
 	}
 
 	return nil
@@ -184,6 +190,17 @@ func (v *PrivateAi) ValidateCreate(ctx context.Context, obj *PrivateAi) (admissi
 		if strings.TrimSpace(privateai.Spec.Gateway.ConfigMap.MountLocation) == "" {
 			return nil, fmt.Errorf("gateway.configMap.mountLocation must be set when gateway is configured")
 		}
+		if strings.TrimSpace(privateai.Spec.Gateway.TLSSecretName) != "" {
+			if !strings.EqualFold(gwType, "nginx") {
+				return nil, fmt.Errorf("gateway.tlsSecretName is currently supported only for gateway.type=nginx")
+			}
+			if strings.TrimSpace(privateai.Spec.Gateway.TLSMountLocation) == "" {
+				return nil, fmt.Errorf("gateway.tlsMountLocation must be set when gateway.tlsSecretName is configured")
+			}
+			if !filepath.IsAbs(strings.TrimSpace(privateai.Spec.Gateway.TLSMountLocation)) {
+				return nil, fmt.Errorf("gateway.tlsMountLocation must be an absolute path")
+			}
+		}
 	}
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -215,6 +232,17 @@ func (v *PrivateAi) ValidateUpdate(ctx context.Context, oldObj, newObj *PrivateA
 		}
 		if strings.TrimSpace(privateai.Spec.Gateway.ConfigMap.MountLocation) == "" {
 			return nil, fmt.Errorf("gateway.configMap.mountLocation must be set when gateway is configured")
+		}
+		if strings.TrimSpace(privateai.Spec.Gateway.TLSSecretName) != "" {
+			if !strings.EqualFold(gwType, "nginx") {
+				return nil, fmt.Errorf("gateway.tlsSecretName is currently supported only for gateway.type=nginx")
+			}
+			if strings.TrimSpace(privateai.Spec.Gateway.TLSMountLocation) == "" {
+				return nil, fmt.Errorf("gateway.tlsMountLocation must be set when gateway.tlsSecretName is configured")
+			}
+			if !filepath.IsAbs(strings.TrimSpace(privateai.Spec.Gateway.TLSMountLocation)) {
+				return nil, fmt.Errorf("gateway.tlsMountLocation must be an absolute path")
+			}
 		}
 	}
 

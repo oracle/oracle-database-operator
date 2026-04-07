@@ -13054,6 +13054,18 @@ spec:
                 type: array
               gateway:
                 properties:
+                  configFileKey:
+                    type: string
+                  configMap:
+                    properties:
+                      mountLocation:
+                        type: string
+                      name:
+                        type: string
+                    type: object
+                  containerPort:
+                    format: int32
+                    type: integer
                   envVars:
                     items:
                       properties:
@@ -13140,6 +13152,11 @@ spec:
                           x-kubernetes-int-or-string: true
                         type: object
                     type: object
+                  type:
+                    enum:
+                    - nginx
+                    - litellm
+                    type: string
                 type: object
               isDebug:
                 type: boolean
@@ -13406,6 +13423,10 @@ spec:
                 x-kubernetes-list-type: map
               gateway:
                 properties:
+                  configMapName:
+                    type: string
+                  configMapVersion:
+                    type: string
                   enabled:
                     type: boolean
                   externalEndpoint:
@@ -13417,6 +13438,8 @@ spec:
                   readyReplicas:
                     format: int32
                     type: integer
+                  type:
+                    type: string
                 type: object
               loadBalancerIP:
                 type: string
@@ -20042,7 +20065,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: controller:latest
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-mltp1
         imagePullPolicy: Always
         name: manager
         ports:
