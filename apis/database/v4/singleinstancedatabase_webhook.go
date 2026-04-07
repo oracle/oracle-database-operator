@@ -556,6 +556,10 @@ func validateSIDBRestoreSpec(sidb *SingleInstanceDatabase, mode string) field.Er
 		if ref := sidb.Spec.Restore.ObjectStore.PrivateKey; ref == nil || strings.TrimSpace(ref.SecretName) == "" || strings.TrimSpace(ref.Key) == "" {
 			allErrs = append(allErrs, field.Required(restorePath.Child("objectStore").Child("privateKey"), "secretName and key are required"))
 		}
+		if ref := sidb.Spec.Restore.ObjectStore.OpcInstallerZip; (ref == nil || strings.TrimSpace(ref.ConfigMapName) == "" || strings.TrimSpace(ref.Key) == "") &&
+			!hasSIDBEnvVar(sidb.Spec.EnvVars, "OPC_INSTALL_ZIP") {
+			allErrs = append(allErrs, field.Required(restorePath.Child("objectStore").Child("opcInstallerZip"), "configMapName and key are required unless OPC_INSTALL_ZIP env var is provided"))
+		}
 		if sidb.Spec.Restore.ObjectStore.BackupIdentity == nil || strings.TrimSpace(sidb.Spec.Restore.ObjectStore.BackupIdentity.DBID) == "" {
 			allErrs = append(allErrs, field.Required(restorePath.Child("objectStore").Child("backupIdentity").Child("dbid"), "dbid is required"))
 		}

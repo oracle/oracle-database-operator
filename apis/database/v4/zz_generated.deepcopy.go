@@ -5496,6 +5496,11 @@ func (in *SingleInstanceDatabaseRestoreObjectStoreSpec) DeepCopyInto(out *Single
 		*out = new(SingleInstanceDatabaseConfigMapKeyRef)
 		**out = **in
 	}
+	if in.OpcInstallerZip != nil {
+		in, out := &in.OpcInstallerZip, &out.OpcInstallerZip
+		*out = new(SingleInstanceDatabaseConfigMapKeyRef)
+		**out = **in
+	}
 	if in.BackupIdentity != nil {
 		in, out := &in.BackupIdentity, &out.BackupIdentity
 		*out = new(SingleInstanceDatabaseBackupIdentity)

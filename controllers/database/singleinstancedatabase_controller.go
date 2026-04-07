@@ -108,6 +108,7 @@ const sidbInitParamUnitBytes = int64(1024 * 1024)
 const (
 	restoreOCIConfigMountDir       = "/opt/oracle/oci/config"
 	restoreOCIPrivateKeyMountDir   = "/opt/oracle/oci/keys"
+	restoreOPCInstallerMountDir    = "/opt/oracle/oci/opc"
 	restoreSourceWalletMountDir    = "/opt/oracle/source-wallet"
 	restoreSourceWalletPwdMountDir = "/run/secrets/source-wallet-pwd"
 	restoreBackupModuleMountDir    = "/opt/oracle/oci/installer"
@@ -1553,6 +1554,11 @@ func ValidateRestoreSpecRefs(r *SingleInstanceDatabaseReconciler, m *dbapi.Singl
 		if err := validateRestoreConfigMapRefExists(r, ctx, m.Namespace, restore.ObjectStore.BackupModuleConf); err != nil {
 			return fmt.Errorf("spec.restore.objectStore.backupModuleConfig: %w", err)
 		}
+		if !hasSIDBEnvVarValue(m.Spec.EnvVars, "OPC_INSTALL_ZIP") {
+			if err := validateRestoreConfigMapRefExists(r, ctx, m.Namespace, restore.ObjectStore.OpcInstallerZip); err != nil {
+				return fmt.Errorf("spec.restore.objectStore.opcInstallerZip: %w", err)
+			}
+		}
 		if restore.ObjectStore.EncryptedBackup != nil && restore.ObjectStore.EncryptedBackup.Enabled {
 			if err := validateRestoreSecretRefExists(r, ctx, m.Namespace, restore.ObjectStore.EncryptedBackup.DecryptPasswordSecret); err != nil {
 				return fmt.Errorf("spec.restore.objectStore.encryptedBackup.decryptPasswordSecret: %w", err)
@@ -1631,6 +1637,22 @@ func validateRestoreConfigMapRefExists(r *SingleInstanceDatabaseReconciler, ctx 
 		return fmt.Errorf("key %q not found in configMap %q", configMapKey, configMapName)
 	}
 	return nil
+}
+
+func hasSIDBEnvVarValue(envs []corev1.EnvVar, name string) bool {
+	target := strings.TrimSpace(name)
+	if target == "" {
+		return false
+	}
+	for i := range envs {
+		if strings.TrimSpace(envs[i].Name) != target {
+			continue
+		}
+		if strings.TrimSpace(envs[i].Value) != "" || envs[i].ValueFrom != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // #############################################################################
@@ -1893,6 +1915,17 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						if ref := restore.ObjectStore.BackupModuleConf; ref != nil && strings.TrimSpace(ref.ConfigMapName) != "" && strings.TrimSpace(ref.Key) != "" {
 							volumes = append(volumes, corev1.Volume{
 								Name: "restore-backup-module-vol",
+								VolumeSource: corev1.VolumeSource{
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{Name: strings.TrimSpace(ref.ConfigMapName)},
+										Items:                []corev1.KeyToPath{{Key: strings.TrimSpace(ref.Key), Path: strings.TrimSpace(ref.Key)}},
+									},
+								},
+							})
+						}
+						if ref := restore.ObjectStore.OpcInstallerZip; ref != nil && strings.TrimSpace(ref.ConfigMapName) != "" && strings.TrimSpace(ref.Key) != "" {
+							volumes = append(volumes, corev1.Volume{
+								Name: "restore-opc-installer-vol",
 								VolumeSource: corev1.VolumeSource{
 									ConfigMap: &corev1.ConfigMapVolumeSource{
 										LocalObjectReference: corev1.LocalObjectReference{Name: strings.TrimSpace(ref.ConfigMapName)},
@@ -2207,6 +2240,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								}
 								if ref := restore.ObjectStore.BackupModuleConf; ref != nil && strings.TrimSpace(ref.ConfigMapName) != "" && strings.TrimSpace(ref.Key) != "" {
 									mounts = append(mounts, corev1.VolumeMount{Name: "restore-backup-module-vol", MountPath: restoreBackupModuleMountDir, ReadOnly: true})
+								}
+								if ref := restore.ObjectStore.OpcInstallerZip; ref != nil && strings.TrimSpace(ref.ConfigMapName) != "" && strings.TrimSpace(ref.Key) != "" {
+									mounts = append(mounts, corev1.VolumeMount{Name: "restore-opc-installer-vol", MountPath: restoreOPCInstallerMountDir, ReadOnly: true})
 								}
 								if enc := restore.ObjectStore.EncryptedBackup; enc != nil && enc.Enabled && enc.DecryptPasswordSecret != nil &&
 									strings.TrimSpace(enc.DecryptPasswordSecret.SecretName) != "" && strings.TrimSpace(enc.DecryptPasswordSecret.Key) != "" {
@@ -5137,6 +5173,110 @@ func GetTotalDatabasePods(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx 
 	return totalPods, err
 }
 
+func getTnsFilePathBySID(sid string) string {
+	return fmt.Sprintf("/opt/oracle/oradata/dbconfig/%s/tnsnames.ora", strings.ToUpper(strings.TrimSpace(sid)))
+}
+
+func getProtocolForAlias(useTCPS bool) string {
+	if useTCPS {
+		return "TCPS"
+	}
+	return "TCP"
+}
+
+func buildLegacyTnsAliasEntry(alias, host string, port int, serviceName string, useTCPS bool, sslDN string) string {
+	protocol := getProtocolForAlias(useTCPS)
+	entry := fmt.Sprintf(`
+%s =
+(DESCRIPTION =
+  (ADDRESS = (PROTOCOL = %s)(HOST = %s)(PORT = %d))
+  (CONNECT_DATA =
+    (SERVER = DEDICATED)
+    (SERVICE_NAME = %s)
+  )`, strings.ToUpper(strings.TrimSpace(alias)), protocol, strings.TrimSpace(host), port, strings.ToUpper(strings.TrimSpace(serviceName)))
+
+	if useTCPS && strings.TrimSpace(sslDN) != "" {
+		entry += fmt.Sprintf(`
+  (SECURITY =
+    (SSL_SERVER_DN_MATCH = YES)
+    (SSL_SERVER_CERT_DN = %s)
+  )`, strings.TrimSpace(sslDN))
+	}
+
+	entry += `
+)
+`
+	return entry
+}
+
+func upsertTnsAliasInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, tnsFile, alias, host string, port int, serviceName string, useTCPS bool, sslDN string) error {
+	alias = strings.ToUpper(strings.TrimSpace(alias))
+	host = strings.TrimSpace(host)
+	serviceName = strings.ToUpper(strings.TrimSpace(serviceName))
+	sslDN = strings.TrimSpace(sslDN)
+	if alias == "" || host == "" || serviceName == "" {
+		return fmt.Errorf("alias, host and serviceName are required for tns upsert")
+	}
+	if port <= 0 {
+		return fmt.Errorf("port must be > 0 for tns upsert")
+	}
+
+	args := fmt.Sprintf("--file %q --alias %q --upsert --host %q --port %d --service %q --strict-dedupe",
+		tnsFile, alias, host, port, serviceName)
+	if useTCPS && sslDN != "" {
+		args += fmt.Sprintf(" --ssl-server-dn %q", sslDN)
+	}
+
+	legacyEntry := buildLegacyTnsAliasEntry(alias, host, port, serviceName, useTCPS, sslDN)
+	legacyCmd := fmt.Sprintf("if ! grep -Eq '^[[:space:]]*%s[[:space:]]*=' %q; then echo -e %q | cat >> %q; fi",
+		alias, tnsFile, legacyEntry, tnsFile)
+
+	cmd := fmt.Sprintf("if [ -x \"$ORACLE_BASE/manageTnsAliases.sh\" ]; then \"$ORACLE_BASE/manageTnsAliases.sh\" %s; else %s; fi", args, legacyCmd)
+
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		return fmt.Errorf("failed to upsert TNS alias %s in %s: %w", alias, tnsFile, err)
+	}
+	r.Log.Info("TNS alias upsert output", "alias", alias, "tnsFile", tnsFile, "output", out)
+	return nil
+}
+
+func resolvePeerAliasSettings(owner *dbapi.SingleInstanceDatabase, defaultAlias, defaultHost string, defaultPort int, defaultService string) (alias, host string, port int, serviceName string, useTCPS bool, sslDN string) {
+	alias = strings.ToUpper(strings.TrimSpace(defaultAlias))
+	host = strings.TrimSpace(defaultHost)
+	port = defaultPort
+	serviceName = strings.ToUpper(strings.TrimSpace(defaultService))
+	useTCPS = false
+	sslDN = ""
+
+	if !getTcpsEnabled(owner) {
+		return
+	}
+
+	if peer := getTcpsPeerConfig(owner); peer != nil && peer.Enabled {
+		useTCPS = true
+		if v := strings.TrimSpace(peer.Alias); v != "" {
+			alias = strings.ToUpper(v)
+		}
+		if v := strings.TrimSpace(peer.Host); v != "" {
+			host = v
+		}
+		if peer.Port > 0 {
+			port = peer.Port
+		} else {
+			port = 2484
+		}
+		if v := strings.TrimSpace(peer.Service); v != "" {
+			serviceName = strings.ToUpper(v)
+		}
+		if v := strings.TrimSpace(peer.SSLServerDN); v != "" {
+			sslDN = v
+		}
+	}
+
+	return
+}
+
 // #############################################################################
 //
 //	Set tns names for primary database for dataguard configuraion
@@ -5144,32 +5284,9 @@ func GetTotalDatabasePods(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx 
 // #############################################################################
 func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
 	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
-
-	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "",
-		ctx, req, false, "bash", "-c", fmt.Sprintf("cat /opt/oracle/oradata/dbconfig/%s/tnsnames.ora", strings.ToUpper(p.Spec.Sid)))
-	if err != nil {
-		return fmt.Errorf("error obtaining the contents of tnsnames.ora in the primary database %v", p.Name)
-	}
-	r.Log.Info("tnsnames.ora content is as follows:")
-	r.Log.Info(out)
-
-	if strings.Contains(out, "(SERVICE_NAME = "+strings.ToUpper(s.Spec.Sid)+")") {
-		r.Log.Info("TNS ENTRY OF " + s.Spec.Sid + " ALREADY EXISTS ON PRIMARY Database ")
-	} else {
-		tnsnamesEntry := dbcommons.StandbyTnsnamesEntry
-		tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "##STANDBYDATABASE_SID##", s.Spec.Sid)
-		tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "##STANDBYDATABASE_SERVICE_EXPOSED##", s.Name)
-
-		out, err = dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | cat >> /opt/oracle/oradata/dbconfig/%s/tnsnames.ora ", tnsnamesEntry, strings.ToUpper(p.Spec.Sid)))
-		if err != nil {
-			return fmt.Errorf("unable to set tnsnames.ora in the primary database %v", p.Name)
-		}
-		r.Log.Info("Modifying tnsnames.ora Output")
-		r.Log.Info(out)
-
-	}
-	return nil
+	tnsFile := getTnsFilePathBySID(p.Spec.Sid)
+	alias, host, port, serviceName, useTCPS, sslDN := resolvePeerAliasSettings(p, s.Spec.Sid, s.Name, 1521, s.Spec.Sid)
+	return upsertTnsAliasInPod(r, primaryReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, useTCPS, sslDN)
 }
 
 // #############################################################################
@@ -5332,35 +5449,15 @@ func GetAllPdbInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.
 // #############################################################################
 func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request, pdbList []string) error {
+	tnsFile := getTnsFilePathBySID(d.Spec.Sid)
+	localHost := "0.0.0.0"
 	for _, pdb := range pdbList {
+		pdb = strings.TrimSpace(pdb)
 		if pdb == "" {
 			continue
 		}
-
-		// Get the Tnsnames.ora entries
-		out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "",
-			ctx, req, false, "bash", "-c", fmt.Sprintf("cat /opt/oracle/oradata/dbconfig/%s/tnsnames.ora", strings.ToUpper(d.Spec.Sid)))
-		if err != nil {
+		if err := upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, pdb, localHost, 1521, pdb, false, ""); err != nil {
 			return err
-		}
-		r.Log.Info("tnsnames.ora Output")
-		r.Log.Info(out)
-
-		if strings.Contains(out, "(SERVICE_NAME = "+strings.ToUpper(pdb)+")") {
-			r.Log.Info("TNS ENTRY OF " + strings.ToUpper(pdb) + " ALREADY EXISTS ON SIDB ")
-		} else {
-			tnsnamesEntry := dbcommons.PDBTnsnamesEntry
-			tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "##PDB_NAME##", strings.ToUpper(pdb))
-
-			// Add Tnsnames.ora For pdb on Standby Database
-			out, err = dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-				fmt.Sprintf("echo -e  \"%s\"  | cat >> /opt/oracle/oradata/dbconfig/%s/tnsnames.ora ", tnsnamesEntry, strings.ToUpper(d.Spec.Sid)))
-			if err != nil {
-				return err
-			}
-			r.Log.Info("Modifying tnsnames.ora for Pdb Output")
-			r.Log.Info(out)
-
 		}
 	}
 
@@ -5374,16 +5471,15 @@ func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *d
 // #############################################################################
 func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
-
-	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | cat >> /opt/oracle/oradata/dbconfig/%s/tnsnames.ora ", dbcommons.PrimaryTnsnamesEntry, strings.ToUpper(s.Spec.Sid)))
-	if err != nil {
-		return err
+	tnsFile := getTnsFilePathBySID(s.Spec.Sid)
+	defaultAlias := GetPrimaryDatabaseSid(s, nil)
+	defaultHost := GetPrimaryDatabaseHost(s, nil)
+	defaultPort := GetPrimaryDatabasePort(s)
+	if defaultPort == 0 {
+		defaultPort = 1521
 	}
-	r.Log.Info("Modifying tnsnames.ora Output")
-	r.Log.Info(out)
-
-	return nil
+	alias, host, port, serviceName, useTCPS, sslDN := resolvePeerAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
+	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, useTCPS, sslDN)
 }
 
 // #############################################################################
@@ -5545,21 +5641,15 @@ func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPr
 }
 func SetupExternalPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
-
-	tnsnamesEntry := dbcommons.PrimaryTnsnamesEntrySharding
-	tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "${PRIMARY_SID}", GetPrimaryDatabaseSid(s, nil))
-	tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "${PRIMARY_IP}", GetPrimaryDatabaseHost(s, nil))
-	tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "${PRIMARY_DB_PORT:-1521}", strconv.Itoa(GetPrimaryDatabasePort(s)))
-
-	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | cat >> /opt/oracle/oradata/dbconfig/%s/tnsnames.ora ", tnsnamesEntry, strings.ToUpper(s.Spec.Sid)))
-	if err != nil {
-		return err
+	tnsFile := getTnsFilePathBySID(s.Spec.Sid)
+	defaultAlias := GetPrimaryDatabaseSid(s, nil)
+	defaultHost := GetPrimaryDatabaseHost(s, nil)
+	defaultPort := GetPrimaryDatabasePort(s)
+	if defaultPort == 0 {
+		defaultPort = 1521
 	}
-	r.Log.Info("Modifying tnsnames.ora for external primary Output")
-	r.Log.Info(out)
-
-	return nil
+	alias, host, port, serviceName, useTCPS, sslDN := resolvePeerAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
+	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, useTCPS, sslDN)
 }
 
 func SetupListenerForDGOnDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.SingleInstanceDatabase,
@@ -6238,6 +6328,12 @@ func buildSIDBRestoreScriptEnvVars(m *dbapi.SingleInstanceDatabase) []corev1.Env
 			key := strings.TrimSpace(ref.Key)
 			if key != "" {
 				envs = append(envs, corev1.EnvVar{Name: "BACKUP_CONFIG_FILE", Value: filepath.Join(restoreBackupModuleMountDir, key)})
+			}
+		}
+		if ref := restore.ObjectStore.OpcInstallerZip; ref != nil {
+			key := strings.TrimSpace(ref.Key)
+			if key != "" {
+				envs = append(envs, corev1.EnvVar{Name: "OPC_INSTALL_ZIP", Value: filepath.Join(restoreOPCInstallerMountDir, key)})
 			}
 		}
 		if id := restore.ObjectStore.BackupIdentity; id != nil {

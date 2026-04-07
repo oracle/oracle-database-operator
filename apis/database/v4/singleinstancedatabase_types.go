@@ -154,6 +154,7 @@ type SingleInstanceDatabaseRestoreObjectStoreSpec struct {
 	SourceDBWallet   *SingleInstanceDatabaseSecretKeyRef    `json:"sourceDbWallet,omitempty"`
 	SourceDBWalletPw *SingleInstanceDatabaseSecretKeyRef    `json:"sourceDbWalletPassword,omitempty"`
 	BackupModuleConf *SingleInstanceDatabaseConfigMapKeyRef `json:"backupModuleConfig,omitempty"`
+	OpcInstallerZip  *SingleInstanceDatabaseConfigMapKeyRef `json:"opcInstallerZip,omitempty"`
 	BackupIdentity   *SingleInstanceDatabaseBackupIdentity  `json:"backupIdentity,omitempty"`
 	EncryptedBackup  *SingleInstanceDatabaseEncryptedBackup `json:"encryptedBackup,omitempty"`
 }

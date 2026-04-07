@@ -146,13 +146,49 @@ func TestSIDBWebhookRestoreObjectStoreRequiresDBID(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.Restore = &SingleInstanceDatabaseRestoreSpec{
 		ObjectStore: &SingleInstanceDatabaseRestoreObjectStoreSpec{
-			OCIConfig:  &SingleInstanceDatabaseConfigMapKeyRef{ConfigMapName: "ociconfig", Key: "oci.env"},
-			PrivateKey: &SingleInstanceDatabaseSecretKeyRef{SecretName: "sshkeysecret", Key: "oci_api_key.pem"},
+			OCIConfig:       &SingleInstanceDatabaseConfigMapKeyRef{ConfigMapName: "ociconfig", Key: "oci.env"},
+			PrivateKey:      &SingleInstanceDatabaseSecretKeyRef{SecretName: "sshkeysecret", Key: "oci_api_key.pem"},
+			OpcInstallerZip: &SingleInstanceDatabaseConfigMapKeyRef{ConfigMapName: "ociinstaller", Key: "opc_installer.zip"},
 		},
 	}
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
 		t.Fatalf("expected validation error when restore.objectStore.backupIdentity.dbid is missing")
+	}
+}
+
+func TestSIDBWebhookRestoreObjectStoreRequiresOpcInstallerZipOrEnv(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Restore = &SingleInstanceDatabaseRestoreSpec{
+		ObjectStore: &SingleInstanceDatabaseRestoreObjectStoreSpec{
+			OCIConfig:  &SingleInstanceDatabaseConfigMapKeyRef{ConfigMapName: "ociconfig", Key: "oci.env"},
+			PrivateKey: &SingleInstanceDatabaseSecretKeyRef{SecretName: "sshkeysecret", Key: "oci_api_key.pem"},
+			BackupIdentity: &SingleInstanceDatabaseBackupIdentity{
+				DBID: "1234567890",
+			},
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when restore.objectStore.opcInstallerZip is missing")
+	}
+}
+
+func TestSIDBWebhookRestoreObjectStoreAllowsOpcInstallerZipEnvOverride(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Restore = &SingleInstanceDatabaseRestoreSpec{
+		ObjectStore: &SingleInstanceDatabaseRestoreObjectStoreSpec{
+			OCIConfig:  &SingleInstanceDatabaseConfigMapKeyRef{ConfigMapName: "ociconfig", Key: "oci.env"},
+			PrivateKey: &SingleInstanceDatabaseSecretKeyRef{SecretName: "sshkeysecret", Key: "oci_api_key.pem"},
+			BackupIdentity: &SingleInstanceDatabaseBackupIdentity{
+				DBID: "1234567890",
+			},
+		},
+	}
+	sidb.Spec.EnvVars = []corev1.EnvVar{{Name: "OPC_INSTALL_ZIP", Value: "/opt/oracle/oci/opc/oci_installer.zip"}}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors with OPC_INSTALL_ZIP env override, got: %v", errs)
 	}
 }
 
