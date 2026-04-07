@@ -397,6 +397,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 
 	mode := strings.ToLower(strings.TrimSpace(sidb.Spec.CreateAs))
 	allErrs = append(allErrs, validateSIDBRestoreSpec(sidb, mode)...)
+	allErrs = append(allErrs, validateSIDBTrueCacheByMode(sidb, mode)...)
 	if mode == "clone" && resolvePrimaryRefForCloneOrStandby(sidb) == "" {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primaryDatabaseRef"), sidb.Spec.PrimaryDatabaseRef, "primary reference is required for clone"))
 	}
@@ -453,10 +454,6 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		if valMsg != "" {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("replicas"), sidb.Spec.Replicas, valMsg))
 		}
-	}
-
-	if sidb.Spec.CreateAs != "truecache" && len(sidb.Spec.TrueCacheServices) > 0 {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("trueCacheServices"), sidb.Spec.TrueCacheServices, "only supported when createAs=truecache"))
 	}
 
 	tcpsEnabled := sidbTcpsEnabled(sidb)
@@ -611,6 +608,61 @@ func validateSingleInstanceDatabaseResourceFields(sidb *SingleInstanceDatabase) 
 		}
 	}
 
+	return allErrs
+}
+
+func validateSIDBTrueCacheByMode(sidb *SingleInstanceDatabase, mode string) field.ErrorList {
+	var allErrs field.ErrorList
+	tcPath := field.NewPath("spec").Child("trueCache")
+	legacyServicesPath := field.NewPath("spec").Child("trueCacheServices")
+	tc := sidb.Spec.TrueCache
+	hasLegacyServices := len(sidb.Spec.TrueCacheServices) > 0
+
+	isPrimaryMode := mode == "" || mode == "primary"
+	if isPrimaryMode {
+		if hasLegacyServices {
+			allErrs = append(allErrs, field.Forbidden(legacyServicesPath, "only supported when createAs=truecache"))
+		}
+		if tc == nil {
+			return allErrs
+		}
+		if strings.TrimSpace(tc.BlobConfigMapRef) != "" {
+			allErrs = append(allErrs, field.Forbidden(tcPath.Child("blobConfigMapRef"), "supported only when createAs=truecache"))
+		}
+		if strings.TrimSpace(tc.BlobConfigMapKey) != "" {
+			allErrs = append(allErrs, field.Forbidden(tcPath.Child("blobConfigMapKey"), "supported only when createAs=truecache"))
+		}
+		if strings.TrimSpace(tc.BlobMountPath) != "" {
+			allErrs = append(allErrs, field.Forbidden(tcPath.Child("blobMountPath"), "supported only when createAs=truecache"))
+		}
+		if len(tc.TrueCacheServices) > 0 {
+			allErrs = append(allErrs, field.Forbidden(tcPath.Child("trueCacheServices"), "supported only when createAs=truecache"))
+		}
+		if strings.TrimSpace(tc.GeneratePath) != "" && !tc.GenerateEnabled {
+			allErrs = append(allErrs, field.Invalid(tcPath.Child("generatePath"), tc.GeneratePath, "requires generateEnabled=true"))
+		}
+		return allErrs
+	}
+
+	if mode == "truecache" {
+		if tc == nil {
+			return allErrs
+		}
+		if tc.GenerateEnabled {
+			allErrs = append(allErrs, field.Forbidden(tcPath.Child("generateEnabled"), "supported only when createAs=primary"))
+		}
+		if strings.TrimSpace(tc.GeneratePath) != "" {
+			allErrs = append(allErrs, field.Forbidden(tcPath.Child("generatePath"), "supported only when createAs=primary"))
+		}
+		return allErrs
+	}
+
+	if hasLegacyServices {
+		allErrs = append(allErrs, field.Forbidden(legacyServicesPath, "only supported when createAs=truecache"))
+	}
+	if tc != nil {
+		allErrs = append(allErrs, field.Forbidden(tcPath, "supported only when createAs=primary (generateEnabled/generatePath) or createAs=truecache"))
+	}
 	return allErrs
 }
 

@@ -521,7 +521,7 @@ func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.
 	if instance.Spec.Gateway.ImagePullPolicy != "" {
 		imagePullPolicy = instance.Spec.Gateway.ImagePullPolicy
 	}
-	port := gatewayServicePort(instance)
+	port := gatewayContainerPort(instance)
 
 	gatewayContainer := corev1.Container{
 		Name:            gatewayDeploymentName(instance),
@@ -534,6 +534,17 @@ func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.
 		Env:          buildGatewayEnvVars(instance),
 		VolumeMounts: []corev1.VolumeMount{{Name: privateAiLogVolumeName(instance), MountPath: privateAiLogMountPath(instance)}},
 	}
+	if isGatewayTypeNginx(instance) {
+		gatewayContainer.Command = []string{"nginx", "-g", "daemon off;"}
+	}
+	if cfgName, cfgMountPath, cfgKey := gatewayConfigMapDetails(instance); cfgName != "" && cfgMountPath != "" && cfgKey != "" {
+		gatewayContainer.VolumeMounts = append(gatewayContainer.VolumeMounts, corev1.VolumeMount{
+			Name:      gatewayConfigVolumeName(instance),
+			MountPath: cfgMountPath,
+			SubPath:   cfgKey,
+			ReadOnly:  true,
+		})
+	}
 	if instance.Spec.Gateway.Resources != nil {
 		gatewayContainer.Resources = *instance.Spec.Gateway.Resources
 	}
@@ -541,6 +552,22 @@ func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.
 	containers := []corev1.Container{gatewayContainer}
 	if sidecar := buildLogSidecarForPrivateAI(instance, gatewayDeploymentName(instance)+"-log-sidecar"); sidecar != nil {
 		containers = append(containers, *sidecar)
+	}
+
+	volumes := []corev1.Volume{{
+		Name:         privateAiLogVolumeName(instance),
+		VolumeSource: corev1.VolumeSource{EmptyDir: privateAiLogEmptyDir(instance)},
+	}}
+	if cfgName, _, cfgKey := gatewayConfigMapDetails(instance); cfgName != "" && cfgKey != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: gatewayConfigVolumeName(instance),
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: cfgName},
+					Items:                []corev1.KeyToPath{{Key: cfgKey, Path: cfgKey}},
+				},
+			},
+		})
 	}
 
 	return &appsv1.Deployment{
@@ -561,10 +588,7 @@ func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.
 				},
 				Spec: corev1.PodSpec{
 					Containers: containers,
-					Volumes: []corev1.Volume{{
-						Name:         privateAiLogVolumeName(instance),
-						VolumeSource: corev1.VolumeSource{EmptyDir: privateAiLogEmptyDir(instance)},
-					}},
+					Volumes:    volumes,
 				},
 			},
 		},
@@ -585,7 +609,7 @@ func BuildGatewayServiceDefForPrivateAI(instance *privateaiv4.PrivateAi, service
 		svcPort = gatewayServicePort(instance)
 	}
 	if targetPort <= 0 {
-		targetPort = gatewayServicePort(instance)
+		targetPort = gatewayContainerPort(instance)
 	}
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -684,13 +708,44 @@ func gatewayServiceSpec(instance *privateaiv4.PrivateAi, serviceKind string) pri
 
 func gatewayServicePort(instance *privateaiv4.PrivateAi) int32 {
 	spec := gatewayServiceSpec(instance, "internal")
-	if spec.TargetPort > 0 {
-		return spec.TargetPort
-	}
 	if spec.Port > 0 {
 		return spec.Port
 	}
+	return gatewayContainerPort(instance)
+}
+
+func gatewayContainerPort(instance *privateaiv4.PrivateAi) int32 {
+	if instance.Spec.Gateway == nil {
+		return 8080
+	}
+	if instance.Spec.Gateway.ContainerPort > 0 {
+		return instance.Spec.Gateway.ContainerPort
+	}
 	return 8080
+}
+
+func gatewayConfigVolumeName(instance *privateaiv4.PrivateAi) string {
+	return gatewayDeploymentName(instance) + "-config"
+}
+
+func gatewayConfigMapDetails(instance *privateaiv4.PrivateAi) (name, mountPath, key string) {
+	if instance.Spec.Gateway == nil {
+		return "", "", ""
+	}
+	name = strings.TrimSpace(instance.Spec.Gateway.ConfigMap.Name)
+	mountPath = strings.TrimSpace(instance.Spec.Gateway.ConfigMap.MountLocation)
+	key = strings.TrimSpace(instance.Spec.Gateway.ConfigFileKey)
+	if key == "" {
+		key = "nginx.conf"
+	}
+	return name, mountPath, key
+}
+
+func isGatewayTypeNginx(instance *privateaiv4.PrivateAi) bool {
+	if instance.Spec.Gateway == nil || strings.TrimSpace(instance.Spec.Gateway.Type) == "" {
+		return true
+	}
+	return strings.EqualFold(instance.Spec.Gateway.Type, "nginx")
 }
 
 func privateAiLogVolumeName(instance *privateaiv4.PrivateAi) string {

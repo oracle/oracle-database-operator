@@ -40,9 +40,11 @@ package privateai
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -165,9 +167,11 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if aicommons.IsGatewayEnabled(privateAiInst) {
 		privateAiInst.Status.Mode = "gateway"
 		privateAiInst.Status.Gateway.Enabled = true
+		privateAiInst.Status.Gateway.Type = normalizedGatewayType(privateAiInst)
 	} else {
 		privateAiInst.Status.Mode = "direct"
 		privateAiInst.Status.Gateway.Enabled = false
+		privateAiInst.Status.Gateway.Type = ""
 	}
 	if privateAiInst.Spec.Logging != nil {
 		privateAiInst.Status.Logging.Enabled = privateAiInst.Spec.Logging.Enabled
@@ -376,6 +380,9 @@ func (r *PrivateAiReconciler) reconcileDependencies(ctx context.Context, req ctr
 		return resultNq, err
 	}
 	if gatewayEnabled {
+		if _, err := r.ensureGatewayConfigMap(ctx, req, privateAiInst); err != nil {
+			return resultNq, err
+		}
 		if err := r.deleteServiceIfExists(ctx, privateAiInst.Namespace, aicommons.GetSvcName(privateAiInst.Name, "external")); err != nil {
 			return resultNq, err
 		}
@@ -449,6 +456,8 @@ func (r *PrivateAiReconciler) reconcileWorkload(ctx context.Context, req ctrl.Re
 		privateAiInst.Status.Gateway.InternalService = ""
 		privateAiInst.Status.Gateway.ExternalService = ""
 		privateAiInst.Status.Gateway.ExternalEndpoint = ""
+		privateAiInst.Status.Gateway.ConfigMapName = ""
+		privateAiInst.Status.Gateway.ConfigMapVersion = ""
 	}
 	return requeueN, nil
 }
@@ -632,6 +641,152 @@ func (r *PrivateAiReconciler) ensureConfigMap(ctx context.Context, req ctrl.Requ
 	privateAiInst.Status.PaiConfigMap.ResourceVersion = latestVersion
 
 	return ctrl.Result{}, nil
+}
+
+func (r *PrivateAiReconciler) ensureGatewayConfigMap(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
+	if !aicommons.IsGatewayEnabled(privateAiInst) || privateAiInst.Spec.Gateway == nil {
+		return ctrl.Result{}, nil
+	}
+	cfg := privateAiInst.Spec.Gateway.ConfigMap
+	if strings.TrimSpace(cfg.Name) == "" {
+		return requeueN, fmt.Errorf("gateway is enabled but gateway.configMap.name is empty")
+	}
+
+	privateAiInst.Status.Gateway.ConfigMapName = cfg.Name
+	currentVersion := privateAiInst.Status.Gateway.ConfigMapVersion
+	latestVersion := aicommons.GetConfigMapResourceVersion(cfg.Name, privateAiInst, r.Client, r.Log)
+
+	if latestVersion == "" || latestVersion == "None" {
+		return ctrl.Result{}, nil
+	}
+	if currentVersion == "" {
+		privateAiInst.Status.Gateway.ConfigMapVersion = latestVersion
+		return ctrl.Result{}, nil
+	}
+	if currentVersion == latestVersion {
+		return ctrl.Result{}, nil
+	}
+
+	privateAiInst.Status.Status = privateaiv4.StatusUpdating
+	r.Log.Info("Gateway ConfigMap change detected", "configMap", cfg.Name)
+
+	gatewayDeployName := privateAiInst.Name + "-gateway"
+	deploy, err := r.getDeployment(ctx, gatewayDeployName, privateAiInst.Namespace)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			privateAiInst.Status.Gateway.ConfigMapVersion = latestVersion
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	reloadErr := error(nil)
+	if normalizedGatewayType(privateAiInst) == "nginx" {
+		reloadErr = r.reloadNginxGateway(ctx, req, privateAiInst, deploy)
+		if reloadErr != nil {
+			r.Log.Error(reloadErr, "Nginx reload failed; falling back to gateway rollout restart", "deployment", gatewayDeployName)
+		}
+	}
+
+	if reloadErr != nil || normalizedGatewayType(privateAiInst) != "nginx" {
+		if err := aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, deploy, ctx, req, r.Log); err != nil {
+			privateAiInst.Status.Status = privateaiv4.StatusError
+			return ctrl.Result{}, err
+		}
+	}
+
+	privateAiInst.Status.Gateway.ConfigMapVersion = latestVersion
+	return ctrl.Result{}, nil
+}
+
+func (r *PrivateAiReconciler) reloadNginxGateway(
+	ctx context.Context,
+	req ctrl.Request,
+	privateAiInst *privateaiv4.PrivateAi,
+	deploy *appsv1.Deployment,
+) error {
+	if deploy == nil || deploy.Spec.Selector == nil || len(deploy.Spec.Selector.MatchLabels) == 0 {
+		return fmt.Errorf("gateway deployment selector is not available for nginx reload")
+	}
+
+	configPath := "/etc/nginx/nginx.conf"
+	if privateAiInst.Spec.Gateway != nil && strings.TrimSpace(privateAiInst.Spec.Gateway.ConfigMap.MountLocation) != "" {
+		configPath = strings.TrimSpace(privateAiInst.Spec.Gateway.ConfigMap.MountLocation)
+	}
+
+	podList := &corev1.PodList{}
+	if err := r.Client.List(
+		ctx,
+		podList,
+		client.InNamespace(privateAiInst.Namespace),
+		client.MatchingLabels(deploy.Spec.Selector.MatchLabels),
+	); err != nil {
+		return err
+	}
+	if len(podList.Items) == 0 {
+		return fmt.Errorf("no gateway pods found for deployment %s", deploy.Name)
+	}
+
+	var reloadCount int
+	var failures []string
+	containerName := deploy.Name
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		if pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning {
+			continue
+		}
+
+		if _, err := aicommons.ExecCommand(
+			r,
+			r.Config,
+			pod.Name,
+			pod.Namespace,
+			containerName,
+			ctx,
+			req,
+			true,
+			[]string{"nginx", "-t", "-c", configPath},
+		); err != nil {
+			failures = append(failures, fmt.Sprintf("%s: config test failed: %v", pod.Name, err))
+			continue
+		}
+
+		if _, err := aicommons.ExecCommand(
+			r,
+			r.Config,
+			pod.Name,
+			pod.Namespace,
+			containerName,
+			ctx,
+			req,
+			true,
+			[]string{"nginx", "-s", "reload"},
+		); err != nil {
+			failures = append(failures, fmt.Sprintf("%s: reload failed: %v", pod.Name, err))
+			continue
+		}
+
+		reloadCount++
+	}
+
+	if reloadCount == 0 {
+		if len(failures) == 0 {
+			return fmt.Errorf("no running gateway pods available for nginx reload")
+		}
+		return errors.New(strings.Join(failures, "; "))
+	}
+
+	if len(failures) > 0 {
+		r.Log.Info("Nginx reload partially succeeded", "reloadedPods", reloadCount, "failures", strings.Join(failures, "; "))
+	}
+	return nil
+}
+
+func normalizedGatewayType(privateAiInst *privateaiv4.PrivateAi) string {
+	if privateAiInst == nil || privateAiInst.Spec.Gateway == nil || strings.TrimSpace(privateAiInst.Spec.Gateway.Type) == "" {
+		return "nginx"
+	}
+	return strings.ToLower(strings.TrimSpace(privateAiInst.Spec.Gateway.Type))
 }
 
 func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {

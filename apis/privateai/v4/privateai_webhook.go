@@ -42,6 +42,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -132,6 +133,21 @@ func (d *PrivateAi) Default(ctx context.Context, obj *PrivateAi) error {
 		}
 	}
 
+	if privateai.Spec.Gateway != nil {
+		if strings.TrimSpace(privateai.Spec.Gateway.Type) == "" {
+			privateai.Spec.Gateway.Type = "nginx"
+		}
+		if privateai.Spec.Gateway.ContainerPort == 0 {
+			privateai.Spec.Gateway.ContainerPort = 8080
+		}
+		if privateai.Spec.Gateway.ConfigFileKey == "" {
+			privateai.Spec.Gateway.ConfigFileKey = "nginx.conf"
+		}
+		if privateai.Spec.Gateway.ConfigMap.MountLocation == "" && strings.EqualFold(privateai.Spec.Gateway.Type, "nginx") {
+			privateai.Spec.Gateway.ConfigMap.MountLocation = "/etc/nginx/nginx.conf"
+		}
+	}
+
 	return nil
 }
 
@@ -154,6 +170,21 @@ func (v *PrivateAi) ValidateCreate(ctx context.Context, obj *PrivateAi) (admissi
 			return nil, fmt.Errorf("paiEnableAuthentication is true but paiSecret.name is empty")
 		}
 	}
+	if privateai.Spec.Gateway != nil {
+		gwType := strings.ToLower(strings.TrimSpace(privateai.Spec.Gateway.Type))
+		if gwType == "" {
+			gwType = "nginx"
+		}
+		if gwType != "nginx" && gwType != "litellm" {
+			return nil, fmt.Errorf("gateway.type must be one of nginx or litellm")
+		}
+		if strings.TrimSpace(privateai.Spec.Gateway.ConfigMap.Name) == "" {
+			return nil, fmt.Errorf("gateway.configMap.name must be set when gateway is configured")
+		}
+		if strings.TrimSpace(privateai.Spec.Gateway.ConfigMap.MountLocation) == "" {
+			return nil, fmt.Errorf("gateway.configMap.mountLocation must be set when gateway is configured")
+		}
+	}
 
 	// TODO(user): fill in your validation logic upon object creation.
 
@@ -169,6 +200,21 @@ func (v *PrivateAi) ValidateUpdate(ctx context.Context, oldObj, newObj *PrivateA
 	if pstatus {
 		if privateai.Spec.PaiSecret == nil || privateai.Spec.PaiSecret.Name == "" {
 			return nil, fmt.Errorf("paiEnableAuthentication=true requires paiSecret.name to be set")
+		}
+	}
+	if privateai.Spec.Gateway != nil {
+		gwType := strings.ToLower(strings.TrimSpace(privateai.Spec.Gateway.Type))
+		if gwType == "" {
+			gwType = "nginx"
+		}
+		if gwType != "nginx" && gwType != "litellm" {
+			return nil, fmt.Errorf("gateway.type must be one of nginx or litellm")
+		}
+		if strings.TrimSpace(privateai.Spec.Gateway.ConfigMap.Name) == "" {
+			return nil, fmt.Errorf("gateway.configMap.name must be set when gateway is configured")
+		}
+		if strings.TrimSpace(privateai.Spec.Gateway.ConfigMap.MountLocation) == "" {
+			return nil, fmt.Errorf("gateway.configMap.mountLocation must be set when gateway is configured")
 		}
 	}
 

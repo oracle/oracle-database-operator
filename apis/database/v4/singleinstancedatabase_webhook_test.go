@@ -9,6 +9,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func sidbWebhookValidBaseSpec() *SingleInstanceDatabase {
+	return &SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-test", Namespace: "default"},
+		Spec:       SingleInstanceDatabaseSpec{CreateAs: "primary"},
+	}
+}
+
 func TestSIDBWebhookValidateUpdateRejectsSpecChangeWhenLockedWithoutOverride(t *testing.T) {
 	oldObj := &SingleInstanceDatabase{
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb1", Namespace: "ns1", Generation: 3},
@@ -79,5 +86,57 @@ func TestSIDBWebhookValidateUpdateAllowsMetadataOnlyChangeWhenLocked(t *testing.
 	_, err := (&SingleInstanceDatabase{}).ValidateUpdate(context.Background(), oldObj, newObj)
 	if err != nil {
 		t.Fatalf("expected metadata-only update to pass while locked, got: %v", err)
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryAllowsGenerateEnabledOnly(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		GenerateEnabled: true,
+		GeneratePath:    "/tmp/tc_config_blob.tar.gz",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryRejectsConsumerFields(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		BlobConfigMapRef: "tc-blob",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for blobConfigMapRef on primary")
+	}
+}
+
+func TestSIDBWebhookTrueCacheModeRejectsGenerateFields(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		GenerateEnabled: true,
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for generateEnabled on truecache")
+	}
+}
+
+func TestSIDBWebhookStandbyRejectsTrueCacheSpec(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.StandbyConfig = &SingleInstanceDatabaseStandbyConfig{
+		PrimaryDatabaseRef: "primary-db",
+	}
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		BlobConfigMapRef: "tc-blob",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for trueCache on standby")
 	}
 }
