@@ -1490,13 +1490,6 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 			return requeueN, err
 		}
 
-		if rp.Status.IsTcpsEnabled {
-			tcpsErr := errors.New("standby for TCPS enabled primary database is not supported")
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Cannot Create", tcpsErr.Error())
-			m.Status.Status = dbcommons.StatusError
-			return requeueY, tcpsErr
-		}
-
 		if m.Status.DatafilesCreated == "true" || !dbcommons.IsSourceDatabaseOnCluster(primaryRefName) {
 			if err = ValidateStandbyWalletSecretRef(r, m, ctx); err != nil {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())

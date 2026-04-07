@@ -296,14 +296,6 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 		}
 	}
 
-	if sidbTcpsEnabled(newSidb) {
-		if oldSidb.Status.DgBroker != nil {
-			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps when dataguard broker is configured"))
-		} else if len(oldSidb.Status.StandbyDatabases) != 0 {
-			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps when standby databases depend on this primary"))
-		}
-	}
-
 	if len(allErrs) == 0 {
 		return nil, nil
 	}
