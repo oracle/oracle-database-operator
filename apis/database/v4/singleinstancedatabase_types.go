@@ -82,6 +82,9 @@ type SingleInstanceDatabaseSpec struct {
 	// Security groups security-related settings (secrets and TCPS).
 	Security *SingleInstanceDatabaseSecurity `json:"security,omitempty"`
 
+	// TNSAliases configures explicit tnsnames.ora aliases managed by the operator.
+	TNSAliases []SingleInstanceDatabaseTNSAlias `json:"tnsAliases,omitempty"`
+
 	// Deprecated: use spec.tcps.enabled.
 	EnableTCPS bool `json:"enableTCPS,omitempty"`
 	// Deprecated: use spec.tcps.certRenewInterval.
@@ -205,19 +208,26 @@ type SingleInstanceDatabaseTCPS struct {
 	// CertMountLocation is the in-pod mount path for the TCPS TLS secret.
 	// Defaults to /run/secrets/tls_secret when not set.
 	CertMountLocation string `json:"certMountLocation,omitempty"`
-	// Peer configures optional Data Guard peer TCPS alias generation in configTcps.sh.
-	Peer *SingleInstanceDatabaseTCPSPeer `json:"peer,omitempty"`
 }
 
-// SingleInstanceDatabaseTCPSPeer defines optional TCPS peer connectivity details.
-type SingleInstanceDatabaseTCPSPeer struct {
-	Enabled bool   `json:"enabled,omitempty"`
-	Alias   string `json:"alias,omitempty"`
-	Host    string `json:"host,omitempty"`
-	Port    int    `json:"port,omitempty"`
-	Service string `json:"service,omitempty"`
-	// SSLServerDN is optional and used for strict DN match in generated connect descriptor.
-	SSLServerDN string `json:"sslServerDN,omitempty"`
+// SingleInstanceDatabaseTNSAliasProtocol identifies the transport protocol for a TNS alias.
+type SingleInstanceDatabaseTNSAliasProtocol string
+
+const (
+	// SingleInstanceDatabaseTNSAliasProtocolTCP configures a TCP TNS alias.
+	SingleInstanceDatabaseTNSAliasProtocolTCP SingleInstanceDatabaseTNSAliasProtocol = "TCP"
+	// SingleInstanceDatabaseTNSAliasProtocolTCPS configures a TCPS TNS alias.
+	SingleInstanceDatabaseTNSAliasProtocolTCPS SingleInstanceDatabaseTNSAliasProtocol = "TCPS"
+)
+
+// SingleInstanceDatabaseTNSAlias defines a managed entry in tnsnames.ora.
+type SingleInstanceDatabaseTNSAlias struct {
+	Name        string                                 `json:"name,omitempty"`
+	Host        string                                 `json:"host,omitempty"`
+	Port        int                                    `json:"port,omitempty"`
+	ServiceName string                                 `json:"serviceName,omitempty"`
+	Protocol    SingleInstanceDatabaseTNSAliasProtocol `json:"protocol,omitempty"`
+	SSLServerDN string                                 `json:"sslServerDN,omitempty"`
 }
 
 // SingleInstanceDatabaseSecurity defines grouped security configuration.

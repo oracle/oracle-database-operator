@@ -184,16 +184,6 @@ func sidbTcpsCertRenewInterval(sidb *SingleInstanceDatabase) string {
 	return strings.TrimSpace(sidb.Spec.TcpsCertRenewInterval)
 }
 
-func sidbTcpsPeerConfig(sidb *SingleInstanceDatabase) *SingleInstanceDatabaseTCPSPeer {
-	if sidb == nil {
-		return nil
-	}
-	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && sidb.Spec.Security.TCPS.Peer != nil {
-		return sidb.Spec.Security.TCPS.Peer
-	}
-	return nil
-}
-
 func sidbAdminPasswordSpec(sidb *SingleInstanceDatabase) *SingleInstanceDatabaseAdminPassword {
 	if sidb == nil {
 		return nil
@@ -483,24 +473,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "must be in 30000-32767 for NodePort"))
 		}
 	}
-	if tcpsPeer := sidbTcpsPeerConfig(sidb); tcpsPeer != nil && tcpsPeer.Enabled {
-		peerPath := field.NewPath("spec").Child("security").Child("tcps").Child("peer")
-		if !tcpsEnabled {
-			allErrs = append(allErrs, field.Forbidden(peerPath.Child("enabled"), "allowed only when TCPS is enabled"))
-		}
-		if strings.TrimSpace(tcpsPeer.Alias) == "" {
-			allErrs = append(allErrs, field.Required(peerPath.Child("alias"), "required when peer.enabled=true"))
-		}
-		if strings.TrimSpace(tcpsPeer.Host) == "" {
-			allErrs = append(allErrs, field.Required(peerPath.Child("host"), "required when peer.enabled=true"))
-		}
-		if strings.TrimSpace(tcpsPeer.Service) == "" {
-			allErrs = append(allErrs, field.Required(peerPath.Child("service"), "required when peer.enabled=true"))
-		}
-		if tcpsPeer.Port < 0 || tcpsPeer.Port > 65535 {
-			allErrs = append(allErrs, field.Invalid(peerPath.Child("port"), tcpsPeer.Port, "must be in 0-65535"))
-		}
-	}
+	allErrs = append(allErrs, validateTNSAliases(sidb)...)
 
 	if sidb.Spec.InitParams != nil {
 		if (sidb.Spec.InitParams.PgaAggregateTarget != 0 && sidb.Spec.InitParams.SgaTarget == 0) || (sidb.Spec.InitParams.PgaAggregateTarget == 0 && sidb.Spec.InitParams.SgaTarget != 0) {
@@ -510,6 +483,47 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 
 	allErrs = append(allErrs, validateSingleInstanceDatabaseResourceFields(sidb)...)
 	allErrs = append(allErrs, validateSingleInstanceDatabaseAdditionalPVCs(sidb)...)
+
+	return allErrs
+}
+
+func validateTNSAliases(sidb *SingleInstanceDatabase) field.ErrorList {
+	var allErrs field.ErrorList
+	seen := map[string]struct{}{}
+	basePath := field.NewPath("spec").Child("tnsAliases")
+
+	for i := range sidb.Spec.TNSAliases {
+		alias := sidb.Spec.TNSAliases[i]
+		aliasPath := basePath.Index(i)
+
+		name := strings.TrimSpace(alias.Name)
+		if name == "" {
+			allErrs = append(allErrs, field.Required(aliasPath.Child("name"), "name is required"))
+		} else {
+			key := strings.ToUpper(name)
+			if _, exists := seen[key]; exists {
+				allErrs = append(allErrs, field.Duplicate(aliasPath.Child("name"), alias.Name))
+			}
+			seen[key] = struct{}{}
+		}
+
+		if strings.TrimSpace(alias.Host) == "" {
+			allErrs = append(allErrs, field.Required(aliasPath.Child("host"), "host is required"))
+		}
+		if strings.TrimSpace(alias.ServiceName) == "" {
+			allErrs = append(allErrs, field.Required(aliasPath.Child("serviceName"), "serviceName is required"))
+		}
+
+		switch strings.ToUpper(strings.TrimSpace(string(alias.Protocol))) {
+		case string(SingleInstanceDatabaseTNSAliasProtocolTCP), string(SingleInstanceDatabaseTNSAliasProtocolTCPS):
+		default:
+			allErrs = append(allErrs, field.Invalid(aliasPath.Child("protocol"), alias.Protocol, "must be TCP or TCPS"))
+		}
+
+		if alias.Port < 0 || alias.Port > 65535 {
+			allErrs = append(allErrs, field.Invalid(aliasPath.Child("port"), alias.Port, "must be in 0-65535"))
+		}
+	}
 
 	return allErrs
 }

@@ -48,6 +48,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -379,16 +380,6 @@ func getTcpsCertsLocation(m *dbapi.SingleInstanceDatabase) string {
 		}
 	}
 	return defaultLocation
-}
-
-func getTcpsPeerConfig(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabaseTCPSPeer {
-	if m == nil {
-		return nil
-	}
-	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && m.Spec.Security.TCPS.Peer != nil {
-		return m.Spec.Security.TCPS.Peer
-	}
-	return nil
 }
 
 func buildSIDBPodSecurityContext(
@@ -840,6 +831,9 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		if result.Requeue || err != nil {
 			return result, err
 		}
+		if err := syncConfiguredTNSAliasesInPod(r, sidb, readyPod, ctx, req); err != nil {
+			return requeueY, err
+		}
 		return requeueN, nil
 	}
 
@@ -866,6 +860,10 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		}
 		r.Log.Info("Standby DB open mode modified")
 		r.Log.Info(out)
+	}
+
+	if err := syncConfiguredTNSAliasesInPod(r, sidb, readyPod, ctx, req); err != nil {
+		return requeueY, err
 	}
 
 	sidb.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(sidb, referredPrimaryDatabase)
@@ -5249,15 +5247,23 @@ func getTnsFilePathBySID(sid string) string {
 	return fmt.Sprintf("/opt/oracle/oradata/dbconfig/%s/tnsnames.ora", strings.ToUpper(strings.TrimSpace(sid)))
 }
 
-func getProtocolForAlias(useTCPS bool) string {
-	if useTCPS {
-		return "TCPS"
+func normalizeTNSAliasProtocol(protocol string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(protocol))
+	if normalized == string(dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS) {
+		return string(dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS)
 	}
-	return "TCP"
+	return string(dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP)
 }
 
-func buildLegacyTnsAliasEntry(alias, host string, port int, serviceName string, useTCPS bool, sslDN string) string {
-	protocol := getProtocolForAlias(useTCPS)
+func defaultPortForProtocol(protocol string) int {
+	if normalizeTNSAliasProtocol(protocol) == string(dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS) {
+		return int(dbcommons.CONTAINER_TCPS_PORT)
+	}
+	return int(dbcommons.CONTAINER_LISTENER_PORT)
+}
+
+func buildLegacyTnsAliasEntry(alias, host string, port int, serviceName string, protocol string, sslDN string) string {
+	protocol = normalizeTNSAliasProtocol(protocol)
 	entry := fmt.Sprintf(`
 %s =
 (DESCRIPTION =
@@ -5267,7 +5273,7 @@ func buildLegacyTnsAliasEntry(alias, host string, port int, serviceName string, 
     (SERVICE_NAME = %s)
   )`, strings.ToUpper(strings.TrimSpace(alias)), protocol, strings.TrimSpace(host), port, strings.ToUpper(strings.TrimSpace(serviceName)))
 
-	if useTCPS && strings.TrimSpace(sslDN) != "" {
+	if protocol == string(dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS) && strings.TrimSpace(sslDN) != "" {
 		entry += fmt.Sprintf(`
   (SECURITY =
     (SSL_SERVER_DN_MATCH = YES)
@@ -5281,10 +5287,11 @@ func buildLegacyTnsAliasEntry(alias, host string, port int, serviceName string, 
 	return entry
 }
 
-func upsertTnsAliasInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, tnsFile, alias, host string, port int, serviceName string, useTCPS bool, sslDN string) error {
+func upsertTnsAliasInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, tnsFile, alias, host string, port int, serviceName string, protocol, sslDN string) error {
 	alias = strings.ToUpper(strings.TrimSpace(alias))
 	host = strings.TrimSpace(host)
 	serviceName = strings.ToUpper(strings.TrimSpace(serviceName))
+	protocol = normalizeTNSAliasProtocol(protocol)
 	sslDN = strings.TrimSpace(sslDN)
 	if alias == "" || host == "" || serviceName == "" {
 		return fmt.Errorf("alias, host and serviceName are required for tns upsert")
@@ -5293,13 +5300,13 @@ func upsertTnsAliasInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ct
 		return fmt.Errorf("port must be > 0 for tns upsert")
 	}
 
-	args := fmt.Sprintf("--file %q --alias %q --upsert --host %q --port %d --service %q --strict-dedupe",
-		tnsFile, alias, host, port, serviceName)
-	if useTCPS && sslDN != "" {
+	args := fmt.Sprintf("--file %q --alias %q --upsert --host %q --port %d --service %q --protocol %q --strict-dedupe",
+		tnsFile, alias, host, port, serviceName, protocol)
+	if protocol == string(dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS) && sslDN != "" {
 		args += fmt.Sprintf(" --ssl-server-dn %q", sslDN)
 	}
 
-	legacyEntry := buildLegacyTnsAliasEntry(alias, host, port, serviceName, useTCPS, sslDN)
+	legacyEntry := buildLegacyTnsAliasEntry(alias, host, port, serviceName, protocol, sslDN)
 	legacyCmd := fmt.Sprintf("if ! grep -Eq '^[[:space:]]*%s[[:space:]]*=' %q; then echo -e %q | cat >> %q; fi",
 		alias, tnsFile, legacyEntry, tnsFile)
 
@@ -5313,37 +5320,162 @@ func upsertTnsAliasInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ct
 	return nil
 }
 
-func resolvePeerAliasSettings(owner *dbapi.SingleInstanceDatabase, defaultAlias, defaultHost string, defaultPort int, defaultService string) (alias, host string, port int, serviceName string, useTCPS bool, sslDN string) {
+func deleteTnsAliasInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, tnsFile, alias string) error {
+	alias = strings.ToUpper(strings.TrimSpace(alias))
+	if alias == "" {
+		return nil
+	}
+	args := fmt.Sprintf("--file %q --alias %q --delete", tnsFile, alias)
+	legacyCmd := fmt.Sprintf("if grep -Eq '^[[:space:]]*%s[[:space:]]*=' %q; then sed -i -E '/^[[:space:]]*%s[[:space:]]*=/{:a;N;/\\n\\)/!ba;d;}' %q; fi",
+		alias, tnsFile, alias, tnsFile)
+	cmd := fmt.Sprintf("if [ -x \"$ORACLE_BASE/manageTnsAliases.sh\" ]; then \"$ORACLE_BASE/manageTnsAliases.sh\" %s; else %s; fi", args, legacyCmd)
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		return fmt.Errorf("failed to delete TNS alias %s in %s: %w", alias, tnsFile, err)
+	}
+	r.Log.Info("TNS alias delete output", "alias", alias, "tnsFile", tnsFile, "output", out)
+	return nil
+}
+
+func readManagedTNSAliasesStateInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, stateFile string) ([]string, error) {
+	cmd := fmt.Sprintf("if [ -f %q ]; then cat %q; fi", stateFile, stateFile)
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		return nil, err
+	}
+	lines, _ := dbcommons.StringToLines(out)
+	aliases := make([]string, 0, len(lines))
+	seen := map[string]struct{}{}
+	for i := range lines {
+		name := strings.ToUpper(strings.TrimSpace(lines[i]))
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		aliases = append(aliases, name)
+	}
+	sort.Strings(aliases)
+	return aliases, nil
+}
+
+func writeManagedTNSAliasesStateInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, stateFile string, aliases []string) error {
+	sort.Strings(aliases)
+	content := strings.Join(aliases, "\n")
+	if content != "" {
+		content += "\n"
+	}
+	cmd := fmt.Sprintf("cat > %q <<'EOF'\n%sEOF", stateFile, content)
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		return fmt.Errorf("failed to write managed tns aliases state file %s: %w", stateFile, err)
+	}
+	r.Log.Info("Managed TNS aliases state updated", "stateFile", stateFile, "output", out)
+	return nil
+}
+
+func syncConfiguredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner *dbapi.SingleInstanceDatabase, pod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+	if owner == nil {
+		return nil
+	}
+	tnsFile := getTnsFilePathBySID(owner.Spec.Sid)
+	stateFile := tnsFile + ".operator_aliases"
+
+	desired := make(map[string]dbapi.SingleInstanceDatabaseTNSAlias, len(owner.Spec.TNSAliases))
+	desiredNames := make([]string, 0, len(owner.Spec.TNSAliases))
+	for i := range owner.Spec.TNSAliases {
+		item := owner.Spec.TNSAliases[i]
+		name := strings.ToUpper(strings.TrimSpace(item.Name))
+		if name == "" {
+			continue
+		}
+		desired[name] = item
+		desiredNames = append(desiredNames, name)
+	}
+	sort.Strings(desiredNames)
+
+	for _, alias := range desiredNames {
+		item := desired[alias]
+		port := item.Port
+		if port == 0 {
+			port = defaultPortForProtocol(string(item.Protocol))
+		}
+		if err := upsertTnsAliasInPod(
+			r,
+			pod,
+			ctx,
+			req,
+			tnsFile,
+			alias,
+			item.Host,
+			port,
+			item.ServiceName,
+			string(item.Protocol),
+			item.SSLServerDN,
+		); err != nil {
+			return err
+		}
+	}
+
+	previousNames, err := readManagedTNSAliasesStateInPod(r, pod, ctx, req, stateFile)
+	if err != nil {
+		return err
+	}
+	desiredSet := map[string]struct{}{}
+	for _, name := range desiredNames {
+		desiredSet[name] = struct{}{}
+	}
+	for _, oldAlias := range previousNames {
+		if _, keep := desiredSet[oldAlias]; keep {
+			continue
+		}
+		if err := deleteTnsAliasInPod(r, pod, ctx, req, tnsFile, oldAlias); err != nil {
+			return err
+		}
+	}
+
+	return writeManagedTNSAliasesStateInPod(r, pod, ctx, req, stateFile, desiredNames)
+}
+
+func resolveTNSAliasSettings(owner *dbapi.SingleInstanceDatabase, defaultAlias, defaultHost string, defaultPort int, defaultService string) (alias, host string, port int, serviceName, protocol, sslDN string) {
 	alias = strings.ToUpper(strings.TrimSpace(defaultAlias))
 	host = strings.TrimSpace(defaultHost)
 	port = defaultPort
 	serviceName = strings.ToUpper(strings.TrimSpace(defaultService))
-	useTCPS = false
+	protocol = string(dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP)
 	sslDN = ""
 
-	if !getTcpsEnabled(owner) {
+	if owner == nil {
+		return
+	}
+	for i := range owner.Spec.TNSAliases {
+		item := owner.Spec.TNSAliases[i]
+		if !strings.EqualFold(strings.TrimSpace(item.Name), defaultAlias) {
+			continue
+		}
+		alias = strings.ToUpper(strings.TrimSpace(item.Name))
+		if v := strings.TrimSpace(item.Host); v != "" {
+			host = v
+		}
+		if v := strings.TrimSpace(item.ServiceName); v != "" {
+			serviceName = strings.ToUpper(v)
+		}
+		protocol = normalizeTNSAliasProtocol(string(item.Protocol))
+		if item.Port > 0 {
+			port = item.Port
+		} else if port == 0 {
+			port = defaultPortForProtocol(protocol)
+		}
+		if v := strings.TrimSpace(item.SSLServerDN); v != "" {
+			sslDN = v
+		}
 		return
 	}
 
-	if peer := getTcpsPeerConfig(owner); peer != nil && peer.Enabled {
-		useTCPS = true
-		if v := strings.TrimSpace(peer.Alias); v != "" {
-			alias = strings.ToUpper(v)
-		}
-		if v := strings.TrimSpace(peer.Host); v != "" {
-			host = v
-		}
-		if peer.Port > 0 {
-			port = peer.Port
-		} else {
-			port = 2484
-		}
-		if v := strings.TrimSpace(peer.Service); v != "" {
-			serviceName = strings.ToUpper(v)
-		}
-		if v := strings.TrimSpace(peer.SSLServerDN); v != "" {
-			sslDN = v
-		}
+	if port == 0 {
+		port = defaultPortForProtocol(protocol)
 	}
 
 	return
@@ -5358,8 +5490,8 @@ func resolvePeerAliasSettings(owner *dbapi.SingleInstanceDatabase, defaultAlias,
 func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
 	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	tnsFile := getTnsFilePathBySID(p.Spec.Sid)
-	alias, host, port, serviceName, useTCPS, sslDN := resolvePeerAliasSettings(p, s.Spec.Sid, s.Name, 1521, s.Spec.Sid)
-	return upsertTnsAliasInPod(r, primaryReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, useTCPS, sslDN)
+	alias, host, port, serviceName, protocol, sslDN := resolveTNSAliasSettings(p, s.Spec.Sid, s.Name, 1521, s.Spec.Sid)
+	return upsertTnsAliasInPod(r, primaryReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, protocol, sslDN)
 }
 
 // #############################################################################
@@ -5535,7 +5667,7 @@ func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *d
 		if pdb == "" {
 			continue
 		}
-		if err := upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, pdb, localHost, 1521, pdb, false, ""); err != nil {
+		if err := upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, pdb, localHost, 1521, pdb, string(dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP), ""); err != nil {
 			return err
 		}
 	}
@@ -5558,8 +5690,8 @@ func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dba
 	if defaultPort == 0 {
 		defaultPort = 1521
 	}
-	alias, host, port, serviceName, useTCPS, sslDN := resolvePeerAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
-	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, useTCPS, sslDN)
+	alias, host, port, serviceName, protocol, sslDN := resolveTNSAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
+	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, protocol, sslDN)
 }
 
 // #############################################################################
@@ -5735,8 +5867,8 @@ func SetupExternalPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler
 	if defaultPort == 0 {
 		defaultPort = 1521
 	}
-	alias, host, port, serviceName, useTCPS, sslDN := resolvePeerAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
-	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, useTCPS, sslDN)
+	alias, host, port, serviceName, protocol, sslDN := resolveTNSAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
+	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, protocol, sslDN)
 }
 
 // SetupListenerForDGOnDatabase updates listener entries needed for Data Guard on a database.
@@ -6335,22 +6467,6 @@ func buildSIDBSecurityScriptEnvVars(m *dbapi.SingleInstanceDatabase) []corev1.En
 				corev1.EnvVar{Name: "TCPS_CERTS_LOCATION", Value: tcpsCertsLocation},
 				corev1.EnvVar{Name: "TCPS_TLS_SECRET_MOUNT_PATH", Value: tcpsCertsLocation},
 			)
-		}
-		if peer := getTcpsPeerConfig(m); peer != nil && peer.Enabled {
-			peerPort := peer.Port
-			if peerPort == 0 {
-				peerPort = 2484
-			}
-			envs = append(envs,
-				corev1.EnvVar{Name: "DG_PEER_ENABLED", Value: "true"},
-				corev1.EnvVar{Name: "DG_PEER_ALIAS", Value: strings.TrimSpace(peer.Alias)},
-				corev1.EnvVar{Name: "DG_PEER_HOST", Value: strings.TrimSpace(peer.Host)},
-				corev1.EnvVar{Name: "DG_PEER_PORT", Value: strconv.Itoa(peerPort)},
-				corev1.EnvVar{Name: "DG_PEER_SERVICE", Value: strings.TrimSpace(peer.Service)},
-			)
-			if sslServerDN := strings.TrimSpace(peer.SSLServerDN); sslServerDN != "" {
-				envs = append(envs, corev1.EnvVar{Name: "DG_PEER_SSL_SERVER_DN", Value: sslServerDN})
-			}
 		}
 	}
 
