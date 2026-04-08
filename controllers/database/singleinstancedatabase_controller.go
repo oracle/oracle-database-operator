@@ -2164,7 +2164,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name:      "datafiles-vol",
 						})
 					}
-					if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB || GetAdminPasswordSkipInitWallet(m) {
+					if shouldMountAdminPasswordSecret(m) {
 						// mounts pwd as secrets for express edition, prebuilt db, or explicit secret-mount mode
 						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: GetAdminPasswordSecretMountPath(m),
@@ -6246,6 +6246,26 @@ func getRestoreSpec(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDataba
 	return m.Spec.Restore
 }
 
+func isPrimaryCreateAsMode(m *dbapi.SingleInstanceDatabase) bool {
+	if m == nil {
+		return false
+	}
+	mode := strings.ToLower(strings.TrimSpace(m.Spec.CreateAs))
+	return mode == "" || mode == "primary"
+}
+
+func shouldMountAdminPasswordSecret(m *dbapi.SingleInstanceDatabase) bool {
+	if m == nil {
+		return false
+	}
+	// Existing behavior: direct secret-file mount for express/free, prebuilt DB, or explicit opt-in.
+	if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB || GetAdminPasswordSkipInitWallet(m) {
+		return true
+	}
+	// New behavior: primary restore flows require admin secret mounted at configured mountPath.
+	return isPrimaryCreateAsMode(m) && (restoreUsesObjectStore(m) || restoreUsesFileSystem(m))
+}
+
 func getRestoreSourceType(m *dbapi.SingleInstanceDatabase) string {
 	restore := getRestoreSpec(m)
 	if restore == nil {
@@ -6486,7 +6506,6 @@ func buildSIDBSecurityScriptEnvVars(m *dbapi.SingleInstanceDatabase) []corev1.En
 					},
 				},
 			},
-			corev1.EnvVar{Name: "ORACLE_TDE_PWD_SECRET_NAME", Value: tdeSecretName},
 			corev1.EnvVar{Name: "ORACLE_TDE_SECRET_FILE", Value: GetTDEPasswordSecretMountPath(m)},
 		)
 		if tde := getTDEPasswordConfig(m); tde != nil {
