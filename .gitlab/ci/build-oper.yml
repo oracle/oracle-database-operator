@@ -5,7 +5,7 @@ build-operator:
     OP_YAML: oracle-database-operator.yaml
     BUILD_INTERNAL: "true"
     GOLANG_VERSION: "1.26.1"
-    LINT_PKGS: "./apis/database/v4/... ./commons/sharding/... ./controllers/database/..."
+    LINT_PKGS: "./..."
   script:
     - |
       case "$(uname -m)" in
