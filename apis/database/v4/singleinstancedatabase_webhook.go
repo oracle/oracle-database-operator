@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:unused-parameter,exported,var-naming
+// Legacy webhook signatures and helper names are preserved for backward compatibility.
+
 import (
 	"context"
 	"fmt"
@@ -366,9 +369,6 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		if hasPvcName && strings.TrimSpace(fra.RecoveryAreaSize) == "" {
 			allErrs = append(allErrs, field.Required(fraPath.Child("recoveryAreaSize"), "required when pvcName is set"))
 		}
-		if !hasPvcName && strings.TrimSpace(fra.RecoveryAreaSize) == "" && hasDynamic {
-			// defaulted in defaulter; no-op here
-		}
 		if strings.TrimSpace(fra.RecoveryAreaSize) != "" && strings.TrimSpace(fra.Size) != "" {
 			fraSize, errSize := resource.ParseQuantity(strings.TrimSpace(fra.Size))
 			recoverySize, errRecovery := resource.ParseQuantity(strings.TrimSpace(fra.RecoveryAreaSize))
@@ -395,7 +395,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primaryDatabaseRef"), sidb.Spec.PrimaryDatabaseRef, "primary reference is required for clone"))
 	}
 	if mode == "standby" {
-		if resolveStandbyPrimaryInputPresent(sidb) == false {
+		if !resolveStandbyPrimaryInputPresent(sidb) {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig"), sidb.Spec.StandbyConfig, "standby requires one primary source: primaryDatabaseRef, standbyConfig.primaryDatabaseRef, standbyConfig.primaryConnectString, or external primary details host/sid"))
 		}
 		if sidb.Spec.ArchiveLog != nil {

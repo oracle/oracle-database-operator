@@ -1,3 +1,4 @@
+// Package orautil provides small Oracle-specific string normalization helpers.
 package orautil
 
 import "strings"

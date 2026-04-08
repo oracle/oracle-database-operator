@@ -6,6 +6,7 @@ import (
 	"reflect"
 )
 
+// PointerMode controls pointer merge behavior.
 type PointerMode int
 
 const (

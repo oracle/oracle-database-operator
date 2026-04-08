@@ -95,7 +95,8 @@ var servicePolicy = [...]string{"AUTOMATIC", "MANUAL"}
 var serviceResetState = [...]string{"NONE", "LEVEL1"}
 var serviceFailoverType = [...]string{"NONE", "SESSION", "SELECT", "TRANSACTION", "AUTO"}
 
-// Getters for Fixed Array Values
+// Getters for Fixed Array Values.
+
 // GetServiceCardinality returns the supported service cardinality values.
 func GetServiceCardinality() []string {
 	return serviceCardinality[:]
@@ -132,7 +133,7 @@ func CheckStringInList(str1 string, arr []string) bool {
 	// iterate using the for loop
 	for i := 0; i < len(arr); i++ {
 		// check
-		if strings.ToLower(arr[i]) == strings.ToLower(str1) {
+		if strings.EqualFold(arr[i], str1) {
 			// return true
 			return true
 		}
@@ -176,7 +177,7 @@ func GetValue(variable string, subkey string) string {
 	str1 := strings.Split(variable, ",")
 	for _, item := range str1 {
 		str2 := strings.Split(item, "=")
-		if strings.ToLower(str2[0]) == strings.ToLower(subkey) {
+		if strings.EqualFold(str2[0], subkey) {
 			return str2[1]
 		}
 	}

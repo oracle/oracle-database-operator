@@ -68,13 +68,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
+// revive:disable:context-as-argument,var-naming
+// Legacy exported helper signatures/names are preserved for backward compatibility.
+
 // To requeue after 15 secs allowing graceful state changes
 var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
 
+// ErrNoReadyPod indicates no ready pod is currently available for SIDB operations.
 var ErrNoReadyPod = errors.New("SingleInstanceDatabase has no ready pod currently")
 
-// Filter events that trigger reconcilation
+// ResourceEventHandler filters events that should trigger reconciliation.
 func ResourceEventHandler() predicate.Predicate {
 	return predicate.Funcs{
 		DeleteFunc: func(e event.DeleteEvent) bool {
@@ -114,16 +118,15 @@ func ResourceEventHandler() predicate.Predicate {
 	}
 }
 
-// getLabelsForController returns the labels for selecting the resources
+// GetLabelsForController returns labels for selecting controller-managed resources.
 func GetLabelsForController(version string, name string) map[string]string {
 	if version != "" {
 		return map[string]string{"app": name, "version": version}
-	} else {
-		return map[string]string{"app": name}
 	}
+	return map[string]string{"app": name}
 }
 
-// getPodNames returns the pod names of the array of pods passed in
+// GetPodNames returns pod names from the provided pod list.
 func GetPodNames(pods []corev1.Pod) []string {
 	var podNames []string
 	for _, pod := range pods {
@@ -132,14 +135,16 @@ func GetPodNames(pods []corev1.Pod) []string {
 	return podNames
 }
 
-// Poll up to timeout seconds for Object to change state
-// Returns an error if the object never changes the state
+// WaitForStatusChange polls up to timeout for an object state change.
 func WaitForStatusChange(r client.Reader, objName string, namespace string,
 	ctx context.Context, req ctrl.Request, timeout time.Duration, object string, statusChange string) error {
-	return wait.PollImmediate(time.Second, timeout, IsStatusChanged(r, objName, namespace, ctx, req, object, statusChange))
+	condition := IsStatusChanged(r, objName, namespace, ctx, req, object, statusChange)
+	return wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(context.Context) (bool, error) {
+		return condition()
+	})
 }
 
-// returns a func() that returns true if an object is confirmed to be created or deleted . else false
+// IsStatusChanged returns a wait condition that checks object creation/deletion progress.
 func IsStatusChanged(r client.Reader, objName string, namespace string,
 	ctx context.Context, req ctrl.Request, object string, statusChange string) wait.ConditionFunc {
 	return func() (bool, error) {
@@ -174,10 +179,9 @@ func IsStatusChanged(r client.Reader, objName string, namespace string,
 				if deletionTimeStamp := obj.GetDeletionTimestamp(); deletionTimeStamp != nil {
 					// Pod Found and Status changed . Return true,nil as No wait required
 					return true, nil
-				} else {
-					// Pod Found and Status not changed . Return false,nil as wait required till the status changes
-					return false, nil
 				}
+				// Pod Found and Status not changed . Return false,nil as wait required till the status changes
+				return false, nil
 			}
 			if statusChange == "creation" {
 				if err != nil && apierrors.IsNotFound(err) {
@@ -231,7 +235,7 @@ func IsStatusChanged(r client.Reader, objName string, namespace string,
 
 }
 
-// Execs into podName and executes command
+// ExecCommand executes a command in the given pod/container and returns stdout.
 func ExecCommand(r client.Reader, config *rest.Config, podName string, namespace string, containerName string,
 	ctx context.Context, req ctrl.Request, nologCommand bool, command ...string) (string, error) {
 
@@ -293,7 +297,7 @@ func ExecCommand(r client.Reader, config *rest.Config, podName string, namespace
 	return execOut.String(), nil
 }
 
-// returns a randomString
+// GenerateRandomString returns a random alphanumeric string of length n.
 func GenerateRandomString(n int) string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
 
@@ -304,7 +308,7 @@ func GenerateRandomString(n int) string {
 	return string(s)
 }
 
-// retuns Ready Pod,No of replicas ( Only running and Pending Pods) ,available pods , Total No of Pods of a particular CRD
+// FindPods returns ready pod, replica counts, and candidate pod lists for a CR.
 func FindPods(r client.Reader, version string, image string, name string, namespace string, ctx context.Context,
 	req ctrl.Request) (corev1.Pod, int, []corev1.Pod, []corev1.Pod, error) {
 
@@ -331,7 +335,7 @@ func FindPods(r client.Reader, version string, image string, name string, namesp
 	for _, pod := range podList.Items {
 		// Return pods having Image = image (or) if image = ""(Needed in case when called findpods with "" image)
 		if pod.Spec.Containers[0].Image == image || image == "" {
-			if pod.ObjectMeta.DeletionTimestamp != nil {
+			if pod.DeletionTimestamp != nil {
 				podsMarkedToBeDeleted = append(podsMarkedToBeDeleted, pod)
 				continue
 			}
@@ -360,9 +364,9 @@ func FindPods(r client.Reader, version string, image string, name string, namesp
 	return readyPod, replicasFound, available, podsMarkedToBeDeleted, nil
 }
 
-// returns flashBackStatus,archiveLogStatus,forceLoggingStatus of Primary Pod
+// CheckDBConfig returns flashback, archive log, and force logging states for the primary pod.
 func CheckDBConfig(readyPod corev1.Pod, r client.Reader, config *rest.Config,
-	ctx context.Context, req ctrl.Request, edition string) (bool, bool, bool, ctrl.Result) {
+	ctx context.Context, req ctrl.Request, _ string) (bool, bool, bool, ctrl.Result) {
 
 	log := ctrllog.FromContext(ctx).WithValues("CheckDBParams", req.NamespacedName)
 
@@ -374,43 +378,42 @@ func CheckDBConfig(readyPod corev1.Pod, r client.Reader, config *rest.Config,
 		// As No pod is ready now , turn on mode when pod is ready . so requeue the request
 		return false, false, false, requeueY
 
-	} else {
-		out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", CheckModesSQL, SQLPlusCLI))
-		if err != nil {
-			log.Error(err, "Error in ExecCommand()")
-			return false, false, false, requeueY
-		} else {
-			log.Info("CheckModes Output")
-			log.Info(out)
-
-			if strings.Contains(out, "log_mode:NOARCHIVELOG") {
-				archiveLogStatus = false
-			}
-			if strings.Contains(out, "log_mode:ARCHIVELOG") {
-				archiveLogStatus = true
-			}
-			if strings.Contains(out, "flashback_on:NO") {
-				flashBackStatus = false
-			}
-			if strings.Contains(out, "flashback_on:YES") {
-				flashBackStatus = true
-			}
-			if strings.Contains(out, "force_logging:NO") {
-				forceLoggingStatus = false
-			}
-			if strings.Contains(out, "force_logging:YES") {
-				forceLoggingStatus = true
-			}
-		}
-		log.Info("FlashBackStatus ", "Status :", flashBackStatus)
-		log.Info("ArchiveLogStatus ", "Status :", archiveLogStatus)
-		log.Info("ForceLoggingStatus ", "Status :", forceLoggingStatus)
 	}
+	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | %s", CheckModesSQL, SQLPlusCLI))
+	if err != nil {
+		log.Error(err, "Error in ExecCommand()")
+		return false, false, false, requeueY
+	}
+	log.Info("CheckModes Output")
+	log.Info(out)
+
+	if strings.Contains(out, "log_mode:NOARCHIVELOG") {
+		archiveLogStatus = false
+	}
+	if strings.Contains(out, "log_mode:ARCHIVELOG") {
+		archiveLogStatus = true
+	}
+	if strings.Contains(out, "flashback_on:NO") {
+		flashBackStatus = false
+	}
+	if strings.Contains(out, "flashback_on:YES") {
+		flashBackStatus = true
+	}
+	if strings.Contains(out, "force_logging:NO") {
+		forceLoggingStatus = false
+	}
+	if strings.Contains(out, "force_logging:YES") {
+		forceLoggingStatus = true
+	}
+	log.Info("FlashBackStatus ", "Status :", flashBackStatus)
+	log.Info("ArchiveLogStatus ", "Status :", archiveLogStatus)
+	log.Info("ForceLoggingStatus ", "Status :", forceLoggingStatus)
 
 	return flashBackStatus, archiveLogStatus, forceLoggingStatus, requeueN
 }
 
+// CheckDBInitParams returns selected init parameter values from the ready SIDB pod.
 func CheckDBInitParams(sidbReadyPod corev1.Pod, r client.Reader, config *rest.Config,
 	ctx context.Context, req ctrl.Request) (int, int, int, int, error) {
 	log := ctrllog.FromContext(ctx).WithValues("CheckDBParams", req.NamespacedName)
@@ -444,20 +447,20 @@ func CheckDBInitParams(sidbReadyPod corev1.Pod, r client.Reader, config *rest.Co
 
 	log.Info("Parsing cpuCount")
 	log.Info(strings.Fields(initParams[0])[1])
-	cpu_count, err := strconv.Atoi(strings.Fields(initParams[0])[1])
+	cpuCount, err := strconv.Atoi(strings.Fields(initParams[0])[1])
 	if err != nil {
 		return -1, -1, -1, -1, err
 	}
-	log.Info("After parsing cpuCount", "cpuCount", cpu_count)
+	log.Info("After parsing cpuCount", "cpuCount", cpuCount)
 
 	log.Info("Parsing pga_aggregate_target_value")
 	log.Info(strings.Fields(initParams[1])[1])
-	pga_aggregate_target_value := strings.Fields(initParams[1])[1]
-	pga_aggregate_target, err := strconv.Atoi(pga_aggregate_target_value[0 : len(pga_aggregate_target_value)-1])
+	pgaAggregateTargetValue := strings.Fields(initParams[1])[1]
+	pgaAggregateTarget, err := strconv.Atoi(pgaAggregateTargetValue[0 : len(pgaAggregateTargetValue)-1])
 	if err != nil {
 		return -1, -1, -1, -1, err
 	}
-	log.Info("After parsing pga_aggregate_target_value", "pga_aggregate_target_value", pga_aggregate_target)
+	log.Info("After parsing pga_aggregate_target_value", "pga_aggregate_target_value", pgaAggregateTarget)
 
 	log.Info("Parsing processes")
 	log.Info(strings.Fields(initParams[2])[1])
@@ -469,17 +472,17 @@ func CheckDBInitParams(sidbReadyPod corev1.Pod, r client.Reader, config *rest.Co
 
 	log.Info("parsing sga_target_value")
 	log.Info(strings.Fields(initParams[3])[1])
-	sga_target_value := strings.Fields(initParams[3])[1]
-	sga_target, err := strconv.Atoi(sga_target_value[0 : len(sga_target_value)-1])
+	sgaTargetValue := strings.Fields(initParams[3])[1]
+	sgaTarget, err := strconv.Atoi(sgaTargetValue[0 : len(sgaTargetValue)-1])
 	if err != nil {
 		return -1, -1, -1, -1, err
 	}
-	log.Info("After parsing sgaTarget", "sgaTarget", sga_target)
+	log.Info("After parsing sgaTarget", "sgaTarget", sgaTarget)
 
-	return cpu_count, pga_aggregate_target, processes, sga_target, nil
+	return cpuCount, pgaAggregateTarget, processes, sgaTarget, nil
 }
 
-// CHECKS IF SID IN DATABASES SLICE , AND ITS DGROLE
+// IsDatabaseFound checks whether SID exists and optionally matches the requested DG role.
 func IsDatabaseFound(sid string, databases []string, dgrole string) (bool, bool) {
 	found := false
 	isdgrole := false
@@ -496,7 +499,7 @@ func IsDatabaseFound(sid string, databases []string, dgrole string) (bool, bool)
 	return found, isdgrole
 }
 
-// Returns a Primary Database in "databases" slice
+// GetPrimaryDatabase returns the primary database name from a DG entry slice.
 func GetPrimaryDatabase(databases []string) string {
 	primary := ""
 	for i := 0; i < len(databases); i++ {
@@ -509,7 +512,7 @@ func GetPrimaryDatabase(databases []string) string {
 	return primary
 }
 
-// Returns Database version
+// GetDatabaseVersion returns the database version from the ready pod.
 func GetDatabaseVersion(readyPod corev1.Pod, r client.Reader,
 	config *rest.Config, ctx context.Context, req ctrl.Request) (string, error) {
 
@@ -530,7 +533,7 @@ func GetDatabaseVersion(readyPod corev1.Pod, r client.Reader,
 		return "", errors.New("error while trying to get the database version " + out)
 	}
 
-	out1 := strings.Replace(out, " ", "_", -1)
+	out1 := strings.ReplaceAll(out, " ", "_")
 	// filtering output and storing databses in dg configuration in  "databases" slice
 	out2 := strings.Fields(out1)
 	// first 2 values in the slice will be column name(VERSION) and a seperator(--------------) . so the version would be out2[2]
@@ -538,7 +541,7 @@ func GetDatabaseVersion(readyPod corev1.Pod, r client.Reader,
 	return version, nil
 }
 
-// Fetch role by quering the DB
+// GetDatabaseRole fetches and returns the current database role.
 func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
 	config *rest.Config, ctx context.Context, req ctrl.Request) (string, error) {
 
@@ -551,7 +554,7 @@ func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
 	}
 	log.Info(out)
 	if !strings.Contains(out, "no rows selected") && !strings.Contains(out, "ORA-") {
-		out = strings.Replace(out, " ", "_", -1)
+		out = strings.ReplaceAll(out, " ", "_")
 		// filtering output and storing databse_role in  "database_role"
 		databaseRole := strings.ToUpper(strings.Fields(out)[2])
 
@@ -561,8 +564,9 @@ func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
 	return "", errors.New("database role is nil")
 }
 
+// GetDatabaseOpenMode fetches and returns the current open mode.
 func GetDatabaseOpenMode(readyPod corev1.Pod, r client.Reader,
-	config *rest.Config, ctx context.Context, req ctrl.Request, edition string) (string, error) {
+	config *rest.Config, ctx context.Context, req ctrl.Request, _ string) (string, error) {
 	log := ctrllog.FromContext(ctx).WithValues("GetDatabaseOpenMode", req.NamespacedName)
 
 	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
@@ -572,7 +576,7 @@ func GetDatabaseOpenMode(readyPod corev1.Pod, r client.Reader,
 	}
 	log.Info(out)
 	if !strings.Contains(out, "no rows selected") && !strings.Contains(out, "ORA-") {
-		out1 := strings.Replace(out, " ", "_", -1)
+		out1 := strings.ReplaceAll(out, " ", "_")
 		// filtering output and storing databse_role in  "database_role"
 		databaseOpenMode := strings.Fields(out1)[2]
 		// first 2 values in the slice will be column name(DATABASE_ROLE) and a seperator(--------------) .
@@ -581,7 +585,7 @@ func GetDatabaseOpenMode(readyPod corev1.Pod, r client.Reader,
 	return "", errors.New("database open mode is nil")
 }
 
-// Returns true if any of the pod in 'pods' is with pod.Status.Phase == phase
+// IsAnyPodWithStatus returns true and the first pod matching the given phase.
 func IsAnyPodWithStatus(pods []corev1.Pod, phase corev1.PodPhase) (bool, corev1.Pod) {
 	anyPodWithPhase := false
 	var podWithPhase corev1.Pod
@@ -595,7 +599,7 @@ func IsAnyPodWithStatus(pods []corev1.Pod, phase corev1.PodPhase) (bool, corev1.
 	return anyPodWithPhase, podWithPhase
 }
 
-// Convert "sqlplus -s " output to array of lines
+// StringToLines converts sqlplus output into lines while skipping header rows.
 func StringToLines(s string) (lines []string, err error) {
 	scanner := bufio.NewScanner(strings.NewReader(s))
 	i := 0
@@ -610,8 +614,7 @@ func StringToLines(s string) (lines []string, err error) {
 	return
 }
 
-// Get Node Ip to display in ConnectionString
-// Returns Node External Ip if exists ; else InternalIP
+// GetNodeIp returns a node IP for connection string display.
 func GetNodeIp(r client.Reader, ctx context.Context, req ctrl.Request) string {
 
 	log := ctrllog.FromContext(ctx).WithValues("GetNodeIp", req.NamespacedName)
@@ -671,7 +674,7 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 	return "", "", "", ErrNoReadyPod
 }
 
-// Get Datapatch Status
+// GetSqlpatchStatus returns sqlpatch status and source/target versions.
 func GetSqlpatchStatus(r client.Reader, config *rest.Config, readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (string, string, string, error) {
 	log := ctrllog.FromContext(ctx).WithValues("getSqlpatchStatus", req.NamespacedName)
 
@@ -711,7 +714,7 @@ func GetSqlpatchStatus(r client.Reader, config *rest.Config, readyPod corev1.Pod
 	return sqlpatchStatuses[0], splitstr[0], splitstr[1], nil
 }
 
-// Is Source Database On same Cluster
+// IsSourceDatabaseOnCluster reports whether clone source appears local to the cluster.
 func IsSourceDatabaseOnCluster(cloneFrom string) bool {
 	if strings.Contains(cloneFrom, ":") && strings.Contains(cloneFrom, "/") {
 		return false
@@ -719,7 +722,7 @@ func IsSourceDatabaseOnCluster(cloneFrom string) bool {
 	return true
 }
 
-// Apex password validation function
+// ApexPasswordValidator validates APEX password complexity requirements.
 func ApexPasswordValidator(pwd string) bool {
 	var (
 		hasMinLen  = false
@@ -748,6 +751,7 @@ func ApexPasswordValidator(pwd string) bool {
 	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
 }
 
+// GetSqlClient returns sql client invocation based on DB edition.
 func GetSqlClient(edition string) string {
 	if edition == "express" {
 		return "su -p oracle -c \"sqlplus -s / as sysdba\""
@@ -755,8 +759,7 @@ func GetSqlClient(edition string) string {
 	return "sqlplus -s / as sysdba"
 }
 
-// Function for patching the K8s service with the payload.
-// Patch strategy used: Strategic Merge Patch
+// PatchService patches a Kubernetes Service with a strategic merge patch payload.
 func PatchService(config *rest.Config, namespace string, ctx context.Context, req ctrl.Request, svcName string, payload string) error {
 	log := ctrllog.FromContext(ctx).WithValues("patchService", req.NamespacedName)
 	client, err := kubernetes.NewForConfig(config)
@@ -770,6 +773,7 @@ func PatchService(config *rest.Config, namespace string, ctx context.Context, re
 	return err
 }
 
+// GetWatchNamespaces returns configured watch namespaces from WATCH_NAMESPACE.
 func GetWatchNamespaces() map[string]bool {
 	// Fetching the allowed namespaces from env variables
 	var watchNamespaceEnvVar = "WATCH_NAMESPACE"

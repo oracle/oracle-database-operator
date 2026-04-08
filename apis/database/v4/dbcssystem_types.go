@@ -49,6 +49,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// revive:disable:var-naming,exported
+// Legacy API field/type names are preserved for backward compatibility and OCI payload parity.
+
 // DbcsSystemSpec defines the desired state of DbcsSystem
 type DbcsSystemSpec struct {
 	DbSystem       *DbSystemDetails `json:"dbSystem,omitempty"`

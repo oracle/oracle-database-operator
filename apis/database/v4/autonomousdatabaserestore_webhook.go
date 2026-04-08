@@ -53,6 +53,7 @@ import (
 // log is for logging in this package.
 var autonomousdatabaserestorelog = logf.Log.WithName("autonomousdatabaserestore-resource")
 
+// SetupWebhookWithManager registers the AutonomousDatabaseRestore webhook with the manager.
 func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy[*AutonomousDatabaseRestore](mgr, r).
 		WithValidator(r).
@@ -66,6 +67,7 @@ var _ admission.Validator[*AutonomousDatabaseRestore] = &AutonomousDatabaseResto
 
 // ValidateCreate - Signatures updated to specific pointer type
 func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj *AutonomousDatabaseRestore) (admission.Warnings, error) {
+	_ = ctx
 	var allErrs field.ErrorList
 	restore := obj
 	autonomousdatabaserestorelog.Info("validate create", "name", restore.Name)
@@ -124,10 +126,17 @@ func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj *Aut
 		restore.Name, allErrs)
 }
 
+// ValidateUpdate validates update operations for AutonomousDatabaseRestore resources.
 func (r *AutonomousDatabaseRestore) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousDatabaseRestore) (admission.Warnings, error) {
+	_ = ctx
+	_ = oldObj
+	_ = newObj
 	return nil, nil
 }
 
+// ValidateDelete validates delete operations for AutonomousDatabaseRestore resources.
 func (r *AutonomousDatabaseRestore) ValidateDelete(ctx context.Context, obj *AutonomousDatabaseRestore) (admission.Warnings, error) {
+	_ = ctx
+	_ = obj
 	return nil, nil
 }

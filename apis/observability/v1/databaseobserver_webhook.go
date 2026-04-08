@@ -55,13 +55,19 @@ var databaseobserverlog = logf.Log.WithName("databaseobserver-resource")
 
 const (
 	// AllowedExporterImage is the approved base image for exporter deployments.
-	AllowedExporterImage                       = "container-registry.oracle.com/database/observability-exporter"
-	ErrorSpecValidationMissingConnString       = "a required field for database connection string secret is missing or does not have a value"
-	ErrorSpecValidationMissingDBUser           = "a required field for database user secret is missing or does not have a value"
-	ErrorSpecValidationMissingVaultField       = "a field for configuring the vault has a value but the other required field(s) is missing or does not have a value"
-	ErrorSpecValidationMissingOCIConfig        = "a field(s) for the OCI Config is missing or does not have a value when fields for the OCI vault has values"
+	AllowedExporterImage = "container-registry.oracle.com/database/observability-exporter"
+	// ErrorSpecValidationMissingConnString indicates required DB connection-string secret config is missing.
+	ErrorSpecValidationMissingConnString = "a required field for database connection string secret is missing or does not have a value"
+	// ErrorSpecValidationMissingDBUser indicates required DB user secret config is missing.
+	ErrorSpecValidationMissingDBUser = "a required field for database user secret is missing or does not have a value"
+	// ErrorSpecValidationMissingVaultField indicates incomplete vault field combinations in spec.
+	ErrorSpecValidationMissingVaultField = "a field for configuring the vault has a value but the other required field(s) is missing or does not have a value"
+	// ErrorSpecValidationMissingOCIConfig indicates OCI config values are missing when OCI vault is used.
+	ErrorSpecValidationMissingOCIConfig = "a field(s) for the OCI Config is missing or does not have a value when fields for the OCI vault has values"
+	// ErrorSpecValidationMissingDBPasswordSecret indicates required DB password secret config is missing.
 	ErrorSpecValidationMissingDBPasswordSecret = "a required field for the database password secret is missing or does not have a value"
-	ErrorSpecExporterImageNotAllowed           = "a different exporter image was found, only official database exporter container images are currently supported"
+	// ErrorSpecExporterImageNotAllowed indicates a non-approved exporter image was specified.
+	ErrorSpecExporterImageNotAllowed = "a different exporter image was found, only official database exporter container images are currently supported"
 )
 
 // SetupWebhookWithManager registers mutating and validating webhooks for DatabaseObserver.
@@ -140,7 +146,7 @@ func (r *DatabaseObserver) ValidateCreate(_ context.Context, obj *DatabaseObserv
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateUpdate(_ context.Context, oldObj, newObj *DatabaseObserver) (admission.Warnings, error) {
+func (r *DatabaseObserver) ValidateUpdate(_ context.Context, _ *DatabaseObserver, newObj *DatabaseObserver) (admission.Warnings, error) {
 	obs := newObj
 	databaseobserverlog.Info("validate update", "name", obs.Name)
 	var e field.ErrorList

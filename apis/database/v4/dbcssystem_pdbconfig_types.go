@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,var-naming
+// Legacy API field/type names are preserved for backward compatibility.
+
 // PDBConfig defines details of PDB struct for DBCS systems
 type PDBConfig struct {
 	// The name for the pluggable database (PDB). The name is unique in the context of a Database. The name must begin with an alphabetic character and can contain a maximum of thirty alphanumeric characters. Special characters are not permitted. The pluggable database name should not be same as the container database name.

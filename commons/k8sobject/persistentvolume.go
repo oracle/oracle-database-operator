@@ -25,7 +25,7 @@ func EnsurePersistentVolume(ctx context.Context, cl client.Client, desired *core
 		return "", false, err
 	}
 
-	if !reflect.DeepEqual(desired.Spec.PersistentVolumeSource.Local, found.Spec.PersistentVolumeSource.Local) {
+	if !reflect.DeepEqual(desired.Spec.Local, found.Spec.Local) {
 		return "", false, fmt.Errorf("persistent volume %s has a different disk configuration. Please delete or update the existing PV to proceed", desired.Name)
 	}
 	return found.Name, false, nil

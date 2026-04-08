@@ -93,10 +93,10 @@ func ParseConfigMapData(cfgmap *corev1.ConfigMap, Trclvl int) []string {
 
 	var tokens []string
 	for Key, Value := range cfgmap.Data {
-		if Bit(Trclvl, TRCCFM) == true {
+		if Bit(Trclvl, TRCCFM) {
 			fmt.Printf("TRCCFM: (parse) key:[%s]\n", Key)
 		}
-		re0 := regexp.MustCompile("\\n")
+		re0 := regexp.MustCompile(`\n`)
 		re1 := regexp.MustCompile(";")
 		re2 := regexp.MustCompile(",") /* Additional separator for future use */
 
@@ -186,12 +186,12 @@ func ParseTnsAlias2(tns *string, lrpdbsrv *string) {
 	fmt.Printf("Relacing  srv [%s]\n", *lrpdbsrv)
 	var swaptns string
 
-	if strings.Contains(strings.ToUpper(*tns), "SERVICE_NAME") == false {
+	if !strings.Contains(strings.ToUpper(*tns), "SERVICE_NAME") {
 		fmt.Print("Cannot generate tns alias for pdb")
 		return
 	}
 
-	if strings.Contains(strings.ToUpper(*tns), "ORACLE_SID") == true {
+	if strings.Contains(strings.ToUpper(*tns), "ORACLE_SID") {
 		fmt.Print("Cannot generate tns alias for pdb")
 		return
 	}

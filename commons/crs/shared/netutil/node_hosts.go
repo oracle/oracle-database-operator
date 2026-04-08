@@ -1,3 +1,4 @@
+// Package netutil provides node network helper functions.
 package netutil
 
 import (
@@ -10,9 +11,10 @@ import (
 func PreferredNodeIP(node *corev1.Node) string {
 	var internalIP, externalIP string
 	for _, addr := range node.Status.Addresses {
-		if addr.Type == corev1.NodeInternalIP {
+		switch addr.Type {
+		case corev1.NodeInternalIP:
 			internalIP = addr.Address
-		} else if addr.Type == corev1.NodeExternalIP {
+		case corev1.NodeExternalIP:
 			externalIP = addr.Address
 		}
 	}

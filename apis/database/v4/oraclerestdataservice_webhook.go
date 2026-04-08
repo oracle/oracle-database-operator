@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,unused-parameter
+// Legacy webhook signatures are preserved for interface compatibility.
+
 import (
 	"context"
 

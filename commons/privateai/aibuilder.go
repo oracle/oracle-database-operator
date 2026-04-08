@@ -16,7 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/rest"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -83,8 +83,8 @@ func buildDeploymentSpecForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.De
 	annotations := map[string]string{restartAnnotationKey: time.Now().UTC().Format(time.RFC3339)}
 
 	return &appsv1.DeploymentSpec{
-		Replicas:             pointer.Int32(replicas),
-		RevisionHistoryLimit: pointer.Int32(0),
+		Replicas:             ptr.To(replicas),
+		RevisionHistoryLimit: ptr.To(int32(0)),
 		Strategy:             strategy,
 		Selector:             &metav1.LabelSelector{MatchLabels: labels},
 		Template: corev1.PodTemplateSpec{
@@ -147,7 +147,7 @@ func buildInitContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev
 	privileged := true
 	rootUser := int64(0)
 
-	return []corev1.Container{ //nolint:gomnd // explicit security context
+	return []corev1.Container{ //nolint:mnd // explicit security context
 		{
 			Name:            fmt.Sprintf("%s-init", instance.Name),
 			Image:           instance.Spec.PaiImage,
@@ -381,7 +381,7 @@ func VolumeClaimTemplatesForPrivateAi(instance *privateaiv4.PrivateAi) []corev1.
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-				StorageClassName: pointer.String(instance.Spec.StorageClass),
+				StorageClassName: ptr.To(instance.Spec.StorageClass),
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{corev1.ResourceStorage: quantity},
 				},
@@ -458,19 +458,19 @@ func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svctype string
 		}
 
 		if status, err := strconv.ParseBool(instance.Spec.PaiInternalLB); err == nil && status {
-			if service.ObjectMeta.Annotations == nil {
-				service.ObjectMeta.Annotations = make(map[string]string, len(instance.Spec.PailbAnnotation)+2)
+			if service.Annotations == nil {
+				service.Annotations = make(map[string]string, len(instance.Spec.PailbAnnotation)+2)
 			}
 			if len(instance.Spec.PailbAnnotation) > 0 {
 				for k, v := range instance.Spec.PailbAnnotation {
-					service.ObjectMeta.Annotations[k] = v
+					service.Annotations[k] = v
 				}
 			}
-			if _, ok := service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"]; !ok {
-				service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"] = "lb"
+			if _, ok := service.Annotations["oci.oraclecloud.com/load-balancer-type"]; !ok {
+				service.Annotations["oci.oraclecloud.com/load-balancer-type"] = "lb"
 			}
-			if _, ok := service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"]; !ok {
-				service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"] = "true"
+			if _, ok := service.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"]; !ok {
+				service.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"] = "true"
 			}
 		}
 
@@ -504,10 +504,12 @@ func buildSvcLabelsForPrivateAi(instance *privateaiv4.PrivateAi, svcType string)
 	return labels
 }
 
+// IsGatewayEnabled reports whether gateway deployment is configured for PrivateAI.
 func IsGatewayEnabled(instance *privateaiv4.PrivateAi) bool {
 	return instance.Spec.Gateway != nil && strings.TrimSpace(instance.Spec.Gateway.Image) != ""
 }
 
+// BuildGatewayDeploySetForPrivateAI builds the gateway Deployment for PrivateAI.
 func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.Deployment {
 	if !IsGatewayEnabled(instance) {
 		return nil
@@ -594,7 +596,7 @@ func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.
 			Labels:          labels,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32(replicas),
+			Replicas: ptr.To(replicas),
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -610,6 +612,7 @@ func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.
 	}
 }
 
+// BuildGatewayServiceDefForPrivateAI builds an internal or external gateway Service.
 func BuildGatewayServiceDefForPrivateAI(instance *privateaiv4.PrivateAi, serviceKind string) *corev1.Service {
 	if !IsGatewayEnabled(instance) {
 		return nil
@@ -653,18 +656,19 @@ func BuildGatewayServiceDefForPrivateAI(instance *privateaiv4.PrivateAi, service
 			service.Spec.Type = spec.ServiceType
 		}
 		for k, v := range spec.Annotations {
-			service.ObjectMeta.Annotations[k] = v
+			service.Annotations[k] = v
 		}
 	default:
 		service.Spec.Type = corev1.ServiceTypeClusterIP
 		for k, v := range spec.Annotations {
-			service.ObjectMeta.Annotations[k] = v
+			service.Annotations[k] = v
 		}
 	}
 
 	return service
 }
 
+// IsGatewayServiceEnabled reports whether the requested gateway service kind is enabled.
 func IsGatewayServiceEnabled(instance *privateaiv4.PrivateAi, serviceKind string) bool {
 	if !IsGatewayEnabled(instance) {
 		return false
@@ -820,20 +824,20 @@ func buildLogSidecarForPrivateAI(instance *privateaiv4.PrivateAi, name string) *
 	}
 }
 
-// Update Section
 // ManageReplicas reconciles the Deployment replica count with the desired
 // specification and updates the PrivateAi status accordingly.
 func ManageReplicas(
-	r client.Reader,
+	ctx context.Context,
+	_ client.Reader,
 	instance *privateaiv4.PrivateAi,
 	kClient client.Client,
-	config *rest.Config,
+	_ *rest.Config,
 	deploy *appsv1.Deployment,
-	podList *corev1.PodList,
-	ctx context.Context,
-	req ctrl.Request,
+	_ *corev1.PodList,
+	_ ctrl.Request,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
+	_ = ctx
 	desired := replicasOrDefault(instance.Spec.Replicas)
 
 	if deploy.Spec.Replicas != nil && *deploy.Spec.Replicas == desired {
@@ -844,7 +848,7 @@ func ManageReplicas(
 	instance.Status.Status = privateaiv4.StatusUpdating
 
 	updated := deploy.DeepCopy()
-	updated.Spec.Replicas = pointer.Int32(desired)
+	updated.Spec.Replicas = ptr.To(desired)
 	if err := kClient.Update(context.Background(), updated); err != nil {
 		LogMessages("ERROR", "Failed to update Deployment with new replica count", err, instance, logger)
 		instance.Status.Status = privateaiv4.StatusError
@@ -876,8 +880,8 @@ func UpdateSvcForPrivateAI(
 	instance.Status.Status = privateaiv4.StatusUpdating
 
 	toUpdate := oldSvc.DeepCopy()
-	toUpdate.ObjectMeta.Annotations = newSvc.ObjectMeta.Annotations
-	toUpdate.ObjectMeta.Labels = newSvc.ObjectMeta.Labels
+	toUpdate.Annotations = newSvc.Annotations
+	toUpdate.Labels = newSvc.Labels
 	toUpdate.Spec.Ports = newSvc.Spec.Ports
 	toUpdate.Spec.Selector = newSvc.Spec.Selector
 	toUpdate.Spec.LoadBalancerIP = newSvc.Spec.LoadBalancerIP
@@ -891,13 +895,14 @@ func UpdateSvcForPrivateAI(
 }
 
 func servicesEqual(newSvc, oldSvc *corev1.Service) bool {
-	return reflect.DeepEqual(oldSvc.ObjectMeta.Annotations, newSvc.ObjectMeta.Annotations) &&
-		reflect.DeepEqual(oldSvc.Annotations, newSvc.Annotations) &&
+	return reflect.DeepEqual(oldSvc.Annotations, newSvc.Annotations) &&
 		reflect.DeepEqual(oldSvc.Labels, newSvc.Labels) &&
+		reflect.DeepEqual(oldSvc.Spec.Ports, newSvc.Spec.Ports) &&
+		reflect.DeepEqual(oldSvc.Spec.Selector, newSvc.Spec.Selector) &&
 		reflect.DeepEqual(oldSvc.Spec.LoadBalancerIP, newSvc.Spec.LoadBalancerIP)
 }
 
-// Update Section
+// UpdateDeploySetForPrivateAI reconciles deployment settings for PrivateAI.
 func UpdateDeploySetForPrivateAI(
 	instance *privateaiv4.PrivateAi,
 	paiSpec privateaiv4.PrivateAiSpec,
@@ -986,12 +991,12 @@ func UpdateDeploySetForPrivateAI(
 // UpdateRestartedAtAnnotation refreshes the restart timestamp annotation on the
 // deployment pod template when Kubernetes has recorded a restart request.
 func UpdateRestartedAtAnnotation(
+	ctx context.Context,
 	r client.Reader,
 	instance *privateaiv4.PrivateAi,
 	kClient client.Client,
 	config *rest.Config,
 	deploy *appsv1.Deployment,
-	ctx context.Context,
 	req ctrl.Request,
 	logger logr.Logger,
 ) error {

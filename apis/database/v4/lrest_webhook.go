@@ -38,11 +38,15 @@
 
 package v4
 
+// revive:disable:dot-imports,context-as-argument,exported,unused-parameter
+// Legacy helper usage and method signatures are kept for API compatibility.
+
 import (
 	"context"
 	"reflect"
 	"strings"
 
+	//nolint:staticcheck // Legacy dot-import retained to avoid broad refactor risk in this file.
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -75,7 +79,7 @@ var _ admission.Defaulter[*LREST] = &LREST{}
 func (r *LREST) Default(ctx context.Context, obj *LREST) error {
 
 	lrest := obj
-	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
+	if Bit(lrest.Spec.Trclvl, TRCWEB) {
 		lrestlog.Info("Setting default values in LREST spec for : " + r.Name)
 	}
 
@@ -95,7 +99,7 @@ func (r *LREST) Default(ctx context.Context, obj *LREST) error {
 // ValidateCreate implements admission.Validator[*LREST]
 func (r *LREST) ValidateCreate(ctx context.Context, obj *LREST) (admission.Warnings, error) {
 	lrest := obj
-	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
+	if Bit(lrest.Spec.Trclvl, TRCWEB) {
 		lrestlog.Info("ValidateCreate", "name", r.Name)
 	}
 	var allErrs field.ErrorList
@@ -190,7 +194,7 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj *LREST) (admissi
 
 	// Check for updation errors
 	oldLREST := old
-	if Bit(oldLREST.Spec.Trclvl, TRCWEB) == true {
+	if Bit(oldLREST.Spec.Trclvl, TRCWEB) {
 		lrestlog.Info("validate update", "name", r.Name)
 	}
 

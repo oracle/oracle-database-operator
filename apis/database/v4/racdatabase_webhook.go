@@ -52,6 +52,9 @@
 
 package v4
 
+// revive:disable:unused-parameter,receiver-naming,var-naming
+// Legacy webhook signatures and helper names are preserved for backward compatibility.
+
 import (
 	"context"
 	"fmt"

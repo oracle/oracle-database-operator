@@ -1,3 +1,4 @@
+// Package asm provides shared defaults and models for ASM configuration.
 package asm
 
 import "strings"

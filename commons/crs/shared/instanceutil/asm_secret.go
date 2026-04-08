@@ -1,3 +1,4 @@
+// Package instanceutil contains helpers for instance-level secret and disk group handling.
 package instanceutil
 
 import "strings"

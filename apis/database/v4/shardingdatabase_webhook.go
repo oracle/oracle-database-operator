@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:unused-parameter,exported
+// Legacy webhook signatures are preserved for interface compatibility.
+
 import (
 	"context"
 	"fmt"
@@ -1410,6 +1413,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 						ss.DeployAs = "STANDBY"
 						deployAs = "STANDBY"
 					}
+					//nolint:staticcheck // Keep explicit branch style in dense validation flow.
 					if deployAs == "PRIMARY" {
 						replicaCount := replicas
 						if replicaCount <= 0 {
@@ -1476,6 +1480,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 							field.Required(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("region"),
 								"composite sharding with NATIVE replication requires shardGroupDetails.region"))
 					}
+					//nolint:staticcheck // Keep explicit branch style in dense validation flow
 					if ruMode == "" {
 						validationErrs = append(validationErrs,
 							field.Required(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("ru_mode"),
@@ -2060,6 +2065,7 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 					r.Spec.Shard[i].DeployAs = "STANDBY"
 					deployAs = "STANDBY"
 				}
+				//nolint:staticcheck // Keep explicit branch style in dense validation flow.
 				if deployAs == "PRIMARY" {
 					userPrimaryBySpace[spaceKey]++
 				} else if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
@@ -2151,6 +2157,7 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 							}
 						}
 						ruMode := resolveCompositeNativeShardGroupRuMode(&r.Spec, groupKey, spaceKey)
+						//nolint:staticcheck // Keep explicit branch style in dense validation flow.
 						if ruMode == "" {
 							validationErrs = append(validationErrs,
 								field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),

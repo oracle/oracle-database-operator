@@ -59,7 +59,7 @@ func TestEnsurePersistentVolumeRejectsLocalPathMismatch(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(sch).WithObjects(existing).Build()
 
 	desired := existing.DeepCopy()
-	desired.Spec.PersistentVolumeSource.Local = &corev1.LocalVolumeSource{Path: "/dev/new"}
+	desired.Spec.Local = &corev1.LocalVolumeSource{Path: "/dev/new"}
 	_, _, err := EnsurePersistentVolume(context.Background(), cl, desired)
 	if err == nil {
 		t.Fatalf("expected local-path mismatch error")

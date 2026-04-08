@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,unused-parameter,var-naming,redefines-builtin-id
+// Legacy webhook signatures and helper names are preserved for backward compatibility.
+
 import (
 	"context"
 	"fmt"
@@ -373,9 +376,6 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj *Orac
 	validationErrs = append(validationErrs, newCr.validateUpdateAsmStorage(old)...)
 	validationErrs = append(validationErrs, newCr.validateUpdateGeneric(old)...)
 
-	if old.Spec.ConfigParams != nil && newCr.Spec.ConfigParams != nil {
-
-	}
 	// Forbid downscale or warn on SGA/PGA
 	oldSga, _ := parseMem(old.Spec.ConfigParams.SgaSize)
 	newSga, _ := parseMem(newCr.Spec.ConfigParams.SgaSize)
@@ -594,7 +594,7 @@ func (r *OracleRestart) validateServiceSpecs() field.ErrorList {
 func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 	var validationErrs field.ErrorList
 
-	if r.ObjectMeta.DeletionTimestamp != nil {
+	if r.DeletionTimestamp != nil {
 		return validationErrs
 	}
 

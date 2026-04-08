@@ -38,8 +38,13 @@
 
 package commons
 
+// revive:disable:var-naming,exported
+// Legacy constant names are intentionally preserved for compatibility across controllers/scripts.
+
+// CONTAINER_LISTENER_PORT is the default TCP listener port exposed by SIDB pods.
 const CONTAINER_LISTENER_PORT int32 = 1521
 
+// CONTAINER_TCPS_PORT is the default TCPS listener port exposed by SIDB pods.
 const CONTAINER_TCPS_PORT int32 = 2484
 
 const ORACLE_UID int64 = 54321

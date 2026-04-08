@@ -1,3 +1,4 @@
+// Package k8sobjects provides reusable Kubernetes object builder/reconcile helpers.
 package k8sobjects
 
 import (

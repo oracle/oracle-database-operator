@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,var-naming
+// Legacy API field/type names are preserved for backward compatibility.
+
 import (
 	"sync"
 

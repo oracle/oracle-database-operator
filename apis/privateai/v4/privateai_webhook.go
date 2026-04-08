@@ -210,7 +210,7 @@ func (r *PrivateAi) ValidateCreate(_ context.Context, obj *PrivateAi) (admission
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (r *PrivateAi) ValidateUpdate(_ context.Context, oldObj, newObj *PrivateAi) (admission.Warnings, error) {
+func (r *PrivateAi) ValidateUpdate(_ context.Context, _ *PrivateAi, newObj *PrivateAi) (admission.Warnings, error) {
 	privateai := newObj
 
 	privateailog.Info("Validation for PrivateAi upon update", "name", privateai.GetName())

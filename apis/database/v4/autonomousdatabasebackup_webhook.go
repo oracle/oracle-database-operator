@@ -53,6 +53,7 @@ import (
 // log is for logging in this package.
 var autonomousdatabasebackuplog = logf.Log.WithName("autonomousdatabasebackup-resource")
 
+// SetupWebhookWithManager registers the AutonomousDatabaseBackup webhook with the manager.
 func (r *AutonomousDatabaseBackup) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	// Pass the generic type and receiver 'r', and remove .For(r)
 	// Note: Removed the duplicate .WithValidator(r) call
@@ -68,6 +69,7 @@ var _ admission.Validator[*AutonomousDatabaseBackup] = &AutonomousDatabaseBackup
 
 // ValidateCreate - Updated signature to *AutonomousDatabaseBackup
 func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj *AutonomousDatabaseBackup) (admission.Warnings, error) {
+	_ = ctx
 	backup := obj
 
 	autonomousdatabasebackuplog.Info("validate create", "name", backup.Name)
@@ -102,9 +104,10 @@ func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj *Auto
 
 // ValidateUpdate - Updated signature and fixed the oldObj/newObj assignment bug
 func (r *AutonomousDatabaseBackup) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousDatabaseBackup) (admission.Warnings, error) {
+	_ = ctx
 	var allErrs field.ErrorList
 	oldBackup := oldObj
-	newBackup := oldObj
+	newBackup := newObj
 	autonomousdatabasebackuplog.Info("validate update", "name", newBackup.Name)
 
 	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil && newBackup.Spec.AutonomousDatabaseBackupOCID != nil &&
@@ -142,5 +145,7 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(ctx context.Context, oldObj, n
 
 // ValidateDelete signature updated
 func (r *AutonomousDatabaseBackup) ValidateDelete(ctx context.Context, obj *AutonomousDatabaseBackup) (admission.Warnings, error) {
+	_ = ctx
+	_ = obj
 	return nil, nil
 }

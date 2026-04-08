@@ -167,7 +167,7 @@ func TestValidateShardOperationRules(t *testing.T) {
 			errList := cr.validateShardOperationRules()
 
 			if tt.wantErr != "" {
-				if errList == nil || len(errList) == 0 {
+				if len(errList) == 0 {
 					t.Fatalf("expected validation error containing %q, got none", tt.wantErr)
 				}
 				errs := make([]error, 0, len(errList))
@@ -180,7 +180,7 @@ func TestValidateShardOperationRules(t *testing.T) {
 				return
 			}
 
-			if errList != nil && len(errList) > 0 {
+			if len(errList) > 0 {
 				t.Fatalf("expected no errors, got: %v", errList)
 			}
 
@@ -333,7 +333,7 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 			errList := cr.validateShardOperationRules()
 
 			if tt.wantErr != "" {
-				if errList == nil || len(errList) == 0 {
+				if len(errList) == 0 {
 					t.Fatalf("expected validation error containing %q, got none", tt.wantErr)
 				}
 				errs := make([]error, 0, len(errList))
@@ -346,7 +346,7 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 				return
 			}
 
-			if errList != nil && len(errList) > 0 {
+			if len(errList) > 0 {
 				t.Fatalf("expected no validation errors, got: %v", errList)
 			}
 		})
@@ -900,7 +900,7 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 			errList := cr.validateShardInfo()
 
 			if tt.wantErr != "" {
-				if errList == nil || len(errList) == 0 {
+				if len(errList) == 0 {
 					t.Fatalf("expected validation error containing %q, got none", tt.wantErr)
 				}
 				errs := make([]error, 0, len(errList))
@@ -913,7 +913,7 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 				return
 			}
 
-			if errList != nil && len(errList) > 0 {
+			if len(errList) > 0 {
 				t.Fatalf("expected no validation errors, got: %v", errList)
 			}
 		})
@@ -1121,7 +1121,7 @@ func TestValidateShardInfoCompositeMappingConstraints(t *testing.T) {
 			errList := cr.validateShardInfo()
 
 			if tt.wantErr != "" {
-				if errList == nil || len(errList) == 0 {
+				if len(errList) == 0 {
 					t.Fatalf("expected validation error containing %q, got none", tt.wantErr)
 				}
 				errs := make([]error, 0, len(errList))
@@ -1134,7 +1134,7 @@ func TestValidateShardInfoCompositeMappingConstraints(t *testing.T) {
 				return
 			}
 
-			if errList != nil && len(errList) > 0 {
+			if len(errList) > 0 {
 				t.Fatalf("expected no validation errors, got: %v", errList)
 			}
 		})
@@ -1253,7 +1253,7 @@ func TestValidateShardInfoCompositeNativeRules(t *testing.T) {
 			errList := cr.validateShardInfo()
 
 			if tt.wantErr != "" {
-				if errList == nil || len(errList) == 0 {
+				if len(errList) == 0 {
 					t.Fatalf("expected validation error containing %q, got none", tt.wantErr)
 				}
 				errs := make([]error, 0, len(errList))
@@ -1266,7 +1266,7 @@ func TestValidateShardInfoCompositeNativeRules(t *testing.T) {
 				return
 			}
 
-			if errList != nil && len(errList) > 0 {
+			if len(errList) > 0 {
 				t.Fatalf("expected no validation errors, got: %v", errList)
 			}
 		})
@@ -1341,7 +1341,7 @@ func TestValidateCatalogAdvancedParamsUserNativeRepFactorRejected(t *testing.T) 
 	}
 
 	errList := cr.validateCatalogAdvancedParams()
-	if errList == nil || len(errList) == 0 {
+	if len(errList) == 0 {
 		t.Fatalf("expected validation error for USER+NATIVE repFactor, got none")
 	}
 
@@ -1579,7 +1579,7 @@ func TestValidateDbSecretConfigUseGsmWalletValidation(t *testing.T) {
 	}
 
 	errList := cr.validateDbSecretConfig()
-	if errList == nil || len(errList) == 0 {
+	if len(errList) == 0 {
 		t.Fatalf("expected validation error for invalid useGsmWallet")
 	}
 	errs := make([]error, 0, len(errList))
@@ -1612,7 +1612,7 @@ func TestValidateComputeSizingPathConfigMutuallyExclusive(t *testing.T) {
 	}
 
 	errList := cr.validateComputeSizingPathConfig()
-	if errList == nil || len(errList) == 0 {
+	if len(errList) == 0 {
 		t.Fatalf("expected validation error for mutually exclusive shape/resources")
 	}
 	errs := make([]error, 0, len(errList))
@@ -1647,7 +1647,7 @@ func TestValidateComputeSizingPathUpdateImmutable(t *testing.T) {
 	}
 
 	errList := newCR.validateComputeSizingPathUpdate(oldCR)
-	if errList == nil || len(errList) == 0 {
+	if len(errList) == 0 {
 		t.Fatalf("expected immutable sizing path error")
 	}
 	errs := make([]error, 0, len(errList))

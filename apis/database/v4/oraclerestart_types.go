@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,var-naming
+// Legacy API type names are preserved for backward compatibility.
+
 // Package v4 provides RAC webhook and type definitions aligned with docs/rac and Kubernetes guidance.
 import (
 	"sync"

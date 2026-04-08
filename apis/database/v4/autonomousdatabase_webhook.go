@@ -53,6 +53,7 @@ import (
 // log is for logging in this package.
 var autonomousdatabaselog = logf.Log.WithName("autonomousdatabase-resource")
 
+// SetupWebhookWithManager registers the AutonomousDatabase webhook with the manager.
 func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy[*AutonomousDatabase](mgr, r).
 		WithValidator(r).
@@ -67,6 +68,7 @@ var _ admission.Validator[*AutonomousDatabase] = &AutonomousDatabase{}
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 // ValidateCreate checks if the spec is valid for a provisioning or a binding operation
 func (r *AutonomousDatabase) ValidateCreate(ctx context.Context, obj *AutonomousDatabase) (admission.Warnings, error) {
+	_ = ctx
 	var allErrs field.ErrorList
 
 	adb := obj
@@ -96,6 +98,8 @@ func (r *AutonomousDatabase) ValidateCreate(ctx context.Context, obj *Autonomous
 
 // ValidateUpdate - Signatures updated and type assertions removed
 func (r *AutonomousDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousDatabase) (admission.Warnings, error) {
+	_ = ctx
+	_ = oldObj
 	var allErrs field.ErrorList
 	newAdb := newObj
 	autonomousdatabaselog.Info("validate update", "name", newAdb.Name)
@@ -129,5 +133,7 @@ func validateCommon(adb *AutonomousDatabase, allErrs field.ErrorList) field.Erro
 
 // ValidateDelete signature updated to match generic interface
 func (r *AutonomousDatabase) ValidateDelete(ctx context.Context, obj *AutonomousDatabase) (admission.Warnings, error) {
+	_ = ctx
+	_ = obj
 	return nil, nil
 }

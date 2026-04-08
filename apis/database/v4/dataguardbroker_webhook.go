@@ -45,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
+// SetupWebhookWithManager registers the DataguardBroker webhook with the manager.
 func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewWebhookManagedBy[*DataguardBroker](mgr, r).
@@ -55,14 +56,24 @@ func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 var _ admission.Validator[*DataguardBroker] = &DataguardBroker{}
 
+// ValidateCreate validates DataguardBroker create requests.
 func (r *DataguardBroker) ValidateCreate(ctx context.Context, obj *DataguardBroker) (admission.Warnings, error) {
+	_ = ctx
+	_ = obj
 	return nil, nil
 }
 
+// ValidateUpdate validates DataguardBroker update requests.
 func (r *DataguardBroker) ValidateUpdate(ctx context.Context, oldObj, newObj *DataguardBroker) (admission.Warnings, error) {
+	_ = ctx
+	_ = oldObj
+	_ = newObj
 	return nil, nil
 }
 
+// ValidateDelete validates DataguardBroker delete requests.
 func (r *DataguardBroker) ValidateDelete(ctx context.Context, obj *DataguardBroker) (admission.Warnings, error) {
+	_ = ctx
+	_ = obj
 	return nil, nil
 }

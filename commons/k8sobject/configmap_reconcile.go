@@ -10,11 +10,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// ConfigMapReconcileOp identifies the ConfigMap reconcile operation that failed.
 type ConfigMapReconcileOp string
 
 const (
-	ConfigMapOpGet    ConfigMapReconcileOp = "get"
+	// ConfigMapOpGet indicates a GET operation failed.
+	ConfigMapOpGet ConfigMapReconcileOp = "get"
+	// ConfigMapOpCreate indicates a CREATE operation failed.
 	ConfigMapOpCreate ConfigMapReconcileOp = "create"
+	// ConfigMapOpUpdate indicates an UPDATE operation failed.
 	ConfigMapOpUpdate ConfigMapReconcileOp = "update"
 )
 

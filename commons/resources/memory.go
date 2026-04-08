@@ -12,12 +12,15 @@ import (
 
 const (
 	// DefaultSafetyPct is the default memory safety threshold.
-	DefaultSafetyPct        = 0.80
+	DefaultSafetyPct = 0.80
+	// MinContainerMemoryBytes is the minimum supported container memory (16GiB).
 	MinContainerMemoryBytes = int64(16 * 1024 * 1024 * 1024) // 16GiB
 	pageSizeBytes           = int64(4096)
 	oneGBBytes              = int64(1024 * 1024 * 1024)
-	DefaultSem              = "250 32000 100 128"
-	DefaultShmmni           = "4096"
+	// DefaultSem is the default sem sysctl value.
+	DefaultSem = "250 32000 100 128"
+	// DefaultShmmni is the default shmmni sysctl value.
+	DefaultShmmni = "4096"
 )
 
 // ValidateMemorySize ensures memory strings use supported units and format.

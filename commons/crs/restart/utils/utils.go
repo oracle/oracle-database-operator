@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+// Package commons provides shared Oracle Restart utility constants and helpers.
 package commons
 
 import (
@@ -95,38 +96,45 @@ var serviceFailoverType = [...]string{"NONE", "SESSION", "SELECT", "TRANSACTION"
 
 /// ====== Getter Function Begins here ======= ///
 
+// GetServiceCardinality returns supported service cardinality values.
 func GetServiceCardinality() []string {
 	return serviceCardinality[:]
 }
 
+// GetTafPolicy returns supported TAF policy values.
 func GetTafPolicy() []string {
 	return tafPolicy[:]
 }
 
+// ServiceRole returns supported service role values.
 func ServiceRole() []string {
 	return serviceRole[:]
 }
 
+// GetServiceRole returns supported service role values.
 func GetServiceRole() []string {
 	return serviceRole[:]
 }
 
+// GetServiceResetState returns supported service reset state values.
 func GetServiceResetState() []string {
 	return serviceResetState[:]
 }
 
+// GetServiceFailoverType returns supported failover type values.
 func GetServiceFailoverType() []string {
 	return serviceFailoverType[:]
 }
 
 /// ====== Getter Function Ends here ======= ///
 
+// CheckStringInList reports whether str1 is present in arr (case-insensitive).
 func CheckStringInList(str1 string, arr []string) bool {
 
 	// iterate using the for loop
 	for i := 0; i < len(arr); i++ {
 		// check
-		if strings.ToLower(arr[i]) == strings.ToLower(str1) {
+		if strings.EqualFold(arr[i], str1) {
 			// return true
 			return true
 		}
@@ -134,6 +142,7 @@ func CheckStringInList(str1 string, arr []string) bool {
 	return false
 }
 
+// CheckStatusFlag interprets delete/boolean-style status flags.
 func CheckStatusFlag(flagStr string) bool {
 
 	if strings.ToLower(flagStr) == "delete" {
@@ -147,6 +156,7 @@ func CheckStatusFlag(flagStr string) bool {
 	return isTrueFlag
 }
 
+// GetWatchNamespaces returns WATCH_NAMESPACE values as a lookup map.
 func GetWatchNamespaces() map[string]bool {
 	// Fetching the allowed namespaces from env variables
 	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
@@ -160,6 +170,7 @@ func GetWatchNamespaces() map[string]bool {
 	return namespaces
 }
 
+// GetValue returns a subkey value from a comma-separated key=value string.
 func GetValue(variable string, subkey string) string {
 
 	str2 := ""
@@ -167,13 +178,14 @@ func GetValue(variable string, subkey string) string {
 	str1 := strings.Split(variable, ",")
 	for _, item := range str1 {
 		str2 := strings.Split(item, "=")
-		if strings.ToLower(str2[0]) == strings.ToLower(subkey) {
+		if strings.EqualFold(str2[0], subkey) {
 			return str2[1]
 		}
 	}
 	return str2
 }
 
+// GetDBUser returns the default database OS user name.
 func GetDBUser() string {
 	return OraDBUser
 }

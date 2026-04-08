@@ -59,12 +59,12 @@ import (
 // ExecCommand runs the provided command inside the target container of the
 // specified pod and returns the combined stdout output.
 func ExecCommand(
+	ctx context.Context,
 	r client.Reader,
 	config *rest.Config,
 	podName string,
 	namespace string,
 	containerName string,
-	ctx context.Context,
 	req ctrl.Request,
 	nologCommand bool,
 	command []string,

@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:unused-parameter,exported,var-declaration
+// Legacy webhook signatures are preserved for interface and backward compatibility.
+
 import (
 	"context"
 
@@ -72,8 +75,8 @@ func (r *AutonomousContainerDatabase) ValidateCreate(ctx context.Context, obj *A
 func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousContainerDatabase) (admission.Warnings, error) {
 	var (
 		allErrs field.ErrorList
-		oldAcd  *AutonomousContainerDatabase = oldObj
-		newAcd  *AutonomousContainerDatabase = newObj
+		oldAcd  = oldObj
+		newAcd  = newObj
 	)
 
 	autonomouscontainerdatabaselog.Info("validate update", "name", newAcd.Name)
@@ -84,7 +87,7 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj
 	}
 
 	// cannot update when the old state is in intermediate state, except for the terminate operatrion
-	var copiedSpec *AutonomousContainerDatabaseSpec = newAcd.Spec.DeepCopy()
+	copiedSpec := newAcd.Spec.DeepCopy()
 	changed, err := RemoveUnchangedFields(oldAcd.Spec, copiedSpec)
 	if err != nil {
 		allErrs = append(allErrs,

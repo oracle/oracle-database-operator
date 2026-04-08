@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -23,7 +23,7 @@ func TestReconcileDeploymentCreate(t *testing.T) {
 	desired := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "dep-a", Namespace: "ns-a"},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32(1),
+			Replicas: ptr.To(int32(1)),
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "dep-a"}},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "dep-a"}},
@@ -55,7 +55,7 @@ func TestReconcileDeploymentUpdateViaCallback(t *testing.T) {
 	existing := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "dep-b", Namespace: "ns-b"},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32(1),
+			Replicas: ptr.To(int32(1)),
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "dep-b"}},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "dep-b"}},

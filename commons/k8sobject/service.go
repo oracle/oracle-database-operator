@@ -10,11 +10,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// NodePortMergeStrategy controls how existing nodePort assignments are preserved.
 type NodePortMergeStrategy string
 
 const (
-	NodePortMergeNone                  NodePortMergeStrategy = "none"
-	NodePortMergeByName                NodePortMergeStrategy = "by_name"
+	// NodePortMergeNone does not preserve existing nodePort assignments.
+	NodePortMergeNone NodePortMergeStrategy = "none"
+	// NodePortMergeByName preserves nodePort values by matching service-port name.
+	NodePortMergeByName NodePortMergeStrategy = "by_name"
+	// NodePortMergeByNamePortAndProtocol preserves nodePort values by matching name+port+protocol.
 	NodePortMergeByNamePortAndProtocol NodePortMergeStrategy = "by_name_port_protocol"
 )
 

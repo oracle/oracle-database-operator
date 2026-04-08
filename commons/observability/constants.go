@@ -5,7 +5,9 @@ import (
 )
 
 const (
+	// UnknownValue is used when a status or derived value cannot be determined.
 	UnknownValue = "UNKNOWN"
+	// DefaultValue represents a fallback marker when the field keeps default behavior.
 	DefaultValue = "DEFAULT"
 )
 
@@ -48,8 +50,8 @@ const (
 	DefaultOCIConfigRegionKey        = "region"
 	DefaultOCIConfigTenancyKey       = "tenancy"
 	DefaultOCIConfigUserKey          = "user"
-	DefaultAzureConfigTenantId       = "tenantId"
-	DefaultAzureConfigClientId       = "clientId"
+	DefaultAzureConfigTenantID       = "tenantId"
+	DefaultAzureConfigClientID       = "clientId"
 	DefaultAzureConfigClientSecret   = "clientSecret"
 	DefaultEnvPasswordSuffix         = "_PASSWORD"
 	DefaultEnvUserSuffix             = "_USERNAME"
@@ -80,7 +82,7 @@ const (
 	EnvVarDataSourceConnectString      = "DB_CONNECT_STRING"
 	EnvVarDataSourceLogDestination     = "LOG_DESTINATION"
 	EnvVarDataSourcePwdVaultSecretName = "OCI_VAULT_SECRET_NAME"
-	EnvVarDataSourcePwdVaultId         = "OCI_VAULT_ID"
+	EnvVarDataSourcePwdVaultID         = "OCI_VAULT_ID"
 	EnvVarCustomConfigmap              = "CUSTOM_METRICS"
 	EnvVarTNSAdmin                     = "TNS_ADMIN"
 	EnvVarOCIVaultTenancyOCID          = "OCI_CLI_TENANCY"

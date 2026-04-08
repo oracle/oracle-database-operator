@@ -44,6 +44,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// StatusEnum represents high-level DatabaseObserver status values.
 type StatusEnum string
 
 // DatabaseObserverSpec defines the desired state of DatabaseObserver
@@ -193,6 +194,7 @@ type OCIConfig struct {
 	MountPath  string           `json:"mountPath,omitempty"`
 }
 
+// ConfigPrivateKey defines secret reference for OCI private key material.
 type ConfigPrivateKey struct {
 	SecretName string `json:"secret,omitempty"`
 }

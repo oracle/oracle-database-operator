@@ -57,12 +57,13 @@ const (
 	defaultLogMount = "/privateai/logs"
 )
 
+// LogMessages emits structured logs based on message type and debug settings.
 func LogMessages(msgtype string, msg string, err error, instance *privateaiv4.PrivateAi, logger logr.Logger) {
 	// setting logrus formatter
 	//logrus.SetFormatter(&logrus.JSONFormatter{})
 	//logrus.SetOutput(os.Stdout)
 
-	if msgtype == "DEBUG" && instance.Spec.IsDebug == true {
+	if msgtype == "DEBUG" && instance.Spec.IsDebug {
 		if err != nil {
 			logger.Error(err, msg)
 		} else {
@@ -109,11 +110,13 @@ func generatePortMapping(portMapping privateaiv4.PaiPortMapping) string {
 	return fmt.Sprintf("tcp-%d-%d", portMapping.Port, portMapping.TargetPort)
 }
 
+// GetFmtStr formats a value for bracketed log display.
 func GetFmtStr(pstr string,
 ) string {
 	return "[" + pstr + "]"
 }
 
+// CheckDepSet returns the deployment for the given PrivateAi instance.
 func CheckDepSet(instance *privateaiv4.PrivateAi, kClient client.Client) (*appsv1.Deployment, error) {
 	sfSetFound := &appsv1.Deployment{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
@@ -126,6 +129,7 @@ func CheckDepSet(instance *privateaiv4.PrivateAi, kClient client.Client) (*appsv
 	return sfSetFound, nil
 }
 
+// DelPvc deletes the named PVC in the PrivateAi namespace.
 func DelPvc(pvcName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger) error {
 
 	LogMessages("DEBUG", "Inside the delPvc and received param: "+GetFmtStr(pvcName), nil, instance, logger)
@@ -142,6 +146,7 @@ func DelPvc(pvcName string, instance *privateaiv4.PrivateAi, kClient client.Clie
 	return nil
 }
 
+// CheckSvc fetches the named service in the PrivateAi namespace.
 func CheckSvc(svcName string, instance *privateaiv4.PrivateAi, kClient client.Client) (*corev1.Service, error) {
 	// If this is a PrivateAi instance
 	//	if instance.Kind == "PrivateAi" && !strings.HasSuffix(svcName, "-svc") {
@@ -171,10 +176,11 @@ func checkPvc(pvcName string, instance *privateaiv4.PrivateAi, kClient client.Cl
 	return pvcFound, nil
 }
 
-func CheckSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger) (*corev1.Secret, error) {
+// CheckSecret fetches the named secret in the PrivateAi namespace.
+func CheckSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, _ logr.Logger) (*corev1.Secret, error) {
 
 	sc := &corev1.Secret{}
-	var err error = kClient.Get(context.TODO(), types.NamespacedName{
+	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      secName,
 		Namespace: instance.Namespace,
 	}, sc)
@@ -182,10 +188,11 @@ func CheckSecret(secName string, instance *privateaiv4.PrivateAi, kClient client
 	return sc, err
 }
 
-func CheckConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger) (*corev1.ConfigMap, error) {
+// CheckConfigMap fetches the named ConfigMap in the PrivateAi namespace.
+func CheckConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient client.Client, _ logr.Logger) (*corev1.ConfigMap, error) {
 
 	sc := &corev1.ConfigMap{}
-	var err error = kClient.Get(context.TODO(), types.NamespacedName{
+	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      cName,
 		Namespace: instance.Namespace,
 	}, sc)
@@ -193,6 +200,7 @@ func CheckConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient clien
 	return sc, err
 }
 
+// ReadSecret reads key fields from the named secret and returns api-key/cert values.
 func ReadSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) (string, string) {
 
@@ -225,6 +233,7 @@ func ReadSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.
 	return apiKeyVal, certPemVal
 }
 
+// PatchSecret patches ownership labels onto the named secret.
 func PatchSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) error {
 
@@ -252,6 +261,7 @@ func PatchSecret(secName string, instance *privateaiv4.PrivateAi, kClient client
 	return nil
 }
 
+// PatchConfigMap patches ownership labels onto the named ConfigMap.
 func PatchConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) error {
 
@@ -279,6 +289,7 @@ func PatchConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient clien
 	return nil
 }
 
+// GetSecretResourceVersion returns the resourceVersion for the named secret.
 func GetSecretResourceVersion(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) string {
 	sc, err := CheckSecret(secName, instance, kClient, logger)
@@ -288,6 +299,7 @@ func GetSecretResourceVersion(secName string, instance *privateaiv4.PrivateAi, k
 	return sc.ResourceVersion
 }
 
+// GetConfigMapResourceVersion returns the resourceVersion for the named ConfigMap.
 func GetConfigMapResourceVersion(cName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) string {
 	cc, err := CheckConfigMap(cName, instance, kClient, logger)
@@ -297,6 +309,7 @@ func GetConfigMapResourceVersion(cName string, instance *privateaiv4.PrivateAi, 
 	return cc.ResourceVersion
 }
 
+// TernaryCondition returns trueVal when condition is true, otherwise falseVal.
 func TernaryCondition[Y any](condition bool, trueVal, falseVal Y) Y {
 	if condition {
 		return trueVal
@@ -304,6 +317,7 @@ func TernaryCondition[Y any](condition bool, trueVal, falseVal Y) Y {
 	return falseVal
 }
 
+// GetSvcName builds a service name for the given service kind.
 func GetSvcName(name string, svctype string) string {
 	var svcName string
 	if svctype == "local" {

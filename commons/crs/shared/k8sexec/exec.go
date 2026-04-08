@@ -1,3 +1,4 @@
+// Package k8sexec provides Kubernetes pod exec helpers used by CRS components.
 package k8sexec
 
 import (

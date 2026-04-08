@@ -438,7 +438,7 @@ func (r *PrivateAiReconciler) reconcileWorkload(ctx context.Context, req ctrl.Re
 		firstPod = &podList.Items[0]
 	}
 
-	if _, err := aicommons.ManageReplicas(r, privateAiInst, r.Client, r.Config, foundDeploy, podList, ctx, req, r.Log); err != nil {
+	if _, err := aicommons.ManageReplicas(ctx, r, privateAiInst, r.Client, r.Config, foundDeploy, podList, req, r.Log); err != nil {
 		return resultNq, err
 	}
 
@@ -637,7 +637,7 @@ func (r *PrivateAiReconciler) ensureConfigMap(ctx context.Context, req ctrl.Requ
 	r.Log.Info("ConfigMap change detected", "configMap", cfg.Name)
 
 	if deploy, err := r.getDeployment(ctx, privateAiInst.Name, privateAiInst.Namespace); err == nil {
-		if err := aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, deploy, ctx, req, r.Log); err != nil {
+		if err := aicommons.UpdateRestartedAtAnnotation(ctx, r, privateAiInst, r.Client, r.Config, deploy, req, r.Log); err != nil {
 			privateAiInst.Status.Status = privateaiv4.StatusError
 			r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
 			return ctrl.Result{}, err
@@ -695,7 +695,7 @@ func (r *PrivateAiReconciler) ensureGatewayConfigMap(ctx context.Context, req ct
 	}
 
 	if reloadErr != nil || normalizedGatewayType(privateAiInst) != "nginx" {
-		if err := aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, deploy, ctx, req, r.Log); err != nil {
+		if err := aicommons.UpdateRestartedAtAnnotation(ctx, r, privateAiInst, r.Client, r.Config, deploy, req, r.Log); err != nil {
 			privateAiInst.Status.Status = privateaiv4.StatusError
 			return ctrl.Result{}, err
 		}
@@ -743,12 +743,12 @@ func (r *PrivateAiReconciler) reloadNginxGateway(
 		}
 
 		if _, err := aicommons.ExecCommand(
+			ctx,
 			r,
 			r.Config,
 			pod.Name,
 			pod.Namespace,
 			containerName,
-			ctx,
 			req,
 			true,
 			[]string{"nginx", "-t", "-c", configPath},
@@ -758,12 +758,12 @@ func (r *PrivateAiReconciler) reloadNginxGateway(
 		}
 
 		if _, err := aicommons.ExecCommand(
+			ctx,
 			r,
 			r.Config,
 			pod.Name,
 			pod.Namespace,
 			containerName,
-			ctx,
 			req,
 			true,
 			[]string{"nginx", "-s", "reload"},
@@ -832,7 +832,7 @@ func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request
 	r.Log.Info("Secret change detected", "secret", secretName)
 
 	if deploy, err := r.getDeployment(ctx, privateAiInst.Name, privateAiInst.Namespace); err == nil {
-		if err := aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, deploy, ctx, req, r.Log); err != nil {
+		if err := aicommons.UpdateRestartedAtAnnotation(ctx, r, privateAiInst, r.Client, r.Config, deploy, req, r.Log); err != nil {
 			privateAiInst.Status.Status = privateaiv4.StatusError
 			r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
 			return ctrl.Result{}, err
