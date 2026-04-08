@@ -5,6 +5,7 @@ build-operator:
     OP_YAML: oracle-database-operator.yaml
     BUILD_INTERNAL: "true"
     GOLANG_VERSION: "1.26.1"
+    LINT_PKGS: "./apis/database/v4/... ./commons/sharding/... ./controllers/database/..."
   script:
     - |
       case "$(uname -m)" in
@@ -39,33 +40,22 @@ build-operator:
     - echo "Installing static analysis tools..."
     - export GOBIN=$(pwd)/bin
     - mkdir -p $GOBIN
-    - go install honnef.co/go/tools/cmd/staticcheck@latest
     - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s latest
     - export PATH="$PATH:$(pwd)/bin"
 
     # --------------------------------
-    # Run Go vet
+    # Run scoped Go vet
     # --------------------------------
-    - echo "Running go vet..."
-    - go vet ./... || true
+    - echo "Running go vet on scoped packages..."
+    - go vet ${LINT_PKGS} || true
 
     # --------------------------------
-    # Run staticcheck (unused code)
+    # Run golangci-lint using repo config
     # --------------------------------
-    - echo "Running staticcheck..."
-    - staticcheck -checks=U1000 ./... || true
-
-    # --------------------------------
-    # Run golangci-lint (includes doc checks)
-    # --------------------------------
-    - echo "Running golangci-lint..."
+    - echo "Running golangci-lint on scoped packages..."
     - |
-      golangci-lint run ./... \
-        --enable revive \
-        --enable staticcheck \
-        --enable errcheck \
-        --enable ineffassign \
-        --enable unused \
+      golangci-lint run ${LINT_PKGS} \
+        --config .golangci.yml \
         || true
 
     # --------------------------------

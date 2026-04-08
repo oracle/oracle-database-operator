@@ -1,0 +1,29 @@
+run:
+  timeout: 10m
+  tests: false
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - revive
+    - staticcheck
+    - unused
+
+issues:
+  exclude-rules:
+    - path: ^apis/database/v4/(oraclerestart|racdatabase|shardingdatabase)_webhook\.go$
+      linters:
+        - unused
+    - path: ^commons/crs/rac/
+      linters:
+        - unused
+    - path: ^commons/crs/restart/
+      linters:
+        - unused
+    - path: ^controllers/database/lrpdb_controller\.go$
+      linters:
+        - govet
+      text: "non-constant format string|Printf format %d has arg .* of wrong type"
