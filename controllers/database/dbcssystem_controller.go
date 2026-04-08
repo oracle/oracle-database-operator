@@ -170,10 +170,18 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if dbcsInst.ObjectMeta.DeletionTimestamp.IsZero() {
 		// The object is not being deleted
 		if dbcsInst.Spec.HardLink && !finalizer.HasFinalizer(dbcsInst) {
-			finalizer.Register(r.KubeClient, dbcsInst)
+			if err := finalizer.Register(r.KubeClient, dbcsInst); err != nil {
+				r.Logger.Error(err, "failed to register finalizer")
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, err
+			}
 			r.Logger.Info("Finalizer registered successfully.")
 		} else if !dbcsInst.Spec.HardLink && finalizer.HasFinalizer(dbcsInst) {
-			finalizer.Unregister(r.KubeClient, dbcsInst)
+			if err := finalizer.Unregister(r.KubeClient, dbcsInst); err != nil {
+				r.Logger.Error(err, "failed to unregister finalizer")
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, err
+			}
 			r.Logger.Info("Finalizer unregistered successfully.")
 		}
 	} else {
@@ -211,7 +219,11 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 		}
 		// Remove the finalizer and update the object
-		finalizer.Unregister(r.KubeClient, dbcsInst)
+		if err := finalizer.Unregister(r.KubeClient, dbcsInst); err != nil {
+			r.Logger.Error(err, "failed to unregister finalizer during deletion")
+			dbcsInst.Status.Message = err.Error()
+			return ctrl.Result{}, err
+		}
 		r.Logger.Info("Finalizer unregistered successfully.")
 		// Stop reconciliation as the item is being deleted
 		result := resultNq

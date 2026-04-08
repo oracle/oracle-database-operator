@@ -201,7 +201,9 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 func (r *AutonomousDatabaseBackupReconciler) setOwnerAutonomousDatabase(backup *dbv4.AutonomousDatabaseBackup, adb *dbv4.AutonomousDatabase) error {
 	logger := r.Log.WithName("set-owner-reference")
 
-	controllerutil.SetOwnerReference(adb, backup, r.Scheme)
+	if err := controllerutil.SetOwnerReference(adb, backup, r.Scheme); err != nil {
+		return err
+	}
 	if err := r.KubeClient.Update(context.TODO(), backup); err != nil {
 		return err
 	}

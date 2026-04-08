@@ -533,7 +533,9 @@ func (r *AutonomousContainerDatabaseReconciler) patchLastSuccessfulSpec(acd *dbv
 		dbv4.LastSuccessfulSpec: string(specBytes),
 	}
 
-	annotations.PatchAnnotations(r.KubeClient, acd, anns)
+	if err := annotations.PatchAnnotations(r.KubeClient, acd, anns); err != nil {
+		return err
+	}
 
 	return nil
 }

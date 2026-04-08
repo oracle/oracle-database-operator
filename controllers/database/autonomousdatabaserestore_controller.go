@@ -210,7 +210,9 @@ func (r *AutonomousDatabaseRestoreReconciler) getRestoreSDKTime(restore *dbv4.Au
 func (r *AutonomousDatabaseRestoreReconciler) setOwnerAutonomousDatabase(restore *dbv4.AutonomousDatabaseRestore, adb *dbv4.AutonomousDatabase) error {
 	logger := r.Log.WithName("set-owner-reference")
 
-	controllerutil.SetOwnerReference(adb, restore, r.Scheme)
+	if err := controllerutil.SetOwnerReference(adb, restore, r.Scheme); err != nil {
+		return err
+	}
 	if err := r.KubeClient.Update(context.TODO(), restore); err != nil {
 		return err
 	}
