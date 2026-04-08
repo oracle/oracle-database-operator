@@ -66,7 +66,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -727,8 +726,7 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 		PdbState = "OPEN"
 	}
 
-	values := map[string]string{}
-	values = map[string]string{
+	values := map[string]string{
 		"state":         PdbState,
 		"modifyOption":  ModOption,
 		"modifyOption2": lrpdb.Spec.ModifyOption2,
@@ -843,8 +841,7 @@ func (r *LRPDBReconciler) CloseLRPDB(ctx context.Context, req ctrl.Request, lrpd
 		return err
 	}
 
-	values := map[string]string{}
-	values = map[string]string{
+	values := map[string]string{
 		"state":         lrpdb.Spec.LRPDBState,
 		"modifyOption":  lrpdb.Spec.ModifyOption,
 		"modifyOption2": lrpdb.Spec.ModifyOption2,
@@ -1215,14 +1212,12 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 		"getScript":        strconv.FormatBool(*(lrpdb.Spec.GetScript))}
 
 	//* check the existence of lrpdb.Spec.SrcLRPDBName //
-	var allErrs field.ErrorList
 	pdbCounter, _ := r.checkPDBforCloninig(ctx, req, lrpdb.Spec.SrcLRPDBName)
 	if pdbCounter == 0 {
 		log.Info("target pdb " + lrpdb.Spec.SrcLRPDBName + " does not exists or is not open")
-		allErrs = append(allErrs, field.NotFound(field.NewPath("Spec").Child("LRPDBName"), " "+lrpdb.Spec.LRPDBName+" does not exist :  failure"))
-			if err := r.Delete(context.Background(), lrpdb, client.GracePeriodSeconds(1)); err != nil {
-				log.Error(err, "failed to delete LRPDB after source validation failure")
-				return err
+		if err := r.Delete(context.Background(), lrpdb, client.GracePeriodSeconds(1)); err != nil {
+			log.Error(err, "failed to delete LRPDB after source validation failure")
+			return err
 			}
 			return nil
 		}
@@ -1417,11 +1412,13 @@ func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrp
 	if Bit(lrpdb.Status.PDBBitMask, PDBAUT) == false && lrpdb.Spec.PDBBitMask == 0 {
 
 		var err error
-		var tde_Password string
-		var tde_Secret string
+			var tde_Password string
+			var tde_Secret string
 
-		AutoDiscover := lrest.Spec.PdbAutoDiscover
-		err = r.AutoDiscoverActivation(ctx, req, lrpdb, false)
+			AutoDiscover := lrest.Spec.PdbAutoDiscover
+			if err := r.AutoDiscoverActivation(ctx, req, lrpdb, false); err != nil {
+				return err
+			}
 
 		/*** reset sqlcode***/
 		lrpdb.Status.SqlCode = 0
@@ -2373,6 +2370,10 @@ func (r *LRPDBReconciler) AutoDiscoverActivation(ctx context.Context, req ctrl.R
 		Namespace: lrestNamespace,
 		Name:      lrestResName,
 	}, &lrest)
+	if err != nil {
+		log.Info("Failed to get LREST resource for autodiscovery setting update")
+		return err
+	}
 	lrest.Spec.PdbAutoDiscover = active
 	err = r.Update(context.TODO(), &lrest)
 	if err != nil {

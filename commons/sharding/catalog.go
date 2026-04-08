@@ -577,7 +577,6 @@ func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 func ExportTDEKey(podName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger) error {
 	var msg string
 
-	msg = ""
 	_, _, err := ExecCommand(podName, getExportTDEKeyCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg = "Error executing getExportTDEKeyCmd : podName=[" + podName + "]. errMsg=" + err.Error()

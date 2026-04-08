@@ -2180,11 +2180,11 @@ func (r *ShardingDatabaseReconciler) validateGsm(instance *databasev4.ShardingDa
 func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec, specId int,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 	var msg string
-	gsmSfSet := &appsv1.StatefulSet{}
+	var gsmSfSet *appsv1.StatefulSet
 	gsmPod := &corev1.Pod{}
 
 	var err error
-	podList := &corev1.PodList{}
+	var podList *corev1.PodList
 	var isPodExist bool
 
 	gsmSfSet, err = shardingv1.CheckSfset(OraGsmSpex.Name, instance, r.Client)
@@ -2262,9 +2262,9 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
 	var err error
-	catalogSfSet := &appsv1.StatefulSet{}
+	var catalogSfSet *appsv1.StatefulSet
 	catalogPod := &corev1.Pod{}
-	podList := &corev1.PodList{}
+	var podList *corev1.PodList
 	var isPodExist bool
 
 	catalogSfSet, err = shardingv1.CheckSfset(OraCatalogSpex.Name, instance, r.Client)
@@ -2310,7 +2310,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 // validateShard validates one shard member and updates its status projection.
 func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec, specId int,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
-	shardSfSet := &appsv1.StatefulSet{}
+	var shardSfSet *appsv1.StatefulSet
 	shardPod := &corev1.Pod{}
 
 	shardSfSet, err := shardingv1.CheckSfset(OraShardSpex.Name, instance, r.Client)
@@ -2597,7 +2597,7 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 // addPrimaryShards adds missing primary shards in GSM and deploys them once added.
 func (r *ShardingDatabaseReconciler) addPrimaryShards(ctx context.Context, instance *databasev4.ShardingDatabase) error {
 	var err error
-	shardSfSet := &appsv1.StatefulSet{}
+	var shardSfSet *appsv1.StatefulSet
 	gsmPod := &corev1.Pod{}
 
 	hasPrimary := false
@@ -2757,7 +2757,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(ctx context.Context, insta
 	var err error
 	isDGReplication := shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG"
 
-	shardSfSet := &appsv1.StatefulSet{}
+	var shardSfSet *appsv1.StatefulSet
 	gsmPod := &corev1.Pod{}
 
 	addFailedCount := 0
@@ -3195,7 +3195,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 func (r *ShardingDatabaseReconciler) delShard(instance *databasev4.ShardingDatabase, sfSetName string, sfSetFound *appsv1.StatefulSet, sfsetPod *corev1.Pod, specIdx int) {
 	var err error
 	var msg string
-	svcFound := &corev1.Service{}
+	var svcFound *corev1.Service
 
 	if sfsetPod != nil && sfsetPod.Name != "" {
 		err = shardingv1.SfsetLabelPatch(sfSetFound, sfsetPod, instance, r.Client)
@@ -3439,9 +3439,6 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev4.Shardi
 	var eventMsg string
 	var msg string
 
-	currState = ""
-	eventMsg = ""
-
 	msg = "checkShardState():ShardType=" + strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType))
 	r.logLegacy("INFO", msg, nil, instance, r.Log)
 	if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
@@ -3459,11 +3456,10 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev4.Shardi
 			} else if currState == string(databasev4.AddingShardState) {
 				eventMsg = "Shard Addition in progress for [" + OraShardSpex.Name + "]. Requeuing"
 				err = fmt.Errorf("%s", eventMsg)
-			} else if currState == string(databasev4.DeletingState) {
-				eventMsg = "Shard Deletion in progress for [" + OraShardSpex.Name + "]. Requeuing"
-				err = fmt.Errorf("%s", eventMsg)
-				err = nil
-			} else if currState == string(databasev4.DeleteErrorState) {
+				} else if currState == string(databasev4.DeletingState) {
+					eventMsg = "Shard Deletion in progress for [" + OraShardSpex.Name + "]. Requeuing"
+					err = nil
+				} else if currState == string(databasev4.DeleteErrorState) {
 				eventMsg = "Shard Deletion  Error for [" + OraShardSpex.Name + "]. Manual intervention required. Requeuing"
 				err = fmt.Errorf("%s", eventMsg)
 			} else if currState == string(databasev4.ShardRemoveError) {

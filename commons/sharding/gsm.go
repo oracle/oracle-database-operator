@@ -245,16 +245,13 @@ func buildVolumeSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex dat
 func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.Container {
 	// building Continer spec
 	var result []corev1.Container
-	var masterGsmFlag = false
 	var idx int
 	user := oraRunAsUser
 	group := oraFsGroup
 	// Get the Idx
 	if instance.Spec.Gsm[0].Name == OraGsmSpex.Name {
-		masterGsmFlag = true
 		idx = 0
 	} else {
-		masterGsmFlag = false
 		idx = 1
 	}
 	directorParams := buildDirectorParams(instance, OraGsmSpex, idx)
@@ -296,7 +293,7 @@ func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex 
 			},
 		},
 		**/
-		Env: buildEnvVarsSpec(instance, OraGsmSpex.EnvVars, OraGsmSpex.Name, "GSM", masterGsmFlag, directorParams, "", nil),
+		Env: buildEnvVarsSpec(instance, OraGsmSpex.EnvVars, OraGsmSpex.Name, "GSM", idx == 0, directorParams, "", nil),
 	}
 	if OraGsmSpex.Resources != nil {
 		containerSpec.Resources = *OraGsmSpex.Resources

@@ -961,27 +961,19 @@ func PodListValidation(podList *corev1.PodList, sfName string, instance *databas
 	var isPodExist bool = false
 	podInfo := &corev1.Pod{}
 	var podNameStr string
-	var err error
-	if sfName != "" {
-		podNameStr = sfName + "-"
-	} else {
+		if sfName != "" {
+			podNameStr = sfName + "-"
+		} else {
 		podNameStr = "-"
 	}
 
-	for _, pod := range podList.Items {
-		if strings.Contains(pod.Name, podNameStr) {
-			err = checkPod(instance, &pod, kClient)
-			if err != nil {
-				isPodExist = false
-			}
-			err = checkPodStatus(&pod, kClient)
-			if err != nil {
-				isPodExist = false
-			}
-			err = checkContainerStatus(&pod, kClient)
-			if err != nil {
-				isPodExist = false
-			} else {
+		for _, pod := range podList.Items {
+			if strings.Contains(pod.Name, podNameStr) {
+				_ = checkPod(instance, &pod, kClient)
+				_ = checkPodStatus(&pod, kClient)
+				err := checkContainerStatus(&pod, kClient)
+				if err != nil {
+				} else {
 				isPodExist = true
 				podInfo = &pod
 				break

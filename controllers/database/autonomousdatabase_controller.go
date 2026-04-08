@@ -740,7 +740,10 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 		return err
 	}
 
-	walletBytes, err := io.ReadAll(downloadWalletResp.Content)
+	walletBytes, readErr := io.ReadAll(downloadWalletResp.Content)
+	if readErr != nil {
+		return readErr
+	}
 
 	data, err := oci.ExtractWallet(io.NopCloser(bytes.NewReader(walletBytes)))
 	if err != nil {

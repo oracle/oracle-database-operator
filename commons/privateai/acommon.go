@@ -198,9 +198,6 @@ func ReadSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.
 
 	var apiKeyVal string
 	var certPemVal string
-	sc := &corev1.Secret{}
-	//var err error
-
 	sc, err := CheckSecret(secName, instance, kClient, logger)
 
 	if err != nil {
@@ -231,9 +228,6 @@ func ReadSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.
 func PatchSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) error {
 
-	sc := &corev1.Secret{}
-	//var err error
-
 	// Reading a Secret
 	sc, err := CheckSecret(secName, instance, kClient, logger)
 	if err != nil {
@@ -260,9 +254,6 @@ func PatchSecret(secName string, instance *privateaiv4.PrivateAi, kClient client
 
 func PatchConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) error {
-
-	cc := &corev1.ConfigMap{}
-	//var err error
 
 	// Reading a configmap
 	cc, err := CheckConfigMap(cName, instance, kClient, logger)

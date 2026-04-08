@@ -1597,15 +1597,19 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 
 	var lrpdb dbapi.LRPDB
 
-	err = r.Get(context.Background(), client.ObjectKey{
+	if err := r.Get(context.Background(), client.ObjectKey{
 		Namespace: NamesSpaceAutoDiscover,
 		Name:      Resname,
-	}, &lrpdb)
+	}, &lrpdb); err != nil {
+		return err
+	}
 
 	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBAUT)
 	lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 
-	err = r.Status().Update(context.Background(), &lrpdb)
+	if err := r.Status().Update(context.Background(), &lrpdb); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -1618,6 +1622,9 @@ func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request,
 
 	// SELECT * FROM V$PDBS
 	ndata, err := r.SelectFromVpdbs(ctx, req, lrest)
+	if err != nil {
+		return err
+	}
 
 	// LIST OF ALL LRPDB
 	log.Info("Get list of lrpdb resources\n")

@@ -624,7 +624,10 @@ func (r *OracleRestartReconciler) oracleRestartPhaseWorkloadSync(
 				return resultNq, err, true
 			}
 			oracleRestart.Spec.InstDetails.EnvFile = cmName
-			dep, err := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
+			dep, buildErr := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
+			if buildErr != nil {
+				return resultNq, buildErr, true
+			}
 			if _, err = r.createOrReplaceSfsAsm(ctx, req, oracleRestart, dep, index, isLast, oldSpec, storageState.discoverySuccessful, configmapEnvKeyChanged); err != nil {
 				return resultNq, err, true
 			}
@@ -2181,12 +2184,12 @@ func (r *OracleRestartReconciler) validateoraclerestartdb(oracleRestart *oracler
 	return orestartSfSet, orestartPod, fmt.Errorf("failed to update Oracle Restart DB Status after %d attempts", maxRetries)
 }
 
-// validateOracleRestartInst validates a single Oracle Restart instance,
-// inspecting associated StatefulSet and pods to drive status updates.
+	// validateOracleRestartInst validates a single Oracle Restart instance,
+	// inspecting associated StatefulSet and pods to drive status updates.
 func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, OraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, specId int) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
 	var err error
-	orestartSfSet := &appsv1.StatefulSet{}
+	var orestartSfSet *appsv1.StatefulSet
 	orestartPod := &corev1.Pod{}
 
 	orestartSfSet, err = oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
@@ -3411,10 +3414,7 @@ func (r *OracleRestartReconciler) createOrReplaceSfsAsm(
 	}
 	// Determine AutoUpdate for changed disks
 	asmAutoUpdate := true
-	addedAsmDisks := []string{}
-	removedAsmDisks := []string{}
-
-	addedAsmDisks, removedAsmDisks, err = r.computeDiskChanges(oracleRestart, oldSpec)
+	addedAsmDisks, removedAsmDisks, err := r.computeDiskChanges(oracleRestart, oldSpec)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -3902,9 +3902,9 @@ func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oracler
 	// 	return fmt.Errorf("endpoint generation error in delete block")
 	// }
 
-	sfSetFound := &appsv1.StatefulSet{}
-	svcFound := &corev1.Service{}
-	configMapFound := &corev1.ConfigMap{}
+	var sfSetFound *appsv1.StatefulSet
+	var svcFound *corev1.Service
+	var configMapFound *corev1.ConfigMap
 
 	sfSetFound, err = oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
 	if err == nil {

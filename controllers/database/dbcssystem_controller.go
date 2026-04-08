@@ -777,8 +777,6 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 								dataGuardRetryCount, err)
 							return ctrl.Result{Requeue: true}, err
 						}
-						// reset retry count on success
-						dataGuardRetryCount = 0
 					} else {
 						fmt.Println("Max retries (5) reached. Failing DataGuard status update.")
 						return ctrl.Result{}, fmt.Errorf("max retries reached for DataGuard status update")
