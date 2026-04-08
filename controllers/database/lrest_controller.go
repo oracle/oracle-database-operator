@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,revive // legacy LREST controller paths/signatures are kept for backward compatibility and phased cleanup.
 package controllers
 
 import (

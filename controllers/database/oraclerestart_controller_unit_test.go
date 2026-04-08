@@ -1,3 +1,4 @@
+//nolint:staticcheck // unit tests intentionally assert legacy requeue behavior.
 package controllers
 
 import (

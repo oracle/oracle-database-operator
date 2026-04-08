@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,revive // controller keeps legacy OCI selector access patterns/signatures for compatibility.
 package controllers
 
 import (

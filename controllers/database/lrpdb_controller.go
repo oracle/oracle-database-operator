@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,revive // legacy LRPDB bitmask flow and signatures are intentionally preserved for compatibility.
 package controllers
 
 import (
@@ -168,6 +169,8 @@ var tdePassword string
 //nolint:unused // retained for legacy compatibility hooks
 var tdeSecret string
 var floodControl bool = false
+
+//nolint:unused // retained for legacy imperative deletion toggle behavior.
 var imperativeLpdbDeletion bool = false /* Global variable for imperative pdb deletion */
 /*
 	        We need to record the config map name after pdb creation

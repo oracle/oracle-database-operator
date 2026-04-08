@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck // legacy OCI SDK embedded selector access kept stable during phased cleanup.
 package common
 
 import (

@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:revive // v1alpha1 legacy API methods are preserved for backward compatibility.
 package v1alpha1
 
 import (

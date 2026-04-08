@@ -1,3 +1,4 @@
+//nolint:staticcheck // unit tests intentionally validate legacy controller behavior.
 package controllers
 
 import (

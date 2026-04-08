@@ -47,6 +47,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/secrets"
 )
 
+// VaultService defines methods for reading secret values from OCI Vault.
 type VaultService interface {
 	GetSecretValue(vaultSecretOCID string) (string, error)
 }
@@ -56,6 +57,7 @@ type vaultService struct {
 	secretClient secrets.SecretsClient
 }
 
+// NewVaultService creates a VaultService backed by OCI SecretsClient.
 func NewVaultService(
 	logger logr.Logger,
 	provider common.ConfigurationProvider) (VaultService, error) {
@@ -81,7 +83,7 @@ func (v *vaultService) GetSecretValue(vaultSecretOCID string) (string, error) {
 		return "", err
 	}
 
-	base64content := response.SecretBundle.SecretBundleContent.(secrets.Base64SecretBundleContentDetails)
+	base64content := response.SecretBundleContent.(secrets.Base64SecretBundleContentDetails)
 	base64String := *base64content.Content
 	decoded, err := base64.StdEncoding.DecodeString(base64String)
 	if err != nil {

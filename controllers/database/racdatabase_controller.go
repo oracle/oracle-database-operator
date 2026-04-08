@@ -61,6 +61,8 @@
 // Additional help:
 //   - Issues tracker: https://github.com/oracle/oracle-database-operator/blob/main/README.md#help
 //   - Sample CRD walkthroughs: docs/rac/README.md and docs/rac/provisioning
+//
+//nolint:staticcheck,unused,revive // legacy RAC reconciliation helpers/signatures are retained for compatibility.
 package controllers
 
 // This file implements the RacDatabaseReconciler, which manages the lifecycle of RacDatabase resources.

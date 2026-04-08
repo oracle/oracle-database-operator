@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,unused,revive // legacy Oracle Restart reconciliation helpers/signatures are retained for compatibility.
 package controllers
 
 import (

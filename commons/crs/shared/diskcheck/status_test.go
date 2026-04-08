@@ -1,3 +1,4 @@
+//nolint:staticcheck // k8sfake.NewSimpleClientset remains for compatibility in existing tests.
 package diskcheck
 
 import (

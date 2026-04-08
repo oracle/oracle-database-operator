@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck // e2e assertions intentionally use legacy embedded-selector access patterns.
 package e2etest
 
 import (

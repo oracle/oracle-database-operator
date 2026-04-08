@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck // apply-patch path is retained while migration to new apply API is staged.
 package controllers
 
 import (

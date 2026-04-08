@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,revive // e2e utility keeps legacy APIs and ioutil usage for stable cross-version behavior.
 package e2eutil
 
 import (

@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck // test clarity intentionally favors explicit var declarations.
 package v1alpha1
 
 import (

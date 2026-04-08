@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-//nolint:staticcheck,unused // Compatibility paths intentionally keep deprecated fields and optional helpers.
+//nolint:staticcheck,unused,revive // Compatibility paths intentionally keep deprecated fields and optional helpers.
 package controllers
 
 // revive:disable:indent-error-flow,var-declaration,exported,context-as-argument

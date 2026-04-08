@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:revive // ginkgo/gomega dot imports are intentionally used in test DSL.
 package controllers
 
 import (

@@ -299,7 +299,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(_ context.Context, req ctrl.Req
 			return r.manageError(
 				logger.WithName("performOperation"),
 				desiredAdb,
-				fmt.Errorf("Failed to operate database action: %w", err))
+				fmt.Errorf("failed to operate database action: %w", err))
 		}
 
 		if specChangedAfterOperation {
@@ -325,7 +325,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(_ context.Context, req ctrl.Req
 			return r.manageError(
 				logger.WithName("validateWallet"),
 				desiredAdb,
-				fmt.Errorf("Failed to validate Wallet: %w", err))
+				fmt.Errorf("failed to validate Wallet: %w", err))
 		}
 	}
 
@@ -337,7 +337,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(_ context.Context, req ctrl.Req
 			return r.manageError(
 				logger.WithName("updateSpec"),
 				desiredAdb,
-				fmt.Errorf("Failed to update AutonomousDatabase spec: %w", err))
+				fmt.Errorf("failed to update AutonomousDatabase spec: %w", err))
 		}
 		// Immediately exit the reconcile loop if the resource is updated, and let
 		// the next run continue.
@@ -349,7 +349,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(_ context.Context, req ctrl.Req
 		return r.manageError(
 			logger,
 			desiredAdb,
-			fmt.Errorf("Failed to update AutonomousDatabase status: %w", err))
+			fmt.Errorf("failed to update AutonomousDatabase status: %w", err))
 	}
 
 	/******************************************************************
@@ -397,7 +397,7 @@ func (r *AutonomousDatabaseReconciler) manageError(logger logr.Logger, adb *dbv4
 
 	updateCondition(adb, err)
 	if err := r.KubeClient.Status().Update(context.TODO(), adb); err != nil {
-		return emptyResult, fmt.Errorf("Failed to update status: %w", err)
+		return emptyResult, fmt.Errorf("failed to update status: %w", err)
 	}
 	return emptyResult, nil
 }

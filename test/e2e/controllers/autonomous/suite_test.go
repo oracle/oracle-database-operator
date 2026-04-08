@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:revive // e2e shared globals keep legacy naming for compatibility with existing suites.
 package e2etest
 
 import (

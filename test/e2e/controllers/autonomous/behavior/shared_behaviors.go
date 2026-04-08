@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:revive // legacy exported helpers are intentionally shared across e2e behavior suites.
 package e2ebehavior
 
 import (
@@ -316,19 +317,19 @@ func AssertADBDetails(k8sClient *client.Client,
 			}
 
 			debug := false
-				if debug {
-					if !compareString(expectedADBDetails.Id, resp.AutonomousDatabase.Id) {
-						_, err := fmt.Fprintf(GinkgoWriter, "Expected OCID: %v\nGot: %v\n", expectedADBDetails.Id, resp.AutonomousDatabase.Id)
-						Expect(err).To(BeNil())
-					}
-					if !compareString(expectedADBDetails.CompartmentId, resp.AutonomousDatabase.CompartmentId) {
-						_, err := fmt.Fprintf(GinkgoWriter, "Expected CompartmentOCID: %v\nGot: %v\n", expectedADBDetails.CompartmentId, resp.CompartmentId)
-						Expect(err).To(BeNil())
-					}
-					if !compareString(expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName) {
-						_, err := fmt.Fprintf(GinkgoWriter, "Expected DisplayName: %v\nGot: %v\n", expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName)
-						Expect(err).To(BeNil())
-					}
+			if debug {
+				if !compareString(expectedADBDetails.Id, resp.AutonomousDatabase.Id) {
+					_, err := fmt.Fprintf(GinkgoWriter, "Expected OCID: %v\nGot: %v\n", expectedADBDetails.Id, resp.AutonomousDatabase.Id)
+					Expect(err).To(BeNil())
+				}
+				if !compareString(expectedADBDetails.CompartmentId, resp.AutonomousDatabase.CompartmentId) {
+					_, err := fmt.Fprintf(GinkgoWriter, "Expected CompartmentOCID: %v\nGot: %v\n", expectedADBDetails.CompartmentId, resp.CompartmentId)
+					Expect(err).To(BeNil())
+				}
+				if !compareString(expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName) {
+					_, err := fmt.Fprintf(GinkgoWriter, "Expected DisplayName: %v\nGot: %v\n", expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName)
+					Expect(err).To(BeNil())
+				}
 				if !compareString(expectedADBDetails.DbName, resp.AutonomousDatabase.DbName) {
 					_, _ = fmt.Fprintf(GinkgoWriter, "Expected DbName: %v\nGot:%v\n", expectedADBDetails.DbName, resp.AutonomousDatabase.DbName)
 				}
@@ -732,25 +733,25 @@ func AssertBackupRestore(k8sClient *client.Client, dbClient *database.DatabaseCl
 		By("Wait until ADB state returns to AVAILABLE")
 		AssertADBRemoteStateForBackupRestore(k8sClient, dbClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
 
-			if state == database.AutonomousDatabaseLifecycleStateBackupInProgress {
-				By("Checking adb backup State is ACTIVE")
-				createdBackup := &dbv1alpha1.AutonomousDatabaseBackup{}
-				Eventually(func() (database.AutonomousDatabaseBackupLifecycleStateEnum, error) {
-					if err := derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdBackup); err != nil {
-						return "", err
-					}
-					return createdBackup.Status.LifecycleState, nil
-				}, backupTimeout, time.Second*20).Should(Equal(database.AutonomousDatabaseBackupLifecycleStateActive))
-			} else {
-				By("Checking adb restore State is SUCCEEDED")
-				createdRestore := &dbv1alpha1.AutonomousDatabaseRestore{}
-				Eventually(func() (workrequests.WorkRequestStatusEnum, error) {
-					if err := derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdRestore); err != nil {
-						return "", err
-					}
-					return createdRestore.Status.Status, nil
-				}, backupTimeout, time.Second*20).Should(Equal(workrequests.WorkRequestStatusSucceeded))
-			}
+		if state == database.AutonomousDatabaseLifecycleStateBackupInProgress {
+			By("Checking adb backup State is ACTIVE")
+			createdBackup := &dbv1alpha1.AutonomousDatabaseBackup{}
+			Eventually(func() (database.AutonomousDatabaseBackupLifecycleStateEnum, error) {
+				if err := derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdBackup); err != nil {
+					return "", err
+				}
+				return createdBackup.Status.LifecycleState, nil
+			}, backupTimeout, time.Second*20).Should(Equal(database.AutonomousDatabaseBackupLifecycleStateActive))
+		} else {
+			By("Checking adb restore State is SUCCEEDED")
+			createdRestore := &dbv1alpha1.AutonomousDatabaseRestore{}
+			Eventually(func() (workrequests.WorkRequestStatusEnum, error) {
+				if err := derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdRestore); err != nil {
+					return "", err
+				}
+				return createdRestore.Status.Status, nil
+			}, backupTimeout, time.Second*20).Should(Equal(workrequests.WorkRequestStatusSucceeded))
+		}
 	}
 }
 

@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,revive // compatibility-oriented controller signatures and requeue patterns are intentionally retained.
 package privateai
 
 import (

@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,revive // e2e utility keeps legacy interfaces and dependencies for test stability.
 package e2eutil
 
 import (

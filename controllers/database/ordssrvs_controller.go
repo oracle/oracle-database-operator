@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,revive // legacy ORDS service reconciliation patterns/signatures are retained for compatibility.
 package controllers
 
 import (

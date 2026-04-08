@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,revive // deprecated fields and legacy method signatures are intentionally supported for compatibility.
 package controllers
 
 import (

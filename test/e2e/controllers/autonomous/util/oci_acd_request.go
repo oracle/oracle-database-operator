@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:revive // exported e2e OCI helpers are kept stable for test compatibility.
 package e2eutil
 
 import (

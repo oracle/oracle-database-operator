@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:revive,unused,staticcheck // legacy sharding helper signatures and naming are preserved for backward compatibility.
 package commons
 
 import (
@@ -2034,9 +2035,9 @@ func GetSvcIp(PodName string, sparams string, instance *databasev4.ShardingDatab
 	if err != nil {
 		msg := "Error occurred while getting the IP for k8s service " + GetFmtStr(sparams)
 		LogMessages("INFO", msg, nil, instance, logger)
-		return strings.Replace(stdoutput, "\r\n", "", -1), strings.Replace(stderror, "/r/n", "", -1), err
+		return strings.ReplaceAll(stdoutput, "\r\n", ""), strings.ReplaceAll(stderror, "/r/n", ""), err
 	}
-	return strings.Replace(stdoutput, "\r\n", "", -1), strings.Replace(stderror, "/r/n", "", -1), nil
+	return strings.ReplaceAll(stdoutput, "\r\n", ""), strings.ReplaceAll(stderror, "/r/n", ""), nil
 }
 
 func GetGsmServices(PodName string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
@@ -2143,10 +2144,7 @@ func InstanceShardPatch(obj client.Object, instance *databasev4.ShardingDatabase
 }
 
 func checkTdeWalletFlag(instance *databasev4.ShardingDatabase) bool {
-	if strings.EqualFold(strings.TrimSpace(getTDEWalletEnabled(instance)), "enable") {
-		return true
-	}
-	return false
+	return strings.EqualFold(strings.TrimSpace(getTDEWalletEnabled(instance)), "enable")
 }
 
 func CheckIsTDEWalletFlag(instance *databasev4.ShardingDatabase, logger logr.Logger) bool {

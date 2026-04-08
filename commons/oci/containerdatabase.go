@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:revive // legacy OCI interface docs and naming are retained for compatibility.
 package oci
 
 import (

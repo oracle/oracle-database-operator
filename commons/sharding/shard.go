@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:unused // pmon helper command is retained for future shard health probes.
 package commons
 
 import (

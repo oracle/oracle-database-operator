@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:unused // legacy validation helpers are retained for staged rollout and backward compatibility.
 package v4
 
 // revive:disable:exported,unused-parameter,var-naming,redefines-builtin-id
