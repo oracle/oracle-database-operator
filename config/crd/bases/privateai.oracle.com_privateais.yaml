@@ -166,6 +166,10 @@ spec:
                           x-kubernetes-int-or-string: true
                         type: object
                     type: object
+                  tlsMountLocation:
+                    type: string
+                  tlsSecretName:
+                    type: string
                   type:
                     enum:
                     - nginx

@@ -78,7 +78,7 @@ func ExecCommand(podName string, cmd []string, kubeConfig *rest.Config, instance
 
 	if kubeConfig == nil {
 		msg = "ExecCommand() : kubeConfig is nil"
-		err := fmt.Errorf(msg)
+		err := fmt.Errorf("%s", msg)
 		return "Error:", "kubeConfig is nil", err
 	}
 

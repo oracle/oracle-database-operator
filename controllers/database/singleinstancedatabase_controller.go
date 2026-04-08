@@ -106,7 +106,7 @@ var ErrAdminPasswordSecretNotFound error = errors.New("Admin password secret for
 const sidbInitParamUnitBytes = int64(1024 * 1024)
 
 const (
-	restoreOCIConfigMountDir       = "/opt/oracle/oci/config"
+	restoreOCIConfigMountDir       = "/opt/oracle/ocienv/config"
 	restoreOCIPrivateKeyMountDir   = "/opt/oracle/oci/keys"
 	restoreOPCInstallerMountDir    = "/mnt/software/opcinstaller"
 	restoreSourceWalletMountDir    = "/opt/oracle/source-wallet"

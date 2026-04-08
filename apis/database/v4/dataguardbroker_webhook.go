@@ -42,12 +42,8 @@ import (
 	"context"
 
 	ctrl "sigs.k8s.io/controller-runtime"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
-
-// log is for logging in this package.
-var dataguardbrokerlog = logf.Log.WithName("dataguardbroker-resource")
 
 func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
 

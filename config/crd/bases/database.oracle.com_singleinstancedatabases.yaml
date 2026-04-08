@@ -816,6 +816,13 @@ spec:
                           key:
                             type: string
                         type: object
+                      opcInstallerZip:
+                        properties:
+                          configMapName:
+                            type: string
+                          key:
+                            type: string
+                        type: object
                       privateKey:
                         properties:
                           key:

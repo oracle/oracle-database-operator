@@ -13152,6 +13152,10 @@ spec:
                           x-kubernetes-int-or-string: true
                         type: object
                     type: object
+                  tlsMountLocation:
+                    type: string
+                  tlsSecretName:
+                    type: string
                   type:
                     enum:
                     - nginx
@@ -18393,6 +18397,13 @@ spec:
                           key:
                             type: string
                         type: object
+                      opcInstallerZip:
+                        properties:
+                          configMapName:
+                            type: string
+                          key:
+                            type: string
+                        type: object
                       privateKey:
                         properties:
                           key:
@@ -19151,8 +19162,6 @@ rules:
   resources:
   - privateais
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch

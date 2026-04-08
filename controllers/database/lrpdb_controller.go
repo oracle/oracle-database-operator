@@ -335,7 +335,7 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return requeueN, err
 		}
 		if Bit(lrpdb.Spec.Trclvl, TRCCFM) == true {
-			fmt.Printf("TRCCFM: Config. Map Cardinality:" + strconv.FormatInt(int64(Cardinality), 10))
+			fmt.Printf("TRCCFM: Config. Map Cardinality:%s", strconv.FormatInt(int64(Cardinality), 10))
 		}
 	}
 
@@ -1799,7 +1799,7 @@ func (r *LRPDBReconciler) getLRPDBState(ctx context.Context, req ctrl.Request, l
 		lrpdb.Status.OpenMode = "N/A"
 		lrpdb.Status.Msg = "N/A ORA-1403"
 		if Bit(lrpdb.Spec.Trclvl, TRCSTA) == true {
-			fmt.Printf("TRCSTA: SqlCode[NO_DATA_FOUND]:[%d]\n", lrpdb.Status.OpenMode)
+			fmt.Printf("TRCSTA: SqlCode[NO_DATA_FOUND]:[%s]\n", lrpdb.Status.OpenMode)
 		}
 		return errors.New("NO_DATA_FOUND")
 	}
@@ -2217,7 +2217,7 @@ func (r *LRPDBReconciler) GetSqlCode(rsp string, sqlcode *int, tracelevel int) e
 
 	*sqlcode = int(objmap["sqlcode"].(float64))
 	if Bit(tracelevel, TRCSQL) == true {
-		fmt.Printf("TRCSQL :sqlcode.......:ora-" + strconv.Itoa(*sqlcode))
+		fmt.Printf("TRCSQL :sqlcode.......:ora-%s", strconv.Itoa(*sqlcode))
 	}
 	if *sqlcode != 0 {
 		switch strconv.Itoa(*sqlcode) {

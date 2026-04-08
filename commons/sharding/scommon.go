@@ -1048,7 +1048,7 @@ func checkPodStatus(pod *corev1.Pod, kClient client.Client,
 			}
 		} else {
 			msg = "Pod is not scheduled or ready " + pod.Name + ".Describe the pod to check the detailed message"
-			return fmt.Errorf(msg)
+			return fmt.Errorf("%s", msg)
 		}
 	}
 	return nil
@@ -1075,7 +1075,7 @@ func checkContainerStatus(pod *corev1.Pod, kClient client.Client,
 	if isRunning {
 		return nil
 	} else {
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 }
 
@@ -2132,7 +2132,7 @@ func InstanceShardPatch(obj client.Object, instance *databasev4.ShardingDatabase
 	}
 
 	instshardM, err := json.Marshal(struct {
-		Spec *databasev4.ShardingDatabaseSpec `json:"spec":`
+		Spec *databasev4.ShardingDatabaseSpec `json:"spec"`
 	}{
 		Spec: &instSpec,
 	})
