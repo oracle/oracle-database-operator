@@ -90,6 +90,17 @@ func TestSIDBWebhookValidateUpdateAllowsMetadataOnlyChangeWhenLocked(t *testing.
 	}
 }
 
+func TestSIDBWebhookTrueCachePrimaryWithoutTrueCacheFieldsPasses(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = nil
+	sidb.Spec.TrueCacheServices = nil
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors when primary has no trueCache fields, got: %v", errs)
+	}
+}
+
 func TestSIDBWebhookTrueCachePrimaryAllowsGenerateEnabledOnly(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "primary"
@@ -100,6 +111,103 @@ func TestSIDBWebhookTrueCachePrimaryAllowsGenerateEnabledOnly(t *testing.T) {
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
 		t.Fatalf("expected no validation errors, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryAllowsGeneratePathWhenEnabled(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		GenerateEnabled: true,
+		GeneratePath:    "/opt/oracle/truecache/blob.tar.gz",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors when primary enables trueCache generation with a path, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryAllowsTmpGeneratePath(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		GenerateEnabled: true,
+		GeneratePath:    "/tmp/tc_config_blob.tar.gz",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors when primary sets generateEnabled=true with /tmp trueCache generatePath, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryRejectsGeneratePathWhenDisabled(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		GenerateEnabled: false,
+		GeneratePath:    "/tmp/tc_config_blob.tar.gz",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when primary sets generatePath without generateEnabled=true")
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryRejectsBlobConfigMapRef(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		BlobConfigMapRef: "tc-blob",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when primary sets trueCache.blobConfigMapRef")
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryRejectsBlobConfigMapKey(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		BlobConfigMapKey: "tc-config",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when primary sets trueCache.blobConfigMapKey")
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryRejectsBlobMountPath(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		BlobMountPath: "/mnt/truecache",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when primary sets trueCache.blobMountPath")
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryRejectsNestedTrueCacheServices(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		TrueCacheServices: []string{"svc1"},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when primary sets trueCache.trueCacheServices")
+	}
+}
+
+func TestSIDBWebhookTrueCachePrimaryRejectsLegacyTrueCacheServices(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.TrueCacheServices = []string{"svc1"}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when primary sets legacy trueCacheServices")
 	}
 }
 
@@ -127,6 +235,120 @@ func TestSIDBWebhookTrueCacheModeRejectsGenerateFields(t *testing.T) {
 	}
 }
 
+func TestSIDBWebhookTrueCacheModeAllowsBlobConfigMapRef(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		BlobConfigMapRef: "tc-blob",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors when truecache sets blobConfigMapRef, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookTrueCacheModeAllowsConsumerBlobFields(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		BlobConfigMapRef: "tc-blob",
+		BlobConfigMapKey: "tc-config",
+		BlobMountPath:    "/mnt/truecache",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors when truecache sets blobConfigMapRef, blobConfigMapKey, and blobMountPath, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookTrueCacheModeAllowsNestedTrueCacheServices(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		TrueCacheServices: []string{"svc1", "svc2"},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors when truecache sets nested trueCacheServices, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookTrueCacheModeAllowsLegacyTrueCacheServices(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.TrueCacheServices = []string{"svc1", "svc2"}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors when truecache sets legacy trueCacheServices, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookTrueCacheModeRejectsGenerateEnabled(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		GenerateEnabled: true,
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when truecache sets generateEnabled=true")
+	}
+}
+
+func TestSIDBWebhookTrueCacheModeRejectsGeneratePath(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		GeneratePath: "/tmp/tc_config_blob.tar.gz",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when truecache sets generatePath")
+	}
+}
+
+func TestSIDBWebhookStandbyWithoutTrueCacheFieldsPasses(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.StandbyConfig = &SingleInstanceDatabaseStandbyConfig{
+		PrimaryDatabaseRef: "primary-db",
+	}
+	sidb.Spec.TrueCache = nil
+	sidb.Spec.TrueCacheServices = nil
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors when standby has no trueCache fields, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookStandbyRejectsNestedTrueCacheField(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.StandbyConfig = &SingleInstanceDatabaseStandbyConfig{
+		PrimaryDatabaseRef: "primary-db",
+	}
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		BlobConfigMapRef: "tc-blob",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when standby sets a nested trueCache field")
+	}
+}
+
+func TestSIDBWebhookStandbyRejectsLegacyTrueCacheServices(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.StandbyConfig = &SingleInstanceDatabaseStandbyConfig{
+		PrimaryDatabaseRef: "primary-db",
+	}
+	sidb.Spec.TrueCacheServices = []string{"svc1"}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when standby sets legacy trueCacheServices")
+	}
+}
+
 func TestSIDBWebhookStandbyRejectsTrueCacheSpec(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "standby"
@@ -139,6 +361,42 @@ func TestSIDBWebhookStandbyRejectsTrueCacheSpec(t *testing.T) {
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
 		t.Fatalf("expected validation error for trueCache on standby")
+	}
+}
+
+func TestSIDBWebhookCloneWithoutTrueCacheFieldsPasses(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "clone"
+	sidb.Spec.PrimaryDatabaseRef = "primary-db"
+	sidb.Spec.TrueCache = nil
+	sidb.Spec.TrueCacheServices = nil
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors when clone has no trueCache fields, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookCloneRejectsNestedTrueCacheField(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "clone"
+	sidb.Spec.PrimaryDatabaseRef = "primary-db"
+	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
+		BlobConfigMapRef: "tc-blob",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when clone sets a nested trueCache field")
+	}
+}
+
+func TestSIDBWebhookCloneRejectsLegacyTrueCacheServices(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "clone"
+	sidb.Spec.PrimaryDatabaseRef = "primary-db"
+	sidb.Spec.TrueCacheServices = []string{"svc1"}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when clone sets legacy trueCacheServices")
 	}
 }
 
