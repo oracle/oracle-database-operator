@@ -108,7 +108,7 @@ const sidbInitParamUnitBytes = int64(1024 * 1024)
 const (
 	restoreOCIConfigMountDir       = "/opt/oracle/oci/config"
 	restoreOCIPrivateKeyMountDir   = "/opt/oracle/oci/keys"
-	restoreOPCInstallerMountDir    = "/opt/oracle/oci/opc"
+	restoreOPCInstallerMountDir    = "/mnt/software/opcinstaller"
 	restoreSourceWalletMountDir    = "/opt/oracle/source-wallet"
 	restoreSourceWalletPwdMountDir = "/run/secrets/source-wallet-pwd"
 	restoreBackupModuleMountDir    = "/opt/oracle/oci/installer"
