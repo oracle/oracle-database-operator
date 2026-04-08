@@ -40,6 +40,7 @@ package commons
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -118,7 +119,7 @@ func ExecCommand(podName string, cmd []string, kubeConfig *rest.Config, instance
 		return "Error Occurred", "Error Occurred", err
 	}
 
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(context.Background(), remotecommand.StreamOptions{
 		Stdout: &execOut,
 		Stderr: &execErr,
 		Tty:    true,

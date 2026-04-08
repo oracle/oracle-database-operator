@@ -2170,33 +2170,15 @@ func CheckIsDeleteFlag(delStr string, instance *databasev4.ShardingDatabase, log
 }
 
 func getTdeWalletMountLoc(instance *databasev4.ShardingDatabase) string {
-	if instance.Spec.TDEWallet != nil {
-		if mount := strings.TrimSpace(instance.Spec.TDEWallet.MountPath); mount != "" {
-			return mount
-		}
-	}
-	if len(instance.Spec.TdeWalletPvcMountLocation) > 0 {
-		return instance.Spec.TdeWalletPvcMountLocation
-	}
-	return "/tdewallet/" + instance.Name
+	return instance.Spec.EffectiveTDEWalletMountPath("/tdewallet/" + instance.Name)
 }
 
 func getTdeWalletPVCName(instance *databasev4.ShardingDatabase) string {
-	if instance.Spec.TDEWallet != nil {
-		if pvc := strings.TrimSpace(instance.Spec.TDEWallet.PVCName); pvc != "" {
-			return pvc
-		}
-	}
-	return strings.TrimSpace(instance.Spec.TdeWalletPvc)
+	return instance.Spec.EffectiveTDEWalletPVCName()
 }
 
 func getTDEWalletEnabled(instance *databasev4.ShardingDatabase) string {
-	if instance.Spec.TDEWallet != nil {
-		if mode := strings.TrimSpace(instance.Spec.TDEWallet.IsEnabled); mode != "" {
-			return mode
-		}
-	}
-	return strings.TrimSpace(instance.Spec.IsTdeWallet)
+	return instance.Spec.EffectiveTDEWalletEnabled()
 }
 
 func Int64Pointer(d int64) *int64 {

@@ -272,7 +272,7 @@ func ExecCommand(r client.Reader, config *rest.Config, podName string, namespace
 	if err != nil {
 		return "", fmt.Errorf("failed to init executor: %v", err)
 	}
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &execOut,
 		Stderr: &execErr,
 		Tty:    false,

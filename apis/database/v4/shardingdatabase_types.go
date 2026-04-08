@@ -42,6 +42,7 @@ import (
 	"sync"
 
 	"encoding/json"
+	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -657,6 +658,54 @@ const (
 type ConfigMapData struct {
 	Name      string `json:"name,omitempty"`
 	MountPath string `json:"mountPath,omitempty"`
+}
+
+// EffectiveTDEWalletMountPath returns the current TDE wallet mount path and
+// falls back to deprecated fields for backward compatibility.
+func (s *ShardingDatabaseSpec) EffectiveTDEWalletMountPath(defaultPath string) string {
+	if s == nil {
+		return defaultPath
+	}
+	if s.TDEWallet != nil {
+		if mount := strings.TrimSpace(s.TDEWallet.MountPath); mount != "" {
+			return mount
+		}
+	}
+	//lint:ignore SA1019 legacy fallback for backward compatibility
+	if mount := strings.TrimSpace(s.TdeWalletPvcMountLocation); mount != "" {
+		return mount
+	}
+	return defaultPath
+}
+
+// EffectiveTDEWalletPVCName returns the current TDE wallet PVC name and falls
+// back to deprecated fields for backward compatibility.
+func (s *ShardingDatabaseSpec) EffectiveTDEWalletPVCName() string {
+	if s == nil {
+		return ""
+	}
+	if s.TDEWallet != nil {
+		if pvc := strings.TrimSpace(s.TDEWallet.PVCName); pvc != "" {
+			return pvc
+		}
+	}
+	//lint:ignore SA1019 legacy fallback for backward compatibility
+	return strings.TrimSpace(s.TdeWalletPvc)
+}
+
+// EffectiveTDEWalletEnabled returns the current TDE wallet mode and falls back
+// to deprecated fields for backward compatibility.
+func (s *ShardingDatabaseSpec) EffectiveTDEWalletEnabled() string {
+	if s == nil {
+		return ""
+	}
+	if s.TDEWallet != nil {
+		if mode := strings.TrimSpace(s.TDEWallet.IsEnabled); mode != "" {
+			return mode
+		}
+	}
+	//lint:ignore SA1019 legacy fallback for backward compatibility
+	return strings.TrimSpace(s.IsTdeWallet)
 }
 
 // Shard structures based on managed Replicas
