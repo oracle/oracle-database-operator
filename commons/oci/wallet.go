@@ -66,7 +66,9 @@ func saveWalletZip(content io.ReadCloser) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer outZip.Close()
+	defer func() {
+		_ = outZip.Close()
+	}()
 
 	// Save the wallet in wallet*.zip
 	if _, err := io.Copy(outZip, content); err != nil {
@@ -84,7 +86,9 @@ func unzipWallet(path string) (map[string][]byte, error) {
 		return files, err
 	}
 
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 	for _, file := range reader.File {
 		reader, err := file.Open()
 		if err != nil {

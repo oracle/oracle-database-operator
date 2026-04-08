@@ -176,20 +176,29 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// If post-creation, LREST spec is changed, check and take appropriate action
 	if (lrest.Status.Phase == lrestPhaseReady) && lrest.Status.Status {
-		r.evaluateSpecChange(ctx, req, lrest)
+		if err := r.evaluateSpecChange(ctx, req, lrest); err != nil {
+			log.Error(err, "failed to evaluate spec change")
+			return requeueY, nil
+		}
 		r.lrestHealthCheck(ctx, req, lrest)
 	}
 
 	// Auto discover functionality looks for pdb with no crd
 	if lrest.Spec.PdbAutoDiscover == true && lrest.Status.Status == true {
 		log.Info("PDB auto discover turned on")
-		r.PdbAutoDiscover(ctx, req, lrest)
+		if err := r.PdbAutoDiscover(ctx, req, lrest); err != nil {
+			log.Error(err, "pdb auto discover failed")
+			return requeueY, nil
+		}
 	}
 
 	// Reset database pwd
 	if lrest.Spec.ResetDbPassword == true && lrest.Status.Status == true {
 		log.Info("ResetDbPassword")
-		r.ResetCredential(ctx, req, lrest)
+		if err := r.ResetCredential(ctx, req, lrest); err != nil {
+			log.Error(err, "reset credential failed")
+			return requeueY, nil
+		}
 	}
 
 	if !lrest.Status.Status {
@@ -237,10 +246,13 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			//r.deleteSecrets(ctx, req, lrest)
 			lrest.Status.Phase = lrestPhaseReady
 			lrest.Status.Msg = "Success"
-		case lrestPhaseReady:
-			lrest.Status.Status = true
-			r.Status().Update(ctx, lrest)
-			return requeueY, nil
+			case lrestPhaseReady:
+				lrest.Status.Status = true
+				if err := r.Status().Update(ctx, lrest); err != nil {
+					log.Error(err, "failed to update status for :"+lrest.Name, "err", err.Error())
+					return requeueY, nil
+				}
+				return requeueY, nil
 		default:
 			lrest.Status.Phase = lrestPhaseInit
 			log.Info("DEFAULT:", "Name", lrest.Name, "Phase", phase, "Status", strconv.FormatBool(lrest.Status.Status))
@@ -283,7 +295,10 @@ func (r *LRESTReconciler) createLRESTInstances(ctx context.Context, req ctrl.Req
 	}
 
 	// Set LREST instance as the owner and controller
-	ctrl.SetControllerReference(lrest, replicaSet, r.Scheme)
+	if err := ctrl.SetControllerReference(lrest, replicaSet, r.Scheme); err != nil {
+		log.Error(err, "failed to set owner reference for ReplicaSet")
+		return err
+	}
 
 	log.Info("Created LREST ReplicaSet successfully")
 	r.Recorder.Eventf(lrest, corev1.EventTypeNormal, "CreatedLRESTReplicaSet", "Created LREST Replicaset (Replicas - %s) for %s", strconv.Itoa(lrest.Spec.Replicas), lrest.Name)
@@ -594,9 +609,11 @@ func (r *LRESTReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Reque
 			return err
 		}
 
-		lrest.Status.Phase = lrestPhaseInit
-		lrest.Status.Status = false
-		r.Status().Update(ctx, lrest)
+			lrest.Status.Phase = lrestPhaseInit
+			lrest.Status.Status = false
+			if err := r.Status().Update(ctx, lrest); err != nil {
+				return err
+			}
 	} else {
 		// Update the RS if the value of "replicas" is changed
 		replicaSetName := lrest.Name + "-lrest-rs"
@@ -618,11 +635,13 @@ func (r *LRESTReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Reque
 				log.Error(err, "Failed to update ReplicaSet for :"+lrest.Name, "Namespace", lrest.Namespace, "Name", replicaSetName)
 				return err
 			}
-			lrest.Status.Phase = lrestPhaseValPod
-			lrest.Status.Status = false
-			r.Status().Update(ctx, lrest)
+				lrest.Status.Phase = lrestPhaseValPod
+				lrest.Status.Status = false
+				if err := r.Status().Update(ctx, lrest); err != nil {
+					return err
+				}
+			}
 		}
-	}
 
 	return nil
 }
@@ -663,8 +682,7 @@ func (r *LRESTReconciler) createLRESTSVC(ctx context.Context, req ctrl.Request, 
 ************************/
 
 func (r *LRESTReconciler) createCoreService(lrest *dbapi.LREST) *corev1.Service {
-	var portLrest int32
-	fmt.Sscan(fmt.Sprintf("%d", lrest.Spec.LRESTPort), &portLrest) // 64->32
+	portLrest := int32(lrest.Spec.LRESTPort)
 	svcspecIp := corev1.ServiceSpec{}
 	svcspecIp.Selector = map[string]string{"name": lrest.Name + "-lrest"}
 
@@ -701,7 +719,7 @@ func (r *LRESTReconciler) createCoreService(lrest *dbapi.LREST) *corev1.Service 
 		Spec: svcspecIp,
 	}
 	// Set LREST instance as the owner and controller
-	ctrl.SetControllerReference(lrest, svc, r.Scheme)
+	_ = ctrl.SetControllerReference(lrest, svc, r.Scheme)
 	return svc
 }
 
@@ -727,7 +745,9 @@ func (r *LRESTReconciler) manageLRESTDeletion(ctx context.Context, req ctrl.Requ
 		log.Info("lrest mark to be delited")
 		lrest.Status.Phase = lrestPhaseDelete
 		lrest.Status.Status = true
-		r.Status().Update(ctx, lrest)
+		if err := r.Status().Update(ctx, lrest); err != nil {
+			return err
+		}
 
 		if controllerutil.ContainsFinalizer(lrest, LRESTFinalizer) {
 

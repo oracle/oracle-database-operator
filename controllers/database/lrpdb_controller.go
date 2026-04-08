@@ -411,7 +411,9 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 func (r *LRPDBReconciler) MonitorLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 	log := r.Log.WithValues("MonitorLRPDB ", req.NamespacedName)
-	r.getLRPDBState(ctx, req, lrpdb)
+	if err := r.getLRPDBState(ctx, req, lrpdb); err != nil {
+		return err
+	}
 
 	/* Check open mode consistency */
 	if Bit(lrpdb.Status.PDBBitMask, PDBCLS) == true && lrpdb.Status.OpenMode == "READ WRITE" {
@@ -516,7 +518,9 @@ func (r *LRPDBReconciler) PlugLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		return err
+	}
 	globalsqlcode = lrpdb.Status.SqlCode
 
 	if lrpdb.Status.SqlCode != 0 {
@@ -550,7 +554,9 @@ func (r *LRPDBReconciler) PlugLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Plug", "PDB '%s' imperative pdb deletion turned on", lrpdb.Spec.LRPDBName)
 	}
 
-	r.getLRPDBState(ctx, req, lrpdb)
+	if err := r.getLRPDBState(ctx, req, lrpdb); err != nil {
+		return err
+	}
 
 	lrpdb.Status.Msg = "plug:[op. completed]"
 	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT) /* Set the creation flag */
@@ -638,7 +644,9 @@ func (r *LRPDBReconciler) UnplugLRPDB(ctx context.Context, req ctrl.Request, lrp
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		return err
+	}
 	r.UpdateStatus(ctx, req, lrpdb)
 
 	if lrpdb.Status.SqlCode != 0 {
@@ -748,7 +756,9 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		return err
+	}
 	/* if sqlcode is zero then unset the closebit */
 	if lrpdb.Status.SqlCode == 0 {
 		lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBCLS)
@@ -771,7 +781,9 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 	}
 
 	globalsqlcode = lrpdb.Status.SqlCode
-	r.getLRPDBState(ctx, req, lrpdb)
+	if err := r.getLRPDBState(ctx, req, lrpdb); err != nil {
+		return err
+	}
 
 	if lrpdb.Spec.LRPDBState == "OPEN" || lrpdb.Spec.LRPDBState == "CLOSE" {
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Modified", " '%s' modified successfully '%s'", lrpdb.Spec.LRPDBName, lrpdb.Spec.LRPDBState)
@@ -793,7 +805,9 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 			if Bit(lrpdb.Spec.Trclvl, TRCOPN) == true {
 				fmt.Printf("TRCOPN: re-apply config map\n")
 			}
-			r.ApplyConfigMap(ctx, req, lrpdb)
+			if _, err := r.ApplyConfigMap(ctx, req, lrpdb); err != nil {
+				return err
+			}
 
 		}
 	}
@@ -855,7 +869,9 @@ func (r *LRPDBReconciler) CloseLRPDB(ctx context.Context, req ctrl.Request, lrpd
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		return err
+	}
 	/* if sqlcode is zero then unset the openbit */
 	if lrpdb.Status.SqlCode == 0 {
 		lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBOPN)
@@ -881,7 +897,9 @@ func (r *LRPDBReconciler) CloseLRPDB(ctx context.Context, req ctrl.Request, lrpd
 	}
 
 	globalsqlcode = lrpdb.Status.SqlCode
-	r.getLRPDBState(ctx, req, lrpdb)
+	if err := r.getLRPDBState(ctx, req, lrpdb); err != nil {
+		return err
+	}
 
 	if lrpdb.Spec.LRPDBState == "OPEN" || lrpdb.Spec.LRPDBState == "CLOSE" {
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Modified", " '%s' modified successfully '%s'", lrpdb.Spec.LRPDBName, lrpdb.Spec.LRPDBState)
@@ -936,7 +954,9 @@ func (r *LRPDBReconciler) DeleteLRPDB(ctx context.Context, req ctrl.Request, lrp
 			lrpdbName := lrpdb.Spec.LRPDBName
 			url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
 			respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, valuesclose, "POST")
-			r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+			if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+				return err
+			}
 			if lrpdb.Status.SqlCode != 0 {
 				oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
 				lrpdb.Status.Msg = "close:[" + oer + "]"
@@ -970,7 +990,9 @@ func (r *LRPDBReconciler) DeleteLRPDB(ctx context.Context, req ctrl.Request, lrp
 			return err
 		}
 
-		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+		if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+			return err
+		}
 		globalsqlcode = lrpdb.Status.SqlCode
 		if lrpdb.Status.SqlCode != 0 {
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAE)
@@ -1024,10 +1046,12 @@ func (r *LRPDBReconciler) DeleteLRPDBDeclarative(ctx context.Context, req ctrl.R
 				"state":        "CLOSE",
 				"modifyOption": "IMMEDIATE",
 				"getScript":    "FALSE"}
-			lrpdbName := lrpdb.Spec.LRPDBName
-			url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
-			respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, valuesclose, "POST")
-			r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+				lrpdbName := lrpdb.Spec.LRPDBName
+				url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
+				respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, valuesclose, "POST")
+				if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+					return err
+				}
 			if lrpdb.Status.SqlCode != 0 {
 				oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
 				lrpdb.Status.Msg = "close:[" + oer + "]"
@@ -1061,7 +1085,9 @@ func (r *LRPDBReconciler) DeleteLRPDBDeclarative(ctx context.Context, req ctrl.R
 			return err
 		}
 
-		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+			if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+				return err
+			}
 		globalsqlcode = lrpdb.Status.SqlCode
 		if lrpdb.Status.SqlCode != 0 {
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAE)
@@ -1194,9 +1220,12 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 	if pdbCounter == 0 {
 		log.Info("target pdb " + lrpdb.Spec.SrcLRPDBName + " does not exists or is not open")
 		allErrs = append(allErrs, field.NotFound(field.NewPath("Spec").Child("LRPDBName"), " "+lrpdb.Spec.LRPDBName+" does not exist :  failure"))
-		r.Delete(context.Background(), lrpdb, client.GracePeriodSeconds(1))
-		return nil
-	}
+			if err := r.Delete(context.Background(), lrpdb, client.GracePeriodSeconds(1)); err != nil {
+				log.Error(err, "failed to delete LRPDB after source validation failure")
+				return err
+			}
+			return nil
+		}
 
 	if lrpdb.Spec.SparseClonePath != "" {
 		values["sparseClonePath"] = lrpdb.Spec.SparseClonePath
@@ -1222,7 +1251,9 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		return err
+	}
 	globalsqlcode = lrpdb.Status.SqlCode
 	r.UpdateStatus(ctx, req, lrpdb)
 
@@ -1268,7 +1299,9 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 	if Bit(lrpdb.Spec.Trclvl, TRCCLN) == true {
 		fmt.Printf("TRCCLN: Clone completed successfully Source[%s]->Clone[%s]\n", lrpdb.Spec.SrcLRPDBName, lrpdb.Spec.LRPDBName)
 	}
-	r.getLRPDBState(ctx, req, lrpdb)
+	if err := r.getLRPDBState(ctx, req, lrpdb); err != nil {
+		return err
+	}
 
 	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT)
 	lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -1318,12 +1351,14 @@ func (r *LRPDBReconciler) getLRESTResource(ctx context.Context, req ctrl.Request
 		Name:      lrestResName,
 	}, &lrest)
 
-	if err != nil {
-		log.Info("Failed to get CRD for LREST", "Name", lrestResName, "Namespace", lrestNamespace, "Error", err.Error())
-		lrpdb.Status.Msg = "Unable to get CRD for LREST : " + lrestResName
-		r.Status().Update(ctx, lrpdb)
-		return lrest, err
-	}
+		if err != nil {
+			log.Info("Failed to get CRD for LREST", "Name", lrestResName, "Namespace", lrestNamespace, "Error", err.Error())
+			lrpdb.Status.Msg = "Unable to get CRD for LREST : " + lrestResName
+			if updateErr := r.Status().Update(ctx, lrpdb); updateErr != nil {
+				log.Info("Failed to update LRPDB status", "Error", updateErr.Error())
+			}
+			return lrest, err
+		}
 
 	return lrest, nil
 }
@@ -1479,7 +1514,9 @@ func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrp
 			return err
 		}
 
-		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+			if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+				return err
+			}
 		globalsqlcode = lrpdb.Status.SqlCode
 		if lrpdb.Status.SqlCode != 0 {
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRE)
@@ -1494,7 +1531,9 @@ func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrp
 			r.UpdateStatus(ctx, req, lrpdb)
 		}
 
-		r.getLRPDBState(ctx, req, lrpdb)
+			if err := r.getLRPDBState(ctx, req, lrpdb); err != nil {
+				return err
+			}
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal,
 			"Created", "LRPDB '%s' created successfully", lrpdb.Spec.LRPDBName)
 
@@ -1596,7 +1635,9 @@ func (r *LRPDBReconciler) alterSystemLRPDB(ctx context.Context, req ctrl.Request
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		return err
+	}
 	globalsqlcode = lrpdb.Status.SqlCode
 
 	if lrpdb.Status.SqlCode == 0 {
@@ -1710,7 +1751,9 @@ func (r *LRPDBReconciler) execPLSQL(ctx context.Context, req ctrl.Request, lrpdb
 			return err
 		}
 
-		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+		if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+			return err
+		}
 
 		EvLevel := corev1.EventTypeNormal
 		skey := fmt.Sprintf("[%s]", key)
@@ -1793,7 +1836,9 @@ func (r *LRPDBReconciler) getLRPDBState(ctx context.Context, req ctrl.Request, l
 		r.UpdateStatus(ctx, req, lrpdb)
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		return err
+	}
 	globalsqlcode = lrpdb.Status.SqlCode
 	if lrpdb.Status.SqlCode == 1403 {
 		lrpdb.Status.OpenMode = "N/A"
@@ -1804,9 +1849,15 @@ func (r *LRPDBReconciler) getLRPDBState(ctx context.Context, req ctrl.Request, l
 		return errors.New("NO_DATA_FOUND")
 	}
 
-	r.GetOpenMode(respData, &(lrpdb.Status.OpenMode))
-	r.GetRestricted(respData, &(lrpdb.Status.Restricted))
-	r.GetPdbSize2(respData, &(lrpdb.Status.TotalSize))
+	if err := r.GetOpenMode(respData, &(lrpdb.Status.OpenMode)); err != nil {
+		return err
+	}
+	if err := r.GetRestricted(respData, &(lrpdb.Status.Restricted)); err != nil {
+		return err
+	}
+	if err := r.GetPdbSize2(respData, &(lrpdb.Status.TotalSize)); err != nil {
+		return err
+	}
 
 	r.UpdateStatus(ctx, req, lrpdb)
 
@@ -2546,11 +2597,14 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 		/* Section to execute sql and plsql code */
 		if payload != nil {
 			payloadsql, oksql := payload.(*PLSQLPayLoad)
-			if oksql {
-				TestBuffer = ParseSQLPayload(payloadsql, Trclvl)
-				json.Unmarshal([]byte(TestBuffer), &jsonMap)
-				jsonValue, _ := json.Marshal(jsonMap)
-				Httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
+				if oksql {
+					TestBuffer = ParseSQLPayload(payloadsql, Trclvl)
+					if err := json.Unmarshal([]byte(TestBuffer), &jsonMap); err != nil {
+						log.Info("Unable to parse SQL payload", "err", err.Error())
+						return "", err
+					}
+					jsonValue, _ := json.Marshal(jsonMap)
+					Httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
 				if Bit(Trclvl, TRCAPI) == true {
 					fmt.Printf("TRCAPI:BEGIN PLSQLPAYLOAD\n")
 					fmt.Printf("TRCAPI:%s\n", string(jsonValue))
@@ -2611,8 +2665,10 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 				log.Info("LREST Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
 			}
 
-			var apiErr LRESTError
-			json.Unmarshal([]byte(bb), &apiErr)
+				var apiErr LRESTError
+				if err := json.Unmarshal([]byte(bb), &apiErr); err != nil {
+					log.Info("Unable to parse LREST error response", "err", err.Error())
+				}
 			if flood_control == false {
 				e.Eventf(lrpdb, corev1.EventTypeWarning, "LRESTError", "Failed: %s", apiErr.Message)
 			}
@@ -2628,7 +2684,11 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 		}
 		flood_control = false
 
-		defer resp.Body.Close()
+			defer func() {
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					log.Info("Failed to close response body", "err", closeErr.Error())
+				}
+			}()
 
 		bodyBytes, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -2642,8 +2702,11 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 			fmt.Println(string(bodyBytes))
 		}
 
-		var apiResponse restSQLCollection
-		json.Unmarshal([]byte(bodyBytes), &apiResponse)
+			var apiResponse restSQLCollection
+			if err := json.Unmarshal([]byte(bodyBytes), &apiResponse); err != nil {
+				log.Info("Unable to parse LREST SQL response", "err", err.Error())
+				return "", err
+			}
 		if Bit(lrpdb.Spec.Trclvl, TRCAPI) == true {
 			fmt.Printf("TRCAPI: BEGIN REST API RESPONSE\n")
 			fmt.Printf("TRCAPI:%#v\n", apiResponse)
@@ -2697,8 +2760,10 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 				log.Info("LREST Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
 			}
 
-			var apiErr LRESTError
-			json.Unmarshal([]byte(bb), &apiErr)
+				var apiErr LRESTError
+				if err := json.Unmarshal([]byte(bb), &apiErr); err != nil {
+					log.Info("Unable to parse LREST error response", "err", err.Error())
+				}
 			if flood_control == false {
 				e.Eventf(lrest, corev1.EventTypeWarning, "LRESTError", "Failed: %s", apiErr.Message)
 			}
@@ -2712,7 +2777,11 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 		}
 		flood_control = false
 
-		defer resp.Body.Close()
+			defer func() {
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					log.Info("Failed to close response body", "err", closeErr.Error())
+				}
+			}()
 
 		bodyBytes, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -2720,8 +2789,11 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 		}
 		respData = string(bodyBytes)
 
-		var apiResponse restSQLCollection
-		json.Unmarshal([]byte(bodyBytes), &apiResponse)
+			var apiResponse restSQLCollection
+			if err := json.Unmarshal([]byte(bodyBytes), &apiResponse); err != nil {
+				log.Info("Unable to parse LREST SQL response", "err", err.Error())
+				return "", err
+			}
 		if Bit(lrest.Spec.Trclvl, TRCAPI) == true {
 			fmt.Printf("TRCAPI: CALL API return msg.....:%s\n", string(bodyBytes))
 			fmt.Printf("TRCAPI: apiResponse %#v\n", apiResponse)

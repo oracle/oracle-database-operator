@@ -116,7 +116,11 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, &dataguardBroker)
+	defer func() {
+		if err := r.Status().Update(ctx, &dataguardBroker); err != nil {
+			log.Error(err, "failed to update dataguardbroker status")
+		}
+	}()
 
 	// Mange DataguardBroker Creation
 	// IMPORTANT: manageDataguardBrokerCreation() must NOT try to Get() SIDB when isNonSingleInstanceDatabase=true
@@ -724,8 +728,10 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerCreation(broker *dbapi.
 				}()).
 				Build()
 
-			// Set the ownership of the service object to the dataguard broker resource object
-			ctrl.SetControllerReference(broker, &svc, r.Scheme)
+				// Set the ownership of the service object to the dataguard broker resource object
+				if err := ctrl.SetControllerReference(broker, &svc, r.Scheme); err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
 
 			// create the service for dataguardbroker resource
 			if err = r.Create(ctx, &svc); err != nil {
@@ -870,7 +876,9 @@ func (r *DataguardBrokerReconciler) manageManualSwitchOver(targetSidbSid string,
 
 	// change broker status to updating to indicate manual switchover start
 	broker.Status.Status = dbcommons.StatusUpdating
-	r.Status().Update(ctx, broker)
+	if err := r.Status().Update(ctx, broker); err != nil {
+		return ctrl.Result{Requeue: false}, err
+	}
 
 	var sidb dbapi.SingleInstanceDatabase
 	if err := r.Get(context.TODO(), types.NamespacedName{Name: broker.GetCurrentPrimaryDatabase(), Namespace: broker.Namespace}, &sidb); err != nil {

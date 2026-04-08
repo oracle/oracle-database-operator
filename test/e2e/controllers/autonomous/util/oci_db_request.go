@@ -116,7 +116,9 @@ func DeleteAutonomousDatabase(dbClient database.DatabaseClient, databaseOCID *st
 		return nil
 	}
 	if resp.AutonomousDatabase.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminated {
-		deleteAutonomousDatabase(dbClient, databaseOCID)
+		if err := deleteAutonomousDatabase(dbClient, databaseOCID); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -173,7 +175,9 @@ func DownloadWalletZip(dbClient database.DatabaseClient, databaseOCID *string, w
 	if err != nil {
 		return "", err
 	}
-	defer outZip.Close()
+	defer func() {
+		_ = outZip.Close()
+	}()
 
 	// Save the wallet in wallet*.zip
 	if _, err := io.Copy(outZip, resp.Content); err != nil {

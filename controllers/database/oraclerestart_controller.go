@@ -221,14 +221,16 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		oracleRestart.Status.State = string(oraclerestartdb.OracleRestartPendingState)
 		oracleRestart.Status.DbState = string(oraclerestartdb.OracleRestartPendingState)
 		oracleRestart.Status.Role = string(oraclerestartdb.OracleRestartFieldNotDefined)
-		oracleRestart.Status.ConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
-		oracleRestart.Status.PdbConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
-		oracleRestart.Status.ExternalConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
-		oracleRestart.Status.ReleaseUpdate = string(oraclerestartdb.OracleRestartFieldNotDefined)
-		oracleRestart.Status.ConfigParams.DbHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
-		oracleRestart.Status.ConfigParams.GridHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
-		r.Status().Update(ctx, oracleRestart)
-	}
+			oracleRestart.Status.ConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
+			oracleRestart.Status.PdbConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
+			oracleRestart.Status.ExternalConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
+			oracleRestart.Status.ReleaseUpdate = string(oraclerestartdb.OracleRestartFieldNotDefined)
+			oracleRestart.Status.ConfigParams.DbHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
+			oracleRestart.Status.ConfigParams.GridHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
+			if err := r.Status().Update(ctx, oracleRestart); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 
 	// Kube Client Config Setup
 	if r.kubeConfig == nil && r.kubeClient == nil {
@@ -1594,13 +1596,17 @@ func (r *OracleRestartReconciler) updateDiskSizes(
 			Container: "disk-check",
 		})
 		logs, err := req.Stream(ctx)
-		if err != nil {
-			r.Log.Error(err, "Failed to stream logs", "pod", pod.Name)
-			continue
-		}
-		func() { // Scope for defer
-			defer logs.Close()
-			scanner := bufio.NewScanner(logs)
+			if err != nil {
+				r.Log.Error(err, "Failed to stream logs", "pod", pod.Name)
+				continue
+			}
+			func() { // Scope for defer
+				defer func() {
+					if closeErr := logs.Close(); closeErr != nil {
+						r.Log.Error(closeErr, "Failed to close logs stream", "pod", pod.Name)
+					}
+				}()
+				scanner := bufio.NewScanner(logs)
 			for scanner.Scan() {
 				var entry struct {
 					Disk   string `json:"disk"`

@@ -114,8 +114,9 @@ func AssertProvision(k8sClient *client.Client, adbLookupKey *types.NamespacedNam
 			return createdADB.Spec.Details.Id, nil
 		}, provisionTimeout, intervalTime).ShouldNot(BeNil())
 
-		fmt.Fprintf(GinkgoWriter, "AutonomousDatabase DbName = %s, and AutonomousDatabaseOCID = %s\n",
+		_, err := fmt.Fprintf(GinkgoWriter, "AutonomousDatabase DbName = %s, and AutonomousDatabaseOCID = %s\n",
 			*createdADB.Spec.Details.DbName, *createdADB.Spec.Details.Id)
+		Expect(err).To(BeNil())
 	}
 }
 
@@ -144,8 +145,9 @@ func AssertBind(k8sClient *client.Client, adbLookupKey *types.NamespacedName) fu
 				boundADB.Spec.Details.DbName != nil)
 		}, bindTimeout).Should(Equal(true), "Attributes in the resource should not be empty")
 
-		fmt.Fprintf(GinkgoWriter, "AutonomousDatabase DbName = %s, and AutonomousDatabaseOCID = %s\n",
+		_, err := fmt.Fprintf(GinkgoWriter, "AutonomousDatabase DbName = %s, and AutonomousDatabaseOCID = %s\n",
 			*boundADB.Spec.Details.DbName, *boundADB.Spec.Details.Id)
+		Expect(err).To(BeNil())
 	}
 }
 
@@ -314,57 +316,60 @@ func AssertADBDetails(k8sClient *client.Client,
 			}
 
 			debug := false
-			if debug {
-				if !compareString(expectedADBDetails.Id, resp.AutonomousDatabase.Id) {
-					fmt.Fprintf(GinkgoWriter, "Expected OCID: %v\nGot: %v\n", expectedADBDetails.Id, resp.AutonomousDatabase.Id)
-				}
-				if !compareString(expectedADBDetails.CompartmentId, resp.AutonomousDatabase.CompartmentId) {
-					fmt.Fprintf(GinkgoWriter, "Expected CompartmentOCID: %v\nGot: %v\n", expectedADBDetails.CompartmentId, resp.CompartmentId)
-				}
-				if !compareString(expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName) {
-					fmt.Fprintf(GinkgoWriter, "Expected DisplayName: %v\nGot: %v\n", expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName)
-				}
+				if debug {
+					if !compareString(expectedADBDetails.Id, resp.AutonomousDatabase.Id) {
+						_, err := fmt.Fprintf(GinkgoWriter, "Expected OCID: %v\nGot: %v\n", expectedADBDetails.Id, resp.AutonomousDatabase.Id)
+						Expect(err).To(BeNil())
+					}
+					if !compareString(expectedADBDetails.CompartmentId, resp.AutonomousDatabase.CompartmentId) {
+						_, err := fmt.Fprintf(GinkgoWriter, "Expected CompartmentOCID: %v\nGot: %v\n", expectedADBDetails.CompartmentId, resp.CompartmentId)
+						Expect(err).To(BeNil())
+					}
+					if !compareString(expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName) {
+						_, err := fmt.Fprintf(GinkgoWriter, "Expected DisplayName: %v\nGot: %v\n", expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName)
+						Expect(err).To(BeNil())
+					}
 				if !compareString(expectedADBDetails.DbName, resp.AutonomousDatabase.DbName) {
-					fmt.Fprintf(GinkgoWriter, "Expected DbName: %v\nGot:%v\n", expectedADBDetails.DbName, resp.AutonomousDatabase.DbName)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected DbName: %v\nGot:%v\n", expectedADBDetails.DbName, resp.AutonomousDatabase.DbName)
 				}
 				if expectedADBDetails.DbWorkload != resp.AutonomousDatabase.DbWorkload {
-					fmt.Fprintf(GinkgoWriter, "Expected DbWorkload: %v\nGot: %v\n", expectedADBDetails.DbWorkload, resp.AutonomousDatabase.DbWorkload)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected DbWorkload: %v\nGot: %v\n", expectedADBDetails.DbWorkload, resp.AutonomousDatabase.DbWorkload)
 				}
 				if !compareBool(expectedADBDetails.IsDedicated, resp.AutonomousDatabase.IsDedicated) {
-					fmt.Fprintf(GinkgoWriter, "Expected IsDedicated: %v\nGot: %v\n", expectedADBDetails.IsDedicated, resp.AutonomousDatabase.IsDedicated)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected IsDedicated: %v\nGot: %v\n", expectedADBDetails.IsDedicated, resp.AutonomousDatabase.IsDedicated)
 				}
 				if !compareString(expectedADBDetails.DbVersion, resp.AutonomousDatabase.DbVersion) {
-					fmt.Fprintf(GinkgoWriter, "Expected DbVersion: %v\nGot: %v\n", expectedADBDetails.DbVersion, resp.AutonomousDatabase.DbVersion)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected DbVersion: %v\nGot: %v\n", expectedADBDetails.DbVersion, resp.AutonomousDatabase.DbVersion)
 				}
 				if !compareInt(expectedADBDetails.DataStorageSizeInTBs, resp.AutonomousDatabase.DataStorageSizeInTBs) {
-					fmt.Fprintf(GinkgoWriter, "Expected DataStorageSize: %v\nGot: %v\n", expectedADBDetails.DataStorageSizeInTBs, resp.AutonomousDatabase.DataStorageSizeInTBs)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected DataStorageSize: %v\nGot: %v\n", expectedADBDetails.DataStorageSizeInTBs, resp.AutonomousDatabase.DataStorageSizeInTBs)
 				}
 				if !compareInt(expectedADBDetails.CpuCoreCount, resp.AutonomousDatabase.CpuCoreCount) {
-					fmt.Fprintf(GinkgoWriter, "Expected CPUCoreCount: %v\nGot: %v\n", expectedADBDetails.CpuCoreCount, resp.AutonomousDatabase.CpuCoreCount)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected CPUCoreCount: %v\nGot: %v\n", expectedADBDetails.CpuCoreCount, resp.AutonomousDatabase.CpuCoreCount)
 				}
 				if !compareBool(expectedADBDetails.IsAutoScalingEnabled, resp.AutonomousDatabase.IsAutoScalingEnabled) {
-					fmt.Fprintf(GinkgoWriter, "Expected IsAutoScalingEnabled: %v\nGot: %v\n", expectedADBDetails.IsAutoScalingEnabled, resp.AutonomousDatabase.IsAutoScalingEnabled)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected IsAutoScalingEnabled: %v\nGot: %v\n", expectedADBDetails.IsAutoScalingEnabled, resp.AutonomousDatabase.IsAutoScalingEnabled)
 				}
 				if !compareStringMap(expectedADBDetails.FreeformTags, resp.AutonomousDatabase.FreeformTags) {
-					fmt.Fprintf(GinkgoWriter, "Expected FreeformTags: %v\nGot: %v\n", expectedADBDetails.FreeformTags, resp.AutonomousDatabase.FreeformTags)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected FreeformTags: %v\nGot: %v\n", expectedADBDetails.FreeformTags, resp.AutonomousDatabase.FreeformTags)
 				}
 				if !compareBool(expectedADBDetails.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled) {
-					fmt.Fprintf(GinkgoWriter, "Expected IsAccessControlEnabled: %v\nGot: %v\n", expectedADBDetails.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected IsAccessControlEnabled: %v\nGot: %v\n", expectedADBDetails.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled)
 				}
 				if !reflect.DeepEqual(expectedADBDetails.WhitelistedIps, resp.AutonomousDatabase.WhitelistedIps) {
-					fmt.Fprintf(GinkgoWriter, "Expected AccessControlList: %v\nGot: %v\n", expectedADBDetails.WhitelistedIps, resp.AutonomousDatabase.WhitelistedIps)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected AccessControlList: %v\nGot: %v\n", expectedADBDetails.WhitelistedIps, resp.AutonomousDatabase.WhitelistedIps)
 				}
 				if !compareBool(expectedADBDetails.IsMtlsConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) {
-					fmt.Fprintf(GinkgoWriter, "Expected IsMTLSConnectionRequired: %v\nGot: %v\n", expectedADBDetails.IsMtlsConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected IsMTLSConnectionRequired: %v\nGot: %v\n", expectedADBDetails.IsMtlsConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired)
 				}
 				if !compareString(expectedADBDetails.SubnetId, resp.AutonomousDatabase.SubnetId) {
-					fmt.Fprintf(GinkgoWriter, "Expected SubnetOCID: %v\nGot: %v\n", expectedADBDetails.SubnetId, resp.AutonomousDatabase.SubnetId)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected SubnetOCID: %v\nGot: %v\n", expectedADBDetails.SubnetId, resp.AutonomousDatabase.SubnetId)
 				}
 				if !reflect.DeepEqual(expectedADBDetails.NsgIds, resp.AutonomousDatabase.NsgIds) {
-					fmt.Fprintf(GinkgoWriter, "Expected NsgOCIDs: %v\nGot: %v\n", expectedADBDetails.NsgIds, resp.AutonomousDatabase.NsgIds)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected NsgOCIDs: %v\nGot: %v\n", expectedADBDetails.NsgIds, resp.AutonomousDatabase.NsgIds)
 				}
 				if !compareString(expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel) {
-					fmt.Fprintf(GinkgoWriter, "Expected PrivateEndpointLabel: %v\nGot: %v\n", expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected PrivateEndpointLabel: %v\nGot: %v\n", expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel)
 				}
 			}
 
@@ -410,10 +415,10 @@ func AssertAdminPassword(dbClient *database.DatabaseClient, databaseOCID *string
 	By("Downloading wallet zip")
 	walletZip, err := e2eutil.DownloadWalletZip(*dbClient, databaseOCID, walletPassword)
 	if err != nil {
-		fmt.Fprint(GinkgoWriter, err)
+		_, _ = fmt.Fprint(GinkgoWriter, err)
 		panic(err)
 	}
-	fmt.Fprint(GinkgoWriter, walletZip+" successfully downloaded.\n")
+	_, _ = fmt.Fprint(GinkgoWriter, walletZip+" successfully downloaded.\n")
 
 	By("Installing SQLcl")
 	if _, err := os.Stat("sqlcl-latest.zip"); errors.Is(err, os.ErrNotExist) {
@@ -431,7 +436,7 @@ func AssertAdminPassword(dbClient *database.DatabaseClient, databaseOCID *string
 	cmd := exec.Command("./sqlcl/bin/sql", "/nolog", "@verify_connection.sql", proxy, walletZip, *adminPassword, strings.ToLower(*tnsEntry))
 	stdout, err := cmd.Output()
 
-	fmt.Fprint(GinkgoWriter, string(stdout))
+	_, _ = fmt.Fprint(GinkgoWriter, string(stdout))
 
 	return err
 }
@@ -614,7 +619,7 @@ func AssertADBRemoteStateOCID(k8sClient *client.Client, dbClient *database.Datab
 		Expect(dbClient).NotTo(BeNil())
 		Expect(adbID).NotTo(BeNil())
 
-		fmt.Fprintf(GinkgoWriter, "ADB ID is %s\n", *adbID)
+		_, _ = fmt.Fprintf(GinkgoWriter, "ADB ID is %s\n", *adbID)
 
 		derefK8sClient := *k8sClient
 		derefDBClient := *dbClient
@@ -690,10 +695,10 @@ func ConfigureADBBackup(dbClient *database.DatabaseClient, databaseOCID *string,
 	By("Downloading wallet zip")
 	walletZip, err := e2eutil.DownloadWalletZip(*dbClient, databaseOCID, walletPassword)
 	if err != nil {
-		fmt.Fprint(GinkgoWriter, err)
+		_, _ = fmt.Fprint(GinkgoWriter, err)
 		panic(err)
 	}
-	fmt.Fprint(GinkgoWriter, walletZip+" successfully downloaded.\n")
+	_, _ = fmt.Fprint(GinkgoWriter, walletZip+" successfully downloaded.\n")
 
 	By("Installing SQLcl")
 	if _, err := os.Stat("sqlcl-latest.zip"); errors.Is(err, os.ErrNotExist) {
@@ -711,7 +716,7 @@ func ConfigureADBBackup(dbClient *database.DatabaseClient, databaseOCID *string,
 	cmd := exec.Command("./sqlcl/bin/sql", "/nolog", "@backup.sql", proxy, walletZip, *adminPassword, strings.ToLower(*tnsEntry), *bucket, *ociUser, *authToken)
 	stdout, err := cmd.Output()
 
-	fmt.Fprint(GinkgoWriter, string(stdout))
+	_, _ = fmt.Fprint(GinkgoWriter, string(stdout))
 
 	return err
 }
@@ -727,21 +732,25 @@ func AssertBackupRestore(k8sClient *client.Client, dbClient *database.DatabaseCl
 		By("Wait until ADB state returns to AVAILABLE")
 		AssertADBRemoteStateForBackupRestore(k8sClient, dbClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
 
-		if state == database.AutonomousDatabaseLifecycleStateBackupInProgress {
-			By("Checking adb backup State is ACTIVE")
-			createdBackup := &dbv1alpha1.AutonomousDatabaseBackup{}
-			Eventually(func() (database.AutonomousDatabaseBackupLifecycleStateEnum, error) {
-				derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdBackup)
-				return createdBackup.Status.LifecycleState, nil
-			}, backupTimeout, time.Second*20).Should(Equal(database.AutonomousDatabaseBackupLifecycleStateActive))
-		} else {
-			By("Checking adb restore State is SUCCEEDED")
-			createdRestore := &dbv1alpha1.AutonomousDatabaseRestore{}
-			Eventually(func() (workrequests.WorkRequestStatusEnum, error) {
-				derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdRestore)
-				return createdRestore.Status.Status, nil
-			}, backupTimeout, time.Second*20).Should(Equal(workrequests.WorkRequestStatusSucceeded))
-		}
+			if state == database.AutonomousDatabaseLifecycleStateBackupInProgress {
+				By("Checking adb backup State is ACTIVE")
+				createdBackup := &dbv1alpha1.AutonomousDatabaseBackup{}
+				Eventually(func() (database.AutonomousDatabaseBackupLifecycleStateEnum, error) {
+					if err := derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdBackup); err != nil {
+						return "", err
+					}
+					return createdBackup.Status.LifecycleState, nil
+				}, backupTimeout, time.Second*20).Should(Equal(database.AutonomousDatabaseBackupLifecycleStateActive))
+			} else {
+				By("Checking adb restore State is SUCCEEDED")
+				createdRestore := &dbv1alpha1.AutonomousDatabaseRestore{}
+				Eventually(func() (workrequests.WorkRequestStatusEnum, error) {
+					if err := derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdRestore); err != nil {
+						return "", err
+					}
+					return createdRestore.Status.Status, nil
+				}, backupTimeout, time.Second*20).Should(Equal(workrequests.WorkRequestStatusSucceeded))
+			}
 	}
 }
 
@@ -783,7 +792,7 @@ func AssertACDRemoteStateOCID(k8sClient *client.Client, dbClient *database.Datab
 		Expect(dbClient).NotTo(BeNil())
 		Expect(acdID).NotTo(BeNil())
 
-		fmt.Fprintf(GinkgoWriter, "ACD ID is %s\n", *acdID)
+		_, _ = fmt.Fprintf(GinkgoWriter, "ACD ID is %s\n", *acdID)
 
 		derefK8sClient := *k8sClient
 		derefDBClient := *dbClient
@@ -849,22 +858,22 @@ func AssertACDSpec(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 			debug := true
 			if debug {
 				if !compareString(expectedACDSpec.AutonomousContainerDatabaseOCID, resp.AutonomousContainerDatabase.Id) {
-					fmt.Fprintf(GinkgoWriter, "Expected OCID: %v\nGot: %v\n", expectedACDSpec.AutonomousContainerDatabaseOCID, resp.AutonomousContainerDatabase.Id)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected OCID: %v\nGot: %v\n", expectedACDSpec.AutonomousContainerDatabaseOCID, resp.AutonomousContainerDatabase.Id)
 				}
 				if !compareString(expectedACDSpec.CompartmentOCID, resp.AutonomousContainerDatabase.CompartmentId) {
-					fmt.Fprintf(GinkgoWriter, "Expected CompartmentOCID: %v\nGot: %v\n", expectedACDSpec.CompartmentOCID, resp.CompartmentId)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected CompartmentOCID: %v\nGot: %v\n", expectedACDSpec.CompartmentOCID, resp.CompartmentId)
 				}
 				if !compareString(expectedACDSpec.DisplayName, resp.AutonomousContainerDatabase.DisplayName) {
-					fmt.Fprintf(GinkgoWriter, "Expected DisplayName: %v\nGot: %v\n", expectedACDSpec.DisplayName, resp.AutonomousContainerDatabase.DisplayName)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected DisplayName: %v\nGot: %v\n", expectedACDSpec.DisplayName, resp.AutonomousContainerDatabase.DisplayName)
 				}
 				if !compareString(expectedACDSpec.AutonomousExadataVMClusterOCID, resp.AutonomousContainerDatabase.CloudAutonomousVmClusterId) {
-					fmt.Fprintf(GinkgoWriter, "Expected AutonomousExadataVMClusterOCID: %v\nGot: %v\n", expectedACDSpec.AutonomousExadataVMClusterOCID, resp.AutonomousContainerDatabase.CloudAutonomousVmClusterId)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected AutonomousExadataVMClusterOCID: %v\nGot: %v\n", expectedACDSpec.AutonomousExadataVMClusterOCID, resp.AutonomousContainerDatabase.CloudAutonomousVmClusterId)
 				}
 				if !compareStringMap(expectedACDSpec.FreeformTags, resp.AutonomousContainerDatabase.FreeformTags) {
-					fmt.Fprintf(GinkgoWriter, "Expected FreeformTags: %v\nGot: %v\n", expectedACDSpec.FreeformTags, resp.AutonomousContainerDatabase.FreeformTags)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected FreeformTags: %v\nGot: %v\n", expectedACDSpec.FreeformTags, resp.AutonomousContainerDatabase.FreeformTags)
 				}
 				if expectedACDSpec.PatchModel != resp.AutonomousContainerDatabase.PatchModel {
-					fmt.Fprintf(GinkgoWriter, "Expected PatchModel: %v\nGot: %v\n", expectedACDSpec.PatchModel, resp.AutonomousContainerDatabase.PatchModel)
+					_, _ = fmt.Fprintf(GinkgoWriter, "Expected PatchModel: %v\nGot: %v\n", expectedACDSpec.PatchModel, resp.AutonomousContainerDatabase.PatchModel)
 				}
 			}
 

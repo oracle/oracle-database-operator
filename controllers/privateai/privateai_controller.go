@@ -409,7 +409,9 @@ func (r *PrivateAiReconciler) reconcileDependencies(ctx context.Context, req ctr
 func (r *PrivateAiReconciler) reconcileWorkload(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi, state *reconcileState) (ctrl.Result, error) {
 	desiredDeploy := aicommons.BuildDeploySetForPrivateAI(privateAiInst)
 	r.waitForScheme()
-	controllerutil.SetControllerReference(privateAiInst, desiredDeploy, r.Scheme)
+	if err := controllerutil.SetControllerReference(privateAiInst, desiredDeploy, r.Scheme); err != nil {
+		return resultNq, err
+	}
 	foundDeploy, depResult, err := k8sobjects.ReconcileDeployment(ctx, r.Client, privateAiInst.Namespace, desiredDeploy, nil)
 	if err != nil {
 		return resultNq, err
@@ -853,7 +855,9 @@ func (r *PrivateAiReconciler) ensurePVCs(ctx context.Context, privateAiInst *pri
 	for i := 0; i < len(claims); i++ {
 		claim := &claims[i]
 		r.waitForScheme()
-		controllerutil.SetControllerReference(privateAiInst, claim, r.Scheme)
+		if err := controllerutil.SetControllerReference(privateAiInst, claim, r.Scheme); err != nil {
+			return resultNq, err
+		}
 		_, _, err := k8sobjects.EnsurePersistentVolumeClaim(ctx, r.Client, claim)
 		if err != nil {
 			return resultNq, err
@@ -879,7 +883,9 @@ func (r *PrivateAiReconciler) ensureServices(ctx context.Context, privateAiInst 
 	// Create internal service
 	sSvc := aicommons.BuildServiceDefForPrivateAi(privateAiInst, svcType)
 	r.waitForScheme()
-	controllerutil.SetControllerReference(privateAiInst, sSvc, r.Scheme)
+	if err := controllerutil.SetControllerReference(privateAiInst, sSvc, r.Scheme); err != nil {
+		return resultNq, err
+	}
 	_, err := k8sobjects.EnsureService(ctx, r.Client, privateAiInst.Namespace, sSvc, k8sobjects.ServiceSyncOptions{
 		NodePortMerge:             k8sobjects.NodePortMergeByNamePortAndProtocol,
 		SyncOwnerReferences:       true,
@@ -925,7 +931,9 @@ func (r *PrivateAiReconciler) ensureGatewayServices(ctx context.Context, private
 	if aicommons.IsGatewayServiceEnabled(privateAiInst, "internal") {
 		svc := aicommons.BuildGatewayServiceDefForPrivateAI(privateAiInst, "internal")
 		r.waitForScheme()
-		controllerutil.SetControllerReference(privateAiInst, svc, r.Scheme)
+		if err := controllerutil.SetControllerReference(privateAiInst, svc, r.Scheme); err != nil {
+			return resultNq, err
+		}
 		_, err := k8sobjects.EnsureService(ctx, r.Client, privateAiInst.Namespace, svc, k8sobjects.ServiceSyncOptions{
 			SyncOwnerReferences: true,
 		})
@@ -941,7 +949,9 @@ func (r *PrivateAiReconciler) ensureGatewayServices(ctx context.Context, private
 	if aicommons.IsGatewayServiceEnabled(privateAiInst, "external") {
 		svc := aicommons.BuildGatewayServiceDefForPrivateAI(privateAiInst, "external")
 		r.waitForScheme()
-		controllerutil.SetControllerReference(privateAiInst, svc, r.Scheme)
+		if err := controllerutil.SetControllerReference(privateAiInst, svc, r.Scheme); err != nil {
+			return resultNq, err
+		}
 		_, err := k8sobjects.EnsureService(ctx, r.Client, privateAiInst.Namespace, svc, k8sobjects.ServiceSyncOptions{
 			SyncOwnerReferences:    true,
 			SyncLoadBalancerFields: true,
@@ -975,7 +985,9 @@ func (r *PrivateAiReconciler) reconcileGatewayWorkload(ctx context.Context, priv
 		return requeueN, nil
 	}
 	r.waitForScheme()
-	controllerutil.SetControllerReference(privateAiInst, desired, r.Scheme)
+	if err := controllerutil.SetControllerReference(privateAiInst, desired, r.Scheme); err != nil {
+		return resultNq, err
+	}
 	found, depResult, err := k8sobjects.ReconcileDeployment(ctx, r.Client, privateAiInst.Namespace, desired, nil)
 	if err != nil {
 		return resultNq, err

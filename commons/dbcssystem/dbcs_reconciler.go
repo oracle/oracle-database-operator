@@ -2587,7 +2587,9 @@ func RestoreDbcsToPoint(
 	restoreResp, err := dbClient.RestoreDatabase(ctx, restoreReq)
 	if err != nil {
 		logger.Error(err, "Failed to restore database")
-		SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient)
+		if lifecycleErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); lifecycleErr != nil {
+			logger.Error(lifecycleErr, "Failed to set lifecycle state")
+		}
 		return err
 	}
 

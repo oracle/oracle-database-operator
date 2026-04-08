@@ -1187,7 +1187,11 @@ func (r *SingleInstanceDatabaseReconciler) updateReconcileStatus(m *dbapi.Single
 	result *ctrl.Result, err *error, blocked *bool, completed *bool) {
 
 	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, m)
+	defer func() {
+		if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+			r.Log.Error(updateErr, "failed to update singleinstancedatabase status")
+		}
+	}()
 
 	errMsg := func() string {
 		if *err != nil {
@@ -1314,12 +1318,14 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				// Secret not found
-				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
-				r.Log.Info(err.Error())
-				m.Status.Status = dbcommons.StatusError
-				r.Status().Update(ctx, m)
-				return requeueY, err
-			}
+					r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
+					r.Log.Info(err.Error())
+					m.Status.Status = dbcommons.StatusError
+					if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+						r.Log.Error(updateErr, "failed to update status after secret not found")
+					}
+					return requeueY, err
+				}
 			r.Log.Error(err, "Unable to get the secret. Requeueing..")
 			return requeueY, err
 		}
@@ -2654,7 +2660,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 
 	r.addTrueCacheBlobVolumeMount(pod, m, rp)
 	// Set SingleInstanceDatabase instance as the owner and controller
-	ctrl.SetControllerReference(m, pod, r.Scheme)
+	if err := ctrl.SetControllerReference(m, pod, r.Scheme); err != nil {
+		return nil, err
+	}
 	return pod, nil
 
 }
@@ -2692,7 +2700,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 		SetPublishNotReadyAddresses(publishNotReadyAddress).
 		SetType(svcType).
 		Build()
-	ctrl.SetControllerReference(m, &svc, r.Scheme)
+	_ = ctrl.SetControllerReference(m, &svc, r.Scheme)
 	return &svc
 }
 
@@ -2761,7 +2769,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 		},
 	}
 	// Set SingleInstanceDatabase instance as the owner and controller
-	ctrl.SetControllerReference(m, pvc, r.Scheme)
+	_ = ctrl.SetControllerReference(m, pvc, r.Scheme)
 	return pvc
 }
 
@@ -2793,7 +2801,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiateFRAPVCSpec(m *dbapi.Single
 			StorageClassName: &fraCfg.StorageClass,
 		},
 	}
-	ctrl.SetControllerReference(m, pvc, r.Scheme)
+	_ = ctrl.SetControllerReference(m, pvc, r.Scheme)
 	return pvc
 }
 
@@ -2890,8 +2898,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforCustomScriptsVol
 			},
 		}
 
-		// Set SingleInstanceDatabase instance as the owner and controller
-		ctrl.SetControllerReference(m, pvc, r.Scheme)
+			// Set SingleInstanceDatabase instance as the owner and controller
+			_ = ctrl.SetControllerReference(m, pvc, r.Scheme)
 
 		log.Info("Creating a new PVC", "PVC.Namespace", pvc.Namespace, "PVC.Name", pvc.Name)
 		err = r.Create(ctx, pvc)
@@ -3456,13 +3464,15 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	}
 
 	// Recreate new pods only after earlier pods are terminated completely
-	for i := 0; i < len(podsMarkedToBeDeleted); i++ {
-		r.Log.Info("Force deleting pod ", "name", podsMarkedToBeDeleted[i].Name, "phase", podsMarkedToBeDeleted[i].Status.Phase)
-		var gracePeriodSeconds int64 = 0
-		policy := metav1.DeletePropagationForeground
-		r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
-			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
-	}
+		for i := 0; i < len(podsMarkedToBeDeleted); i++ {
+			r.Log.Info("Force deleting pod ", "name", podsMarkedToBeDeleted[i].Name, "phase", podsMarkedToBeDeleted[i].Status.Phase)
+			var gracePeriodSeconds int64 = 0
+			policy := metav1.DeletePropagationForeground
+			if err := r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
+				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
+				r.Log.Error(err, "Failed to force delete pod", "name", podsMarkedToBeDeleted[i].Name)
+			}
+		}
 
 	if readyPod.Name != "" {
 		allAvailable = append(allAvailable, readyPod)
@@ -3523,13 +3533,15 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 						continue
 					}
 					r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
-					if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
-						r.Log.Info("Deleting pod", "name", allAvailable[i].Name)
-						var gracePeriodSeconds int64 = 0
-						policy := metav1.DeletePropagationForeground
-						r.Delete(ctx, &allAvailable[i], &client.DeleteOptions{
-							GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
-					}
+						if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
+							r.Log.Info("Deleting pod", "name", allAvailable[i].Name)
+							var gracePeriodSeconds int64 = 0
+							policy := metav1.DeletePropagationForeground
+							if err := r.Delete(ctx, &allAvailable[i], &client.DeleteOptions{
+								GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
+								r.Log.Error(err, "Failed to delete pod in image pull backoff", "name", allAvailable[i].Name)
+							}
+						}
 				}
 				return requeueY, err
 			}
@@ -3562,9 +3574,12 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		oldAvailable = append(oldAvailable, readyPod)
 	}
 
-	if m.Status.Replicas == 1 {
-		r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
-	}
+		if m.Status.Replicas == 1 {
+			if _, err := r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0); err != nil {
+				log.Error(err, "failed to delete old pods during image update")
+				return requeueY, err
+			}
+		}
 
 	// call FindPods() to find pods of newer version . if running , delete the older version replicas.
 	readyPod, newReplicasFound, newAvailable, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
@@ -3602,13 +3617,15 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 					continue
 				}
 				r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
-				if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
-					r.Log.Info("Deleting pod", "name", newAvailable[i].Name)
-					var gracePeriodSeconds int64 = 0
-					policy := metav1.DeletePropagationForeground
-					r.Delete(ctx, &newAvailable[i], &client.DeleteOptions{
-						GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
-				}
+					if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
+						r.Log.Info("Deleting pod", "name", newAvailable[i].Name)
+						var gracePeriodSeconds int64 = 0
+						policy := metav1.DeletePropagationForeground
+						if err := r.Delete(ctx, &newAvailable[i], &client.DeleteOptions{
+							GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
+							r.Log.Error(err, "Failed to delete pod in image pull backoff", "name", newAvailable[i].Name)
+						}
+					}
 			}
 			return requeueY, errors.New(eventMsg)
 		}
@@ -3727,13 +3744,15 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	r.Log.Info("Querying the database secret ...")
 	secret := &corev1.Secret{}
 	err = r.Get(ctx, types.NamespacedName{Name: GetAdminPasswordSecretName(m), Namespace: m.Namespace}, secret)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			r.Log.Info("Secret not found")
-			m.Status.Status = dbcommons.StatusError
-			r.Status().Update(ctx, m)
-			return requeueY, nil
-		}
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				r.Log.Info("Secret not found")
+				m.Status.Status = dbcommons.StatusError
+				if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+					r.Log.Error(updateErr, "failed to update status after secret not found")
+				}
+				return requeueY, nil
+			}
 		r.Log.Error(err, "Unable to get the secret. Requeueing..")
 		return requeueY, nil
 	}
@@ -4096,10 +4115,12 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			(tcpsTlsSecret != "" && m.Status.TcpsTlsSecret != "" && tcpsTlsSecret != m.Status.TcpsTlsSecret)) { //TCPS secret is changed
 
 		// Set status to Updating, except when an error has been thrown from configTCPS script
-		if m.Status.Status != dbcommons.StatusError {
-			m.Status.Status = dbcommons.StatusUpdating
-		}
-		r.Status().Update(ctx, m)
+			if m.Status.Status != dbcommons.StatusError {
+				m.Status.Status = dbcommons.StatusUpdating
+			}
+			if err := r.Status().Update(ctx, m); err != nil {
+				return requeueY, err
+			}
 
 		eventMsg := "Enabling TCPS in the database..."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
@@ -4138,7 +4159,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			eventMsg = "Error encountered in enabling TCPS!"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 			m.Status.Status = dbcommons.StatusError
-			r.Status().Update(ctx, m)
+			if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+				r.Log.Error(updateErr, "failed to update status after TCPS enable error")
+			}
 			return requeueY, nil
 		}
 		r.Log.Info("enableTcps Output : \n" + out)
@@ -4154,7 +4177,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			m.Status.TcpsTlsSecret = ""
 		}
 
-		r.Status().Update(ctx, m)
+		if err := r.Status().Update(ctx, m); err != nil {
+			return requeueY, err
+		}
 
 		eventMsg = "TCPS Enabled."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
@@ -4172,7 +4197,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 	} else if !tcpsEnabled && m.Status.IsTcpsEnabled {
 		// Disable TCPS
 		m.Status.Status = dbcommons.StatusUpdating
-		r.Status().Update(ctx, m)
+		if err := r.Status().Update(ctx, m); err != nil {
+			return requeueY, err
+		}
 
 		eventMsg := "Disabling TCPS in the database..."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
@@ -4190,7 +4217,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		m.Status.ClientWalletLoc = ""
 		m.Status.TcpsTlsSecret = ""
 
-		r.Status().Update(ctx, m)
+		if err := r.Status().Update(ctx, m); err != nil {
+			return requeueY, err
+		}
 
 		eventMsg = "TCPS Disabled."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
@@ -4202,7 +4231,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		allowdDuration, _ := time.ParseDuration(tcpsCertRenewInterval)
 		if duration > allowdDuration {
 			m.Status.Status = dbcommons.StatusUpdating
-			r.Status().Update(ctx, m)
+			if err := r.Status().Update(ctx, m); err != nil {
+				return requeueY, err
+			}
 
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 				ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.EnableTcpsCMD))
@@ -4213,7 +4244,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			r.Log.Info("Cert Renewal Output : \n" + out)
 			// Updating the Status and publishing the event
 			m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
-			r.Status().Update(ctx, m)
+			if err := r.Status().Update(ctx, m); err != nil {
+				return requeueY, err
+			}
 
 			eventMsg := "TCPS Certificates Renewed at time %s,"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg, time.Now().Format(time.RFC3339))
@@ -4267,7 +4300,9 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 	eventReason := "Datapatch Executing"
 	eventMsg := "datapatch begins execution"
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-	r.Status().Update(ctx, m)
+	if err := r.Status().Update(ctx, m); err != nil {
+		return requeueY, err
+	}
 
 	//RUN DATAPATCH
 	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
@@ -4387,7 +4422,9 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	log := r.Log.WithValues("updateDBConfig", req.NamespacedName)
 
 	m.Status.Status = dbcommons.StatusUpdating
-	r.Status().Update(ctx, m)
+	if err := r.Status().Update(ctx, m); err != nil {
+		return requeueY, err
+	}
 	var forceLoggingStatus bool
 	var flashBackStatus bool
 	var archiveLogStatus bool
@@ -4656,7 +4693,9 @@ func (r *SingleInstanceDatabaseReconciler) updateSidbStatus(sidb *dbapi.SingleIn
 	// update status to Ready after all operations succeed
 	sidb.Status.Status = dbcommons.StatusReady
 
-	r.Status().Update(ctx, sidb)
+	if err := r.Status().Update(ctx, sidb); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -4680,7 +4719,9 @@ func (r *SingleInstanceDatabaseReconciler) updateORDSStatus(m *dbapi.SingleInsta
 	if n.Status.OrdsInstalled {
 		// Update Status to Healthy/Unhealthy when SIDB turns Healthy/Unhealthy after ORDS is Installed
 		n.Status.Status = m.Status.Status
-		r.Status().Update(ctx, n)
+		if err := r.Status().Update(ctx, n); err != nil {
+			r.Log.Error(err, "failed to update ORDS status")
+		}
 		return
 	}
 }
@@ -4813,15 +4854,19 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 
 	if singleInstanceDatabase.Spec.ConvertToSnapshotStandby {
 		// Convert a PHYSICAL_STANDBY -> SNAPSHOT_STANDBY
-		if singleInstanceDatabase.Status.Status != dbcommons.StatusPending {
-			singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
-		}
+			if singleInstanceDatabase.Status.Status != dbcommons.StatusPending {
+				singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
+			}
 
-		r.Status().Update(ctx, &singleInstanceDatabase)
-		if err := convertPhysicalStdToSnapshotStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
-			singleInstanceDatabase.Status.Status = dbcommons.StatusPending
-			r.Status().Update(ctx, &singleInstanceDatabase)
-			switch err {
+			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+				return requeueY, err
+			}
+			if err := convertPhysicalStdToSnapshotStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
+				singleInstanceDatabase.Status.Status = dbcommons.StatusPending
+				if updateErr := r.Status().Update(ctx, &singleInstanceDatabase); updateErr != nil {
+					log.Error(updateErr, "failed to update status after conversion failure")
+				}
+				switch err {
 			case ErrNotPhysicalStandby:
 				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Conversion to Snapshot Standby Not allowed", "Database not in physical standby role")
 				log.Info("Error: Conversion to Snapshot Standby not allowed as database not in physical standby role")
@@ -4851,14 +4896,18 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 		sidbRole, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
 		if err != nil {
 			return requeueN, err
-		}
-		log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
-		singleInstanceDatabase.Status.Role = sidbRole
-		r.Status().Update(ctx, &singleInstanceDatabase)
-	} else {
-		// Convert a SNAPSHOT_STANDBY -> PHYSICAL_STANDBY
-		singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
-		r.Status().Update(ctx, &singleInstanceDatabase)
+			}
+			log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
+			singleInstanceDatabase.Status.Role = sidbRole
+			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+				return requeueY, err
+			}
+		} else {
+			// Convert a SNAPSHOT_STANDBY -> PHYSICAL_STANDBY
+			singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
+			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+				return requeueY, err
+			}
 		if err := convertSnapshotStdToPhysicalStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
 			switch err {
 			default:
@@ -4872,11 +4921,13 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 		sidbRole, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
 		if err != nil {
 			return requeueN, err
+			}
+			log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
+			singleInstanceDatabase.Status.Role = sidbRole
+			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+				return requeueY, err
+			}
 		}
-		log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
-		singleInstanceDatabase.Status.Role = sidbRole
-		r.Status().Update(ctx, &singleInstanceDatabase)
-	}
 
 	return requeueN, nil
 }

@@ -484,7 +484,11 @@ func (r *DatabaseObserverReconciler) validateDeploymentReadiness(a *api.Database
 	rName := a.Name
 
 	// update after
-	defer r.Status().Update(ctx, a)
+	defer func() {
+		if err := r.Status().Update(ctx, a); err != nil {
+			r.Log.WithName(constants.LogReconcile).Error(err, "failed to update status")
+		}
+	}()
 
 	// get latest deployment
 	if e := r.Get(context.TODO(), types.NamespacedName{Name: rName, Namespace: a.Namespace}, d); e != nil {
@@ -559,7 +563,11 @@ func (r *DatabaseObserverReconciler) validateCustomResourceReadiness(ctx context
 	}
 
 	// make update
-	defer r.Status().Update(ctx, a)
+	defer func() {
+		if err := r.Status().Update(ctx, a); err != nil {
+			r.Log.WithName(constants.LogReconcile).Error(err, "failed to update status")
+		}
+	}()
 
 	if meta.IsStatusConditionPresentAndEqual(a.Status.Conditions, constants.IsExporterDeploymentReady, metav1.ConditionUnknown) {
 		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{

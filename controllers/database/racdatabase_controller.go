@@ -353,12 +353,14 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		racDatabase.Status.Role = string(racdb.RACFieldNotDefined)
 		racDatabase.Status.ConnectString = string(racdb.RACFieldNotDefined)
 		racDatabase.Status.PdbConnectString = string(racdb.RACFieldNotDefined)
-		racDatabase.Status.ReleaseUpdate = string(racdb.RACFieldNotDefined)
-		racDatabase.Status.ConfigParams.DbHome = string(racdb.RACFieldNotDefined)
-		racDatabase.Status.ConfigParams.GridHome = string(racdb.RACFieldNotDefined)
-		racDatabase.Status.ClientEtcHost = []string{string(racdb.RACFieldNotDefined)}
-		r.Status().Update(ctx, racDatabase)
-	}
+			racDatabase.Status.ReleaseUpdate = string(racdb.RACFieldNotDefined)
+			racDatabase.Status.ConfigParams.DbHome = string(racdb.RACFieldNotDefined)
+			racDatabase.Status.ConfigParams.GridHome = string(racdb.RACFieldNotDefined)
+			racDatabase.Status.ClientEtcHost = []string{string(racdb.RACFieldNotDefined)}
+			if err := r.Status().Update(ctx, racDatabase); err != nil {
+				return resultNq, err
+			}
+		}
 
 	phase = racPhaseDeletionAndIntent
 	r.phaseInfo(req, phase, "Entering reconcile phase")

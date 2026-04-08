@@ -267,8 +267,11 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 			continue
 		}
 
-		broker.Status.Status = dbcommons.StatusCreating
-		r.Status().Update(ctx, broker)
+			broker.Status.Status = dbcommons.StatusCreating
+			if err := r.Status().Update(ctx, broker); err != nil {
+				log.Error(err, "failed to update dataguardbroker status")
+				return err
+			}
 
 		// ## FETCH THE STANDBY REPLICAS .
 		standbyDatabaseReadyPod, _, _, _, err := dbcommons.FindPods(r, sidb.Spec.Image.Version,
@@ -291,9 +294,12 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 			log.Info("DatabasesInDataguardConfig is nil")
 			broker.Status.DatabasesInDataguardConfig = make(map[string]string)
 		}
-		log.Info(fmt.Sprintf("adding %v:%v to the map", standbyDatabase.Status.Sid, standbyDatabase.Name))
-		broker.Status.DatabasesInDataguardConfig[standbyDatabase.Status.Sid] = standbyDatabase.Name
-		r.Status().Update(ctx, broker)
+			log.Info(fmt.Sprintf("adding %v:%v to the map", standbyDatabase.Status.Sid, standbyDatabase.Name))
+			broker.Status.DatabasesInDataguardConfig[standbyDatabase.Status.Sid] = standbyDatabase.Name
+			if err := r.Status().Update(ctx, broker); err != nil {
+				log.Error(err, "failed to update dataguardbroker status")
+				return err
+			}
 		// Update Databases
 	}
 	if len(broker.Status.DatabasesInDataguardConfig) == 0 {
@@ -410,11 +416,17 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 			log.Info("ShowConfiguration Output")
 			log.Info(out)
 		}
-		// Set DG Configured status to true for this standbyDatabase and primary Database. so that in next reconcilation, we dont configure this again
-		n.Status.DgBroker = &m.Name
-		standbyDatabase.Status.DgBroker = &m.Name
-		r.Status().Update(ctx, standbyDatabase)
-		r.Status().Update(ctx, n)
+			// Set DG Configured status to true for this standbyDatabase and primary Database. so that in next reconcilation, we dont configure this again
+			n.Status.DgBroker = &m.Name
+			standbyDatabase.Status.DgBroker = &m.Name
+			if err := r.Status().Update(ctx, standbyDatabase); err != nil {
+				log.Error(err, "failed to update standby status")
+				return err
+			}
+			if err := r.Status().Update(ctx, n); err != nil {
+				log.Error(err, "failed to update primary status")
+				return err
+			}
 		// Remove admin pwd file
 		_, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 			dbcommons.RemoveAdminPasswordFile)
@@ -505,7 +517,10 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 
 	// Set DG Configured status to true for this standbyDatabase. so that in next reconcilation, we dont configure this again
 	standbyDatabase.Status.DgBroker = &m.Name
-	r.Status().Update(ctx, standbyDatabase)
+	if err := r.Status().Update(ctx, standbyDatabase); err != nil {
+		log.Error(err, "failed to update standby status")
+		return err
+	}
 
 	return nil
 }
@@ -569,11 +584,14 @@ func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 
 	// fetch the singleinstancedatabase (database sid) and their role in the dataguard configuration
 	var databases []string
-	databases, err = GetDatabasesInDataGuardConfigurationWithRole(r, broker, ctx, req)
+		databases, err = GetDatabasesInDataGuardConfigurationWithRole(r, broker, ctx, req)
 	if err != nil {
 		log.Info("Problem when retrieving the databases in dg config")
 		broker.Status.Status = dbcommons.StatusNotReady
-		r.Status().Update(ctx, broker)
+		if updateErr := r.Status().Update(ctx, broker); updateErr != nil {
+			log.Error(updateErr, "failed to update dataguardbroker status")
+			return updateErr
+		}
 		return nil
 	}
 
@@ -587,11 +605,14 @@ func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 		if err != nil {
 			return err
 		}
-		log.Info(fmt.Sprintf("Checking current role of %v is %v and its status is %v", broker.Status.DatabasesInDataguardConfig[database], strings.ToUpper(splitstr[1]), singleInstanceDatabase.Status.Role))
-		if singleInstanceDatabase.Status.Role != strings.ToUpper(splitstr[1]) {
-			singleInstanceDatabase.Status.Role = strings.ToUpper(splitstr[1])
-			r.Status().Update(ctx, &singleInstanceDatabase)
-		}
+			log.Info(fmt.Sprintf("Checking current role of %v is %v and its status is %v", broker.Status.DatabasesInDataguardConfig[database], strings.ToUpper(splitstr[1]), singleInstanceDatabase.Status.Role))
+			if singleInstanceDatabase.Status.Role != strings.ToUpper(splitstr[1]) {
+				singleInstanceDatabase.Status.Role = strings.ToUpper(splitstr[1])
+				if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+					log.Error(err, "failed to update singleInstanceDatabase status", "name", singleInstanceDatabase.Name)
+					return err
+				}
+			}
 		if strings.ToUpper(splitstr[1]) == "PRIMARY" && strings.ToUpper(database) != strings.ToUpper(broker.Status.PrimaryDatabase) {
 			log.Info("primary Database is " + strings.ToUpper(database))
 			broker.Status.PrimaryDatabase = strings.ToUpper(database)
@@ -608,7 +629,10 @@ func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 
 	broker.Status.StandbyDatabases = standbyDatabases
 	broker.Status.ProtectionMode = broker.Spec.ProtectionMode
-	r.Status().Update(ctx, broker)
+	if err := r.Status().Update(ctx, broker); err != nil {
+		log.Error(err, "failed to update dataguardbroker status")
+		return err
+	}
 
 	// patch the dataguardbroker resource service
 	if err := patchService(r, broker, ctx, req); err != nil {
@@ -877,7 +901,10 @@ func createObserverPods(r *DataguardBrokerReconciler, broker *dbapi.DataguardBro
 		Build()
 
 	// set the ownership and lifecyle of the observer pod to the dataguardbroker resource
-	ctrl.SetControllerReference(broker, &pod, r.Scheme)
+	if err := ctrl.SetControllerReference(broker, &pod, r.Scheme); err != nil {
+		log.Error(err, "failed to set controller reference for observer pod")
+		return err
+	}
 
 	log.Info("Creating a new  POD", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 	if err = r.Create(ctx, &pod); err != nil {
@@ -1331,7 +1358,10 @@ func createObserverPodsExternal(
 		Build()
 
 	// owner ref
-	ctrl.SetControllerReference(broker, &pod, r.Scheme)
+	if err := ctrl.SetControllerReference(broker, &pod, r.Scheme); err != nil {
+		log.Error(err, "failed to set controller reference for observer pod")
+		return err
+	}
 
 	log.Info("Creating observer pod", "namespace", pod.Namespace, "name", pod.Name)
 	if err := r.Create(ctx, &pod); err != nil {

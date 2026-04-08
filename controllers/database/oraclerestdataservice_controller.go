@@ -97,7 +97,11 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 
 	oracleRestDataService := &dbapi.OracleRestDataService{}
 	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, oracleRestDataService)
+	defer func() {
+		if err := r.Status().Update(ctx, oracleRestDataService); err != nil {
+			r.Log.Error(err, "failed to update oracleRestDataService status")
+		}
+	}()
 
 	err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, oracleRestDataService)
 	if err != nil {
@@ -115,7 +119,9 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		oracleRestDataService.Status.ApxeUrl = dbcommons.ValueUnavailable
 		oracleRestDataService.Status.DatabaseApiUrl = dbcommons.ValueUnavailable
 		oracleRestDataService.Status.DatabaseActionsUrl = dbcommons.ValueUnavailable
-		r.Status().Update(ctx, oracleRestDataService)
+		if err := r.Status().Update(ctx, oracleRestDataService); err != nil {
+			return requeueY, err
+		}
 	}
 	oracleRestDataService.Status.LoadBalancer = strconv.FormatBool(oracleRestDataService.Spec.LoadBalancer)
 	oracleRestDataService.Status.Image = oracleRestDataService.Spec.Image
@@ -123,7 +129,11 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	// Fetch Primary Database Reference
 	singleInstanceDatabase := &dbapi.SingleInstanceDatabase{}
 	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, singleInstanceDatabase)
+	defer func() {
+		if err := r.Status().Update(ctx, singleInstanceDatabase); err != nil {
+			r.Log.Error(err, "failed to update singleInstanceDatabase status")
+		}
+	}()
 
 	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: oracleRestDataService.Spec.DatabaseRef}, singleInstanceDatabase)
 	if err != nil {
@@ -406,11 +416,14 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 		if n.Status.Status == dbcommons.StatusReady || n.Status.Status == dbcommons.StatusUpdating || n.Status.Status == dbcommons.StatusPatching {
 			m.Status.Status = dbcommons.StatusReady
 		}
-		if !m.Status.OrdsInstalled {
-			m.Status.OrdsInstalled = true
-			n.Status.OrdsReference = m.Name
-			r.Status().Update(ctx, n)
-			eventReason := "ORDS Installation"
+			if !m.Status.OrdsInstalled {
+				m.Status.OrdsInstalled = true
+				n.Status.OrdsReference = m.Name
+				if err := r.Status().Update(ctx, n); err != nil {
+					log.Error(err, "failed to update SingleInstanceDatabase ORDS reference")
+					return requeueY, readyPod
+				}
+				eventReason := "ORDS Installation"
 			eventMsg := "installation of ORDS completed"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 			out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
@@ -486,7 +499,7 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 		},
 	}
 	// Set StandbyDatabase instance as the owner and controller
-	ctrl.SetControllerReference(m, svc, r.Scheme)
+	_ = ctrl.SetControllerReference(m, svc, r.Scheme)
 	return svc
 }
 
@@ -700,7 +713,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 
 	// Set oracleRestDataService instance as the owner and controller
 	// ctrl.SetControllerReference(m, initSecret, r.Scheme)
-	ctrl.SetControllerReference(m, pod, r.Scheme)
+	_ = ctrl.SetControllerReference(m, pod, r.Scheme)
 	return pod
 }
 
@@ -759,7 +772,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 		},
 	}
 	// Set SingleInstanceDatabase instance as the owner and controller
-	ctrl.SetControllerReference(m, pvc, r.Scheme)
+	_ = ctrl.SetControllerReference(m, pvc, r.Scheme)
 	return pvc
 }
 
@@ -962,12 +975,14 @@ func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.Oracle
 	secret := &corev1.Secret{}
 	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			r.Log.Info("Secret not found")
-			m.Status.Status = dbcommons.StatusError
-			r.Status().Update(ctx, m)
-			return requeueY, nil
-		}
+			if apierrors.IsNotFound(err) {
+				r.Log.Info("Secret not found")
+				m.Status.Status = dbcommons.StatusError
+				if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+					r.Log.Error(updateErr, "failed to update ORDS status")
+				}
+				return requeueY, nil
+			}
 		r.Log.Error(err, "Unable to get the secret. Requeueing..")
 		return requeueY, nil
 	}
@@ -1010,12 +1025,14 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 
 	// Recreate new pods only after earlier pods are terminated completely
 	for i := 0; i < len(podsMarkedToBeDeleted); i++ {
-		r.Log.Info("Force deleting pod ", "name", podsMarkedToBeDeleted[i].Name, "phase", podsMarkedToBeDeleted[i].Status.Phase)
-		var gracePeriodSeconds int64 = 0
-		policy := metav1.DeletePropagationForeground
-		r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
-			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
-	}
+			r.Log.Info("Force deleting pod ", "name", podsMarkedToBeDeleted[i].Name, "phase", podsMarkedToBeDeleted[i].Status.Phase)
+			var gracePeriodSeconds int64 = 0
+			policy := metav1.DeletePropagationForeground
+			if err := r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
+				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
+				r.Log.Error(err, "failed to delete ORDS pod", "name", podsMarkedToBeDeleted[i].Name)
+			}
+		}
 
 	log.Info(m.Name, " pods other than one of Ready Pods : ", dbcommons.GetPodNames(available))
 	log.Info(m.Name, " Ready Pod : ", readyPod.Name)
@@ -1283,11 +1300,13 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		}
 		log.Info("Drop admin users: " + out)
 
-		//Delete ORDS pod
-		var gracePeriodSeconds int64 = 0
-		policy := metav1.DeletePropagationForeground
-		r.Delete(ctx, &readyPod, &client.DeleteOptions{
-			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
+			//Delete ORDS pod
+			var gracePeriodSeconds int64 = 0
+			policy := metav1.DeletePropagationForeground
+			if err := r.Delete(ctx, &readyPod, &client.DeleteOptions{
+				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
+				r.Log.Error(err, "failed to delete ready ORDS pod", "name", readyPod.Name)
+			}
 
 		//Delete Database Admin Password Secret
 		if !*m.Spec.AdminPassword.KeepSecret {
@@ -1358,8 +1377,14 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 	n.Status.ApexInstalled = true
 	m.Status.ApexConfigured = true
-	r.Status().Update(ctx, n)
-	r.Status().Update(ctx, m)
+	if err := r.Status().Update(ctx, n); err != nil {
+		r.Log.Error(err, "failed to update SIDB status for Apex")
+		return requeueY
+	}
+	if err := r.Status().Update(ctx, m); err != nil {
+		r.Log.Error(err, "failed to update ORDS status for Apex")
+		return requeueY
+	}
 
 	return requeueN
 }
@@ -1426,10 +1451,13 @@ func (r *OracleRestDataServiceReconciler) enableMongoDB(m *dbapi.OracleRestDataS
 			}
 		}
 
-		m.Status.MongoDbApi = m.Spec.MongoDbApi
-		m.Status.Status = dbcommons.StatusReady
-		r.Status().Update(ctx, m)
-		eventReason := "MongoDB-API Config"
+			m.Status.MongoDbApi = m.Spec.MongoDbApi
+			m.Status.Status = dbcommons.StatusReady
+			if err := r.Status().Update(ctx, m); err != nil {
+				log.Error(err, "failed to update ORDS status for MongoDB API configuration")
+				return requeueY
+			}
+			eventReason := "MongoDB-API Config"
 		eventMsg := "configuration of MongoDb API completed!"
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 		log.Info(eventMsg)
