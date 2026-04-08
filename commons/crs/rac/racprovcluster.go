@@ -856,7 +856,7 @@ func buildVolumeMountSpecForRacCluster(
 
 	// SSH key secret default location
 	if instance.Spec.SshKeySecret != nil && instance.Spec.SshKeySecret.KeyMountLocation == "" {
-		instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+		instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 	}
 	// DB secret default locations
 	if instance.Spec.DbSecret != nil && instance.Spec.DbSecret.Name != "" {

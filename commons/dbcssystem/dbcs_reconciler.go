@@ -65,14 +65,16 @@ import (
 )
 
 const (
-	checkInterval                                                                                        = 30 * time.Second
-	timeout                                                                                              = 15 * time.Minute
+	checkInterval = 30 * time.Second
+	timeout       = 15 * time.Minute
+	// PatchHistoryEntrySummaryLifecycleStateInProgress indicates patching is still running.
 	PatchHistoryEntrySummaryLifecycleStateInProgress database.PatchHistoryEntrySummaryLifecycleStateEnum = "IN_PROGRESS"
-	PatchHistoryEntrySummaryLifecycleStateSucceeded  database.PatchHistoryEntrySummaryLifecycleStateEnum = "SUCCEEDED"
+	// PatchHistoryEntrySummaryLifecycleStateSucceeded indicates patching completed successfully.
+	PatchHistoryEntrySummaryLifecycleStateSucceeded database.PatchHistoryEntrySummaryLifecycleStateEnum = "SUCCEEDED"
 )
 
-// CreateAndGetDbcsId checks if a DBCS system with the specified display name already exists in the given compartment. If it exists, it returns the existing DBCS system ID. If not, it creates a new DBCS system using the provided specifications and returns the newly created DBCS system ID. The function also handles the provisioning lifecycle state and waits for the DBCS system to become available before returning the ID.
-func CreateAndGetDbcsId(compartmentId string, logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient, kmsDetails *databasev4.KMSDetailsStatus) (string, error) {
+// CreateAndGetDbcsID checks if a DBCS system with the specified display name already exists in the given compartment. If it exists, it returns the existing DBCS system ID. If not, it creates a new DBCS system using the provided specifications and returns the newly created DBCS system ID. The function also handles the provisioning lifecycle state and waits for the DBCS system to become available before returning the ID.
+func CreateAndGetDbcsID(compartmentID string, logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient, kmsDetails *databasev4.KMSDetailsStatus) (string, error) {
 
 	ctx := context.TODO()
 	// Check if DBCS system already exists using the displayName
@@ -163,7 +165,7 @@ func CreateAndGetDbcsId(compartmentId string, logger logr.Logger, kubeClient cli
 	dbcs.Spec.Id = resp.DbSystem.Id
 
 	// Change the phase to "Provisioning"
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+	if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
 		return "", statusErr
 	}
 
@@ -208,8 +210,8 @@ func convertLicenseModel(licenseModel database.DbSystemLicenseModelEnum) (databa
 	}
 }
 
-// CheckPatchState waits for a specific patch to finish applying. It polls the patch history until the patch is SUCCEEDED or FAILED.
-func CloneAndGetDbcsId(compartmentId string, logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) (string, error) {
+// CloneAndGetDbcsID clones an existing DB system and returns the cloned DB system ID.
+func CloneAndGetDbcsID(compartmentID string, logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) (string, error) {
 	ctx := context.TODO()
 	var err error
 	dbAdminPassword := ""
@@ -245,8 +247,8 @@ func CloneAndGetDbcsId(compartmentId string, logger logr.Logger, kubeClient clie
 		return "", err
 	}
 
-	if compartmentId == "" {
-		compartmentId = *existingDbSystem.CompartmentId
+	if compartmentID == "" {
+		compartmentID = *existingDbSystem.CompartmentId
 	}
 	logger.Info("Retrieved existing Db System Details from OCI using Spec.Id")
 
@@ -316,7 +318,7 @@ func CloneAndGetDbcsId(compartmentId string, logger logr.Logger, kubeClient clie
 	dbcs.Status.DbCloneStatus.Id = response.DbSystem.Id
 
 	// Change the phase to "Provisioning"
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+	if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
 		return "", statusErr
 	}
 
@@ -330,65 +332,65 @@ func CloneAndGetDbcsId(compartmentId string, logger logr.Logger, kubeClient clie
 	// return "", nil
 }
 
-// CheckPatchState waits for a specific patch to finish applying. It polls the patch history until the patch is SUCCEEDED or FAILED.
+// PatchDBSystem applies a patch to the target DB system and waits for completion when needed.
 func PatchDBSystem(
 	ctx context.Context,
-	compartmentId string,
+	compartmentID string,
 	logger logr.Logger,
 	kubeClient client.Client,
 	dbClient database.DatabaseClient,
 	dbcs *databasev4.DbcsSystem,
 	nwClient core.VirtualNetworkClient,
 	wrClient workrequests.WorkRequestClient,
-	dbHomeId, patchId string) error {
+	_, patchID string) error {
 
-	dbSystemId := dbcs.Spec.Id
+	dbSystemID := dbcs.Spec.Id
 	// Check if patch is already applied or in progress then return
 	historyResp, err := dbClient.ListDbSystemPatchHistoryEntries(ctx, database.ListDbSystemPatchHistoryEntriesRequest{
-		DbSystemId: dbSystemId,
+		DbSystemId: dbSystemID,
 	})
 	if err != nil {
-		logger.Error(err, "Failed to get patch history entries", "DBSystemID", dbSystemId)
+		logger.Error(err, "Failed to get patch history entries", "DBSystemID", dbSystemID)
 		return fmt.Errorf("failed to get patch history entries: %w", err)
 	}
 
 	for _, entry := range historyResp.Items {
-		if entry.PatchId != nil && *entry.PatchId == patchId {
+		if entry.PatchId != nil && *entry.PatchId == patchID {
 			if entry.LifecycleState == database.PatchHistoryEntrySummaryLifecycleStateSucceeded {
-				logger.Info("Patch already applied, skipping", "PatchID", patchId)
+				logger.Info("Patch already applied, skipping", "PatchID", patchID)
 				return nil
 			}
 			if entry.LifecycleState == database.PatchHistoryEntrySummaryLifecycleStateInProgress {
-				logger.Info("Patch in progress, waiting until it completes", "PatchID", patchId)
+				logger.Info("Patch in progress, waiting until it completes", "PatchID", patchID)
 				// Change the phase to "Provisioning"
-				if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
+				if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
 					logger.Error(statusErr, "Failed to update lifecycle state to Provisioning")
 					return statusErr
 				}
 				// Wait for the patch to complete
-				return CheckPatchState(ctx, logger, dbClient, dbSystemId, patchId)
+				return CheckPatchState(ctx, logger, dbClient, dbSystemID, patchID)
 			}
 			if entry.LifecycleState == database.PatchHistoryEntrySummaryLifecycleStateFailed {
-				logger.Error(fmt.Errorf("patch failed"), "Patch failed", "PatchID", patchId)
-				return fmt.Errorf("patch %s failed", patchId)
+				logger.Error(fmt.Errorf("patch failed"), "Patch failed", "PatchID", patchID)
+				return fmt.Errorf("patch %s failed", patchID)
 			}
 		}
 	}
 
-	logger.Info("Starting patch process for DB System", "DBSystemID", dbSystemId)
+	logger.Info("Starting patch process for DB System", "DBSystemID", dbSystemID)
 
 	patchesResp, err := dbClient.ListDbSystemPatches(ctx, database.ListDbSystemPatchesRequest{
-		DbSystemId: dbSystemId,
+		DbSystemId: dbSystemID,
 	})
 	if err != nil {
-		logger.Error(err, "Failed to list patches for DB System", "DBSystemID", dbSystemId)
+		logger.Error(err, "Failed to list patches for DB System", "DBSystemID", dbSystemID)
 		return fmt.Errorf("failed to list patches for DB System: %w", err)
 	}
 
 	found := false
 
 	if len(patchesResp.Items) == 0 {
-		logger.Info("No patches available for this DB System", "DBSystemID", dbSystemId)
+		logger.Info("No patches available for this DB System", "DBSystemID", dbSystemID)
 	} else {
 		logger.Info("Available patches for DB System", "count", len(patchesResp.Items))
 		for _, patch := range patchesResp.Items {
@@ -399,40 +401,40 @@ func PatchDBSystem(
 				"ReleaseDate", patch.TimeReleased.String(),
 			)
 
-			// Check if patchId matches
-			if *patch.Id == patchId {
+			// Check if patchID matches
+			if *patch.Id == patchID {
 				found = true
 			}
 		}
 	}
 
 	if !found {
-		logger.Error(nil, "Patch ID not found in available patches", "PatchID", patchId)
-		return fmt.Errorf("patch ID %s not found in available DB System patches", patchId)
+		logger.Error(nil, "Patch ID not found in available patches", "PatchID", patchID)
+		return fmt.Errorf("patch ID %s not found in available DB System patches", patchID)
 	}
 
 	updateDetails := database.UpdateDbSystemDetails{
 		Version: &database.PatchDetails{
-			PatchId: common.String(patchId),
+			PatchId: common.String(patchID),
 			Action:  database.PatchDetailsActionApply,
 		},
 	}
 
 	updateReq := database.UpdateDbSystemRequest{
-		DbSystemId:            dbSystemId,
+		DbSystemId:            dbSystemID,
 		UpdateDbSystemDetails: updateDetails,
 	}
 
 	updateResp, err := dbClient.UpdateDbSystem(ctx, updateReq)
 	if err != nil {
-		logger.Error(err, "Failed to apply patch to DB System", "PatchID", patchId, "DBSystemID", dbSystemId)
+		logger.Error(err, "Failed to apply patch to DB System", "PatchID", patchID, "DBSystemID", dbSystemID)
 		return fmt.Errorf("failed to patch DB System: %w", err)
 	}
 
-	logger.Info("Patch applied to DB System", "WorkRequestID", *updateResp.OpcWorkRequestId, "PatchID", patchId)
+	logger.Info("Patch applied to DB System", "WorkRequestID", *updateResp.OpcWorkRequestId, "PatchID", patchID)
 
 	// Change the phase to "Provisioning"
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
+	if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
 		logger.Error(statusErr, "Failed to update lifecycle state to Provisioning")
 		return statusErr
 	}
@@ -444,7 +446,7 @@ func PatchDBSystem(
 		return err
 	}
 
-	logger.Info("DB System patching process completed successfully", "DBSystemID", dbSystemId)
+	logger.Info("DB System patching process completed successfully", "DBSystemID", dbSystemID)
 	dbcs.Status.Message = "Patch applied successfully."
 
 	return nil
@@ -452,7 +454,7 @@ func PatchDBSystem(
 
 // CheckPatchState waits for a specific patch to finish applying.
 // It polls the patch history until the patch is SUCCEEDED or FAILED.
-func CheckPatchState(ctx context.Context, logger logr.Logger, dbClient database.DatabaseClient, dbSystemId *string, patchId string) error {
+func CheckPatchState(ctx context.Context, logger logr.Logger, dbClient database.DatabaseClient, dbSystemID *string, patchID string) error {
 	// Maximum wait duration: 120 minutes
 	timeout := 240 * time.Minute
 	start := time.Now()
@@ -460,34 +462,34 @@ func CheckPatchState(ctx context.Context, logger logr.Logger, dbClient database.
 	for {
 		// Timeout guard
 		if time.Since(start) > timeout {
-			msg := fmt.Sprintf("timed out after %v waiting for patch %s to complete", timeout, patchId)
-			logger.Error(fmt.Errorf("timeout"), msg, "DBSystemID", *dbSystemId)
+			msg := fmt.Sprintf("timed out after %v waiting for patch %s to complete", timeout, patchID)
+			logger.Error(fmt.Errorf("timeout"), msg, "DBSystemID", *dbSystemID)
 			return errors.New(msg)
 		}
 
 		historyResp, err := dbClient.ListDbSystemPatchHistoryEntries(ctx, database.ListDbSystemPatchHistoryEntriesRequest{
-			DbSystemId: dbSystemId,
+			DbSystemId: dbSystemID,
 		})
 		if err != nil {
-			logger.Error(err, "Failed to get patch history entries", "DBSystemID", *dbSystemId)
+			logger.Error(err, "Failed to get patch history entries", "DBSystemID", *dbSystemID)
 			return fmt.Errorf("failed to get patch history entries: %w", err)
 		}
 
 		var found bool
 		for _, entry := range historyResp.Items {
-			if entry.PatchId != nil && *entry.PatchId == patchId {
+			if entry.PatchId != nil && *entry.PatchId == patchID {
 				found = true
 				switch entry.LifecycleState {
 				case database.PatchHistoryEntrySummaryLifecycleStateSucceeded:
-					logger.Info("Patch succeeded", "PatchID", patchId)
+					logger.Info("Patch succeeded", "PatchID", patchID)
 					return nil
 
 				case database.PatchHistoryEntrySummaryLifecycleStateFailed:
-					logger.Error(fmt.Errorf("patch failed"), "Patch failed", "PatchID", patchId)
-					return fmt.Errorf("patch %s failed", patchId)
+					logger.Error(fmt.Errorf("patch failed"), "Patch failed", "PatchID", patchID)
+					return fmt.Errorf("patch %s failed", patchID)
 
 				case database.PatchHistoryEntrySummaryLifecycleStateInProgress:
-					logger.Info("Patch still in progress, waiting", "PatchID", patchId)
+					logger.Info("Patch still in progress, waiting", "PatchID", patchID)
 					time.Sleep(60 * time.Second)
 					continue
 				}
@@ -495,32 +497,33 @@ func CheckPatchState(ctx context.Context, logger logr.Logger, dbClient database.
 		}
 
 		if !found {
-			logger.Info("Patch ID not found in history yet, waiting", "PatchID", patchId)
+			logger.Info("Patch ID not found in history yet, waiting", "PatchID", patchID)
 			time.Sleep(60 * time.Second)
 			continue
 		}
 	}
 }
 
+// UpgradeDatabaseVersion upgrades GI and database software to the requested target version.
 func UpgradeDatabaseVersion(
 	ctx context.Context,
-	compartmentId string,
+	compartmentID string,
 	logger logr.Logger,
 	kubeClient client.Client,
 	dbClient database.DatabaseClient,
 	dbcs *databasev4.DbcsSystem,
 	nwClient core.VirtualNetworkClient,
 	wrClient workrequests.WorkRequestClient,
-	databaseId, targetVersion string) error {
-	dbSystemId := dbcs.Spec.Id
-	logger.Info("Starting GI upgrade", "DbSystemID", dbSystemId, "TargetGI", targetVersion)
+	databaseID, targetVersion string) error {
+	dbSystemID := dbcs.Spec.Id
+	logger.Info("Starting GI upgrade", "DbSystemID", dbSystemID, "TargetGI", targetVersion)
 
 	// Step 1: Get current DB system details
 	getResp, err := dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
-		DbSystemId: dbSystemId,
+		DbSystemId: dbSystemID,
 	})
 	if err != nil {
-		logger.Error(err, "Failed to get DB system details", "DbSystemID", dbSystemId)
+		logger.Error(err, "Failed to get DB system details", "DbSystemID", dbSystemID)
 		return fmt.Errorf("failed to get DB system: %w", err)
 	}
 	currentGiVersion := getResp.DbSystem.Version
@@ -533,8 +536,8 @@ func UpgradeDatabaseVersion(
 	} else {
 		// Step 2: Check for ongoing GI upgrade
 		workReqsResp, err := wrClient.ListWorkRequests(ctx, workrequests.ListWorkRequestsRequest{
-			CompartmentId: common.String(compartmentId),
-			ResourceId:    dbSystemId,
+			CompartmentId: common.String(compartmentID),
+			ResourceId:    dbSystemID,
 		})
 		if err != nil {
 			logger.Error(err, "Failed to list work requests")
@@ -552,7 +555,7 @@ func UpgradeDatabaseVersion(
 		}
 		// Step 3: Construct the upgrade request
 		upgradeReq := database.UpgradeDbSystemRequest{
-			DbSystemId: dbSystemId,
+			DbSystemId: dbSystemID,
 			UpgradeDbSystemDetails: database.UpgradeDbSystemDetails{
 				Action:                              database.UpgradeDbSystemDetailsActionUpgrade,
 				NewGiVersion:                        common.String(targetVersion),
@@ -573,7 +576,7 @@ func UpgradeDatabaseVersion(
 		logger.Info("GI upgrade initiated", "WorkRequestID", *upgradeResp.OpcWorkRequestId)
 
 		// Step 3: Update status to upgrading
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Upgrade, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Upgrade, nwClient, wrClient); statusErr != nil {
 			logger.Error(statusErr, "Failed to update lifecycle state to Upgrading")
 			dbcs.Status.Message = "Failed to update lifecycle state to Upgrading"
 
@@ -590,15 +593,15 @@ func UpgradeDatabaseVersion(
 		}
 
 		// Step 5: Wait for completion
-		workReqId := upgradeResp.OpcWorkRequestId
+		workReqID := upgradeResp.OpcWorkRequestId
 		for {
 			time.Sleep(30 * time.Second)
 
 			getWorkReqResp, err := wrClient.GetWorkRequest(ctx, workrequests.GetWorkRequestRequest{
-				WorkRequestId: workReqId,
+				WorkRequestId: workReqID,
 			})
 			if err != nil {
-				logger.Error(err, "Error fetching work request status", "WorkRequestID", *workReqId)
+				logger.Error(err, "Error fetching work request status", "WorkRequestID", *workReqID)
 				dbcs.Status.Message = "Error fetching work request status"
 				return fmt.Errorf("failed to check GI upgrade status: %w", err)
 			}
@@ -612,7 +615,7 @@ func UpgradeDatabaseVersion(
 
 				break
 			} else if status == workrequests.WorkRequestStatusFailed {
-				logger.Error(nil, "GI upgrade failed", "WorkRequestID", *workReqId)
+				logger.Error(nil, "GI upgrade failed", "WorkRequestID", *workReqID)
 				dbcs.Status.Message = "GI upgrade failed"
 
 				return fmt.Errorf("GI upgrade failed: work request marked as failed")
@@ -622,17 +625,17 @@ func UpgradeDatabaseVersion(
 
 	// Step 1: Check if DB is already on the target version
 	dbResp, err := dbClient.GetDatabase(ctx, database.GetDatabaseRequest{
-		DatabaseId: common.String(databaseId),
+		DatabaseId: common.String(databaseID),
 	})
 	if err != nil {
-		logger.Error(err, "Failed to fetch database details", "DatabaseID", databaseId)
+		logger.Error(err, "Failed to fetch database details", "DatabaseID", databaseID)
 		dbcs.Status.Message = "Failed to fetch database details"
 		return fmt.Errorf("failed to get database details: %w", err)
 	}
 	// fmt.Printf("%+v\n", dbResp.Database)
-	dbHomeId := *dbResp.Database.DbHomeId
+	dbHomeID := *dbResp.Database.DbHomeId
 	dbHomeResp, err := dbClient.GetDbHome(ctx, database.GetDbHomeRequest{
-		DbHomeId: &dbHomeId,
+		DbHomeId: &dbHomeID,
 	})
 	if err != nil {
 		dbcs.Status.Message = "Failed to get DB Home"
@@ -649,8 +652,8 @@ func UpgradeDatabaseVersion(
 
 	// Step 2: Check for ongoing DB upgrade work requests
 	workReqsRespDb, err := wrClient.ListWorkRequests(ctx, workrequests.ListWorkRequestsRequest{
-		CompartmentId: common.String(compartmentId),
-		ResourceId:    common.String(databaseId),
+		CompartmentId: common.String(compartmentID),
+		ResourceId:    common.String(databaseID),
 	})
 	if err != nil {
 		logger.Error(err, "Failed to list database work requests")
@@ -696,7 +699,7 @@ func UpgradeDatabaseVersion(
 		}
 	}
 
-	logger.Info("Starting upgrade process for Database", "DatabaseID", databaseId, "TargetVersion", targetVersion)
+	logger.Info("Starting upgrade process for Database", "DatabaseID", databaseID, "TargetVersion", targetVersion)
 
 	upgradeDetails := database.UpgradeDatabaseDetails{
 		DatabaseUpgradeSourceDetails: database.DatabaseUpgradeWithDbVersionDetails{
@@ -707,13 +710,13 @@ func UpgradeDatabaseVersion(
 
 	// Step 3: Submit the upgrade request
 	upgradeReqDb := database.UpgradeDatabaseRequest{
-		DatabaseId:             common.String(databaseId),
+		DatabaseId:             common.String(databaseID),
 		UpgradeDatabaseDetails: upgradeDetails,
 	}
 
 	upgradeRespDb, err := dbClient.UpgradeDatabase(ctx, upgradeReqDb)
 	if err != nil {
-		logger.Error(err, "Failed to upgrade database version", "DatabaseID", databaseId)
+		logger.Error(err, "Failed to upgrade database version", "DatabaseID", databaseID)
 		dbcs.Status.Message = "Failed to upgrade database version"
 
 		return fmt.Errorf("failed to upgrade database: %w", err)
@@ -722,7 +725,7 @@ func UpgradeDatabaseVersion(
 	logger.Info("Upgrade initiated", "WorkRequestID", *upgradeRespDb.OpcWorkRequestId)
 
 	// Step 3: Update status to upgrading
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Upgrade, nwClient, wrClient); statusErr != nil {
+	if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Upgrade, nwClient, wrClient); statusErr != nil {
 		logger.Error(statusErr, "Failed to update lifecycle state to Upgrading")
 		dbcs.Status.Message = "Failed to update lifecycle state to Upgrading"
 
@@ -738,15 +741,15 @@ func UpgradeDatabaseVersion(
 		return err
 	}
 
-	logger.Info("Database upgrade process completed successfully", "DatabaseID", databaseId)
+	logger.Info("Database upgrade process completed successfully", "DatabaseID", databaseID)
 	dbcs.Status.Message = fmt.Sprintf("Database upgraded successfully to version %s", targetVersion)
 
 	return nil
 }
 
-// CloneFromBackupAndGetDbcsId clones a DB system from a backup and returns the new DB system's OCID.
-func CloneFromBackupAndGetDbcsId(
-	compartmentId string,
+// CloneFromBackupAndGetDbcsID clones a DB system from a backup and returns the new DB system's OCID.
+func CloneFromBackupAndGetDbcsID(
+	compartmentID string,
 	logger logr.Logger,
 	kubeClient client.Client,
 	dbClient database.DatabaseClient,
@@ -768,31 +771,31 @@ func CloneFromBackupAndGetDbcsId(
 		return "", err
 	}
 	// Extract the DatabaseId from the backup details
-	databaseId := backupResp.Backup.DatabaseId
+	databaseID := backupResp.Backup.DatabaseId
 	// Fetch the existing Database details
 	existingDatabase, err := dbClient.GetDatabase(ctx, database.GetDatabaseRequest{
-		DatabaseId: databaseId,
+		DatabaseId: databaseID,
 	})
 	if err != nil {
 		logger.Error(err, "Failed to retrieve existing Database details")
 		return "", err
 	}
 	// Check if DbSystemId is available
-	dbSystemId := existingDatabase.DbSystemId
-	if dbSystemId == nil {
+	dbSystemID := existingDatabase.DbSystemId
+	if dbSystemID == nil {
 		// handle the case where DbSystemId is not available
 		logger.Error(err, "DBSystemId not found")
 		return "", err
 	}
-	dbcs.Spec.Id = dbSystemId
+	dbcs.Spec.Id = dbSystemID
 
-	if compartmentId == "" {
-		compartmentId = *existingDatabase.CompartmentId
+	if compartmentID == "" {
+		compartmentID = *existingDatabase.CompartmentId
 	}
 
 	// Fetch the existing DB system details
 	existingDbSystem, err := dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
-		DbSystemId: dbSystemId,
+		DbSystemId: dbSystemID,
 	})
 	if err != nil {
 		return "", err
@@ -821,7 +824,7 @@ func CloneFromBackupAndGetDbcsId(
 	}
 
 	// Change the phase to "Provisioning"
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+	if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
 		return "", statusErr
 	}
 
@@ -879,7 +882,7 @@ func CloneFromBackupAndGetDbcsId(
 	})
 	if err != nil {
 		// Change the phase to "Provisioning"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
 			return "", err
 		}
 		return "", err
@@ -888,7 +891,7 @@ func CloneFromBackupAndGetDbcsId(
 	dbcs.Status.DbCloneStatus.Id = response.DbSystem.Id
 
 	// // Change the phase to "Provisioning"
-	// if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+	// if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
 	// 	return "", statusErr
 	// }
 
@@ -901,8 +904,8 @@ func CloneFromBackupAndGetDbcsId(
 	return *response.DbSystem.Id, nil
 }
 
-// Sync the DbcsSystem Database details
-func CloneFromDatabaseAndGetDbcsId(compartmentId string, logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) (string, error) {
+// CloneFromDatabaseAndGetDbcsID clones a DB system from a source database and returns the new DB system ID.
+func CloneFromDatabaseAndGetDbcsID(compartmentID string, logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) (string, error) {
 	ctx := context.TODO()
 	var err error
 	dbAdminPassword := ""
@@ -937,20 +940,20 @@ func CloneFromDatabaseAndGetDbcsId(compartmentId string, logger logr.Logger, kub
 		return "", err
 	}
 	// Check if DbSystemId is available
-	dbSystemId := existingDatabase.DbSystemId
-	if dbSystemId == nil {
+	dbSystemID := existingDatabase.DbSystemId
+	if dbSystemID == nil {
 		// handle the case where DbSystemId is not available
 		logger.Error(err, "DBSystemId not found")
 		return "", err
 	}
-	dbcs.Spec.Id = dbSystemId
-	if compartmentId == "" {
-		compartmentId = *existingDatabase.CompartmentId
+	dbcs.Spec.Id = dbSystemID
+	if compartmentID == "" {
+		compartmentID = *existingDatabase.CompartmentId
 	}
 
 	// Fetch the existing DB system details
 	existingDbSystem, err := dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
-		DbSystemId: dbSystemId,
+		DbSystemId: dbSystemID,
 	})
 	if err != nil {
 		return "", err
@@ -1006,7 +1009,7 @@ func CloneFromDatabaseAndGetDbcsId(compartmentId string, logger logr.Logger, kub
 	logger.Info("Valid backup found for cloning", "DatabaseId", dbcs.Spec.DatabaseId)
 
 	// Change the phase to "Provisioning"
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+	if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
 		return "", statusErr
 	}
 
@@ -1064,7 +1067,7 @@ func CloneFromDatabaseAndGetDbcsId(compartmentId string, logger logr.Logger, kub
 	})
 	if err != nil {
 		// Change the phase to "Provisioning"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
 			return "", err
 		}
 		return "", err
@@ -1073,7 +1076,7 @@ func CloneFromDatabaseAndGetDbcsId(compartmentId string, logger logr.Logger, kub
 	dbcs.Status.DbCloneStatus.Id = response.DbSystem.Id
 
 	// // Change the phase to "Provisioning"
-	// if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+	// if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
 	// 	return "", statusErr
 	// }
 
@@ -1086,7 +1089,7 @@ func CloneFromDatabaseAndGetDbcsId(compartmentId string, logger logr.Logger, kub
 	return *response.DbSystem.Id, nil
 }
 
-// Get admin password from Secret then OCI valut secret
+// GetCloningAdminPassword reads clone admin password from Kubernetes secret.
 func GetCloningAdminPassword(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (string, error) {
 	if dbcs.Spec.DbClone.DbAdminPasswordSecret != "" {
 		// Get the Admin Secret
@@ -1104,15 +1107,14 @@ func GetCloningAdminPassword(kubeClient client.Client, dbcs *databasev4.DbcsSyst
 		key := "admin-password"
 		if val, ok := adminSecret.Data[key]; ok {
 			return strings.TrimSpace(string(val)), nil
-		} else {
-			msg := "secret item not found: admin-password"
-			return "", errors.New(msg)
 		}
+		msg := "secret item not found: admin-password"
+		return "", errors.New(msg)
 	}
 	return "", errors.New("should provide either a Secret name or a Valut Secret ID")
 }
 
-// Get admin password from Secret then OCI valut secret
+// GetAdminPassword reads DB admin password from Kubernetes secret.
 func GetAdminPassword(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (string, error) {
 	if dbcs.Spec.DbSystem.DbAdminPasswordSecret != "" {
 		// Get the Admin Secret
@@ -1130,15 +1132,14 @@ func GetAdminPassword(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (st
 		key := "admin-password"
 		if val, ok := adminSecret.Data[key]; ok {
 			return strings.TrimSpace(string(val)), nil
-		} else {
-			msg := "secret item not found: admin-password"
-			return "", errors.New(msg)
 		}
+		msg := "secret item not found: admin-password"
+		return "", errors.New(msg)
 	}
 	return "", errors.New("should provide either a Secret name or a Valut Secret ID")
 }
 
-// Get admin password from Secret then OCI valut secret
+// GetTdePassword reads TDE wallet password from Kubernetes secret.
 func GetTdePassword(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (string, error) {
 	if dbcs.Spec.DbSystem.TdeWalletPasswordSecret != "" {
 		// Get the Admin Secret
@@ -1156,15 +1157,14 @@ func GetTdePassword(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (stri
 		key := "tde-password"
 		if val, ok := tdeSecret.Data[key]; ok {
 			return strings.TrimSpace(string(val)), nil
-		} else {
-			msg := "secret item not found: tde-password"
-			return "", errors.New(msg)
 		}
+		msg := "secret item not found: tde-password"
+		return "", errors.New(msg)
 	}
 	return "", errors.New("should provide either a Secret name or a Valut Secret ID")
 }
 
-// Get admin password from Secret then OCI valut secret
+// GetCloningTdePassword reads clone TDE wallet password from Kubernetes secret.
 func GetCloningTdePassword(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (string, error) {
 	if dbcs.Spec.DbClone.TdeWalletPasswordSecret != "" {
 		// Get the Admin Secret
@@ -1182,10 +1182,9 @@ func GetCloningTdePassword(kubeClient client.Client, dbcs *databasev4.DbcsSystem
 		key := "tde-password"
 		if val, ok := tdeSecret.Data[key]; ok {
 			return strings.TrimSpace(string(val)), nil
-		} else {
-			msg := "secret item not found: tde-password"
-			return "", errors.New(msg)
 		}
+		msg := "secret item not found: tde-password"
+		return "", errors.New(msg)
 	}
 	return "", errors.New("should provide either a Secret name or a Valut Secret ID")
 }
@@ -1208,10 +1207,9 @@ func getPublicSSHKey(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (str
 		key := "publickey"
 		if val, ok := sshkeysecret.Data[key]; ok {
 			return string(val), nil
-		} else {
-			msg := "secret item not found: "
-			return "", errors.New(msg)
 		}
+		msg := "secret item not found: "
+		return "", errors.New(msg)
 	}
 	return "", errors.New("should provide either a Secret name or a Valut Secret ID")
 }
@@ -1234,21 +1232,20 @@ func getCloningPublicSSHKey(kubeClient client.Client, dbcs *databasev4.DbcsSyste
 		key := "publickey"
 		if val, ok := sshkeysecret.Data[key]; ok {
 			return string(val), nil
-		} else {
-			msg := "secret item not found: "
-			return "", errors.New(msg)
 		}
+		msg := "secret item not found: "
+		return "", errors.New(msg)
 	}
 	return "", errors.New("should provide either a Secret name or a Valut Secret ID")
 }
 
-// Delete DbcsSystem System
-func DeleteDbcsSystemSystem(dbClient database.DatabaseClient, Id string) error {
+// DeleteDbcsSystemSystem deletes an existing DB system.
+func DeleteDbcsSystemSystem(dbClient database.DatabaseClient, id string) error {
 
-	dbcsId := Id
+	dbcsID := id
 
 	dbcsReq := database.TerminateDbSystemRequest{
-		DbSystemId: &dbcsId,
+		DbSystemId: &dbcsID,
 	}
 
 	_, err := dbClient.TerminateDbSystem(context.TODO(), dbcsReq)
@@ -1260,7 +1257,7 @@ func DeleteDbcsSystemSystem(dbClient database.DatabaseClient, Id string) error {
 }
 
 // SetLifecycleState set status.state of the reosurce.
-func SetLifecycleState(compartmentId string, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, state databasev4.LifecycleState, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
+func SetLifecycleState(compartmentID string, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, state databasev4.LifecycleState, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
 	maxRetries := 5
 	retryDelay := time.Second * 2
 
@@ -1280,7 +1277,7 @@ func SetLifecycleState(compartmentId string, kubeClient client.Client, dbClient 
 		}
 
 		// Set the status using the dbcs object
-		if statusErr := SetDBCSStatus(state, compartmentId, dbClient, dbcs, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetDBCSStatus(state, compartmentID, dbClient, dbcs, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
 
@@ -1399,12 +1396,12 @@ func isExported(field reflect.StructField) bool {
 }
 
 // SetDBCSDatabaseLifecycleState checks the current lifecycle state of the DBCS Database and updates the status.state to reflect the current lifecycle state of the Database.
-func SetDBCSDatabaseLifecycleState(compartmentId string, logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
+func SetDBCSDatabaseLifecycleState(compartmentID string, logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
 
-	dbcsId := *dbcs.Spec.Id
+	dbcsID := *dbcs.Spec.Id
 
 	dbcsReq := database.GetDbSystemRequest{
-		DbSystemId: &dbcsId,
+		DbSystemId: &dbcsID,
 	}
 
 	resp, err := dbClient.GetDbSystem(context.TODO(), dbcsReq)
@@ -1414,18 +1411,18 @@ func SetDBCSDatabaseLifecycleState(compartmentId string, logger logr.Logger, kub
 
 	// Return if the desired lifecycle state is the same as the current lifecycle state
 	if string(dbcs.Status.State) == string(resp.LifecycleState) {
-		// if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.LifecycleState(resp.LifecycleState), nwClient, wrClient); statusErr != nil {
+		// if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.LifecycleState(resp.LifecycleState), nwClient, wrClient); statusErr != nil {
 		// 	return statusErr
 		// }
 		return nil
 	} else if string(resp.LifecycleState) == string(databasev4.Available) {
 		// Change the phase to "Available"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
 	} else if string(resp.LifecycleState) == string(databasev4.Provision) {
 		// Change the phase to "Provisioning"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
 		// Check the State
@@ -1435,7 +1432,7 @@ func SetDBCSDatabaseLifecycleState(compartmentId string, logger logr.Logger, kub
 		}
 	} else if string(resp.LifecycleState) == string(databasev4.Update) {
 		// Change the phase to "Updating"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
 		// Check the State
@@ -1445,18 +1442,18 @@ func SetDBCSDatabaseLifecycleState(compartmentId string, logger logr.Logger, kub
 		}
 	} else if string(resp.LifecycleState) == string(databasev4.Failed) {
 		// Change the phase to "Updating"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
 		return fmt.Errorf("DbSystem is in Failed State")
 	} else if string(resp.LifecycleState) == string(databasev4.Terminated) {
 		// Change the phase to "Terminated"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Terminate, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Terminate, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
 	} else if string(resp.LifecycleState) == string(databasev4.Upgrade) {
 		// Change the phase to "Upgrading"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Upgrade, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Upgrade, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
 		// Check the State
@@ -1468,12 +1465,12 @@ func SetDBCSDatabaseLifecycleState(compartmentId string, logger logr.Logger, kub
 	return nil
 }
 
-// GetDbSystemId gets the DbSystemId of the DbcsSystem and updates the Spec with the details of the DbSystem.
-func GetDbSystemId(logger logr.Logger, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem) error {
-	dbcsId := *dbcs.Spec.Id
+// GetDbSystemID gets the DbSystemId of the DbcsSystem and updates the Spec with the details of the DbSystem.
+func GetDbSystemID(logger logr.Logger, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem) error {
+	dbcsID := *dbcs.Spec.Id
 
 	dbcsReq := database.GetDbSystemRequest{
-		DbSystemId: &dbcsId,
+		DbSystemId: &dbcsID,
 	}
 
 	response, err := dbClient.GetDbSystem(context.TODO(), dbcsReq)
@@ -1543,8 +1540,8 @@ func PopulateDBDetails(logger logr.Logger, dbClient database.DatabaseClient, dbc
 		logger.Info("Error Occurred while getting List of DBHomes")
 		return err
 	}
-	dbHomeId := listDbHomeRsp.Items[0].Id
-	listDBRsp, err := GetListDatabaseRsp(logger, dbClient, dbcs, *dbHomeId)
+	dbHomeID := listDbHomeRsp.Items[0].Id
+	listDBRsp, err := GetListDatabaseRsp(logger, dbClient, dbcs, *dbHomeID)
 	if err != nil {
 		logger.Info("Error Occurred while getting List of Databases")
 		return err
@@ -1558,18 +1555,18 @@ func PopulateDBDetails(logger logr.Logger, dbClient database.DatabaseClient, dbc
 }
 
 // GetListDbHomeRsp gets the list of DB Homes for the DbSystem and returns the response.
-func GetListDbHomeRsp(logger logr.Logger, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem) (database.ListDbHomesResponse, error) {
+func GetListDbHomeRsp(_ logr.Logger, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem) (database.ListDbHomesResponse, error) {
 
-	dbcsId := *dbcs.Spec.Id
-	var CompartmentId string
+	dbcsID := *dbcs.Spec.Id
+	var compartmentID string
 
-	// Check if the CompartmentId is defined in dbcs.Spec.DbSystem.CompartmentId
+	// Check if the compartment ID is defined in dbcs.Spec.DbSystem.CompartmentId.
 	if dbcs.Spec.DbSystem.CompartmentId != "" {
-		CompartmentId = dbcs.Spec.DbSystem.CompartmentId
+		compartmentID = dbcs.Spec.DbSystem.CompartmentId
 	} else {
 		// If not defined, call GetDbSystem to fetch the details
 		getRequest := database.GetDbSystemRequest{
-			DbSystemId: &dbcsId,
+			DbSystemId: &dbcsID,
 		}
 
 		// Call GetDbSystem API using the existing dbClient
@@ -1579,12 +1576,12 @@ func GetListDbHomeRsp(logger logr.Logger, dbClient database.DatabaseClient, dbcs
 		}
 
 		// Extract the compartment ID from the DB system details
-		CompartmentId = *getResponse.DbSystem.CompartmentId
+		compartmentID = *getResponse.DbSystem.CompartmentId
 	}
 
 	dbHomeReq := database.ListDbHomesRequest{
-		DbSystemId:    &dbcsId,
-		CompartmentId: &CompartmentId,
+		DbSystemId:    &dbcsID,
+		CompartmentId: &compartmentID,
 	}
 
 	response, err := dbClient.ListDbHomes(context.TODO(), dbHomeReq)
@@ -1596,13 +1593,13 @@ func GetListDbHomeRsp(logger logr.Logger, dbClient database.DatabaseClient, dbcs
 }
 
 // GetListDatabaseRsp gets the list of Databases for the DB Home and returns the response.
-func GetListDatabaseRsp(logger logr.Logger, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, dbHomeId string) (database.ListDatabasesResponse, error) {
+func GetListDatabaseRsp(_ logr.Logger, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, dbHomeID string) (database.ListDatabasesResponse, error) {
 
-	CompartmentId := dbcs.Spec.DbSystem.CompartmentId
+	compartmentID := dbcs.Spec.DbSystem.CompartmentId
 
 	dbReq := database.ListDatabasesRequest{
-		DbHomeId:      &dbHomeId,
-		CompartmentId: &CompartmentId,
+		DbHomeId:      &dbHomeID,
+		CompartmentId: &compartmentID,
 	}
 
 	response, err := dbClient.ListDatabases(context.TODO(), dbReq)
@@ -1613,8 +1610,8 @@ func GetListDatabaseRsp(logger logr.Logger, dbClient database.DatabaseClient, db
 	return response, nil
 }
 
-// UpdateDbcsSystemIdInst updates the existing DB System with the new details provided in the Spec of the DbcsSystem. It compares the current details of the DB System with the new details provided in the Spec and updates only the fields that have changed. It also checks if the lifecycle state of the DB System is in a state that allows updates before making any changes.
-func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, kubeClient client.Client, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient, databaseID string) error {
+// UpdateDbcsSystemIDInst updates an existing DB system with desired changes from spec.
+func UpdateDbcsSystemIDInst(compartmentID string, log logr.Logger, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, kubeClient client.Client, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient, databaseID string) error {
 	// log.Info("Existing DB System Getting Updated with new details in UpdateDbcsSystemIdInst")
 	var err error
 	updateFlag := false
@@ -1640,9 +1637,9 @@ func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient data
 	}
 
 	// Fetch latest DB System state from OCI
-	dbcsId := dbcs.Spec.Id
+	dbcsID := dbcs.Spec.Id
 	dbcsReq := database.GetDbSystemRequest{
-		DbSystemId: dbcsId,
+		DbSystemId: dbcsID,
 	}
 
 	response, err := dbClient.GetDbSystem(context.TODO(), dbcsReq)
@@ -1771,7 +1768,7 @@ func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient data
 				migrateRequest.AdminPassword = common.String(dbAdminPassword)
 			}
 			// Change the phase to "Updating"
-			if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
+			if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
 				return statusErr
 			}
 			// Send the request
@@ -1800,7 +1797,7 @@ func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient data
 				return err
 			}
 			// Change the phase to "Available"
-			if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
+			if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
 				return statusErr
 			}
 
@@ -1811,9 +1808,9 @@ func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient data
 	log.Info("Details of updateFlag after validations is " + fmt.Sprint(updateFlag))
 
 	if updateFlag {
-		cdbId := *dbcs.Status.DbInfo[0].Id
+		cdbID := *dbcs.Status.DbInfo[0].Id
 		// Ensure DB system is AVAILABLE
-		if err := waitForDbSystemAvailable(cdbId, dbClient, *dbcs.Spec.Id, 30*time.Minute, log); err != nil {
+		if err := waitForDbSystemAvailable(cdbID, dbClient, *dbcs.Spec.Id, 30*time.Minute, log); err != nil {
 			return fmt.Errorf("cannot update DB system within 30 minutes, wait failed: %w", err)
 		}
 		updateDbcsRequest := database.UpdateDbSystemRequest{
@@ -1826,7 +1823,7 @@ func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient data
 		}
 
 		// Change the phase to "Provisioning"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
 		// Check the State
@@ -1840,13 +1837,13 @@ func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient data
 }
 
 // waitForDbSystemAvailable checks if the DB System and its CDB are in AVAILABLE state before allowing updates, with a maximum wait time of 30 minutes.
-func waitForDbSystemAvailable(cdbId string, dbClient database.DatabaseClient, dbSystemId string, maxWait time.Duration, log logr.Logger) error {
+func waitForDbSystemAvailable(cdbID string, dbClient database.DatabaseClient, dbSystemID string, maxWait time.Duration, log logr.Logger) error {
 	start := time.Now()
 
 	for {
 		// 1. Check DB System lifecycle state
 		dbSysResp, err := dbClient.GetDbSystem(context.TODO(), database.GetDbSystemRequest{
-			DbSystemId: &dbSystemId,
+			DbSystemId: &dbSystemID,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to get DB system: %w", err)
@@ -1855,7 +1852,7 @@ func waitForDbSystemAvailable(cdbId string, dbClient database.DatabaseClient, db
 
 		// 2. Check CDB lifecycle state
 		dbResp, err := dbClient.GetDatabase(context.TODO(), database.GetDatabaseRequest{
-			DatabaseId: &cdbId,
+			DatabaseId: &cdbID,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to get CDB database: %w", err)
@@ -1887,7 +1884,7 @@ func isFieldUpdated[T comparable](specVal T, oldVal T, currentVal T) bool {
 func WaitForDatabaseState(
 	log logr.Logger,
 	dbClient database.DatabaseClient,
-	databaseId string,
+	databaseID string,
 	desiredState database.DbHomeLifecycleStateEnum,
 	timeout time.Duration,
 	checkInterval time.Duration,
@@ -1895,43 +1892,43 @@ func WaitForDatabaseState(
 	// Set a deadline for the timeout
 	deadline := time.Now().Add(timeout)
 
-	log.Info("Starting to wait for the database to reach the desired state", "DatabaseID", databaseId, "DesiredState", desiredState, "Timeout", timeout)
+	log.Info("Starting to wait for the database to reach the desired state", "DatabaseID", databaseID, "DesiredState", desiredState, "Timeout", timeout)
 
 	for time.Now().Before(deadline) {
 		// Prepare the request to fetch database details
 		getDatabaseReq := database.GetDatabaseRequest{
-			DatabaseId: &databaseId,
+			DatabaseId: &databaseID,
 		}
 
 		// Fetch database details
 		databaseResp, err := dbClient.GetDatabase(context.TODO(), getDatabaseReq)
 		if err != nil {
-			log.Error(err, "Failed to get database details", "DatabaseID", databaseId)
+			log.Error(err, "Failed to get database details", "DatabaseID", databaseID)
 			return err
 		}
 
 		// Log the current database state
-		log.Info("Database State", "DatabaseID", databaseId, "CurrentState", databaseResp.LifecycleState)
+		log.Info("Database State", "DatabaseID", databaseID, "CurrentState", databaseResp.LifecycleState)
 
 		// Check if the database has reached the desired state
 		if databaseResp.LifecycleState == database.DatabaseLifecycleStateEnum(desiredState) {
-			log.Info("Database reached the desired state", "DatabaseID", databaseId, "State", desiredState)
+			log.Info("Database reached the desired state", "DatabaseID", databaseID, "State", desiredState)
 			return nil
 		}
 
 		// Wait for the specified interval before checking again
-		log.Info("Database not in the desired state yet, waiting...", "DatabaseID", databaseId, "CurrentState", databaseResp.LifecycleState, "DesiredState", desiredState, "NextCheckIn", checkInterval)
+		log.Info("Database not in the desired state yet, waiting...", "DatabaseID", databaseID, "CurrentState", databaseResp.LifecycleState, "DesiredState", desiredState, "NextCheckIn", checkInterval)
 		time.Sleep(checkInterval)
 	}
 
 	// Return an error if the timeout is reached
 	err := fmt.Errorf("timed out waiting for database to reach the desired state: %s", desiredState)
-	log.Error(err, "Timeout reached while waiting for the database to reach the desired state", "DatabaseID", databaseId)
+	log.Error(err, "Timeout reached while waiting for the database to reach the desired state", "DatabaseID", databaseID)
 	return err
 }
 
-// getLicenceModel is a helper function that maps the license model specified in the DBCS spec to the corresponding enum value expected by the OCI API. It returns the appropriate license model string based on the input from the DBCS spec.
-func UpdateDbcsSystemId(kubeClient client.Client, dbcs *databasev4.DbcsSystem) error {
+// UpdateDbcsSystemID patches the latest spec.details into the DbcsSystem resource.
+func UpdateDbcsSystemID(kubeClient client.Client, dbcs *databasev4.DbcsSystem) error {
 	payload := []annotations.PatchValue{{
 		Op:    "replace",
 		Path:  "/spec/details",
@@ -1948,14 +1945,14 @@ func UpdateDbcsSystemId(kubeClient client.Client, dbcs *databasev4.DbcsSystem) e
 
 // CheckDataGuardAssociationState will check the lifecycle state of the Data Guard Association
 // and wait until it reaches the expected state (e.g., "AVAILABLE").
-func CheckDataGuardAssociationState(logger logr.Logger, dbClient database.DatabaseClient, associationId string, currentState string, expectedState string, databaseId string) (string, error) {
+func CheckDataGuardAssociationState(logger logr.Logger, dbClient database.DatabaseClient, associationID string, _ string, expectedState string, databaseID string) (string, error) {
 	// The DataGuard Association OCID is not available when provisioning is ongoing.
 	// Retry until the new Data Guard Association is ready.
 
 	var state string
 	var err error
 	for {
-		state, err = GetDataGuardAssociationState(logger, dbClient, associationId, databaseId)
+		state, err = GetDataGuardAssociationState(logger, dbClient, associationID, databaseID)
 		if err != nil {
 			logger.Info("Error occurred while collecting the resource lifecycle state")
 			return "", err
@@ -1973,13 +1970,13 @@ func CheckDataGuardAssociationState(logger logr.Logger, dbClient database.Databa
 }
 
 // GetDataGuardAssociationState retrieves the lifecycle state of the Data Guard Association.
-func GetDataGuardAssociationState(logger logr.Logger, dbClient database.DatabaseClient, associationId string, databaseID string) (string, error) { // Context with 2-hour timeout
+func GetDataGuardAssociationState(logger logr.Logger, dbClient database.DatabaseClient, associationID string, databaseID string) (string, error) { // Context with 2-hour timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
 
 	request := database.GetDataGuardAssociationRequest{
 		DatabaseId:             common.String(databaseID),
-		DataGuardAssociationId: common.String(associationId),
+		DataGuardAssociationId: common.String(associationID),
 	}
 	desiredState := "AVAILABLE"
 
@@ -1992,7 +1989,7 @@ func GetDataGuardAssociationState(logger logr.Logger, dbClient database.Database
 			// 2-hour timeout reached
 			return "", context.DeadlineExceeded
 		case <-ticker.C:
-			logger.Info("Polling Data Guard association state", "DatabaseID", databaseID, "AssociationID", associationId)
+			logger.Info("Polling Data Guard association state", "DatabaseID", databaseID, "AssociationID", associationID)
 
 			// Make the request using the context
 			response, err := dbClient.GetDataGuardAssociation(ctx, request)
@@ -2078,24 +2075,24 @@ func GetResourceState(logger logr.Logger, dbClient database.DatabaseClient, id s
 }
 
 // SetDBCSStatus sets the status of the DbcsSystem resource by fetching the latest details of the DB System from OCI and updating the status fields accordingly. It also updates the work request status and DB Home status in the DbcsSystem status.
-func SetDBCSStatus(state databasev4.LifecycleState, compartmentId string, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
+func SetDBCSStatus(state databasev4.LifecycleState, compartmentID string, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
 
 	if dbcs.Spec.Id == nil {
 		dbcs.Status.State = "FAILED"
 		return nil
 	}
 
-	dbcsId := *dbcs.Spec.Id
+	dbcsID := *dbcs.Spec.Id
 
 	dbcsReq := database.GetDbSystemRequest{
-		DbSystemId: &dbcsId,
+		DbSystemId: &dbcsID,
 	}
 
 	resp, err := dbClient.GetDbSystem(context.TODO(), dbcsReq)
 	if err != nil {
 		return err
 	}
-	compartmentId = *resp.CompartmentId
+	compartmentID = *resp.CompartmentId
 
 	dbcs.Status.AvailabilityDomain = *resp.AvailabilityDomain
 	dbcs.Status.CpuCoreCount = *resp.CpuCoreCount
@@ -2136,11 +2133,11 @@ func SetDBCSStatus(state databasev4.LifecycleState, compartmentId string, dbClie
 		dbcs.Status.KMSDetailsStatus.VaultName = dbcs.Spec.KMSConfig.VaultName
 	}
 
-	sname, vcnId, err := getSubnetName(*resp.SubnetId, nwClient)
+	sname, vcnID, err := getSubnetName(*resp.SubnetId, nwClient)
 
 	if err == nil {
 		dbcs.Status.Network.SubnetName = sname
-		vcnName, err := getVcnName(vcnId, nwClient)
+		vcnName, err := getVcnName(vcnID, nwClient)
 
 		if err == nil {
 			dbcs.Status.Network.VcnName = vcnName
@@ -2151,7 +2148,7 @@ func SetDBCSStatus(state databasev4.LifecycleState, compartmentId string, dbClie
 	// Work Request Ststaus
 	dbWorkRequest := databasev4.DbWorkrequests{}
 
-	dbWorks, err := getWorkRequest(compartmentId, *resp.OpcRequestId, wrClient, dbcs)
+	dbWorks, err := getWorkRequest(compartmentID, *resp.OpcRequestId, wrClient, dbcs)
 	if err == nil {
 		for _, dbWork := range dbWorks {
 			//status := checkValue(dbcs, dbWork.Id)
@@ -2186,11 +2183,11 @@ func SetDBCSStatus(state databasev4.LifecycleState, compartmentId string, dbClie
 	dbcs.Status.DbInfo = dbcs.Status.DbInfo[:0]
 	dbStatus := databasev4.DbStatus{}
 
-	dbHomes, err := getDbHomeList(compartmentId, dbClient, dbcs)
+	dbHomes, err := getDbHomeList(compartmentID, dbClient, dbcs)
 
 	if err == nil {
 		for _, dbHome := range dbHomes {
-			dbDetails, err := getDList(compartmentId, dbClient, dbcs, dbHome.Id)
+			dbDetails, err := getDList(compartmentID, dbClient, dbcs, dbHome.Id)
 			for _, dbDetail := range dbDetails {
 				if err == nil {
 					dbStatus.Id = dbDetail.Id
@@ -2215,14 +2212,14 @@ func SetDBCSStatus(state databasev4.LifecycleState, compartmentId string, dbClie
 }
 
 // getDbHomeList gets the list of DB Homes for the DB System and returns the list of DB Home summaries.
-func getDbHomeList(compartmentId string, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem) ([]database.DbHomeSummary, error) {
+func getDbHomeList(compartmentID string, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem) ([]database.DbHomeSummary, error) {
 
 	var items []database.DbHomeSummary
-	dbcsId := *dbcs.Spec.Id
+	dbcsID := *dbcs.Spec.Id
 
 	dbcsReq := database.ListDbHomesRequest{
-		DbSystemId:    &dbcsId,
-		CompartmentId: &compartmentId,
+		DbSystemId:    &dbcsID,
+		CompartmentId: &compartmentID,
 	}
 
 	resp, err := dbClient.ListDbHomes(context.TODO(), dbcsReq)
@@ -2234,14 +2231,14 @@ func getDbHomeList(compartmentId string, dbClient database.DatabaseClient, dbcs 
 }
 
 // getDList gets the list of Databases for the DB Home and returns the list of Database summaries.
-func getDList(compartmentId string, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, dbHomeId *string) ([]database.DatabaseSummary, error) {
+func getDList(compartmentID string, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, dbHomeID *string) ([]database.DatabaseSummary, error) {
 
-	dbcsId := *dbcs.Spec.Id
+	dbcsID := *dbcs.Spec.Id
 	var items []database.DatabaseSummary
 	dbcsReq := database.ListDatabasesRequest{
-		SystemId:      &dbcsId,
-		CompartmentId: &compartmentId,
-		DbHomeId:      dbHomeId,
+		SystemId:      &dbcsID,
+		CompartmentId: &compartmentID,
+		DbHomeId:      dbHomeID,
 	}
 
 	resp, err := dbClient.ListDatabases(context.TODO(), dbcsReq)
@@ -2253,9 +2250,9 @@ func getDList(compartmentId string, dbClient database.DatabaseClient, dbcs *data
 }
 
 // getSubnetName gets the subnet name and VCN ID for the given subnet OCID using the Virtual Network client.
-func getSubnetName(subnetId string, nwClient core.VirtualNetworkClient) (*string, *string, error) {
+func getSubnetName(subnetID string, nwClient core.VirtualNetworkClient) (*string, *string, error) {
 
-	req := core.GetSubnetRequest{SubnetId: common.String(subnetId)}
+	req := core.GetSubnetRequest{SubnetId: common.String(subnetID)}
 
 	// Send the request using the service client
 	resp, err := nwClient.GetSubnet(context.Background(), req)
@@ -2269,9 +2266,9 @@ func getSubnetName(subnetId string, nwClient core.VirtualNetworkClient) (*string
 }
 
 // getVcnName gets the VCN name for the given VCN OCID using the Virtual Network client.
-func getVcnName(vcnId *string, nwClient core.VirtualNetworkClient) (*string, error) {
+func getVcnName(vcnID *string, nwClient core.VirtualNetworkClient) (*string, error) {
 
-	req := core.GetVcnRequest{VcnId: common.String(*vcnId)}
+	req := core.GetVcnRequest{VcnId: common.String(*vcnID)}
 
 	// Send the request using the service client
 	resp, err := nwClient.GetVcn(context.Background(), req)
@@ -2285,11 +2282,11 @@ func getVcnName(vcnId *string, nwClient core.VirtualNetworkClient) (*string, err
 }
 
 // ValidateSpex validates the specifications provided in the DbcsSystem resource. It checks for the presence and correctness of required fields such as DbVersion, DbWorkload, and NodeCount. If any validation fails, it records an event with the appropriate error message and returns an error.
-func ValidateSpex(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, nwClient core.VirtualNetworkClient, eRecord record.EventRecorder) error {
+func ValidateSpex(_ logr.Logger, _ client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, _ core.VirtualNetworkClient, eRecord record.EventRecorder) error {
 
 	//var str1 string
 	var eventMsg string
-	var eventErr string = "Spec Error"
+	eventErr := "Spec Error"
 	lastSuccSpec, err := dbcs.GetLastSuccessfulSpec()
 	if err != nil {
 		return err
@@ -2353,7 +2350,7 @@ func ValidateSpex(logger logr.Logger, kubeClient client.Client, dbClient databas
 
 // CreateDbcsBackup creates a backup for the database in the DB system. It checks if a backup with the same name prefix already exists and is tracked in the status, and if so, it returns the existing backup ID instead of creating a new backup. If no such backup exists, it initiates a new backup creation and waits for it to reach the ACTIVE state before returning the backup ID.
 func CreateDbcsBackup(
-	compartmentId string,
+	compartmentID string,
 	logger logr.Logger,
 	dbClient database.DatabaseClient,
 	dbcs *databasev4.DbcsSystem,
@@ -2374,12 +2371,12 @@ func CreateDbcsBackup(
 		logger.Info("Error Occurred while getting List of DBHomes")
 		return "", err
 	}
-	dbHomeId := listDbHomeRsp.Items[0].Id
+	dbHomeID := listDbHomeRsp.Items[0].Id
 	// Retrieve the list of databases in the DB system
 	listDbsRequest := database.ListDatabasesRequest{
-		CompartmentId: &compartmentId,
+		CompartmentId: &compartmentID,
 		SystemId:      dbcs.Spec.Id,
-		DbHomeId:      dbHomeId,
+		DbHomeId:      dbHomeID,
 	}
 
 	listDbsResponse, err := dbClient.ListDatabases(ctx, listDbsRequest)
@@ -2393,7 +2390,7 @@ func CreateDbcsBackup(
 	}
 
 	// Assume the first database is the one to back up (customize as needed)
-	databaseId := listDbsResponse.Items[0].Id
+	databaseID := listDbsResponse.Items[0].Id
 
 	// Generate a unique display name for the backup
 	// Determine the backup name
@@ -2407,7 +2404,7 @@ func CreateDbcsBackup(
 
 	// Check if backup with prefix already exists
 	listBackupsReq := database.ListBackupsRequest{
-		DatabaseId: databaseId,
+		DatabaseId: databaseID,
 	}
 	listBackupsResp, err := dbClient.ListBackups(ctx, listBackupsReq)
 	if err != nil {
@@ -2434,23 +2431,23 @@ func CreateDbcsBackup(
 	// Build the CreateBackupRequest
 	createBackupReq := database.CreateBackupRequest{
 		CreateBackupDetails: database.CreateBackupDetails{
-			DatabaseId:  databaseId,
+			DatabaseId:  databaseID,
 			DisplayName: common.String(backupName),
 		},
 	}
 
-	logger.Info("Creating manual backup for database", "DatabaseId", *databaseId, "BackupName", backupName)
+	logger.Info("Creating manual backup for database", "DatabaseId", *databaseID, "BackupName", backupName)
 
 	// Change the phase to "Updating"
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
+	if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
 		return "", statusErr
 	}
 	// Send the request
 	createBackupResp, err := dbClient.CreateBackup(ctx, createBackupReq)
 	if err != nil {
-		logger.Error(err, "Failed to create backup", "DatabaseId", *databaseId)
+		logger.Error(err, "Failed to create backup", "DatabaseId", *databaseID)
 		// Change the phase to "Failed"
-		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
+		if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
 			return "", statusErr
 		}
 		return "", err
@@ -2489,7 +2486,7 @@ func CreateDbcsBackup(
 				logger.Info("Backup completed successfully", "BackupID", *backupID)
 				// After successful creation and backup becomes ACTIVE
 				listBackupsReq := database.ListBackupsRequest{
-					DatabaseId: databaseId,
+					DatabaseId: databaseID,
 				}
 
 				listBackupsResp, err := dbClient.ListBackups(ctx, listBackupsReq)
@@ -2510,7 +2507,7 @@ func CreateDbcsBackup(
 					}
 				}
 				// Change the phase to "Available"
-				if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
+				if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
 					return "", statusErr
 				}
 				return *backupID, nil
@@ -2526,7 +2523,7 @@ func CreateDbcsBackup(
 
 // RestoreDbcsToPoint restores the database in the DB system to a specific point in time or to the latest state. It retrieves the necessary details of the database, initiates the restore operation based on the provided restore options, and polls for the completion of the restore process while updating the lifecycle state accordingly.
 func RestoreDbcsToPoint(
-	compartmentId string,
+	compartmentID string,
 	logger logr.Logger,
 	dbClient database.DatabaseClient,
 	dbcs *databasev4.DbcsSystem,
@@ -2546,13 +2543,13 @@ func RestoreDbcsToPoint(
 	if err != nil || len(dbHomeResp.Items) == 0 {
 		return fmt.Errorf("no DB Homes found for DB system: %v", err)
 	}
-	dbHomeId := dbHomeResp.Items[0].Id
+	dbHomeID := dbHomeResp.Items[0].Id
 
 	// Get DB
 	listDbsResp, err := dbClient.ListDatabases(ctx, database.ListDatabasesRequest{
-		CompartmentId: &compartmentId,
+		CompartmentId: &compartmentID,
 		SystemId:      dbcs.Spec.Id,
-		DbHomeId:      dbHomeId,
+		DbHomeId:      dbHomeID,
 	})
 	if err != nil || len(listDbsResp.Items) == 0 {
 		return fmt.Errorf("no databases found to restore")
@@ -2561,7 +2558,7 @@ func RestoreDbcsToPoint(
 
 	// Change the phase to "Updating"
 	logger.Info("Changing State to Updating for ", "DatabaseID", *dbID, "RestoreOption", restoreOpt)
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
+	if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
 		return statusErr
 	}
 
@@ -2587,15 +2584,15 @@ func RestoreDbcsToPoint(
 	restoreResp, err := dbClient.RestoreDatabase(ctx, restoreReq)
 	if err != nil {
 		logger.Error(err, "Failed to restore database")
-		if lifecycleErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); lifecycleErr != nil {
+		if lifecycleErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); lifecycleErr != nil {
 			logger.Error(lifecycleErr, "Failed to set lifecycle state")
 		}
 		return err
 	}
 
 	// Poll for completion
-	workRequestId := restoreResp.OpcWorkRequestId
-	logger.Info("Restore initiated", "WorkRequestID", *workRequestId)
+	workRequestID := restoreResp.OpcWorkRequestId
+	logger.Info("Restore initiated", "WorkRequestID", *workRequestID)
 
 	timeout := time.After(240 * time.Minute)
 	ticker := time.NewTicker(30 * time.Second)
@@ -2617,7 +2614,7 @@ func RestoreDbcsToPoint(
 			if state == database.DatabaseLifecycleStateAvailable {
 				logger.Info("Database restore completed", "DatabaseID", *dbID)
 				// Change the phase to "Available"
-				if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
+				if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
 					return statusErr
 				}
 				return nil

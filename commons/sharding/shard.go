@@ -65,7 +65,7 @@ const shardServiceTypeExternal = "external"
 const standbyWalletSecretMountDefault = "/mnt/standby-wallet"
 
 // buildLabelsForShard returns common labels applied to shard resources.
-func buildLabelsForShard(instance *databasev4.ShardingDatabase, label string, shardName string) map[string]string {
+func buildLabelsForShard(instance *databasev4.ShardingDatabase, _ string, _ string) map[string]string {
 	// Keep this selector label set stable for backwards compatibility.
 	// It is used in StatefulSet selectors, which are immutable after creation.
 	return map[string]string{

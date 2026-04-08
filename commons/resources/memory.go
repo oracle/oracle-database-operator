@@ -1,3 +1,4 @@
+// Package resources provides memory sizing and validation helpers.
 package resources
 
 import (
@@ -10,6 +11,7 @@ import (
 )
 
 const (
+	// DefaultSafetyPct is the default memory safety threshold.
 	DefaultSafetyPct        = 0.80
 	MinContainerMemoryBytes = int64(16 * 1024 * 1024 * 1024) // 16GiB
 	pageSizeBytes           = int64(4096)

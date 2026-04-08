@@ -51,6 +51,7 @@ import (
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 )
 
+// FetchResource gets a namespaced object by name into the provided target object.
 func FetchResource(kubeClient client.Client, namespace string, name string, object client.Object) error {
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
@@ -63,10 +64,8 @@ func FetchResource(kubeClient client.Client, namespace string, name string, obje
 	return nil
 }
 
-// Returns the first AutonomousDatabase resource that matches the AutonomousDatabaseOCID of the backup
-// Sometimes the AutonomousDatabase doesn't exist. It could happen if a user simply want to restore or
-// backup the AutonomousDatabase without creating an AutonomousDatabase rersource in the cluster.
-// If there isn't an AutonomousDatabase with the same OCID, a nil is returned.
+// FetchAutonomousDatabaseWithOCID returns the first AutonomousDatabase matching the given OCID.
+// It may return nil,nil if no matching ADB exists in the namespace.
 func FetchAutonomousDatabaseWithOCID(kubeClient client.Client, namespace string, ocid string) (*dbv4.AutonomousDatabase, error) {
 	adbList, err := fetchAutonomousDatabases(kubeClient, namespace)
 	if err != nil {
@@ -97,6 +96,7 @@ func fetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv4
 	return adbList, nil
 }
 
+// FetchAutonomousDatabaseBackups lists AutonomousDatabaseBackup resources for a given ADB name.
 func FetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string, adbName string) (*dbv4.AutonomousDatabaseBackupList, error) {
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
 	backupList := &dbv4.AutonomousDatabaseBackupList{}
@@ -121,6 +121,7 @@ func FetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string, 
 	return backupList, nil
 }
 
+// FetchConfigMap returns the ConfigMap with the given namespace and name.
 func FetchConfigMap(kubeClient client.Client, namespace string, name string) (*corev1.ConfigMap, error) {
 	configMap := &corev1.ConfigMap{}
 
@@ -131,6 +132,7 @@ func FetchConfigMap(kubeClient client.Client, namespace string, name string) (*c
 	return configMap, nil
 }
 
+// FetchSecret returns the Secret with the given namespace and name.
 func FetchSecret(kubeClient client.Client, namespace string, name string) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
 
@@ -141,6 +143,7 @@ func FetchSecret(kubeClient client.Client, namespace string, name string) (*core
 	return secret, nil
 }
 
+// GetSecretValue returns a string value for a key from a Kubernetes Secret.
 func GetSecretValue(kubeClient client.Client, namespace string, name string, key string) (string, error) {
 	secret, err := FetchSecret(kubeClient, namespace, name)
 	if err != nil {

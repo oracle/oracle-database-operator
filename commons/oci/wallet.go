@@ -106,6 +106,7 @@ func unzipWallet(path string) (map[string][]byte, error) {
 	return files, nil
 }
 
+// WalletExpiringDate extracts wallet expiration text from the wallet README content.
 func WalletExpiringDate(files map[string][]byte) string {
 	data := string(files["README"])
 

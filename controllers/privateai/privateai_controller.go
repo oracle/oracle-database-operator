@@ -812,7 +812,7 @@ func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request
 	_ = aicommons.PatchSecret(secretName, privateAiInst, r.Client, r.Log)
 
 	privateAiInst.Status.PaiSecret.Name = secretName
-	privateAiInst.Status.PaiSecret.ApiKey = secretName
+	privateAiInst.Status.PaiSecret.APIKey = secretName
 	privateAiInst.Status.PaiSecret.Certpem = secretName
 
 	currentVersion := privateAiInst.Status.PaiSecret.ResourceVersion

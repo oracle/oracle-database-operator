@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+// Package commons provides shared RAC utility constants and helper functions.
 package commons
 
 import (
@@ -56,7 +57,7 @@ const (
 	OraSubDomain                = "racnode"
 	OraEnvFile                  = "/etc/rac_env_vars"
 	OraWritableEnvFile          = "/etc/rac_env_vars_writable"
-	OraRacSshSecretMount        = "/mnt/.ssh"
+	OraRacSSHSecretMount        = "/mnt/.ssh"
 	OraGiRsp                    = "/mnt/gridrsp"
 	OraDbRsp                    = "/mnt/dbrsp"
 	OraEnvVars                  = "/etc/rac_env_vars"
@@ -92,9 +93,10 @@ var tafPolicy = [...]string{"NONE", "BASIC", "PRECONNECT"}
 var serviceRole = [...]string{"PRIMARY", "PHYSICAL_STANDBY", "LOGICAL_STANDBY", "SNAPSHOT_STANDBY"}
 var servicePolicy = [...]string{"AUTOMATIC", "MANUAL"}
 var serviceResetState = [...]string{"NONE", "LEVEL1"}
-var ServiceFailoverType = [...]string{"NONE", "SESSION", "SELECT", "TRANSACTION", "AUTO"}
+var serviceFailoverType = [...]string{"NONE", "SESSION", "SELECT", "TRANSACTION", "AUTO"}
 
 // Getters for Fixed Array Values
+// GetServiceCardinality returns the supported service cardinality values.
 func GetServiceCardinality() []string {
 	return serviceCardinality[:]
 }
@@ -121,7 +123,7 @@ func GetServiceResetState() []string {
 
 // GetServiceFailoverType returns a slice of strings representing the available service failover types in an Oracle RAC environment. The service failover types included in the returned slice are "NONE", "SESSION", "SELECT", "TRANSACTION", and "AUTO". This function allows other parts of the code to easily access the list of valid service failover types for use in configuration or validation.
 func GetServiceFailoverType() []string {
-	return ServiceFailoverType[:]
+	return serviceFailoverType[:]
 }
 
 // CheckStringInList checks if a given string (str1) is present in a list of strings (arr). It performs a case-insensitive comparison to determine if str1 exists in arr. If a match is found, it returns true; otherwise, it returns false after checking all elements in the list.

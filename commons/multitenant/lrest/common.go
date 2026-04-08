@@ -54,7 +54,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-func CommonDecryptWithPrivKey2(Key string, Buffer string, req ctrl.Request) (string, error) {
+// CommonDecryptWithPrivKey2 decrypts an encrypted payload using a PKCS#8 private key.
+func CommonDecryptWithPrivKey2(Key string, Buffer string, _ ctrl.Request) (string, error) {
 
 	Trclvl := 0
 	block, _ := pem.Decode([]byte(Key))
@@ -87,6 +88,7 @@ func CommonDecryptWithPrivKey2(Key string, Buffer string, req ctrl.Request) (str
 
 }
 
+// ParseConfigMapData tokenizes ConfigMap values used by LREST configuration parsing.
 func ParseConfigMapData(cfgmap *corev1.ConfigMap, Trclvl int) []string {
 
 	var tokens []string
@@ -117,6 +119,7 @@ func ParseConfigMapData(cfgmap *corev1.ConfigMap, Trclvl int) []string {
 }
 
 const (
+	// NULL represents an empty string sentinel used by legacy LREST controllers.
 	NULL = ""
 )
 
@@ -177,6 +180,7 @@ const (
 	TRCTNS = 0x00010000 /* Parse tnsalias - call parseTnsAlias */
 )
 
+// ParseTnsAlias2 rewrites SERVICE_NAME in a TNS descriptor to the provided service.
 func ParseTnsAlias2(tns *string, lrpdbsrv *string) {
 	fmt.Printf("Analyzing string [%s]\n", *tns)
 	fmt.Printf("Relacing  srv [%s]\n", *lrpdbsrv)
@@ -202,24 +206,24 @@ func ParseTnsAlias2(tns *string, lrpdbsrv *string) {
 
 }
 
+// Bid clears bitval bits from bitmask and returns the result.
 func Bid(bitmask int, bitval int) int {
 	bitmask ^= ((bitval) & (bitmask))
 	return bitmask
 }
 
+// Bit checks whether bitval bits are set in bitmask.
 func Bit(bitmask int, bitval int) bool {
-	if ((bitmask) & (bitval)) != 0 {
-		return true
-	} else {
-		return false
-	}
+	return ((bitmask) & (bitval)) != 0
 }
 
+// Bis sets bitval bits into bitmask and returns the result.
 func Bis(bitmask int, bitval int) int {
 	bitmask = ((bitmask) | (bitval))
 	return bitmask
 }
 
+// Bitmaskprint returns a human-readable state string for LRPDB state bits.
 func Bitmaskprint(bitmask int) string {
 	BitRead := "|"
 	if Bit(bitmask, PDBCRT) {
@@ -288,6 +292,7 @@ func Bitmaskprint(bitmask int) string {
 	return BitRead
 }
 
+// CMBitmaskprint returns a human-readable state string for config-map status bits.
 func CMBitmaskprint(bitmask int) string {
 
 	BitRead := "|"
@@ -315,6 +320,7 @@ func CMBitmaskprint(bitmask int) string {
 	return BitRead
 }
 
+// Backtrace prints a small runtime stack trace used by debug tracing paths.
 func Backtrace() {
 
 	pc := make([]uintptr, 10)

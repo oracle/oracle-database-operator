@@ -146,6 +146,7 @@ func (r *OrdsSrvsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
+// Reconcile reconciles OrdsSrvs resources.
 func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithName("Reconcile")
 	ordssrvs := &dbapi.OrdsSrvs{}
@@ -292,6 +293,8 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 /************************************************
  * Status
  *************************************************/
+
+// SetStatus updates reconcile status conditions for an OrdsSrvs resource.
 func (r *OrdsSrvsReconciler) SetStatus(ctx context.Context, req ctrl.Request, ords *dbapi.OrdsSrvs, statusCondition metav1.Condition) error {
 	logr := log.FromContext(ctx).WithName("SetStatus")
 
@@ -362,6 +365,8 @@ func (r *OrdsSrvsReconciler) SetStatus(ctx context.Context, req ctrl.Request, or
 /************************************************
  * APEX Installation PVC Reconcile
  *************************************************/
+
+// ApexInstallationPVCReconcile ensures the APEX installation PVC exists and is up to date.
 func (r *OrdsSrvsReconciler) ApexInstallationPVCReconcile(ctx context.Context, ordssrvs *dbapi.OrdsSrvs) (err error) {
 	logr := log.FromContext(ctx).WithName("ApexInstallationPVCReconcile")
 
@@ -395,6 +400,8 @@ func (r *OrdsSrvsReconciler) ApexInstallationPVCReconcile(ctx context.Context, o
 /************************************************
  * ConfigMaps
  *************************************************/
+
+// ConfigMapReconcile creates or updates the requested ORDS ConfigMap.
 func (r *OrdsSrvsReconciler) ConfigMapReconcile(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, configMapName string, poolIndex int) (err error) {
 	logr := log.FromContext(ctx).WithName("ConfigMapReconcile")
 	desiredConfigMap := r.ConfigMapDefine(ctx, ordssrvs, configMapName, poolIndex)
@@ -466,6 +473,8 @@ func (r *OrdsSrvsReconciler) ConfigMapReconcile(ctx context.Context, ordssrvs *d
 /************************************************
  * Workloads
  *************************************************/
+
+// WorkloadReconcile creates or updates the requested ORDS workload kind.
 func (r *OrdsSrvsReconciler) WorkloadReconcile(ctx context.Context, req ctrl.Request, ordssrvs *dbapi.OrdsSrvs, kind string) (err error) {
 	logr := log.FromContext(ctx).WithName("WorkloadReconcile")
 	objectMeta := objectMetaDefine(ordssrvs, ordssrvs.Name)
@@ -580,7 +589,7 @@ func (r *OrdsSrvsReconciler) WorkloadReconcile(ctx context.Context, req ctrl.Req
 	return nil
 }
 
-// Service
+// ServiceReconcile creates or updates the ORDS Service resource.
 func (r *OrdsSrvsReconciler) ServiceReconcile(ctx context.Context, ords *dbapi.OrdsSrvs) (err error) {
 	logr := log.FromContext(ctx).WithName("ServiceReconcile")
 
@@ -728,7 +737,7 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(ords *dbapi.OrdsSrvs, ctx con
 	return podSpecTemplate
 }
 
-// Volumes
+// VolumesDefine builds the volume and volumeMount definitions for ORDS workloads.
 func (r *OrdsSrvsReconciler) VolumesDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs) ([]corev1.Volume, []corev1.VolumeMount) {
 
 	logger := log.FromContext(ctx).WithName("VolumesDefine")
@@ -916,8 +925,8 @@ func configMapvolumeBuild(volumeName string, mapName string, mode ...int32) core
 	}
 }
 
-// Service
-func (r *OrdsSrvsReconciler) ServiceDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, HTTPport int32, HTTPSport int32, MongoPort int32) *corev1.Service {
+// ServiceDefine returns the Service spec for ORDS listener ports.
+func (r *OrdsSrvsReconciler) ServiceDefine(_ context.Context, ordssrvs *dbapi.OrdsSrvs, HTTPport int32, HTTPSport int32, MongoPort int32) *corev1.Service {
 	labels := getLabels(ordssrvs.Name)
 
 	servicePorts := []corev1.ServicePort{
@@ -1044,9 +1053,9 @@ func (r *OrdsSrvsReconciler) envDefine(ordssrvs *dbapi.OrdsSrvs, initContainer b
 	}
 
 	// ORDS_CONFIG
-	ORDS_CONFIG := ordsSABase + "/config"
-	logger.Info("Setting ORDS_CONFIG to " + ORDS_CONFIG)
-	envVars = addEnvVar(envVars, "ORDS_CONFIG", ORDS_CONFIG)
+	ordsConfig := ordsSABase + "/config"
+	logger.Info("Setting ORDS_CONFIG to " + ordsConfig)
+	envVars = addEnvVar(envVars, "ORDS_CONFIG", ordsConfig)
 
 	// adding info for private key
 	if r.passwordEncryption && initContainer {
@@ -1139,7 +1148,8 @@ func (r *OrdsSrvsReconciler) envDefine(ordssrvs *dbapi.OrdsSrvs, initContainer b
 	return envVars
 }
 
-func (r *OrdsSrvsReconciler) APEXInstallationVolumeDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs) corev1.Volume {
+// APEXInstallationVolumeDefine builds the volume source used for APEX installation artifacts.
+func (r *OrdsSrvsReconciler) APEXInstallationVolumeDefine(ctx context.Context, _ *dbapi.OrdsSrvs) corev1.Volume {
 	logger := log.FromContext(ctx).WithName("APEXInstallationVolumeDefine")
 
 	var vs corev1.VolumeSource
@@ -1167,14 +1177,11 @@ func (r *OrdsSrvsReconciler) APEXInstallationVolumeDefine(ctx context.Context, o
 	return volume
 }
 
+// APEXInstallationPVCDefine defines the PVC used for external APEX installation storage.
 func (r *OrdsSrvsReconciler) APEXInstallationPVCDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs) *corev1.PersistentVolumeClaim {
 	logger := log.FromContext(ctx).WithName("APEXInstallationPVCDefine")
 
 	size := ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.Size
-
-	if size == "" {
-
-	}
 
 	volumeName := ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.VolumeName
 	storageClassName := ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.StorageClass
@@ -1214,6 +1221,8 @@ func (r *OrdsSrvsReconciler) APEXInstallationPVCDefine(ctx context.Context, ords
 /*************************************************
  * Deletions
  **************************************************/
+
+// ConfigMapDelete removes stale pool ConfigMaps that are no longer defined.
 func (r *OrdsSrvsReconciler) ConfigMapDelete(ctx context.Context, req ctrl.Request, ordssrvs *dbapi.OrdsSrvs, definedPools map[string]bool) (err error) {
 	// Delete Undefined Pool ConfigMaps
 	configMapList := &corev1.ConfigMapList{}
@@ -1247,6 +1256,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDelete(ctx context.Context, req ctrl.Reque
 	return nil
 }
 
+// WorkloadDelete removes stale workload resources that are no longer defined.
 func (r *OrdsSrvsReconciler) WorkloadDelete(ctx context.Context, req ctrl.Request, ordssrvs *dbapi.OrdsSrvs, kind string) (err error) {
 	logr := log.FromContext(ctx).WithName("WorkloadDelete")
 

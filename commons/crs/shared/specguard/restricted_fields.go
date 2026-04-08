@@ -1,3 +1,4 @@
+// Package specguard contains immutable/guarded spec field sets for validation.
 package specguard
 
 // RestrictedConfigParamFields returns immutable config parameter paths enforced across RAC and Oracle Restart.

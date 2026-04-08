@@ -353,14 +353,14 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		racDatabase.Status.Role = string(racdb.RACFieldNotDefined)
 		racDatabase.Status.ConnectString = string(racdb.RACFieldNotDefined)
 		racDatabase.Status.PdbConnectString = string(racdb.RACFieldNotDefined)
-			racDatabase.Status.ReleaseUpdate = string(racdb.RACFieldNotDefined)
-			racDatabase.Status.ConfigParams.DbHome = string(racdb.RACFieldNotDefined)
-			racDatabase.Status.ConfigParams.GridHome = string(racdb.RACFieldNotDefined)
-			racDatabase.Status.ClientEtcHost = []string{string(racdb.RACFieldNotDefined)}
-			if err := r.Status().Update(ctx, racDatabase); err != nil {
-				return resultNq, err
-			}
+		racDatabase.Status.ReleaseUpdate = string(racdb.RACFieldNotDefined)
+		racDatabase.Status.ConfigParams.DbHome = string(racdb.RACFieldNotDefined)
+		racDatabase.Status.ConfigParams.GridHome = string(racdb.RACFieldNotDefined)
+		racDatabase.Status.ClientEtcHost = []string{string(racdb.RACFieldNotDefined)}
+		if err := r.Status().Update(ctx, racDatabase); err != nil {
+			return resultNq, err
 		}
+	}
 
 	phase = racPhaseDeletionAndIntent
 	r.phaseInfo(req, phase, "Entering reconcile phase")
@@ -1432,7 +1432,7 @@ func shouldBypassRACOperationLockBySpecDelta(latest *racdb.RacDatabase, oldSpec 
 func (r *RacDatabaseReconciler) acquireRACOperationLock(
 	ctx context.Context,
 	req ctrl.Request,
-	racDatabase *racdb.RacDatabase,
+	_ *racdb.RacDatabase,
 	oldSpec *racdb.RacDatabaseSpec,
 	operationType string,
 	phase string,
@@ -2736,7 +2736,7 @@ func findRacDisksToRemoveforRAC(
 // findRacDisksToAddforRAC determines new ASM disks that should be provisioned
 // by comparing updated specs against both prior spec and current status,
 // rejecting duplicates or conflicting allocations.
-func findRacDisksToAddforRAC(newSpecDisks, statusDisks []string, instance *racdb.RacDatabase, oldSpec *racdb.RacDatabaseSpec) ([]string, error) {
+func findRacDisksToAddforRAC(newSpecDisks, statusDisks []string, _ *racdb.RacDatabase, oldSpec *racdb.RacDatabaseSpec) ([]string, error) {
 	// Create a set for statusDisks to allow valid reuse of existing disks
 	// Step 1: Check for duplicates within newSpecDisks itself
 	oldAsmDisks := flattenAsmDisksForRAC(oldSpec)
@@ -2839,9 +2839,8 @@ func (r *RacDatabaseReconciler) updateGiConfigParamStatus(racDatabase *racdb.Rac
 			if err != nil {
 				markRACFailedStatus(racDatabase)
 				return errors.New("error in responsefile, unable to read INVENTORY_LOCATION")
-			} else {
-				racDatabase.Status.ConfigParams.Inventory = invlocation
 			}
+			racDatabase.Status.ConfigParams.Inventory = invlocation
 		}
 	}
 
@@ -2853,9 +2852,8 @@ func (r *RacDatabaseReconciler) updateGiConfigParamStatus(racDatabase *racdb.Rac
 			if err != nil {
 				markRACFailedStatus(racDatabase)
 				return errors.New("error in responsefile, unable to read ORACLE_BASE")
-			} else {
-				racDatabase.Status.ConfigParams.GridBase = gibase
 			}
+			racDatabase.Status.ConfigParams.GridBase = gibase
 		}
 	}
 
@@ -3573,7 +3571,7 @@ func firstNonEmpty(vals ...string) string {
 
 func setRACSecretMountDefaults(instance *racdb.RacDatabase) {
 	if instance.Spec.SshKeySecret != nil && instance.Spec.SshKeySecret.KeyMountLocation == "" {
-		instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+		instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 	}
 	if instance.Spec.DbSecret != nil && instance.Spec.DbSecret.Name != "" {
 		if instance.Spec.DbSecret.PwdFileMountLocation == "" {
@@ -5177,8 +5175,9 @@ func (r *RacDatabaseReconciler) GetOldSpec(racDatabase *racdb.RacDatabase) (*rac
 	return &oldSpec, nil
 }
 
-// SetCurrentSpec stores the current spec as an annotation with retry logic, updating only if the annotation value has changed.
-// SetCurrentSpec persists the current spec into annotations with conflict
+// SetCurrentSpecAndObservedGeneration stores the current spec as an annotation with retry logic,
+// updating only if the annotation value has changed.
+// SetCurrentSpecAndObservedGeneration persists the current spec into annotations with conflict
 // retries, enabling future reconciles to detect spec changes accurately.
 func (r *RacDatabaseReconciler) SetCurrentSpecAndObservedGeneration(
 	ctx context.Context,
@@ -5382,15 +5381,16 @@ func (r *RacDatabaseReconciler) updateStatusWithRetry(
 		// Apply desired mutation on latest object
 		apply(latest)
 
-		if err := r.Status().Update(ctx, latest); err == nil {
+		err := r.Status().Update(ctx, latest)
+		if err == nil {
 			return nil
-		} else if apierrors.IsConflict(err) {
+		}
+		if apierrors.IsConflict(err) {
 			lastErr = err
 			time.Sleep(retryDelay)
 			continue
-		} else {
-			return err
 		}
+		return err
 	}
 
 	return fmt.Errorf("status update failed after retries: %w", lastErr)

@@ -75,7 +75,7 @@ var _ admission.Defaulter[*PrivateAi] = &PrivateAi{}
 // as it is used only for temporary operations and does not need to be deeply copied.
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind PrivateAi.
-func (d *PrivateAi) Default(ctx context.Context, obj *PrivateAi) error {
+func (r *PrivateAi) Default(_ context.Context, obj *PrivateAi) error {
 	privateai := obj
 
 	privateailog.Info("Defaulting for PrivateAi", "name", privateai.GetName())
@@ -161,11 +161,12 @@ func (d *PrivateAi) Default(ctx context.Context, obj *PrivateAi) error {
 // Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
 // +kubebuilder:webhook:path=/validate-privateai-oracle-com-v4-privateai,mutating=false,failurePolicy=fail,sideEffects=None,groups=privateai.oracle.com,resources=privateais,verbs=create;update,versions=v4,name=vprivateai-v4.kb.io,admissionReviewVersions=v1
 
-// Retained for generated deepcopy compatibility; webhook behavior now uses *PrivateAi receiver methods directly.
+// PrivateAiCustomValidator is retained for generated deepcopy compatibility.
+// Webhook behavior now uses *PrivateAi receiver methods directly.
 type PrivateAiCustomValidator struct{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (v *PrivateAi) ValidateCreate(ctx context.Context, obj *PrivateAi) (admission.Warnings, error) {
+func (r *PrivateAi) ValidateCreate(_ context.Context, obj *PrivateAi) (admission.Warnings, error) {
 	privateai := obj
 
 	privateailog.Info("Validation for PrivateAi upon creation", "name", privateai.GetName())
@@ -209,7 +210,7 @@ func (v *PrivateAi) ValidateCreate(ctx context.Context, obj *PrivateAi) (admissi
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (v *PrivateAi) ValidateUpdate(ctx context.Context, oldObj, newObj *PrivateAi) (admission.Warnings, error) {
+func (r *PrivateAi) ValidateUpdate(_ context.Context, oldObj, newObj *PrivateAi) (admission.Warnings, error) {
 	privateai := newObj
 
 	privateailog.Info("Validation for PrivateAi upon update", "name", privateai.GetName())
@@ -252,7 +253,7 @@ func (v *PrivateAi) ValidateUpdate(ctx context.Context, oldObj, newObj *PrivateA
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (v *PrivateAi) ValidateDelete(ctx context.Context, obj *PrivateAi) (admission.Warnings, error) {
+func (r *PrivateAi) ValidateDelete(_ context.Context, obj *PrivateAi) (admission.Warnings, error) {
 	privateai := obj
 
 	privateailog.Info("Validation for PrivateAi upon deletion", "name", privateai.GetName())

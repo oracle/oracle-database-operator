@@ -50,6 +50,7 @@ import (
 /********************************
  * Autonomous Container Database
  *******************************/
+// CreateAutonomousContainerDatabase creates an autonomous container database in OCI.
 func (d *DatabaseService) CreateAutonomousContainerDatabase(acd *dbv4.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error) {
 	createAutonomousContainerDatabaseRequest := database.CreateAutonomousContainerDatabaseRequest{
 		CreateAutonomousContainerDatabaseDetails: database.CreateAutonomousContainerDatabaseDetails{
@@ -63,6 +64,7 @@ func (d *DatabaseService) CreateAutonomousContainerDatabase(acd *dbv4.Autonomous
 	return d.dbClient.CreateAutonomousContainerDatabase(context.TODO(), createAutonomousContainerDatabaseRequest)
 }
 
+// GetAutonomousContainerDatabase fetches an autonomous container database by OCID.
 func (d *DatabaseService) GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error) {
 	getAutonomousContainerDatabaseRequest := database.GetAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
@@ -71,6 +73,7 @@ func (d *DatabaseService) GetAutonomousContainerDatabase(acdOCID string) (databa
 	return d.dbClient.GetAutonomousContainerDatabase(context.TODO(), getAutonomousContainerDatabaseRequest)
 }
 
+// UpdateAutonomousContainerDatabase updates an existing autonomous container database.
 func (d *DatabaseService) UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv4.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
 	updateAutonomousContainerDatabaseRequest := database.UpdateAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
@@ -84,6 +87,7 @@ func (d *DatabaseService) UpdateAutonomousContainerDatabase(acdOCID string, difA
 	return d.dbClient.UpdateAutonomousContainerDatabase(context.TODO(), updateAutonomousContainerDatabaseRequest)
 }
 
+// RestartAutonomousContainerDatabase restarts an autonomous container database.
 func (d *DatabaseService) RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error) {
 	restartRequest := database.RestartAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
@@ -92,6 +96,7 @@ func (d *DatabaseService) RestartAutonomousContainerDatabase(acdOCID string) (da
 	return d.dbClient.RestartAutonomousContainerDatabase(context.TODO(), restartRequest)
 }
 
+// TerminateAutonomousContainerDatabase terminates an autonomous container database.
 func (d *DatabaseService) TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error) {
 	terminateRequest := database.TerminateAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),

@@ -14,7 +14,7 @@ import (
 // DGMGRL service/connect helpers
 // -----------------------------------------------------------------------------
 
-// Canonical service name: <DB_UNIQUE_NAME>_DGMGRL
+// BuildDgmgrlServiceName returns the canonical DG broker service name: <DB_UNIQUE_NAME>_DGMGRL.
 func BuildDgmgrlServiceName(dbUnique string) string {
 	base := strings.ToUpper(strings.TrimSpace(dbUnique))
 	return base + "_DGMGRL"
@@ -52,10 +52,7 @@ func BuildDgmgrlStaticConnectIdentifier(instance *databasev4.ShardingDatabase, s
 // DG broker parameter + start helper (must run on EACH DB: primary + standby)
 // -----------------------------------------------------------------------------
 
-// Ensures:
-// - dg_broker_start is toggled OFF
-// - dg_broker_config_file1/2 point to per-DB location under dbconfig/<DB_UNIQUE_NAME>
-// - dg_broker_start is ON again
+// EnsureDgBrokerFilesAndStart prepares broker config files and ensures dg_broker_start is enabled.
 func EnsureDgBrokerFilesAndStart(
 	podName string,
 	dbUnique string,
@@ -120,6 +117,7 @@ EOF
 // DG broker config steps
 // -----------------------------------------------------------------------------
 
+// CreateDgBrokerConfigTryConnects creates/validates DG broker config trying each primary connect identifier.
 func CreateDgBrokerConfigTryConnects(
 	primaryPod string,
 	cfgName string,
@@ -160,6 +158,7 @@ EOF
 	return fmt.Errorf("CreateDgBrokerConfig failed for all connect identifiers")
 }
 
+// AddStandbyToDgBrokerConfigTryConnects adds/validates standby in broker config trying each standby connect identifier.
 func AddStandbyToDgBrokerConfigTryConnects(
 	primaryPod string,
 	standbyDbUniqueName string,
@@ -199,6 +198,7 @@ EOF
 	return fmt.Errorf("AddStandbyToDgBrokerConfig failed for all connect identifiers")
 }
 
+// EnableAndValidateDgBroker enables DG broker configuration and validates resulting broker state.
 func EnableAndValidateDgBroker(
 	primaryPod string,
 	cfgName string,
@@ -243,6 +243,7 @@ func looksLikeAlreadyExists(stdout, stderr string) bool {
 // SQL helpers
 // -----------------------------------------------------------------------------
 
+// RunStandbyDatabasePrerequisitesSQL executes standby prerequisite SQL in the target pod.
 func RunStandbyDatabasePrerequisitesSQL(
 	podName string,
 	instance *databasev4.ShardingDatabase,
@@ -274,6 +275,7 @@ EOF
 	return nil
 }
 
+// RunSQLPlusInPod executes arbitrary SQL in the target pod with SQL*Plus.
 func RunSQLPlusInPod(
 	podName string,
 	sql string,
@@ -304,6 +306,7 @@ EOF
 	return nil
 }
 
+// EnableArchiveLogInPod enables ARCHIVELOG mode in the target pod.
 func EnableArchiveLogInPod(
 	podName string,
 	instance *databasev4.ShardingDatabase,
@@ -323,6 +326,7 @@ func EnableArchiveLogInPod(
 	return nil
 }
 
+// ExecShellInPod executes a shell command in the target pod.
 func ExecShellInPod(
 	podName string,
 	shellCmd string,
@@ -343,6 +347,7 @@ func ExecShellInPod(
 // Broker property helpers
 // -----------------------------------------------------------------------------
 
+// SetDgBrokerConnectIdentifiers sets DG and static connect identifiers for primary and standby in broker.
 func SetDgBrokerConnectIdentifiers(
 	primaryPod string,
 	primaryShardName string,
@@ -408,6 +413,7 @@ EOF
 // SRL / apply helpers
 // -----------------------------------------------------------------------------
 
+// EnsureStandbyRedoLogsForShards validates and creates standby redo logs on both sides.
 func EnsureStandbyRedoLogsForShards(
 	primaryPod string,
 	standbyPod string,
@@ -483,6 +489,7 @@ alter database add standby logfile thread 1 size 200M;
 	return nil
 }
 
+// RestartStandbyApplyAndForceRedo restarts standby apply and forces redo generation on primary.
 func RestartStandbyApplyAndForceRedo(
 	primaryPod string,
 	standbyPod string,
@@ -522,6 +529,7 @@ select process, status, thread#, sequence# from v$managed_standby order by proce
 // Redo transport helper
 // -----------------------------------------------------------------------------
 
+// ConfigurePrimaryRedoTransport configures primary log_archive_dest_2 to ship redo to standby.
 func ConfigurePrimaryRedoTransport(
 	primaryPod string,
 	standbyShardName string,

@@ -49,6 +49,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// CreateAutonomousBackup creates an AutonomousDatabaseBackup owned by the provided ADB.
 func CreateAutonomousBackup(kubeClient client.Client,
 	backupName string,
 	backupSummary database.AutonomousDatabaseBackupSummary,

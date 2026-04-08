@@ -1,3 +1,4 @@
+// Package envfile parses and serializes CRLF-separated environment files.
 package envfile
 
 import (

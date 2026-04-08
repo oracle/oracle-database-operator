@@ -1,3 +1,4 @@
+// Package diskcheck builds Kubernetes resources for ASM disk validation.
 package diskcheck
 
 import (

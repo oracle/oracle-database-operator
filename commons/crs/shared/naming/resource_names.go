@@ -1,3 +1,4 @@
+// Package naming provides deterministic Kubernetes-safe resource naming helpers.
 package naming
 
 import (

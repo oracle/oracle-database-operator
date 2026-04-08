@@ -287,10 +287,10 @@ func (r *ShardingDatabaseReconciler) flushStatus(
 // Phase 3: Delete
 // phaseDelete ensures finalizer presence and executes cleanup when deletion is requested.
 func (r *ShardingDatabaseReconciler) phaseDelete(
-	ctx context.Context,
+	_ context.Context,
 	inst *databasev4.ShardingDatabase,
-	st *databasev4.ShardingDatabaseStatus,
-	c *conditionSet,
+	_ *databasev4.ShardingDatabaseStatus,
+	_ *conditionSet,
 ) phaseResult {
 	if inst.DeletionTimestamp == nil {
 		if !controllerutil.ContainsFinalizer(inst, shardingv1.ShardingDatabaseFinalizer) {
@@ -312,7 +312,7 @@ func (r *ShardingDatabaseReconciler) phaseDelete(
 // Phase 4 : Validate + Plan
 // phaseValidateAndPlan validates spec and applies prerequisite spec patches before core reconciliation.
 func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
-	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
+	ctx context.Context, inst *databasev4.ShardingDatabase, _ *databasev4.ShardingDatabaseStatus, _ *conditionSet,
 ) phaseResult {
 	plog := r.phaseLogger(inst, "validate_plan")
 	if err := r.validateSpex(inst); err != nil {
@@ -416,9 +416,9 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 			oraCatalogSpec := inst.Spec.Catalog[i]
 			if len(oraCatalogSpec.Name) > 9 {
 				return phaseResult{
-					err:     fmt.Errorf("Catalog Name cannot be greater than 9 characters."),
+					err:     fmt.Errorf("catalog name cannot be greater than 9 characters"),
 					reason:  "CatalogNameTooLong",
-					message: "Catalog Name cannot be greater than 9 characters.",
+					message: "catalog name cannot be greater than 9 characters",
 				}
 			}
 			catalogSts, err := shardingv1.BuildStatefulSetForCatalog(inst, oraCatalogSpec)
@@ -475,9 +475,9 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		oraShardSpec := inst.Spec.Shard[i]
 		if len(oraShardSpec.Name) > 9 {
 			return phaseResult{
-				err:     fmt.Errorf("Shard Name cannot be greater than 9 characters."),
+				err:     fmt.Errorf("shard name cannot be greater than 9 characters"),
 				reason:  "ShardNameTooLong",
-				message: "Shard Name cannot be greater than 9 characters.",
+				message: "shard name cannot be greater than 9 characters",
 			}
 		}
 		if shardingv1.CheckIsDeleteFlag(oraShardSpec.IsDelete, inst, r.Log) {
@@ -1018,13 +1018,13 @@ func (r *ShardingDatabaseReconciler) markReady(c *conditionSet) {
 func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate {
 	return predicate.Funcs{
 
-		CreateFunc: func(e event.CreateEvent) bool {
+		CreateFunc: func(_ event.CreateEvent) bool {
 			return true
 		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
+		UpdateFunc: func(_ event.UpdateEvent) bool {
 			return true
 		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
+		DeleteFunc: func(_ event.DeleteEvent) bool {
 			// //instance := &databasev4.ShardingDatabase{}
 			// _, podOk := e.Object.GetLabels()["statefulset.kubernetes.io/pod-name"]
 			// instance, _ := e.Object.DeepCopyObject().(*databasev4.ShardingDatabase)
@@ -1444,8 +1444,9 @@ func (r *ShardingDatabaseReconciler) phaseManualTDERefresh(
 }
 
 // ================ Function to check secret update=============
+
 // UpdateSecret probes the configured DB secret; retained for legacy compatibility.
-func (r *ShardingDatabaseReconciler) UpdateSecret(instance *databasev4.ShardingDatabase, kClient client.Client, logger logr.Logger) (ctrl.Result, error) {
+func (r *ShardingDatabaseReconciler) UpdateSecret(instance *databasev4.ShardingDatabase, kClient client.Client, _ logr.Logger) (ctrl.Result, error) {
 
 	sc := &corev1.Secret{}
 	//var err error
@@ -2177,7 +2178,7 @@ func (r *ShardingDatabaseReconciler) validateGsm(instance *databasev4.ShardingDa
 }
 
 // validateInvidualGsm validates one GSM member and updates its status projection.
-func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec, specId int,
+func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec, specID int,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 	var msg string
 	var gsmSfSet *appsv1.StatefulSet
@@ -2191,7 +2192,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.Sh
 	if err != nil {
 		msg = "Unable to find  GSM statefulset " + shardingv1.GetFmtStr(OraGsmSpex.Name) + "."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateGsmStatus(instance, specId, string(databasev4.StatefulSetNotFound))
+		r.updateGsmStatus(instance, specID, string(databasev4.StatefulSetNotFound))
 		return gsmSfSet, gsmPod, err
 	}
 
@@ -2199,7 +2200,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.Sh
 	if err != nil {
 		msg = "Unable to find any pod in statefulset " + shardingv1.GetFmtStr(gsmSfSet.Name) + "."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateGsmStatus(instance, specId, string(databasev4.PodNotFound))
+		r.updateGsmStatus(instance, specID, string(databasev4.PodNotFound))
 		return gsmSfSet, gsmPod, err
 	}
 
@@ -2207,18 +2208,18 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.Sh
 	if !isPodExist {
 		msg = "Unable to validate GSM " + shardingv1.GetFmtStr(OraGsmSpex.Name) + " pod. GSM pod doesn't seem to be ready to accept commands."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateGsmStatus(instance, specId, string(databasev4.PodNotReadyState))
+		r.updateGsmStatus(instance, specID, string(databasev4.PodNotReadyState))
 		return gsmSfSet, gsmPod, fmt.Errorf("pod doesn't exist")
 	}
 	err = shardingv1.CheckGsmStatus(gsmPod.Name, instance, r.kubeConfig, r.Log)
 	if err != nil {
 		msg = "Unable to validate GSM director. GSM director doesn't seems to be ready to accept the commands."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateGsmStatus(instance, specId, string(databasev4.ProvisionState))
+		r.updateGsmStatus(instance, specID, string(databasev4.ProvisionState))
 		return gsmSfSet, gsmPod, err
 	}
 
-	r.updateGsmStatus(instance, specId, string(databasev4.AvailableState))
+	r.updateGsmStatus(instance, specID, string(databasev4.AvailableState))
 	return gsmSfSet, gsmPod, nil
 }
 
@@ -2258,7 +2259,7 @@ func (r *ShardingDatabaseReconciler) validateCatalog(instance *databasev4.Shardi
 
 // === Validate Individual Catalog
 // validateInvidualCatalog validates one catalog member and updates its status projection.
-func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec, specId int,
+func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec, specID int,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
 	var err error
@@ -2271,7 +2272,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 	if err != nil {
 		msg := "Unable to find Catalog statefulset " + shardingv1.GetFmtStr(OraCatalogSpex.Name) + "."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateCatalogStatus(instance, specId, string(databasev4.StatefulSetNotFound))
+		r.updateCatalogStatus(instance, specID, string(databasev4.StatefulSetNotFound))
 		return catalogSfSet, catalogPod, err
 	}
 
@@ -2279,14 +2280,14 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 	if err != nil {
 		msg := "Unable to find any pod in statefulset " + shardingv1.GetFmtStr(catalogSfSet.Name) + "."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateCatalogStatus(instance, specId, string(databasev4.PodNotFound))
+		r.updateCatalogStatus(instance, specID, string(databasev4.PodNotFound))
 		return catalogSfSet, catalogPod, err
 	}
 	isPodExist, catalogPod = shardingv1.PodListValidation(podList, catalogSfSet.Name, instance, r.Client)
 	if !isPodExist {
 		msg := "Unable to validate Catalog " + shardingv1.GetFmtStr(catalogSfSet.Name) + " pod. Catalog pod doesn't seem to be ready to accept commands."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateCatalogStatus(instance, specId, string(databasev4.PodNotReadyState))
+		r.updateCatalogStatus(instance, specID, string(databasev4.PodNotReadyState))
 		return catalogSfSet, catalogPod, fmt.Errorf("pod doesn't exist")
 	}
 	err = shardingv1.ValidateDbSetup(catalogPod.Name, instance, r.kubeConfig, r.Log)
@@ -2297,18 +2298,18 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 		} else {
 			r.logLegacy("Error", msg+" cause: "+err.Error(), nil, instance, r.Log)
 		}
-		r.updateCatalogStatus(instance, specId, string(databasev4.ProvisionState))
+		r.updateCatalogStatus(instance, specID, string(databasev4.ProvisionState))
 		return catalogSfSet, catalogPod, err
 	}
 
-	r.updateCatalogStatus(instance, specId, string(databasev4.AvailableState))
+	r.updateCatalogStatus(instance, specID, string(databasev4.AvailableState))
 	return catalogSfSet, catalogPod, nil
 
 }
 
 // ======= Function to validate Shard
 // validateShard validates one shard member and updates its status projection.
-func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec, specId int,
+func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec, specID int,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 	var shardSfSet *appsv1.StatefulSet
 	shardPod := &corev1.Pod{}
@@ -2317,7 +2318,7 @@ func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.Sharding
 	if err != nil {
 		msg := "Unable to find Shard statefulset " + shardingv1.GetFmtStr(OraShardSpex.Name) + "."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateShardStatus(instance, specId, string(databasev4.StatefulSetNotFound))
+		r.updateShardStatus(instance, specID, string(databasev4.StatefulSetNotFound))
 		return shardSfSet, shardPod, err
 	}
 
@@ -2325,14 +2326,14 @@ func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.Sharding
 	if err != nil {
 		msg := "Unable to find any pod in statefulset " + shardingv1.GetFmtStr(shardSfSet.Name) + "."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateShardStatus(instance, specId, string(databasev4.PodNotFound))
+		r.updateShardStatus(instance, specID, string(databasev4.PodNotFound))
 		return shardSfSet, shardPod, err
 	}
 	isPodExist, shardPod := shardingv1.PodListValidation(podList, shardSfSet.Name, instance, r.Client)
 	if !isPodExist {
 		msg := "Unable to validate Shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " pod. Shard pod doesn't seem to be ready to accept commands."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
-		r.updateShardStatus(instance, specId, string(databasev4.PodNotReadyState))
+		r.updateShardStatus(instance, specID, string(databasev4.PodNotReadyState))
 		return shardSfSet, shardPod, fmt.Errorf("pod doesn't exist")
 	}
 	err = shardingv1.ValidateDbSetup(shardPod.Name, instance, r.kubeConfig, r.Log)
@@ -2343,11 +2344,11 @@ func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.Sharding
 		} else {
 			r.logLegacy("Error", msg+" cause: "+err.Error(), nil, instance, r.Log)
 		}
-		r.updateShardStatus(instance, specId, string(databasev4.ProvisionState))
+		r.updateShardStatus(instance, specID, string(databasev4.ProvisionState))
 		return shardSfSet, shardPod, err
 	}
 
-	r.updateShardStatus(instance, specId, string(databasev4.AvailableState))
+	r.updateShardStatus(instance, specID, string(databasev4.AvailableState))
 	return shardSfSet, shardPod, nil
 }
 
@@ -2678,10 +2679,9 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(ctx context.Context, insta
 				addFailedCount++
 				deployFlag = "false"
 				continue
-			} else {
-				deployFlag = "true"
-				deployParams = sparamsAdd
 			}
+			deployFlag = "true"
+			deployParams = sparamsAdd
 		}
 	}
 
@@ -2753,7 +2753,7 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev4.ShardingD
 }
 
 // addStandbyShards adds standby shards and performs DG broker provisioning when configured.
-func (r *ShardingDatabaseReconciler) addStandbyShards(ctx context.Context, instance *databasev4.ShardingDatabase) error {
+func (r *ShardingDatabaseReconciler) addStandbyShards(_ context.Context, instance *databasev4.ShardingDatabase) error {
 	var err error
 	isDGReplication := shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG"
 
@@ -2834,9 +2834,8 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(ctx context.Context, insta
 					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
 					addFailedCount++
 					continue
-				} else {
-					deployParamsList = append(deployParamsList, sparamsAdd)
 				}
+				deployParamsList = append(deployParamsList, sparamsAdd)
 			}
 
 			// Deploy whenever standby shard exists but is not yet deployed.
@@ -3456,10 +3455,10 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev4.Shardi
 			} else if currState == string(databasev4.AddingShardState) {
 				eventMsg = "Shard Addition in progress for [" + OraShardSpex.Name + "]. Requeuing"
 				err = fmt.Errorf("%s", eventMsg)
-				} else if currState == string(databasev4.DeletingState) {
-					eventMsg = "Shard Deletion in progress for [" + OraShardSpex.Name + "]. Requeuing"
-					err = nil
-				} else if currState == string(databasev4.DeleteErrorState) {
+			} else if currState == string(databasev4.DeletingState) {
+				eventMsg = "Shard Deletion in progress for [" + OraShardSpex.Name + "]. Requeuing"
+				err = nil
+			} else if currState == string(databasev4.DeleteErrorState) {
 				eventMsg = "Shard Deletion  Error for [" + OraShardSpex.Name + "]. Manual intervention required. Requeuing"
 				err = fmt.Errorf("%s", eventMsg)
 			} else if currState == string(databasev4.ShardRemoveError) {

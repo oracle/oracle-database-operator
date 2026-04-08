@@ -87,7 +87,7 @@ func (r *OracleRestart) Default(ctx context.Context, obj *OracleRestart) error {
 	}
 
 	if cr.Spec.SshKeySecret != nil && cr.Spec.SshKeySecret.KeyMountLocation == "" {
-		cr.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+		cr.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 	}
 
 	if cr.Spec.DbSecret != nil && cr.Spec.DbSecret.Name != "" {

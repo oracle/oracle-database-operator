@@ -1,3 +1,4 @@
+// Package lockpolicy provides helpers to enforce and override reconcile locks.
 package lockpolicy
 
 import (
@@ -7,11 +8,15 @@ import (
 )
 
 const (
+	// DefaultReconcilingConditionType is the condition type used for in-progress reconciliation.
 	DefaultReconcilingConditionType = "Reconciling"
-	DefaultUpdateLockReason         = "UpdateInProgress"
-	DefaultOverrideAnnotation       = "database.oracle.com/lock-override"
+	// DefaultUpdateLockReason is the reason text indicating reconcile lock.
+	DefaultUpdateLockReason = "UpdateInProgress"
+	// DefaultOverrideAnnotation is the annotation key to bypass the update lock.
+	DefaultOverrideAnnotation = "database.oracle.com/lock-override"
 )
 
+// FindStatusCondition returns the first condition matching condType, or nil.
 func FindStatusCondition(conds []metav1.Condition, condType string) *metav1.Condition {
 	for i := range conds {
 		if conds[i].Type == condType {
@@ -21,6 +26,7 @@ func FindStatusCondition(conds []metav1.Condition, condType string) *metav1.Cond
 	return nil
 }
 
+// IsControllerUpdateLocked reports lock state, observed generation, and lock message.
 func IsControllerUpdateLocked(conds []metav1.Condition, reconcilingType, updateLockReason string) (bool, int64, string) {
 	cond := FindStatusCondition(conds, reconcilingType)
 	if cond == nil {
@@ -35,6 +41,7 @@ func IsControllerUpdateLocked(conds []metav1.Condition, reconcilingType, updateL
 	return true, cond.ObservedGeneration, cond.Message
 }
 
+// IsUpdateLockOverrideEnabled returns true when override annotation is explicitly true.
 func IsUpdateLockOverrideEnabled(annotations map[string]string, overrideAnnotation string) (bool, string) {
 	if len(annotations) == 0 {
 		return false, ""

@@ -92,7 +92,7 @@ func (r *AutonomousDatabaseRestoreReconciler) SetupWithManager(mgr ctrl.Manager)
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.6.4/pkg/reconcile
-func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *AutonomousDatabaseRestoreReconciler) Reconcile(_ context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	restore := &dbv4.AutonomousDatabaseRestore{}
@@ -199,11 +199,11 @@ func (r *AutonomousDatabaseRestoreReconciler) getRestoreSDKTime(restore *dbv4.Au
 
 		return restoreTime, nil
 
-	} else { // PIT restore
-		// The validation of the pitr.timestamp has been handled by the webhook, so the error return is ignored
-		restoreTime, _ := restore.GetPIT()
-		return restoreTime, nil
 	}
+	// PIT restore.
+	// The validation of the pitr.timestamp has been handled by the webhook, so the error return is ignored.
+	restoreTime, _ := restore.GetPIT()
+	return restoreTime, nil
 }
 
 // setOwnerAutonomousDatabase sets the owner of the AutonomousDatabaseBackup if the AutonomousDatabase resource with the same database OCID is found
@@ -251,7 +251,7 @@ func (r *AutonomousDatabaseRestoreReconciler) verifyTargetAdb(restore *dbv4.Auto
 func (r *AutonomousDatabaseRestoreReconciler) setupOCIClients(restore *dbv4.AutonomousDatabaseRestore) error {
 	var err error
 
-	authData := oci.ApiKeyAuth{
+	authData := oci.APIKeyAuth{
 		ConfigMapName: restore.Spec.OCIConfig.ConfigMapName,
 		SecretName:    restore.Spec.OCIConfig.SecretName,
 		Namespace:     restore.GetNamespace(),

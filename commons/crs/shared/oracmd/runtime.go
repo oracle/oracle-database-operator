@@ -1,3 +1,4 @@
+// Package oracmd contains shared command/runtime constants for Oracle helpers.
 package oracmd
 
 const (

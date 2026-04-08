@@ -75,6 +75,7 @@ func patchFinalizer(kubeClient client.Client, obj client.Object) error {
 	return kubeClient.Patch(context.TODO(), obj, patch)
 }
 
+// AddFinalizerAndPatch adds a finalizer and patches it back to the API server.
 func AddFinalizerAndPatch(kubeClient client.Client, obj client.Object, finalizer string) error {
 	controllerutil.AddFinalizer(obj, finalizer)
 	if err := patchFinalizer(kubeClient, obj); err != nil {
@@ -83,6 +84,7 @@ func AddFinalizerAndPatch(kubeClient client.Client, obj client.Object, finalizer
 	return nil
 }
 
+// RemoveFinalizerAndPatch removes a finalizer and patches it back to the API server.
 func RemoveFinalizerAndPatch(kubeClient client.Client, obj client.Object, finalizer string) error {
 	controllerutil.RemoveFinalizer(obj, finalizer)
 	if err := patchFinalizer(kubeClient, obj); err != nil {

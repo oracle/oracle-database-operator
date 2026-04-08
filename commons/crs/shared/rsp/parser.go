@@ -1,3 +1,4 @@
+// Package rsp parses Oracle response files used by provisioning workflows.
 package rsp
 
 import (

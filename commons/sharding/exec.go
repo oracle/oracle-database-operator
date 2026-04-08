@@ -61,7 +61,7 @@ import (
 	"k8s.io/kubectl/pkg/cmd/util"
 )
 
-// ExecCMDInContainer execute command in first container of a pod
+// ExecCommand executes a command in a pod and returns stdout/stderr text.
 func ExecCommand(podName string, cmd []string, kubeConfig *rest.Config, instance *databasev4.ShardingDatabase, logger logr.Logger) (string, string, error) {
 	var msg string
 	var (
@@ -147,6 +147,7 @@ func ExecCommand(podName string, cmd []string, kubeConfig *rest.Config, instance
 	return execOut.String(), execErr.String(), nil
 }
 
+// GetPodCopyConfig returns a copy-ready REST config and Kubernetes clientset.
 func GetPodCopyConfig(kubeConfig *rest.Config) (*rest.Config, *kubernetes.Clientset, error) {
 
 	var clientSet *kubernetes.Clientset
@@ -166,6 +167,7 @@ func GetPodCopyConfig(kubeConfig *rest.Config) (*rest.Config, *kubernetes.Client
 	return config, clientSet, err
 }
 
+// KctlCopyFile copies a file between local and pod paths, with retry on transient backend EOF.
 func KctlCopyFile(restConfig *rest.Config, src string, dst string, containername string) (*bytes.Buffer, *bytes.Buffer, *bytes.Buffer, error) {
 
 	var in, out, errOut *bytes.Buffer
@@ -207,16 +209,16 @@ func KctlCopyFile(restConfig *rest.Config, src string, dst string, containername
 	return in, out, errOut, nil
 }
 
-func summarizeForInfo(s string, max int) string {
+func summarizeForInfo(s string, maxLen int) string {
 	trimmed := strings.TrimSpace(s)
 	if trimmed == "" {
 		return ""
 	}
 	compact := strings.Join(strings.Fields(trimmed), " ")
-	if max <= 0 || len(compact) <= max {
+	if maxLen <= 0 || len(compact) <= maxLen {
 		return compact
 	}
-	return compact[:max] + "...(truncated)"
+	return compact[:maxLen] + "...(truncated)"
 }
 
 func shouldRetry(count int, err error) bool {

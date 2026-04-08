@@ -267,7 +267,7 @@ func getInstanceNs(instance *databasev4.ShardingDatabase) string {
 func CheckGsmStatus(gname string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
 	var err error
-	var msg string = "Inside the checkGsmStatus. Checking GSM director in " + GetFmtStr(gname) + " pod."
+	msg := "Inside the checkGsmStatus. Checking GSM director in " + GetFmtStr(gname) + " pod."
 
 	LogMessages("DEBUG", msg, nil, instance, logger)
 
@@ -279,6 +279,7 @@ func CheckGsmStatus(gname string, instance *databasev4.ShardingDatabase, kubecon
 	return nil
 }
 
+// ValidateDbSetup validates database setup in the specified shard pod.
 func ValidateDbSetup(podName string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
 

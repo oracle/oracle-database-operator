@@ -1,3 +1,4 @@
+// Package statusmerge provides structured merge helpers for status subfields.
 package statusmerge
 
 import (
@@ -8,14 +9,19 @@ import (
 type PointerMode int
 
 const (
+	// PointerCopyIfNil copies pointer values only when destination is nil.
 	PointerCopyIfNil PointerMode = iota
+	// PointerDeepMerge recursively merges pointer targets.
 	PointerDeepMerge
 )
 
+// SliceMode controls how slices are merged.
 type SliceMode int
 
 const (
+	// SliceReplace replaces destination slices with source slices.
 	SliceReplace SliceMode = iota
+	// SliceMergeByIndex merges slice items by index.
 	SliceMergeByIndex
 )
 

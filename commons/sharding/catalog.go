@@ -54,7 +54,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func buildLabelsForCatalog(instance *databasev4.ShardingDatabase, label string, catalogName string) map[string]string {
+func buildLabelsForCatalog(instance *databasev4.ShardingDatabase, _ string, _ string) map[string]string {
 	// Keep selector labels stable to avoid StatefulSet selector immutability issues.
 	return map[string]string{
 		"app":      "OracleSharding",
@@ -93,6 +93,7 @@ func getLabelForCatalog(instance *databasev4.ShardingDatabase) string {
 	return instance.Name
 }
 
+// BuildStatefulSetForCatalog builds the desired StatefulSet for a catalog instance.
 func BuildStatefulSetForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) (*appsv1.StatefulSet, error) {
 	spec, err := buildStatefulSpecForCatalog(instance, OraCatalogSpex)
 	if err != nil {
@@ -460,6 +461,7 @@ func volumeClaimTemplatesForCatalog(instance *databasev4.ShardingDatabase, OraCa
 	return claims
 }
 
+// BuildServiceDefForCatalog builds local or external Service definitions for catalog pods.
 func BuildServiceDefForCatalog(instance *databasev4.ShardingDatabase, replicaCount int32, OraCatalogSpex databasev4.CatalogSpec, svctype string) *corev1.Service {
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForCatalog(instance, replicaCount, OraCatalogSpex, svctype),
@@ -504,7 +506,7 @@ func buildSvcObjectMetaForCatalog(instance *databasev4.ShardingDatabase, replica
 
 func getSvcLabelsForCatalog(replicaCount int32, OraCatalogSpex databasev4.CatalogSpec) map[string]string {
 
-	var labelStr map[string]string = make(map[string]string)
+	labelStr := make(map[string]string)
 	if replicaCount == -1 {
 		labelStr["statefulset.kubernetes.io/pod-name"] = OraCatalogSpex.Name + "-0"
 	} else {
@@ -515,7 +517,7 @@ func getSvcLabelsForCatalog(replicaCount int32, OraCatalogSpex databasev4.Catalo
 	return labelStr
 }
 
-// ======================== update Section ========================
+// UpdateProvForCatalog reconciles mutable provisioning settings for an existing catalog StatefulSet.
 func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 	OraCatalogSpex databasev4.CatalogSpec, kClient client.Client, sfSet *appsv1.StatefulSet, catalogPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
@@ -574,6 +576,7 @@ func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 	return ctrl.Result{}, nil
 }
 
+// ExportTDEKey exports and backups TDE key material from the given catalog pod.
 func ExportTDEKey(podName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger) error {
 	var msg string
 

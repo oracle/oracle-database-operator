@@ -95,25 +95,26 @@ type PrivateAiSpec struct {
 	Logging         *LoggingSpec      `json:"logging,omitempty"`
 }
 
-// Secret Details
+// PaiSecretSpec stores secret reference and mount details for PrivateAI.
 type PaiSecretSpec struct {
 	Name          string `json:"name,omitempty"`
 	MountLocation string `json:"mountLocation,omitempty"`
 }
 
-// Env Variable
+// EnvironmentVariable defines a name/value environment variable pair.
 type EnvironmentVariable struct {
 	Name  string `json:"name"`  // Name of the variable. Must be a C_IDENTIFIER.
 	Value string `json:"value"` // Value of the variable, as defined in Kubernetes core API.
 }
 
-// Service Spec
+// PaiServiceSpec defines the service shape for the PrivateAI runtime.
 type PaiServiceSpec struct {
 	PortMappings []PaiPortMapping `json:"portMappings,omitempty"` // Port mappings for the service that is created
 	SvcName      string           `json:"name,omitempty"`
 	SvcType      string           `json:"svcType,omitempty"`
 }
 
+// GatewaySpec defines optional gateway deployment and networking configuration.
 type GatewaySpec struct {
 	Image string `json:"image,omitempty"`
 	// +kubebuilder:validation:Enum=nginx;litellm
@@ -131,6 +132,7 @@ type GatewaySpec struct {
 	ExternalService  GatewayServiceSpec           `json:"externalService,omitempty"`
 }
 
+// GatewayServiceSpec configures one gateway service endpoint.
 type GatewayServiceSpec struct {
 	Enabled     *bool              `json:"enabled,omitempty"`
 	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
@@ -139,6 +141,7 @@ type GatewayServiceSpec struct {
 	Annotations map[string]string  `json:"annotations,omitempty"`
 }
 
+// LoggingSpec configures logging sidecar behavior.
 type LoggingSpec struct {
 	Enabled         bool   `json:"enabled,omitempty"`
 	SidecarImage    string `json:"sidecarImage,omitempty"`
@@ -147,20 +150,20 @@ type LoggingSpec struct {
 	VolumeSizeLimit string `json:"volumeSizeLimit,omitempty"`
 }
 
-// Config Map
+// PaiConfigMap represents a configMap reference and mount location.
 type PaiConfigMap struct {
 	Name          string `json:"name,omitempty"`
 	MountLocation string `json:"mountLocation,omitempty"`
 }
 
-// Node Port Svc
+// PaiNodePortSvc configures a nodeport service endpoint for PrivateAI.
 type PaiNodePortSvc struct {
 	PortMappings []PaiPortMapping `json:"portMappings,omitempty"` // Port mappings for the service
 	SvcName      string           `json:"name,omitempty"`
 	SvcType      string           `json:"svcType,omitempty"`
 }
 
-// Port Mapping
+// PaiPortMapping defines one service port mapping.
 type PaiPortMapping struct {
 	Port       int32           `json:"port"`
 	TargetPort int32           `json:"targetPort"` // Docker image port for the application
@@ -191,18 +194,22 @@ type PrivateAiStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// SecretStatus tracks observed status of the configured secret resource.
 type SecretStatus struct {
 	ResourceVersion string `json:"resourceVersion,omitempty" protobuf:"bytes,6,opt,name=resourceVersion"`
 	Name            string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
-	ApiKey          string `json:"apiKey,omitempty"`
-	Certpem         string `json:"certpem,omitempty"`
+	// APIKey is the Go field name; the JSON key remains "apiKey" for compatibility.
+	APIKey  string `json:"apiKey,omitempty"`
+	Certpem string `json:"certpem,omitempty"`
 }
 
+// ConfigMapStatus tracks observed status of the configured ConfigMap.
 type ConfigMapStatus struct {
 	ResourceVersion string `json:"resourceVersion,omitempty" protobuf:"bytes,6,opt,name=resourceVersion"`
 	Name            string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 }
 
+// GatewayStatus tracks observed status of gateway resources.
 type GatewayStatus struct {
 	Enabled          bool   `json:"enabled,omitempty"`
 	ReadyReplicas    int32  `json:"readyReplicas,omitempty"`
@@ -214,6 +221,7 @@ type GatewayStatus struct {
 	ExternalEndpoint string `json:"externalEndpoint,omitempty"`
 }
 
+// LoggingStatus tracks observed logging sidecar state.
 type LoggingStatus struct {
 	Enabled      bool   `json:"enabled,omitempty"`
 	SidecarImage string `json:"sidecarImage,omitempty"`
@@ -239,41 +247,59 @@ type PrivateAi struct {
 	Status PrivateAiStatus `json:"status,omitempty"`
 }
 
+// ReconcileError indicates reconcile cycle failed.
 const ReconcileError string = "ReconcileError"
 
+// ReconcileErrorReason is the reason used for reconcile cycle failure.
 const ReconcileErrorReason string = "LastReconcileCycleFailed"
 
+// ReconcileQueued indicates reconcile cycle is queued.
 const ReconcileQueued string = "ReconcileQueued"
 
+// ReconcileQueuedReason is the reason used for queued reconcile.
 const ReconcileQueuedReason string = "LastReconcileCycleQueued"
 
+// ReconcileCompelete indicates reconcile cycle completed.
 const ReconcileCompelete string = "ReconcileComplete"
 
+// ReconcileCompleteReason is the reason used for completed reconcile.
 const ReconcileCompleteReason string = "LastReconcileCycleCompleted"
 
+// ReconcileBlocked indicates reconcile cycle is blocked.
 const ReconcileBlocked string = "ReconcileBlocked"
 
+// ReconcileBlockedReason is the reason used for blocked reconcile.
 const ReconcileBlockedReason string = "LastReconcileCycleBlocked"
 
+// StatusPending indicates resource is pending creation.
 const StatusPending string = "Pending"
 
+// StatusCreating indicates resource creation is in progress.
 const StatusCreating string = "Creating"
 
+// StatusNotReady indicates resource health check is failing.
 const StatusNotReady string = "Unhealthy"
 
+// StatusPatching indicates patch operation is in progress.
 const StatusPatching string = "Patching"
 
+// StatusUpdating indicates update operation is in progress.
 const StatusUpdating string = "Updating"
 
+// StatusReady indicates resource is healthy and ready.
 const StatusReady string = "Healthy"
 
+// StatusError indicates a terminal or current error state.
 const StatusError string = "Error"
 
+// StatusUnknown indicates current state could not be determined.
 const StatusUnknown string = "Unknown"
 
+// ValueUnavailable indicates expected data is not currently available.
 const ValueUnavailable string = "Unavailable"
 
-const NoExternalIp string = "Node ExternalIP unavailable"
+// NoExternalIP indicates no external IP was available for selection.
+const NoExternalIP string = "Node ExternalIP unavailable"
 
 // +kubebuilder:object:root=true
 

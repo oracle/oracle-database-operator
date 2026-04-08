@@ -1,3 +1,4 @@
+// Package sharding adapts sharding-specific actions to the shared DG workflow contract.
 package sharding
 
 import (
@@ -12,6 +13,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+// StandbyWorkflowOptions contains sharding callbacks and runtime context for workflow execution.
 type StandbyWorkflowOptions struct {
 	Instance        *databasev4.ShardingDatabase
 	Primary         databasev4.ShardSpec
@@ -28,6 +30,7 @@ type StandbyWorkflowOptions struct {
 	SetDgConnectIdentifiers       func(instance *databasev4.ShardingDatabase, primary, standby databasev4.ShardSpec) error
 }
 
+// StandbyWorkflow implements ordered Data Guard setup for sharding deployments.
 type StandbyWorkflow struct {
 	opts            StandbyWorkflowOptions
 	primaryDbUnique string
@@ -36,6 +39,7 @@ type StandbyWorkflow struct {
 	standbyPod      string
 }
 
+// NewStandbyWorkflow creates a sharding standby workflow adapter from options.
 func NewStandbyWorkflow(opts StandbyWorkflowOptions) *StandbyWorkflow {
 	return &StandbyWorkflow{
 		opts:            opts,
@@ -46,6 +50,7 @@ func NewStandbyWorkflow(opts StandbyWorkflowOptions) *StandbyWorkflow {
 	}
 }
 
+// EnsureBrokerFilesAndStart ensures broker files and starts broker on both sides.
 func (w *StandbyWorkflow) EnsureBrokerFilesAndStart() error {
 	if err := shardingv1.EnsureDgBrokerFilesAndStart(w.primaryPod, w.primaryDbUnique, w.opts.Instance, w.opts.KubeConfig, w.opts.Log); err != nil {
 		return err
@@ -53,6 +58,7 @@ func (w *StandbyWorkflow) EnsureBrokerFilesAndStart() error {
 	return shardingv1.EnsureDgBrokerFilesAndStart(w.standbyPod, w.standbyDbUnique, w.opts.Instance, w.opts.KubeConfig, w.opts.Log)
 }
 
+// RunPrimaryPrerequisites applies required SQL prerequisites on primary.
 func (w *StandbyWorkflow) RunPrimaryPrerequisites() error {
 	if err := shardingv1.RunStandbyDatabasePrerequisitesSQL(w.primaryPod, w.opts.Instance, w.opts.KubeConfig, w.opts.Log); err != nil {
 		return err
@@ -66,10 +72,12 @@ func (w *StandbyWorkflow) RunPrimaryPrerequisites() error {
 	return shardingv1.RunSQLPlusInPod(w.primaryPod, dbcommons.FlashBackTrueSQL, w.opts.Instance, w.opts.KubeConfig, w.opts.Log)
 }
 
+// EnsureStandbyRedoLogs ensures standby redo logs exist for primary/standby shards.
 func (w *StandbyWorkflow) EnsureStandbyRedoLogs() error {
 	return shardingv1.EnsureStandbyRedoLogsForShards(w.primaryPod, w.standbyPod, w.opts.Instance, w.opts.KubeConfig, w.opts.Log)
 }
 
+// ConfigurePrimaryRedoTransport configures redo transport via provided callback.
 func (w *StandbyWorkflow) ConfigurePrimaryRedoTransport() error {
 	if w.opts.ConfigurePrimaryRedoTransport == nil {
 		return fmt.Errorf("ConfigurePrimaryRedoTransport callback is required")
@@ -77,6 +85,7 @@ func (w *StandbyWorkflow) ConfigurePrimaryRedoTransport() error {
 	return w.opts.ConfigurePrimaryRedoTransport(w.opts.Instance, w.opts.Primary, w.opts.Standby)
 }
 
+// EnsureStandbyApplyRunning starts or validates standby apply using callback.
 func (w *StandbyWorkflow) EnsureStandbyApplyRunning() error {
 	if w.opts.EnsureStandbyApplyRunning == nil {
 		return fmt.Errorf("EnsureStandbyApplyRunning callback is required")
@@ -84,6 +93,7 @@ func (w *StandbyWorkflow) EnsureStandbyApplyRunning() error {
 	return w.opts.EnsureStandbyApplyRunning(w.opts.Instance, w.opts.Standby)
 }
 
+// ForceArchiveAndCheckRedoTransport triggers archive and validates transport.
 func (w *StandbyWorkflow) ForceArchiveAndCheckRedoTransport() error {
 	if w.opts.ForceArchiveAndCheckTransport == nil {
 		return fmt.Errorf("ForceArchiveAndCheckTransport callback is required")
@@ -91,18 +101,21 @@ func (w *StandbyWorkflow) ForceArchiveAndCheckRedoTransport() error {
 	return w.opts.ForceArchiveAndCheckTransport(w.opts.Instance, w.opts.Primary)
 }
 
+// CreateDgBrokerConfig creates the DG broker config from primary.
 func (w *StandbyWorkflow) CreateDgBrokerConfig() error {
 	return shardingv1.CreateDgBrokerConfigTryConnects(
 		w.primaryPod, w.opts.CfgName, w.primaryDbUnique, w.opts.PrimaryConnects, w.opts.Instance, w.opts.KubeConfig, w.opts.Log,
 	)
 }
 
+// AddStandbyToDgBrokerConfig adds standby database to the broker config.
 func (w *StandbyWorkflow) AddStandbyToDgBrokerConfig() error {
 	return shardingv1.AddStandbyToDgBrokerConfigTryConnects(
 		w.primaryPod, w.standbyDbUnique, w.opts.StandbyConnects, w.opts.Instance, w.opts.KubeConfig, w.opts.Log,
 	)
 }
 
+// SetDgConnectIdentifiers sets connect identifiers using callback hook.
 func (w *StandbyWorkflow) SetDgConnectIdentifiers() error {
 	if w.opts.SetDgConnectIdentifiers == nil {
 		return fmt.Errorf("SetDgConnectIdentifiers callback is required")
@@ -110,10 +123,12 @@ func (w *StandbyWorkflow) SetDgConnectIdentifiers() error {
 	return w.opts.SetDgConnectIdentifiers(w.opts.Instance, w.opts.Primary, w.opts.Standby)
 }
 
+// EnableAndValidateDgBroker enables and validates DG broker configuration.
 func (w *StandbyWorkflow) EnableAndValidateDgBroker() error {
 	return shardingv1.EnableAndValidateDgBroker(w.primaryPod, w.opts.CfgName, w.opts.Instance, w.opts.KubeConfig, w.opts.Log)
 }
 
+// StatusForWorkflowStep maps workflow step failures to a compact status token.
 func StatusForWorkflowStep(step dataguardcommon.WorkflowStep) string {
 	switch step {
 	case dataguardcommon.StepEnsureBrokerFilesAndStart:

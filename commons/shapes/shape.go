@@ -1,3 +1,4 @@
+// Package shapes provides shape-to-resource mappings for Oracle DB pods.
 package shapes
 
 import (
@@ -8,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+// ShapeConfig defines CPU/memory/process sizing values for a named shape.
 type ShapeConfig struct {
 	CPU       int
 	SGAGB     int
@@ -27,6 +29,7 @@ var shapeTable = map[string]ShapeConfig{
 	"kodb36": {CPU: 36, SGAGB: 128, PGAGB: 64, Processes: 7200},
 }
 
+// LookupShapeConfig returns the shape config for a shape name, if defined.
 func LookupShapeConfig(shape string) (ShapeConfig, bool) {
 	cfg, ok := shapeTable[strings.ToLower(strings.TrimSpace(shape))]
 	return cfg, ok
@@ -48,6 +51,7 @@ func (c ShapeConfig) totalMB() int {
 	return c.totalMemGi() * 1024
 }
 
+// EnvPairs returns init parameter environment key/value pairs for this shape.
 func (c ShapeConfig) EnvPairs() [][2]string {
 	return [][2]string{
 		{"INIT_SGA_SIZE", fmt.Sprintf("%d", c.sgaMB())},
@@ -58,6 +62,7 @@ func (c ShapeConfig) EnvPairs() [][2]string {
 	}
 }
 
+// ResourceRequirements converts a shape config into Kubernetes CPU/memory requests and limits.
 func (c ShapeConfig) ResourceRequirements() *corev1.ResourceRequirements {
 	cpuQ := resource.MustParse(fmt.Sprintf("%d", c.CPU))
 	memQ := resource.MustParse(fmt.Sprintf("%dGi", c.totalMemGi()))

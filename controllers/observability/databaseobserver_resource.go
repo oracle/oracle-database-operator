@@ -19,10 +19,16 @@ retrieve/find and create all related resources
 on Kubernetes.
 */
 
+// ObservabilityDeploymentResource manages the exporter Deployment desired state.
 type ObservabilityDeploymentResource struct{}
+
+// ObservabilityServiceResource manages the exporter Service desired state.
 type ObservabilityServiceResource struct{}
+
+// ObservabilityServiceMonitorResource manages the exporter ServiceMonitor desired state.
 type ObservabilityServiceMonitorResource struct{}
 
+// ObserverResource describes a reconcilable child resource in DatabaseObserver flows.
 type ObserverResource interface {
 	generate(*api.DatabaseObserver, *runtime.Scheme) (*unstructured.Unstructured, error)
 	identify() (string, string, schema.GroupVersionKind)

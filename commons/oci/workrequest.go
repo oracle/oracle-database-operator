@@ -48,6 +48,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/workrequests"
 )
 
+// WorkRequestService provides read operations for OCI work requests.
 type WorkRequestService interface {
 	Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
 	List(compartmentID string, resourceID string) (workrequests.ListWorkRequestsResponse, error)
@@ -58,9 +59,10 @@ type workRequestService struct {
 	workClient workrequests.WorkRequestClient
 }
 
+// NewWorkRequestService constructs an OCI work request service client wrapper.
 func NewWorkRequestService(
 	logger logr.Logger,
-	kubeClient client.Client,
+	_ client.Client,
 	provider common.ConfigurationProvider) (WorkRequestService, error) {
 
 	workClient, err := workrequests.NewWorkRequestClientWithConfigurationProvider(provider)

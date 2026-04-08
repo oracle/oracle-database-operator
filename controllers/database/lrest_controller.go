@@ -111,6 +111,7 @@ var (
 	lrestUnHealthy    = "Unhealthy"
 )
 
+// LRESTFinalizer is the finalizer used by LREST resources.
 const LRESTFinalizer = "database.oracle.com/LRESTfinalizer"
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=lrests,verbs=get;list;watch;create;update;patch;delete
@@ -246,13 +247,13 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			//r.deleteSecrets(ctx, req, lrest)
 			lrest.Status.Phase = lrestPhaseReady
 			lrest.Status.Msg = "Success"
-			case lrestPhaseReady:
-				lrest.Status.Status = true
-				if err := r.Status().Update(ctx, lrest); err != nil {
-					log.Error(err, "failed to update status for :"+lrest.Name, "err", err.Error())
-					return requeueY, nil
-				}
+		case lrestPhaseReady:
+			lrest.Status.Status = true
+			if err := r.Status().Update(ctx, lrest); err != nil {
+				log.Error(err, "failed to update status for :"+lrest.Name, "err", err.Error())
 				return requeueY, nil
+			}
+			return requeueY, nil
 		default:
 			lrest.Status.Phase = lrestPhaseInit
 			log.Info("DEFAULT:", "Name", lrest.Name, "Phase", phase, "Status", strconv.FormatBool(lrest.Status.Status))
@@ -328,9 +329,9 @@ func (r *LRESTReconciler) validateLRESTPods2(ctx context.Context, req ctrl.Reque
 	RestPort := lrest.Spec.LRESTPort
 	RestName := lrest.Name + "-lrest"
 	RestNmsp := lrest.Namespace
-	Ip := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
+	IP := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
 
-	url := "https://" + Ip + "/database/pdbs/PDB$SEED/status/"
+	url := "https://" + IP + "/database/pdbs/PDB$SEED/status/"
 	//_, err := NewCallAPIAllPdbs(r, ctx, req, lrest, url, nil, "GET")
 	_, err := NewCallAPISQL(r, ctx, req, lrest, url, nil, "GET")
 	if err != nil {
@@ -542,14 +543,14 @@ func (r *LRESTReconciler) createReplicaSetSpec(lrest *dbapi.LREST) *appsv1.Repli
 func (r *LRESTReconciler) deleteReplicaSet(req ctrl.Request, lrest *dbapi.LREST) error {
 	log := r.Log.WithValues("deleteReplicaSet", req.NamespacedName)
 
-	k_client, err := kubernetes.NewForConfig(r.Config)
+	kClient, err := kubernetes.NewForConfig(r.Config)
 	if err != nil {
 		log.Error(err, "Kubernetes Config Error")
 		return err
 	}
 
 	replicaSetName := lrest.Name + "-lrest-rs"
-	err = k_client.AppsV1().ReplicaSets(lrest.Namespace).Delete(context.TODO(), replicaSetName, metav1.DeleteOptions{})
+	err = kClient.AppsV1().ReplicaSets(lrest.Namespace).Delete(context.TODO(), replicaSetName, metav1.DeleteOptions{})
 	if err != nil {
 		log.Info("Could not delete ReplicaSet", "RS Name", replicaSetName, "err", err.Error())
 		if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
@@ -609,11 +610,11 @@ func (r *LRESTReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Reque
 			return err
 		}
 
-			lrest.Status.Phase = lrestPhaseInit
-			lrest.Status.Status = false
-			if err := r.Status().Update(ctx, lrest); err != nil {
-				return err
-			}
+		lrest.Status.Phase = lrestPhaseInit
+		lrest.Status.Status = false
+		if err := r.Status().Update(ctx, lrest); err != nil {
+			return err
+		}
 	} else {
 		// Update the RS if the value of "replicas" is changed
 		replicaSetName := lrest.Name + "-lrest-rs"
@@ -635,13 +636,13 @@ func (r *LRESTReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Reque
 				log.Error(err, "Failed to update ReplicaSet for :"+lrest.Name, "Namespace", lrest.Namespace, "Name", replicaSetName)
 				return err
 			}
-				lrest.Status.Phase = lrestPhaseValPod
-				lrest.Status.Status = false
-				if err := r.Status().Update(ctx, lrest); err != nil {
-					return err
-				}
+			lrest.Status.Phase = lrestPhaseValPod
+			lrest.Status.Status = false
+			if err := r.Status().Update(ctx, lrest); err != nil {
+				return err
 			}
 		}
+	}
 
 	return nil
 }
@@ -683,13 +684,13 @@ func (r *LRESTReconciler) createLRESTSVC(ctx context.Context, req ctrl.Request, 
 
 func (r *LRESTReconciler) createCoreService(lrest *dbapi.LREST) *corev1.Service {
 	portLrest := int32(lrest.Spec.LRESTPort)
-	svcspecIp := corev1.ServiceSpec{}
-	svcspecIp.Selector = map[string]string{"name": lrest.Name + "-lrest"}
+	svcspecIP := corev1.ServiceSpec{}
+	svcspecIP.Selector = map[string]string{"name": lrest.Name + "-lrest"}
 
 	if lrest.Spec.ClusterIP == false {
-		svcspecIp.ClusterIP = corev1.ClusterIPNone
+		svcspecIP.ClusterIP = corev1.ClusterIPNone
 	} else {
-		svcspecIp.Ports = []v1.ServicePort{
+		svcspecIP.Ports = []v1.ServicePort{
 			{
 				Protocol:   v1.ProtocolTCP,
 				Port:       443,
@@ -704,7 +705,7 @@ func (r *LRESTReconciler) createCoreService(lrest *dbapi.LREST) *corev1.Service 
 			},
 		}
 		if lrest.Spec.LoadBalancer == true {
-			svcspecIp.Type = v1.ServiceTypeLoadBalancer
+			svcspecIP.Type = v1.ServiceTypeLoadBalancer
 		}
 	}
 
@@ -716,7 +717,7 @@ func (r *LRESTReconciler) createCoreService(lrest *dbapi.LREST) *corev1.Service 
 			Name:      lrest.Name + "-lrest",
 			Namespace: lrest.Namespace,
 		},
-		Spec: svcspecIp,
+		Spec: svcspecIP,
 	}
 	// Set LREST instance as the owner and controller
 	_ = ctrl.SetControllerReference(lrest, svc, r.Scheme)
@@ -782,14 +783,14 @@ func (r *LRESTReconciler) deleteLRESTInstance(req ctrl.Request, lrest *dbapi.LRE
 
 	log := r.Log.WithValues("deleteLRESTInstance", req.NamespacedName)
 
-	k_client, err := kubernetes.NewForConfig(r.Config)
+	kClient, err := kubernetes.NewForConfig(r.Config)
 	if err != nil {
 		log.Error(err, "Kubernetes Config Error")
 	}
 
 	replicaSetName := lrest.Name + "-lrest-rs"
 
-	err = k_client.AppsV1().ReplicaSets(lrest.Namespace).Delete(context.TODO(), replicaSetName, metav1.DeleteOptions{})
+	err = kClient.AppsV1().ReplicaSets(lrest.Namespace).Delete(context.TODO(), replicaSetName, metav1.DeleteOptions{})
 	if err != nil {
 		log.Info("Could not delete ReplicaSet", "RS Name", replicaSetName, "err", err.Error())
 		if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
@@ -803,7 +804,7 @@ func (r *LRESTReconciler) deleteLRESTInstance(req ctrl.Request, lrest *dbapi.LRE
 
 	svcName := lrest.Name + "-lrest"
 
-	err = k_client.CoreV1().Services(lrest.Namespace).Delete(context.TODO(), svcName, metav1.DeleteOptions{})
+	err = kClient.CoreV1().Services(lrest.Namespace).Delete(context.TODO(), svcName, metav1.DeleteOptions{})
 	if err != nil {
 		log.Info("Could not delete Service", "Service Name", svcName, "err", err.Error())
 		if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
@@ -927,6 +928,8 @@ func (r *LRESTReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, l
   - SetupWithManager sets up the controller with the Manager.
     /************************************************************
 */
+
+// SetupWithManager sets up the LREST controller with the manager.
 func (r *LRESTReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.LREST{}).
@@ -936,7 +939,7 @@ func (r *LRESTReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				// Ignore updates to CR status in which case metadata.Generation does not change
 				return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
 			},
-			DeleteFunc: func(e event.DeleteEvent) bool {
+			DeleteFunc: func(_ event.DeleteEvent) bool {
 				// Evaluates to false if the object has been confirmed deleted.
 				//return !e.DeleteStateUnknown
 				return false
@@ -960,6 +963,7 @@ func securityContextDefineLrest() *corev1.SecurityContext {
 	}
 }
 
+// ContainerEnv builds container environment variables for LREST pods.
 func ContainerEnv(lrest *dbapi.LREST, initcnt bool) []corev1.EnvVar {
 	EnvVar := []corev1.EnvVar{
 		{
@@ -1097,6 +1101,7 @@ func appendEnvVar(envVars []corev1.EnvVar, name string, value string) []corev1.E
 	return append(envVars, newEnvVar)
 }
 
+// PodVolumes builds pod volume definitions for LREST pods.
 func PodVolumes(lrest *dbapi.LREST) []corev1.Volume {
 
 	var Volumes []corev1.Volume
@@ -1294,6 +1299,7 @@ func PodVolumes(lrest *dbapi.LREST) []corev1.Volume {
 	return Volumes
 }
 
+// DeleteCRDPdb deletes an LRPDB custom resource for a PDB.
 func (r *LRESTReconciler) DeleteCRDPdb(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB, lrest *dbapi.LREST) error {
 	log := r.Log.WithValues("DeleteCRDPdb", req.NamespacedName)
 	if controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
@@ -1316,6 +1322,7 @@ func (r *LRESTReconciler) DeleteCRDPdb(ctx context.Context, req ctrl.Request, lr
 	return nil
 }
 
+// DeletePDBS deletes managed PDB resources associated with an LREST resource.
 func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
 	log := r.Log.WithValues("DeletePDBS", req.NamespacedName)
 
@@ -1402,6 +1409,7 @@ func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lres
 	return nil
 }
 
+// SearchElementInDbList checks whether an element is present in a string list.
 func SearchElementInDbList(element string, TheList []string) bool {
 	var inthelist bool
 	inthelist = false
@@ -1414,6 +1422,7 @@ func SearchElementInDbList(element string, TheList []string) bool {
 	return inthelist
 }
 
+// SearchElementInDbList2 checks whether an element is present in an interface list.
 func SearchElementInDbList2(element string, TheList []interface{}) bool {
 	var inthelist bool
 	inthelist = false
@@ -1426,6 +1435,7 @@ func SearchElementInDbList2(element string, TheList []interface{}) bool {
 	return inthelist
 }
 
+// SelectFromVpdbs retrieves PDB information from V$PDBS through LREST.
 func (r *LRESTReconciler) SelectFromVpdbs(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) ([]interface{}, error) {
 	log := r.Log.WithValues("SelectFromVpdbs", req.NamespacedName)
 	url := "https://" + lrest.Name + "-lrest." + lrest.Namespace + ":" + strconv.Itoa(lrest.Spec.LRESTPort) + "/database/pdbs/"
@@ -1451,7 +1461,8 @@ func (r *LRESTReconciler) SelectFromVpdbs(ctx context.Context, req ctrl.Request,
 
 }
 
-func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST, dbinfo []interface{}, idx int) error {
+// LrpdbCreation creates an LRPDB resource from discovered database information.
+func (r *LRESTReconciler) LrpdbCreation(_ context.Context, req ctrl.Request, lrest *dbapi.LREST, dbinfo []interface{}, idx int) error {
 	log := r.Log.WithValues("LrpdbCreation", req.NamespacedName)
 	log.Info("Creating LRPDB for :" + dbinfo[idx].(map[string]interface{})["name"].(string))
 	var PwdProtection string
@@ -1462,7 +1473,7 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 		return err
 	}
 
-	TlsCrtecobj := &unstructured.Unstructured{
+	TLSCrtecobj := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"secret": map[string]interface{}{
 				"key":        lrest.Spec.LRESTTlsCrt.Secret.Key,
@@ -1471,7 +1482,7 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 		},
 	}
 
-	TlsCatecobj := &unstructured.Unstructured{
+	TLSCatecobj := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"secret": map[string]interface{}{
 				"key":        lrest.Spec.LRESTTlsCat.Secret.Key,
@@ -1480,7 +1491,7 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 		},
 	}
 
-	TlsKeyecobj := &unstructured.Unstructured{
+	TLSKeyecobj := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"secret": map[string]interface{}{
 				"key":        lrest.Spec.LRESTTlsKey.Secret.Key,
@@ -1556,9 +1567,9 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 				"cdbResName":              lrest.Name,
 				"cdbName":                 lrest.Spec.LRESTName,
 				"totalSize":               TotSzStr,
-				"lrpdbTlsCrt":             TlsCrtecobj,
-				"lrpdbTlsCat":             TlsCatecobj,
-				"lrpdbTlsKey":             TlsKeyecobj,
+				"lrpdbTlsCrt":             TLSCrtecobj,
+				"lrpdbTlsCat":             TLSCatecobj,
+				"lrpdbTlsKey":             TLSKeyecobj,
 				"cdbPrvKey":               CdbPrvKeyObj,
 				"webServerUser":           WebUseObj,
 				"webServerPwd":            WebPasObj,
@@ -1614,6 +1625,7 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 	return nil
 }
 
+// PdbAutoDiscover discovers PDBs and reconciles matching LRPDB resources.
 func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
 	log := r.Log.WithValues("PdbAutoDiscover", req.NamespacedName)
 	/* LIST OF CRD */
@@ -1714,8 +1726,8 @@ func (r *LRESTReconciler) lrestHealthCheck(ctx context.Context, req ctrl.Request
 	RestPort := lrest.Spec.LRESTPort
 	RestName := lrest.Name + "-lrest"
 	RestNmsp := lrest.Namespace
-	Ip := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
-	_, err := net.DialTimeout("tcp", Ip, time.Duration(300)*time.Millisecond)
+	IP := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
+	_, err := net.DialTimeout("tcp", IP, time.Duration(300)*time.Millisecond)
 
 	if err != nil {
 		log.Error(err, "net.DialTimeout", "err", err.Error())
@@ -1732,7 +1744,7 @@ func (r *LRESTReconciler) lrestHealthCheck(ctx context.Context, req ctrl.Request
 	//  We can check the pdb$seed status to verify that cdb is aliave
 	//  in the future we can expose a rest call for OCIPing
 
-	url := "https://" + Ip + "/database/pdbs/PDB$SEED/status/"
+	url := "https://" + IP + "/database/pdbs/PDB$SEED/status/"
 	//_, err = NewCallAPIAllPdbs(r, ctx, req, lrest, url, nil, "GET")
 	_, err = NewCallAPISQL(r, ctx, req, lrest, url, nil, "GET")
 	if err != nil {
@@ -1751,6 +1763,7 @@ func (r *LRESTReconciler) lrestHealthCheck(ctx context.Context, req ctrl.Request
 
 }
 
+// ResetCredential rotates and reapplies credentials for managed resources.
 func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
 	log := r.Log.WithValues("ResetCredential", req.NamespacedName)
 
@@ -1815,8 +1828,8 @@ func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request,
 	RestPort := lrest.Spec.LRESTPort
 	RestName := lrest.Name + "-lrest"
 	RestNmsp := lrest.Namespace
-	Ip := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
-	url := "https://" + Ip + "/database/lrest/StopRestServer/"
+	IP := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
+	url := "https://" + IP + "/database/lrest/StopRestServer/"
 	values := map[string]string{
 		"action": "SHUTDOWN",
 	}
@@ -1974,7 +1987,8 @@ func getGenericSecret3(intr interface{},
 
 /* CheckErr(err, r, ctx , req , lrcrd , debug, nil)*/
 
-func CheckErr(err error, intr interface{}, ctx context.Context, req ctrl.Request, lrcrd interface{}, spare interface{}) bool {
+// CheckErr centralizes error reporting and event emission for LREST/LRPDB flows.
+func CheckErr(err error, intr interface{}, _ context.Context, req ctrl.Request, lrcrd interface{}, _ interface{}) bool {
 
 	var r logr.Logger
 	var e record.EventRecorder

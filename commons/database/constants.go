@@ -418,7 +418,7 @@ const StatusUnknown string = "Unknown"
 
 const ValueUnavailable string = "Unavailable"
 
-const NoExternalIp string = "Node ExternalIP unavailable"
+const NoExternalIP string = "Node ExternalIP unavailable"
 
 const WalletPwdCMD string = "export WALLET_PWD=\"`openssl rand -base64 8`1\""
 

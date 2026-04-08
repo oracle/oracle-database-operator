@@ -120,7 +120,7 @@ func (r *AutonomousContainerDatabaseReconciler) eventFilterPredicate() predicate
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.6.4/pkg/reconcile
-func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *AutonomousContainerDatabaseReconciler) Reconcile(_ context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	var err error
@@ -235,7 +235,7 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 func (r *AutonomousContainerDatabaseReconciler) setupOCIClients(logger logr.Logger, acd *dbv4.AutonomousContainerDatabase) error {
 	var err error
 
-	authData := oci.ApiKeyAuth{
+	authData := oci.APIKeyAuth{
 		ConfigMapName: acd.Spec.OCIConfig.ConfigMapName,
 		SecretName:    acd.Spec.OCIConfig.SecretName,
 		Namespace:     acd.GetNamespace(),
@@ -281,12 +281,11 @@ func (r *AutonomousContainerDatabaseReconciler) manageError(logger logr.Logger, 
 		l.Error(finalIssue, "UpdateFailed")
 
 		return emptyResult, nil
-	} else {
-		// Send event
-		r.Recorder.Event(acd, corev1.EventTypeWarning, "CreateFailed", issue.Error())
-
-		return emptyResult, issue
 	}
+	// Send event
+	r.Recorder.Event(acd, corev1.EventTypeWarning, "CreateFailed", issue.Error())
+
+	return emptyResult, issue
 }
 
 // validateLifecycleState gets and validates the current lifecycleState
@@ -422,21 +421,20 @@ func (r *AutonomousContainerDatabaseReconciler) validateOperation(
 
 			l.Info("AutonomousContainerDatabaseOCID updated; exit reconcile")
 			return true, emptyResult, nil
-		} else {
-			l.Info("Bind operation")
-
-			_, err := r.getACD(logger, acd)
-			if err != nil {
-				return false, emptyResult, err
-			}
-
-			if err := r.updateCR(acd); err != nil {
-				return false, emptyResult, err
-			}
-
-			l.Info("spec updated; exit reconcile")
-			return false, emptyResult, nil
 		}
+		l.Info("Bind operation")
+
+		_, err := r.getACD(logger, acd)
+		if err != nil {
+			return false, emptyResult, err
+		}
+
+		if err := r.updateCR(acd); err != nil {
+			return false, emptyResult, err
+		}
+
+		l.Info("spec updated; exit reconcile")
+		return false, emptyResult, nil
 	}
 
 	// If it's not CREATE or BIND opertaion, then UPDATE or SYNC
@@ -475,11 +473,9 @@ func (r *AutonomousContainerDatabaseReconciler) validateOperation(
 
 					l.Info("spec updated; exit reconcile")
 					return false, emptyResult, nil
-
-				} else {
-					l.Info("reconcile queued")
-					return true, requeueResult, nil
 				}
+				l.Info("reconcile queued")
+				return true, requeueResult, nil
 			}
 		}
 
@@ -490,25 +486,24 @@ func (r *AutonomousContainerDatabaseReconciler) validateOperation(
 
 		return false, emptyResult, nil
 
-	} else {
-		l.Info("No operation specified; sync the resource")
+	}
+	l.Info("No operation specified; sync the resource")
 
-		// The user doesn't change the spec and the controller should pull the spec from the OCI.
-		specChanged, err := r.getACD(logger, acd)
-		if err != nil {
+	// The user doesn't change the spec and the controller should pull the spec from the OCI.
+	specChanged, err := r.getACD(logger, acd)
+	if err != nil {
+		return false, emptyResult, err
+	}
+
+	if specChanged {
+		l.Info("The local spec doesn't match the oci's spec; update the CR")
+		if err := r.updateCR(acd); err != nil {
 			return false, emptyResult, err
 		}
 
-		if specChanged {
-			l.Info("The local spec doesn't match the oci's spec; update the CR")
-			if err := r.updateCR(acd); err != nil {
-				return false, emptyResult, err
-			}
-
-			return true, emptyResult, nil
-		}
-		return false, emptyResult, nil
+		return true, emptyResult, nil
 	}
+	return false, emptyResult, nil
 }
 
 func (r *AutonomousContainerDatabaseReconciler) updateCR(acd *dbv4.AutonomousContainerDatabase) error {

@@ -27,14 +27,14 @@ func mergeStringMaps(base map[string]string, overlay map[string]string) map[stri
 	return out
 }
 
-func resolveShardServiceAnnotations(instance *databasev4.ShardingDatabase, spec databasev4.ShardSpec, svcType string) map[string]string {
+func resolveShardServiceAnnotations(_ *databasev4.ShardingDatabase, spec databasev4.ShardSpec, svcType string) map[string]string {
 	if svcType == shardServiceTypeExternal {
 		return cloneStringMap(spec.ExternalServiceAnnotations)
 	}
 	return cloneStringMap(spec.ServiceAnnotations)
 }
 
-func resolveCatalogServiceAnnotations(instance *databasev4.ShardingDatabase, spec databasev4.CatalogSpec, svcType string) map[string]string {
+func resolveCatalogServiceAnnotations(_ *databasev4.ShardingDatabase, spec databasev4.CatalogSpec, svcType string) map[string]string {
 	if svcType == shardServiceTypeExternal {
 		return cloneStringMap(spec.ExternalServiceAnnotations)
 	}

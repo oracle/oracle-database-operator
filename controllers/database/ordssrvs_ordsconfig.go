@@ -65,6 +65,7 @@ func readScript(ctx context.Context, filePath string) string {
 	return string(scriptData)
 }
 
+// ConfigMapDefine builds the ORDS config map for a given pool index.
 func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, configMapName string, poolIndex int) *corev1.ConfigMap {
 
 	//log := ctrllog.FromContext(ctx).WithName("ConfigMapDefine")

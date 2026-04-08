@@ -1,3 +1,4 @@
+// Package dataguard defines reusable workflow steps for standby and broker setup.
 package dataguard
 
 import "fmt"
@@ -6,16 +7,26 @@ import "fmt"
 type WorkflowStep string
 
 const (
-	StepEnsureBrokerFilesAndStart     WorkflowStep = "ensure_broker_files_and_start"
-	StepRunPrimaryPrerequisites       WorkflowStep = "run_primary_prerequisites"
-	StepEnsureStandbyRedoLogs         WorkflowStep = "ensure_standby_redo_logs"
+	// StepEnsureBrokerFilesAndStart prepares broker files and starts broker processes.
+	StepEnsureBrokerFilesAndStart WorkflowStep = "ensure_broker_files_and_start"
+	// StepRunPrimaryPrerequisites applies prerequisites on the primary.
+	StepRunPrimaryPrerequisites WorkflowStep = "run_primary_prerequisites"
+	// StepEnsureStandbyRedoLogs ensures standby redo logs are present.
+	StepEnsureStandbyRedoLogs WorkflowStep = "ensure_standby_redo_logs"
+	// StepConfigurePrimaryRedoTransport configures primary redo transport to standby.
 	StepConfigurePrimaryRedoTransport WorkflowStep = "configure_primary_redo_transport"
-	StepEnsureStandbyApplyRunning     WorkflowStep = "ensure_standby_apply_running"
+	// StepEnsureStandbyApplyRunning verifies standby apply is running.
+	StepEnsureStandbyApplyRunning WorkflowStep = "ensure_standby_apply_running"
+	// StepForceArchiveAndCheckTransport forces archive and validates transport.
 	StepForceArchiveAndCheckTransport WorkflowStep = "force_archive_and_check_transport"
-	StepCreateDgBrokerConfig          WorkflowStep = "create_dg_broker_config"
-	StepAddStandbyToDgBrokerConfig    WorkflowStep = "add_standby_to_dg_broker_config"
-	StepSetDgConnectIdentifiers       WorkflowStep = "set_dg_connect_identifiers"
-	StepEnableAndValidateDgBroker     WorkflowStep = "enable_and_validate_dg_broker"
+	// StepCreateDgBrokerConfig creates the Data Guard broker configuration.
+	StepCreateDgBrokerConfig WorkflowStep = "create_dg_broker_config"
+	// StepAddStandbyToDgBrokerConfig adds standby to broker config.
+	StepAddStandbyToDgBrokerConfig WorkflowStep = "add_standby_to_dg_broker_config"
+	// StepSetDgConnectIdentifiers sets DG connect identifiers.
+	StepSetDgConnectIdentifiers WorkflowStep = "set_dg_connect_identifiers"
+	// StepEnableAndValidateDgBroker enables and validates broker.
+	StepEnableAndValidateDgBroker WorkflowStep = "enable_and_validate_dg_broker"
 )
 
 // StandbyDGBrokerWorkflow abstracts execution details (SQL/scripts/tools) behind semantic steps.

@@ -55,7 +55,7 @@ const (
 	OraEnvFileMount             = "/mnt/conf.d"
 	OraSubDomain                = "racnode"
 	OraEnvFile                  = "/etc/rac_env_vars"
-	OraRacSshSecretMount        = "/mnt/.ssh"
+	OraRacSSHSecretMount        = "/mnt/.ssh"
 	OraGiRsp                    = "/mnt/gridrsp"
 	OraDbRsp                    = "/mnt/dbrsp"
 	OraEnvVars                  = "/etc/rac_env_vars"
@@ -91,7 +91,7 @@ var tafPolicy = [...]string{"NONE", "BASIC", "PRECONNECT"}
 var serviceRole = [...]string{"PRIMARY", "PHYSICAL_STANDBY", "LOGICAL_STANDBY", "SNAPSHOT_STANDBY"}
 var servicePolicy = [...]string{"AUTOMATIC", "MANUAL"}
 var serviceResetState = [...]string{"NONE", "LEVEL1"}
-var ServiceFailoverType = [...]string{"NONE", "SESSION", "SELECT", "TRANSACTION", "AUTO"}
+var serviceFailoverType = [...]string{"NONE", "SESSION", "SELECT", "TRANSACTION", "AUTO"}
 
 /// ====== Getter Function Begins here ======= ///
 
@@ -116,7 +116,7 @@ func GetServiceResetState() []string {
 }
 
 func GetServiceFailoverType() []string {
-	return ServiceFailoverType[:]
+	return serviceFailoverType[:]
 }
 
 /// ====== Getter Function Ends here ======= ///

@@ -48,6 +48,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// NewOwnerReference builds a single owner reference for the provided object.
 func NewOwnerReference(owner client.Object) []metav1.OwnerReference {
 	ownerRef := []metav1.OwnerReference{
 		{
@@ -60,6 +61,7 @@ func NewOwnerReference(owner client.Object) []metav1.OwnerReference {
 	return ownerRef
 }
 
+// CombineErrors aggregates multiple errors into one Kubernetes util aggregate.
 func CombineErrors(errs ...error) error {
 	return utilErrors.NewAggregate(errs)
 }
@@ -74,6 +76,7 @@ type patchValue struct {
 	Value interface{} `json:"value"`
 }
 
+// Patch applies a JSON patch replace operation on a single path/value pair.
 func Patch(kubeClient client.Client, obj client.Object, path string, value interface{}) error {
 	payload := []patchValue{{
 		Op:    "replace",
@@ -85,10 +88,12 @@ func Patch(kubeClient client.Client, obj client.Object, path string, value inter
 	return kubeClient.Patch(context.TODO(), obj, patch)
 }
 
+// Int64Pointer returns a pointer to the given int64 value.
 func Int64Pointer(d int64) *int64 {
 	return &d
 }
 
+// BoolPointer returns a pointer to the given bool value.
 func BoolPointer(d bool) *bool {
 	return &d
 }

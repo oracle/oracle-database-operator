@@ -75,7 +75,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// SingleInstanceDatabaseReconciler reconciles a SingleInstanceDatabase object
+// SingleInstanceDatabaseReconciler reconciles a SingleInstanceDatabase object.
 type SingleInstanceDatabaseReconciler struct {
 	client.Client
 	Log      logr.Logger
@@ -92,15 +92,22 @@ type sidbPhaseContext struct {
 	futureRequeue           ctrl.Result
 }
 
-// To requeue after 15 secs allowing graceful state changes
+// To requeue after 15 secs allowing graceful state changes.
 var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
 
 const singleInstanceDatabaseFinalizer = "database.oracle.com/singleinstancedatabasefinalizer"
 
+// ErrNotPhysicalStandby indicates the database role is not PHYSICAL_STANDBY.
 var ErrNotPhysicalStandby error = errors.New("database not in PHYSICAL_STANDBY role")
+
+// ErrDBNotConfiguredWithDG indicates Data Guard is not configured on the database.
 var ErrDBNotConfiguredWithDG error = errors.New("database is not configured with a dataguard configuration")
+
+// ErrFSFOEnabledForDGConfig indicates FSFO is enabled for the Data Guard configuration.
 var ErrFSFOEnabledForDGConfig error = errors.New("database is configured with dataguard and FSFO enabled")
+
+// ErrAdminPasswordSecretNotFound indicates the admin password secret could not be found.
 var ErrAdminPasswordSecretNotFound error = errors.New("Admin password secret for the database not found")
 
 const sidbInitParamUnitBytes = int64(1024 * 1024)
@@ -324,7 +331,7 @@ func getTcpsListenerPort(m *dbapi.SingleInstanceDatabase) int {
 	return m.Spec.TcpsListenerPort
 }
 
-func getTcpsTlsSecret(m *dbapi.SingleInstanceDatabase) string {
+func getTcpsTLSSecret(m *dbapi.SingleInstanceDatabase) string {
 	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && strings.TrimSpace(m.Spec.Security.TCPS.TlsSecret) != "" {
 		return strings.TrimSpace(m.Spec.Security.TCPS.TlsSecret)
 	}
@@ -1318,14 +1325,14 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				// Secret not found
-					r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
-					r.Log.Info(err.Error())
-					m.Status.Status = dbcommons.StatusError
-					if updateErr := r.Status().Update(ctx, m); updateErr != nil {
-						r.Log.Error(updateErr, "failed to update status after secret not found")
-					}
-					return requeueY, err
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
+				r.Log.Info(err.Error())
+				m.Status.Status = dbcommons.StatusError
+				if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+					r.Log.Error(updateErr, "failed to update status after secret not found")
 				}
+				return requeueY, err
+			}
 			r.Log.Error(err, "Unable to get the secret. Requeueing..")
 			return requeueY, err
 		}
@@ -1527,6 +1534,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	return requeueN, nil
 }
 
+// ValidateRestoreSpecRefs validates restore secret and config references.
 func ValidateRestoreSpecRefs(r *SingleInstanceDatabaseReconciler, m *dbapi.SingleInstanceDatabase, ctx context.Context) error {
 	restore := getRestoreSpec(m)
 	if restore == nil {
@@ -1777,14 +1785,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}, {
 					Name: "tls-secret-vol",
 					VolumeSource: func() corev1.VolumeSource {
-						tcpsTlsSecret := getTcpsTlsSecret(m)
-						if tcpsTlsSecret == "" {
+						tcpsTLSSecret := getTcpsTLSSecret(m)
+						if tcpsTLSSecret == "" {
 							return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
 						}
 						/* tls-secret is specified */
 						return corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
-								SecretName: tcpsTlsSecret,
+								SecretName: tcpsTLSSecret,
 								Optional:   func() *bool { i := true; return &i }(),
 								Items: []corev1.KeyToPath{
 									{
@@ -2097,13 +2105,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						Exec: &corev1.ExecAction{
 							Command: func() []string {
 								// For patching use cases shutdown immediate is needed especially for standby databases
-								shutdown_mode := "immediate"
+								shutdownMode := "immediate"
 								if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
 									// express/free do not support patching
 									// To terminate any zombie instances left over due to forced termination
-									shutdown_mode = "abort"
+									shutdownMode = "abort"
 								}
-								return []string{"/bin/sh", "-c", "/bin/echo -en 'shutdown " + shutdown_mode + ";\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"}
+								return []string{"/bin/sh", "-c", "/bin/echo -en 'shutdown " + shutdownMode + ";\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"}
 							}(),
 						},
 					},
@@ -2163,7 +2171,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							SubPath:   adminPwdSecretFileName,
 						})
 					}
-					if getTcpsTlsSecret(m) != "" {
+					if getTcpsTLSSecret(m) != "" {
 						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: getTcpsCertsLocation(m),
 							ReadOnly:  true,
@@ -2898,8 +2906,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforCustomScriptsVol
 			},
 		}
 
-			// Set SingleInstanceDatabase instance as the owner and controller
-			_ = ctrl.SetControllerReference(m, pvc, r.Scheme)
+		// Set SingleInstanceDatabase instance as the owner and controller
+		_ = ctrl.SetControllerReference(m, pvc, r.Scheme)
 
 		log.Info("Creating a new PVC", "PVC.Namespace", pvc.Namespace, "PVC.Name", pvc.Name)
 		err = r.Create(ctx, pvc)
@@ -3464,15 +3472,15 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	}
 
 	// Recreate new pods only after earlier pods are terminated completely
-		for i := 0; i < len(podsMarkedToBeDeleted); i++ {
-			r.Log.Info("Force deleting pod ", "name", podsMarkedToBeDeleted[i].Name, "phase", podsMarkedToBeDeleted[i].Status.Phase)
-			var gracePeriodSeconds int64 = 0
-			policy := metav1.DeletePropagationForeground
-			if err := r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
-				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
-				r.Log.Error(err, "Failed to force delete pod", "name", podsMarkedToBeDeleted[i].Name)
-			}
+	for i := 0; i < len(podsMarkedToBeDeleted); i++ {
+		r.Log.Info("Force deleting pod ", "name", podsMarkedToBeDeleted[i].Name, "phase", podsMarkedToBeDeleted[i].Status.Phase)
+		var gracePeriodSeconds int64 = 0
+		policy := metav1.DeletePropagationForeground
+		if err := r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
+			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
+			r.Log.Error(err, "Failed to force delete pod", "name", podsMarkedToBeDeleted[i].Name)
 		}
+	}
 
 	if readyPod.Name != "" {
 		allAvailable = append(allAvailable, readyPod)
@@ -3533,15 +3541,15 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 						continue
 					}
 					r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
-						if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
-							r.Log.Info("Deleting pod", "name", allAvailable[i].Name)
-							var gracePeriodSeconds int64 = 0
-							policy := metav1.DeletePropagationForeground
-							if err := r.Delete(ctx, &allAvailable[i], &client.DeleteOptions{
-								GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
-								r.Log.Error(err, "Failed to delete pod in image pull backoff", "name", allAvailable[i].Name)
-							}
+					if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
+						r.Log.Info("Deleting pod", "name", allAvailable[i].Name)
+						var gracePeriodSeconds int64 = 0
+						policy := metav1.DeletePropagationForeground
+						if err := r.Delete(ctx, &allAvailable[i], &client.DeleteOptions{
+							GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
+							r.Log.Error(err, "Failed to delete pod in image pull backoff", "name", allAvailable[i].Name)
 						}
+					}
 				}
 				return requeueY, err
 			}
@@ -3574,12 +3582,12 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		oldAvailable = append(oldAvailable, readyPod)
 	}
 
-		if m.Status.Replicas == 1 {
-			if _, err := r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0); err != nil {
-				log.Error(err, "failed to delete old pods during image update")
-				return requeueY, err
-			}
+	if m.Status.Replicas == 1 {
+		if _, err := r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0); err != nil {
+			log.Error(err, "failed to delete old pods during image update")
+			return requeueY, err
 		}
+	}
 
 	// call FindPods() to find pods of newer version . if running , delete the older version replicas.
 	readyPod, newReplicasFound, newAvailable, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
@@ -3617,15 +3625,15 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 					continue
 				}
 				r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
-					if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
-						r.Log.Info("Deleting pod", "name", newAvailable[i].Name)
-						var gracePeriodSeconds int64 = 0
-						policy := metav1.DeletePropagationForeground
-						if err := r.Delete(ctx, &newAvailable[i], &client.DeleteOptions{
-							GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
-							r.Log.Error(err, "Failed to delete pod in image pull backoff", "name", newAvailable[i].Name)
-						}
+				if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
+					r.Log.Info("Deleting pod", "name", newAvailable[i].Name)
+					var gracePeriodSeconds int64 = 0
+					policy := metav1.DeletePropagationForeground
+					if err := r.Delete(ctx, &newAvailable[i], &client.DeleteOptions{
+						GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy}); err != nil {
+						r.Log.Error(err, "Failed to delete pod in image pull backoff", "name", newAvailable[i].Name)
 					}
+				}
 			}
 			return requeueY, errors.New(eventMsg)
 		}
@@ -3744,15 +3752,15 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	r.Log.Info("Querying the database secret ...")
 	secret := &corev1.Secret{}
 	err = r.Get(ctx, types.NamespacedName{Name: GetAdminPasswordSecretName(m), Namespace: m.Namespace}, secret)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				r.Log.Info("Secret not found")
-				m.Status.Status = dbcommons.StatusError
-				if updateErr := r.Status().Update(ctx, m); updateErr != nil {
-					r.Log.Error(updateErr, "failed to update status after secret not found")
-				}
-				return requeueY, nil
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			r.Log.Info("Secret not found")
+			m.Status.Status = dbcommons.StatusError
+			if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+				r.Log.Error(updateErr, "failed to update status after secret not found")
 			}
+			return requeueY, nil
+		}
 		r.Log.Error(err, "Unable to get the secret. Requeueing..")
 		return requeueY, nil
 	}
@@ -3815,7 +3823,7 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 			log.Error(err, "Failed to create new "+m.Name+" POD", "pod.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			return requeueY, err
 		}
-		m.Status.Replicas += 1
+		m.Status.Replicas++
 		if firstPod {
 			log.Info("Requeue for first pod to get to running state", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			return requeueY, err
@@ -3891,12 +3899,12 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 			delOpts.PropagationPolicy = &policy
 		}
 		err := r.Delete(ctx, &availablePod, delOpts)
-		noDeleted += 1
+		noDeleted++
 		if err != nil {
 			r.Log.Error(err, "Failed to delete existing POD", "POD.Name", availablePod.Name)
 			// Don't requeue
 		} else {
-			m.Status.Replicas -= 1
+			m.Status.Replicas--
 		}
 	}
 
@@ -4105,28 +4113,28 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
 	eventReason := "Configuring TCPS"
 	tcpsEnabled := getTcpsEnabled(m)
-	tcpsTlsSecret := getTcpsTlsSecret(m)
+	tcpsTLSSecret := getTcpsTLSSecret(m)
 	tcpsCertRenewInterval := getTcpsCertRenewInterval(m)
 
 	if (tcpsEnabled) &&
 		((!m.Status.IsTcpsEnabled) || // TCPS Enabled from a TCP state
-			(tcpsTlsSecret != "" && m.Status.TcpsTlsSecret == "") || // TCPS Secret is added in spec
-			(tcpsTlsSecret == "" && m.Status.TcpsTlsSecret != "") || // TCPS Secret is removed in spec
-			(tcpsTlsSecret != "" && m.Status.TcpsTlsSecret != "" && tcpsTlsSecret != m.Status.TcpsTlsSecret)) { //TCPS secret is changed
+			(tcpsTLSSecret != "" && m.Status.TcpsTlsSecret == "") || // TCPS Secret is added in spec
+			(tcpsTLSSecret == "" && m.Status.TcpsTlsSecret != "") || // TCPS Secret is removed in spec
+			(tcpsTLSSecret != "" && m.Status.TcpsTlsSecret != "" && tcpsTLSSecret != m.Status.TcpsTlsSecret)) { //TCPS secret is changed
 
 		// Set status to Updating, except when an error has been thrown from configTCPS script
-			if m.Status.Status != dbcommons.StatusError {
-				m.Status.Status = dbcommons.StatusUpdating
-			}
-			if err := r.Status().Update(ctx, m); err != nil {
-				return requeueY, err
-			}
+		if m.Status.Status != dbcommons.StatusError {
+			m.Status.Status = dbcommons.StatusUpdating
+		}
+		if err := r.Status().Update(ctx, m); err != nil {
+			return requeueY, err
+		}
 
 		eventMsg := "Enabling TCPS in the database..."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
 		var TcpsCommand = dbcommons.EnableTcpsCMD
-		if tcpsTlsSecret != "" { // case when tls secret is either added or changed
+		if tcpsTLSSecret != "" { // case when tls secret is either added or changed
 			tcpsCertsLocation := getTcpsCertsLocation(m)
 			TcpsCommand = "export TCPS_CERTS_LOCATION='" + tcpsCertsLocation + "' && " + dbcommons.EnableTcpsCMD
 
@@ -4169,10 +4177,10 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
 		m.Status.IsTcpsEnabled = true
 		m.Status.ClientWalletLoc = fmt.Sprintf(dbcommons.ClientWalletLocation, m.Spec.Sid)
-		// tcpsTlsSecret can be empty or non-empty
+		// tcpsTLSSecret can be empty or non-empty
 		// Store secret name in case of tls-secret addition or change, otherwise would be ""
-		if tcpsTlsSecret != "" {
-			m.Status.TcpsTlsSecret = tcpsTlsSecret
+		if tcpsTLSSecret != "" {
+			m.Status.TcpsTlsSecret = tcpsTLSSecret
 		} else {
 			m.Status.TcpsTlsSecret = ""
 		}
@@ -4637,15 +4645,15 @@ func (r *SingleInstanceDatabaseReconciler) updateSidbStatus(sidb *dbapi.SingleIn
 	sidb.Status.ForceLogging = strconv.FormatBool(forceLoggingStatus)
 	sidb.Status.FlashBack = strconv.FormatBool(flashBackStatus)
 
-	cpu_count, pga_aggregate_target, processes, sga_target, err := dbcommons.CheckDBInitParams(sidbReadyPod, r, r.Config, ctx, req)
+	cpuCount, pgaAggregateTarget, processes, sgaTarget, err := dbcommons.CheckDBInitParams(sidbReadyPod, r, r.Config, ctx, req)
 	if err != nil {
 		return err
 	}
 	sidbInitParams := dbapi.SingleInstanceDatabaseInitParams{
-		SgaTarget:          sga_target,
-		PgaAggregateTarget: pga_aggregate_target,
+		SgaTarget:          sgaTarget,
+		PgaAggregateTarget: pgaAggregateTarget,
 		Processes:          processes,
-		CpuCount:           cpu_count,
+		CpuCount:           cpuCount,
 	}
 	// log.Info("GetInitParamsSQL Output:" + out)
 
@@ -4854,19 +4862,19 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 
 	if singleInstanceDatabase.Spec.ConvertToSnapshotStandby {
 		// Convert a PHYSICAL_STANDBY -> SNAPSHOT_STANDBY
-			if singleInstanceDatabase.Status.Status != dbcommons.StatusPending {
-				singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
-			}
+		if singleInstanceDatabase.Status.Status != dbcommons.StatusPending {
+			singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
+		}
 
-			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
-				return requeueY, err
+		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+			return requeueY, err
+		}
+		if err := convertPhysicalStdToSnapshotStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
+			singleInstanceDatabase.Status.Status = dbcommons.StatusPending
+			if updateErr := r.Status().Update(ctx, &singleInstanceDatabase); updateErr != nil {
+				log.Error(updateErr, "failed to update status after conversion failure")
 			}
-			if err := convertPhysicalStdToSnapshotStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
-				singleInstanceDatabase.Status.Status = dbcommons.StatusPending
-				if updateErr := r.Status().Update(ctx, &singleInstanceDatabase); updateErr != nil {
-					log.Error(updateErr, "failed to update status after conversion failure")
-				}
-				switch err {
+			switch err {
 			case ErrNotPhysicalStandby:
 				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Conversion to Snapshot Standby Not allowed", "Database not in physical standby role")
 				log.Info("Error: Conversion to Snapshot Standby not allowed as database not in physical standby role")
@@ -4896,18 +4904,18 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 		sidbRole, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
 		if err != nil {
 			return requeueN, err
-			}
-			log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
-			singleInstanceDatabase.Status.Role = sidbRole
-			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
-				return requeueY, err
-			}
-		} else {
-			// Convert a SNAPSHOT_STANDBY -> PHYSICAL_STANDBY
-			singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
-			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
-				return requeueY, err
-			}
+		}
+		log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
+		singleInstanceDatabase.Status.Role = sidbRole
+		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+			return requeueY, err
+		}
+	} else {
+		// Convert a SNAPSHOT_STANDBY -> PHYSICAL_STANDBY
+		singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
+		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+			return requeueY, err
+		}
 		if err := convertSnapshotStdToPhysicalStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
 			switch err {
 			default:
@@ -4921,13 +4929,13 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 		sidbRole, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
 		if err != nil {
 			return requeueN, err
-			}
-			log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
-			singleInstanceDatabase.Status.Role = sidbRole
-			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
-				return requeueY, err
-			}
 		}
+		log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
+		singleInstanceDatabase.Status.Role = sidbRole
+		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+			return requeueY, err
+		}
+	}
 
 	return requeueN, nil
 }
@@ -5038,6 +5046,7 @@ func convertSnapshotStdToPhysicalStdDB(r *SingleInstanceDatabaseReconciler, sing
 //	SetupWithManager sets up the controller with the Manager
 //
 // #############################################################################
+// SetupWithManager sets up the SingleInstanceDatabase controller with the manager.
 func (r *SingleInstanceDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.SingleInstanceDatabase{}).
@@ -5052,6 +5061,7 @@ func (r *SingleInstanceDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) er
 //	Check primary database status
 //
 // #############################################################################
+// CheckPrimaryDatabaseStatus validates that the primary database is in READY status.
 func CheckPrimaryDatabaseStatus(p *dbapi.SingleInstanceDatabase) error {
 
 	if p.Status.Status != dbcommons.StatusReady {
@@ -5065,6 +5075,7 @@ func CheckPrimaryDatabaseStatus(p *dbapi.SingleInstanceDatabase) error {
 //	Check if refered database is the primary database
 //
 // #############################################################################
+// CheckDatabaseRoleAsPrimary validates that the referenced database role is PRIMARY.
 func CheckDatabaseRoleAsPrimary(p *dbapi.SingleInstanceDatabase) error {
 
 	if strings.ToUpper(p.Status.Role) != "PRIMARY" {
@@ -5078,6 +5089,7 @@ func CheckDatabaseRoleAsPrimary(p *dbapi.SingleInstanceDatabase) error {
 //	Get ready pod for the singleinstancedatabase resource
 //
 // #############################################################################
+// GetDatabaseReadyPod returns a ready database pod for the given SIDB.
 func GetDatabaseReadyPod(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (corev1.Pod, error) {
 
 	dbReadyPod, _, _, _, err := dbcommons.FindPods(r, d.Spec.Image.Version,
@@ -5091,6 +5103,7 @@ func GetDatabaseReadyPod(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx c
 //	Get admin password for singleinstancedatabase
 //
 // #############################################################################
+// GetDatabaseAdminPassword reads the admin password from the configured secret.
 func GetDatabaseAdminPassword(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx context.Context) (string, error) {
 
 	adminPasswordSecret := &corev1.Secret{}
@@ -5108,6 +5121,7 @@ func GetDatabaseAdminPassword(r client.Reader, d *dbapi.SingleInstanceDatabase, 
 //	Validate primary singleinstancedatabase admin password
 //
 // #############################################################################
+// ValidatePrimaryDatabaseAdminPassword validates SYS admin password against the primary database.
 func ValidatePrimaryDatabaseAdminPassword(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase,
 	adminPassword string, ctx context.Context, req ctrl.Request) error {
 
@@ -5139,6 +5153,7 @@ func ValidatePrimaryDatabaseAdminPassword(r *SingleInstanceDatabaseReconciler, p
 //	Validate refered primary database db params are all enabled
 //
 // #############################################################################
+// ValidateDatabaseConfiguration ensures required DB modes are enabled for Data Guard.
 func ValidateDatabaseConfiguration(p *dbapi.SingleInstanceDatabase) error {
 	var missingModes []string
 	if p.Status.ArchiveLog == "false" {
@@ -5161,6 +5176,7 @@ func ValidateDatabaseConfiguration(p *dbapi.SingleInstanceDatabase) error {
 //	Validate refered primary database for standby sidb creation
 //
 // #############################################################################
+// ValidatePrimaryDatabaseForStandbyCreation validates primary readiness for standby creation.
 func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
@@ -5217,6 +5233,7 @@ func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconcil
 //	Get total database pods for singleinstancedatabase
 //
 // #############################################################################
+// GetTotalDatabasePods returns the total number of database pods for the SIDB.
 func GetTotalDatabasePods(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (int, error) {
 	_, totalPods, _, _, err := dbcommons.FindPods(r, d.Spec.Image.Version,
 		d.Spec.Image.PullFrom, d.Name, d.Namespace, ctx, req)
@@ -5333,6 +5350,7 @@ func resolvePeerAliasSettings(owner *dbapi.SingleInstanceDatabase, defaultAlias,
 //	Set tns names for primary database for dataguard configuraion
 //
 // #############################################################################
+// SetupTnsNamesPrimaryForDG configures primary tnsnames alias entries for Data Guard.
 func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
 	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	tnsFile := getTnsFilePathBySID(p.Spec.Sid)
@@ -5345,6 +5363,7 @@ func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.Sin
 //	Restarting listners in database
 //
 // #############################################################################
+// RestartListenerInDatabase restarts the database listener inside the target pod.
 func RestartListenerInDatabase(r *SingleInstanceDatabaseReconciler, primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	r.Log.Info("Restarting listener in the database through pod", "primary database pod name", primaryReadyPod.Name)
 	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "",
@@ -5362,6 +5381,7 @@ func RestartListenerInDatabase(r *SingleInstanceDatabaseReconciler, primaryReady
 //	Setup primary listener for dataguard configuration
 //
 // #############################################################################
+// SetupListenerPrimaryForDG updates primary listener configuration for Data Guard.
 func SetupListenerPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
 	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 
@@ -5398,6 +5418,7 @@ func SetupListenerPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.Sin
 //	Setup init parameters of primary database for dataguard configuration
 //
 // #############################################################################
+// SetupInitParamsPrimaryForDG sets primary init parameters required for Data Guard.
 func SetupInitParamsPrimaryForDG(r *SingleInstanceDatabaseReconciler, primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	r.Log.Info("Running StandbyDatabasePrerequisitesSQL in the primary database")
 	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
@@ -5415,6 +5436,7 @@ func SetupInitParamsPrimaryForDG(r *SingleInstanceDatabaseReconciler, primaryRea
 //	Setup primary database for standby singleinstancedatabase
 //
 // #############################################################################
+// SetupPrimaryDatabase prepares the primary database for standby creation.
 func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
@@ -5478,6 +5500,7 @@ func sidbStandbySetupStepMessage(step dataguardcommon.WorkflowStep) string {
 //	Get all pdbs in a singleinstancedatabase
 //
 // #############################################################################
+// GetAllPdbInDatabase returns all PDB names from the target database.
 func GetAllPdbInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ([]string, error) {
 	var pdbs []string
 	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "",
@@ -5498,6 +5521,7 @@ func GetAllPdbInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.
 //	Setup tnsnames.ora for all the pdb list in the singleinstancedatabase
 //
 // #############################################################################
+// SetupTnsNamesForPDBListInDatabase upserts TNS aliases for a list of PDBs.
 func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request, pdbList []string) error {
 	tnsFile := getTnsFilePathBySID(d.Spec.Sid)
@@ -5520,6 +5544,7 @@ func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *d
 //	Setup tnsnames.ora in standby database for primary singleinstancedatabase
 //
 // #############################################################################
+// SetupPrimaryDBTnsNamesInStandby configures primary DB aliases inside standby tnsnames.ora.
 func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	tnsFile := getTnsFilePathBySID(s.Spec.Sid)
@@ -5538,6 +5563,7 @@ func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dba
 //	Enabling flashback in singleinstancedatabase
 //
 // #############################################################################
+// EnableFlashbackInDatabase enables flashback mode for the target database.
 func EnableFlashbackInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.GetSqlClient("enterprise")))
@@ -5554,6 +5580,7 @@ func EnableFlashbackInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod c
 //	setup standby database
 //
 // #############################################################################
+// SetupStandbyDatabase performs standby post-creation configuration steps.
 func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
@@ -5564,6 +5591,7 @@ func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 	return SetupStandbyDatabaseForLocalPrimary(r, stdby, primary, ctx, req)
 }
 
+// SetupStandbyDatabaseForLocalPrimary configures standby using an in-cluster primary reference.
 func SetupStandbyDatabaseForLocalPrimary(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
@@ -5617,6 +5645,7 @@ func SetupStandbyDatabaseForLocalPrimary(r *SingleInstanceDatabaseReconciler, st
 	return nil
 }
 
+// SetupStandbyDatabaseForExternalPrimary configures standby using external primary details.
 func SetupStandbyDatabaseForExternalPrimary(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	ctx context.Context, req ctrl.Request) error {
 
@@ -5665,6 +5694,7 @@ func SetupStandbyDatabaseForExternalPrimary(r *SingleInstanceDatabaseReconciler,
 //	Create oracle hostname environment variable object to be passed to sidb
 //
 // #############################################################################
+// CreateOracleHostnameEnvVarObj builds ORACLE_HOSTNAME env var based on DB version.
 func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPrimaryDatabase *dbapi.SingleInstanceDatabase) corev1.EnvVar {
 	dbMajorVersion, err := strconv.Atoi(strings.Split(referedPrimaryDatabase.Status.ReleaseUpdate, ".")[0])
 	if err != nil {
@@ -5690,6 +5720,8 @@ func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPr
 		}
 	}
 }
+
+// SetupExternalPrimaryDBTnsNamesInStandby configures external primary aliases in standby tnsnames.ora.
 func SetupExternalPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	tnsFile := getTnsFilePathBySID(s.Spec.Sid)
@@ -5703,6 +5735,7 @@ func SetupExternalPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler
 	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, useTCPS, sslDN)
 }
 
+// SetupListenerForDGOnDatabase updates listener entries needed for Data Guard on a database.
 func SetupListenerForDGOnDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 
@@ -5733,6 +5766,7 @@ func SetupListenerForDGOnDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.
 	return nil
 }
 
+// IsExternalPrimaryDatabase reports whether standby uses external primary details.
 func IsExternalPrimaryDatabase(m *dbapi.SingleInstanceDatabase) bool {
 	if m != nil && m.Spec.StandbyConfig != nil && m.Spec.StandbyConfig.PrimaryDetails != nil &&
 		strings.TrimSpace(m.Spec.StandbyConfig.PrimaryDetails.Host) != "" {
@@ -5743,6 +5777,7 @@ func IsExternalPrimaryDatabase(m *dbapi.SingleInstanceDatabase) bool {
 		strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host) != ""
 }
 
+// ValidateExternalPrimaryDatabaseRef validates required external primary fields.
 func ValidateExternalPrimaryDatabaseRef(m *dbapi.SingleInstanceDatabase) error {
 	if !IsExternalPrimaryDatabase(m) {
 		return nil
@@ -5765,6 +5800,7 @@ func ValidateExternalPrimaryDatabaseRef(m *dbapi.SingleInstanceDatabase) error {
 	return nil
 }
 
+// GetPrimaryDatabaseHost returns primary host from explicit details or referenced resource.
 func GetPrimaryDatabaseHost(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
 	if ref := GetPrimaryDatabaseDetails(m); ref != nil && strings.TrimSpace(ref.Host) != "" {
 		return strings.TrimSpace(ref.Host)
@@ -5775,6 +5811,7 @@ func GetPrimaryDatabaseHost(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleIns
 	return ""
 }
 
+// GetPrimaryDatabasePort returns primary listener port with default fallback.
 func GetPrimaryDatabasePort(m *dbapi.SingleInstanceDatabase) int {
 	if ref := GetPrimaryDatabaseDetails(m); ref != nil && ref.Port > 0 {
 		return ref.Port
@@ -5782,6 +5819,7 @@ func GetPrimaryDatabasePort(m *dbapi.SingleInstanceDatabase) int {
 	return int(dbcommons.CONTAINER_LISTENER_PORT)
 }
 
+// GetPrimaryDatabaseSid returns primary SID from explicit details or referenced resource.
 func GetPrimaryDatabaseSid(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
 	if ref := GetPrimaryDatabaseDetails(m); ref != nil && strings.TrimSpace(ref.Sid) != "" {
 		return strings.ToUpper(strings.TrimSpace(ref.Sid))
@@ -5792,6 +5830,7 @@ func GetPrimaryDatabaseSid(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInst
 	return ""
 }
 
+// GetPrimaryDatabasePdbName returns primary PDB name from explicit details or referenced resource.
 func GetPrimaryDatabasePdbName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
 	if ref := GetPrimaryDatabaseDetails(m); ref != nil && strings.TrimSpace(ref.Pdbname) != "" {
 		return strings.ToUpper(strings.TrimSpace(ref.Pdbname))
@@ -5802,6 +5841,7 @@ func GetPrimaryDatabasePdbName(m *dbapi.SingleInstanceDatabase, rp *dbapi.Single
 	return ""
 }
 
+// GetPrimaryDatabaseConnectString builds the primary connect string for standby flows.
 func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
 	if m != nil && m.Spec.StandbyConfig != nil {
 		if c := strings.TrimSpace(m.Spec.StandbyConfig.PrimaryConnectString); c != "" {
@@ -5827,6 +5867,7 @@ func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.
 	return primaryRef
 }
 
+// GetPrimaryDatabaseDisplayName returns user-visible primary identity for logs/events.
 func GetPrimaryDatabaseDisplayName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
 	if IsExternalPrimaryDatabase(m) {
 		return GetPrimaryDatabaseHost(m, rp)
@@ -5837,6 +5878,7 @@ func GetPrimaryDatabaseDisplayName(m *dbapi.SingleInstanceDatabase, rp *dbapi.Si
 	return strings.TrimSpace(getPrimaryDatabaseRefName(m))
 }
 
+// ShouldCreatePDBFromPrimary determines whether standby should create PDB metadata from primary.
 func ShouldCreatePDBFromPrimary(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
 	if IsExternalPrimaryDatabase(m) {
 		if strings.TrimSpace(GetPrimaryDatabasePdbName(m, rp)) != "" {
@@ -5862,6 +5904,7 @@ func getPrimaryDatabaseRefName(m *dbapi.SingleInstanceDatabase) string {
 	return strings.TrimSpace(m.Spec.PrimaryDatabaseRef)
 }
 
+// GetPrimaryDatabaseDetails resolves external primary details from current and legacy spec fields.
 func GetPrimaryDatabaseDetails(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabaseExternalPrimaryRef {
 	if m == nil {
 		return nil
@@ -5878,10 +5921,12 @@ func GetPrimaryDatabaseDetails(m *dbapi.SingleInstanceDatabase) *dbapi.SingleIns
 	return m.Spec.ExternalPrimaryDatabaseRef
 }
 
+// GetStandbyWalletSecretRef returns the standby wallet secret reference.
 func GetStandbyWalletSecretRef(m *dbapi.SingleInstanceDatabase) string {
 	return GetTDEPasswordSecretName(m)
 }
 
+// GetStandbyWalletMountPath returns mount path for standby wallet artifacts.
 func GetStandbyWalletMountPath(m *dbapi.SingleInstanceDatabase) string {
 	if tde := getTDEPasswordConfig(m); tde != nil {
 		if mountPath := strings.TrimSpace(tde.MountPath); mountPath != "" {
@@ -5891,6 +5936,7 @@ func GetStandbyWalletMountPath(m *dbapi.SingleInstanceDatabase) string {
 	return "/mnt/standby-wallet"
 }
 
+// GetStandbyWalletZipFileKey returns the secret key containing standby wallet zip content.
 func GetStandbyWalletZipFileKey(m *dbapi.SingleInstanceDatabase) string {
 	if tde := getTDEPasswordConfig(m); tde != nil {
 		if key := strings.TrimSpace(tde.WalletZipFileKey); key != "" {
@@ -5900,6 +5946,7 @@ func GetStandbyWalletZipFileKey(m *dbapi.SingleInstanceDatabase) string {
 	return ""
 }
 
+// GetStandbyTDEWalletRoot returns effective TDE wallet root for standby setup.
 func GetStandbyTDEWalletRoot(m *dbapi.SingleInstanceDatabase) string {
 	if tde := getTDEPasswordConfig(m); tde != nil {
 		if root := strings.TrimSpace(tde.WalletRoot); root != "" {
@@ -5915,6 +5962,7 @@ func GetStandbyTDEWalletRoot(m *dbapi.SingleInstanceDatabase) string {
 	return GetWalletDirFromSid(m.Spec.Sid)
 }
 
+// GetWalletDirFromSid returns the default wallet directory path for the provided SID.
 func GetWalletDirFromSid(sid string) string {
 	trimmedSid := strings.ToUpper(strings.TrimSpace(sid))
 	if trimmedSid == "" {

@@ -56,7 +56,7 @@ import (
 )
 
 // Constants for hello-stateful StatefulSet & Volumes
-func buildLabelsForGsm(instance *databasev4.ShardingDatabase, label string, gsmName string) map[string]string {
+func buildLabelsForGsm(instance *databasev4.ShardingDatabase, _ string, _ string) map[string]string {
 	// Keep selector labels stable to avoid StatefulSet selector immutability issues.
 	return map[string]string{
 		"app":        "OracleGsming",
@@ -95,6 +95,7 @@ func getLabelForGsm(instance *databasev4.ShardingDatabase) string {
 	return instance.Name
 }
 
+// BuildStatefulSetForGsm builds the desired StatefulSet for a GSM instance.
 func BuildStatefulSetForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) *appsv1.StatefulSet {
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForGsm(),
@@ -404,6 +405,7 @@ func volumeClaimTemplatesForGsm(instance *databasev4.ShardingDatabase, OraGsmSpe
 	return claims
 }
 
+// BuildServiceDefForGsm builds local or external Service definitions for GSM pods.
 func BuildServiceDefForGsm(instance *databasev4.ShardingDatabase, replicaCount int32, OraGsmSpex databasev4.GsmSpec, svctype string) *corev1.Service {
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForGsm(instance, replicaCount, OraGsmSpex, svctype),
@@ -448,7 +450,7 @@ func buildSvcObjectMetaForGsm(instance *databasev4.ShardingDatabase, replicaCoun
 
 func getSvcLabelsForGsm(replicaCount int32, OraGsmSpex databasev4.GsmSpec) map[string]string {
 
-	var labelStr map[string]string = make(map[string]string)
+	labelStr := make(map[string]string)
 	if replicaCount == -1 {
 		labelStr["statefulset.kubernetes.io/pod-name"] = OraGsmSpex.Name + "-0"
 	} else {
@@ -459,8 +461,8 @@ func getSvcLabelsForGsm(replicaCount int32, OraGsmSpex databasev4.GsmSpec) map[s
 	return labelStr
 }
 
-// This function cleanup the shard from GSM
-func OraCleanupForGsm(instance *databasev4.ShardingDatabase,
+// OraCleanupForGsm removes stale GSM entries when replica count is reduced.
+func OraCleanupForGsm(_ *databasev4.ShardingDatabase,
 	OraGsmSpex databasev4.GsmSpec,
 	oldReplicaSize int32,
 	newReplicaSize int32,
@@ -476,6 +478,7 @@ func OraCleanupForGsm(instance *databasev4.ShardingDatabase,
 	return err1
 }
 
+// UpdateProvForGsm reconciles mutable provisioning settings for an existing GSM StatefulSet.
 func UpdateProvForGsm(instance *databasev4.ShardingDatabase,
 	OraGsmSpex databasev4.GsmSpec, kClient client.Client, sfSet *appsv1.StatefulSet, gsmPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {

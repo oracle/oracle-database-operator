@@ -51,6 +51,7 @@ import (
 	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 )
 
+// DatabaseService wraps OCI database clients and dependent helpers.
 type DatabaseService struct {
 	logger       logr.Logger
 	kubeClient   client.Client
@@ -58,6 +59,7 @@ type DatabaseService struct {
 	vaultService VaultService
 }
 
+// NewDatabaseService builds a DatabaseService with OCI database and vault clients.
 func NewDatabaseService(
 	logger logr.Logger,
 	kubeClient client.Client,
@@ -115,7 +117,7 @@ func (d *DatabaseService) readPassword(namespace string, passwordSpec dbv4.Passw
 	return nil, nil
 }
 
-func (d *DatabaseService) readACD_OCID(acd *dbv4.AcdSpec, namespace string) (*string, error) {
+func (d *DatabaseService) readACDOCID(acd *dbv4.AcdSpec, namespace string) (*string, error) {
 	if acd.OciAcd.Id != nil {
 		return acd.OciAcd.Id, nil
 	}
@@ -139,7 +141,7 @@ func (d *DatabaseService) CreateAutonomousDatabase(adb *dbv4.AutonomousDatabase)
 		return resp, err
 	}
 
-	acdOCID, err := d.readACD_OCID(&adb.Spec.Details.AutonomousContainerDatabase, adb.Namespace)
+	acdOCID, err := d.readACDOCID(&adb.Spec.Details.AutonomousContainerDatabase, adb.Namespace)
 	if err != nil {
 		return resp, err
 	}
@@ -188,6 +190,7 @@ func (d *DatabaseService) CreateAutonomousDatabase(adb *dbv4.AutonomousDatabase)
 	return resp, nil
 }
 
+// GetAutonomousDatabase fetches an autonomous database by OCID.
 func (d *DatabaseService) GetAutonomousDatabase(adbOCID string) (database.GetAutonomousDatabaseResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -201,6 +204,7 @@ func (d *DatabaseService) GetAutonomousDatabase(adbOCID string) (database.GetAut
 	return d.dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
 }
 
+// UpdateAutonomousDatabase updates OCI autonomous database properties from the CR spec.
 func (d *DatabaseService) UpdateAutonomousDatabase(adbOCID string, adb *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	// Retrieve admin password
 	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.AdminPassword)
@@ -241,6 +245,7 @@ func (d *DatabaseService) UpdateAutonomousDatabase(adbOCID string, adb *dbv4.Aut
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
+// StartAutonomousDatabase starts an autonomous database.
 func (d *DatabaseService) StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -254,6 +259,7 @@ func (d *DatabaseService) StartAutonomousDatabase(adbOCID string) (database.Star
 	return d.dbClient.StartAutonomousDatabase(context.TODO(), startRequest)
 }
 
+// StopAutonomousDatabase stops an autonomous database.
 func (d *DatabaseService) StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -267,6 +273,7 @@ func (d *DatabaseService) StopAutonomousDatabase(adbOCID string) (database.StopA
 	return d.dbClient.StopAutonomousDatabase(context.TODO(), stopRequest)
 }
 
+// DeleteAutonomousDatabase terminates an autonomous database.
 func (d *DatabaseService) DeleteAutonomousDatabase(adbOCID string) (database.DeleteAutonomousDatabaseResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -280,6 +287,7 @@ func (d *DatabaseService) DeleteAutonomousDatabase(adbOCID string) (database.Del
 	return d.dbClient.DeleteAutonomousDatabase(context.TODO(), deleteRequest)
 }
 
+// GetWallet requests wallet metadata for an autonomous database.
 func (d *DatabaseService) GetWallet(adb *dbv4.AutonomousDatabase) (resp database.GetAutonomousDatabaseWalletResponse, err error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -300,6 +308,7 @@ func (d *DatabaseService) GetWallet(adb *dbv4.AutonomousDatabase) (resp database
 	return resp, nil
 }
 
+// DownloadWallet generates and downloads a wallet for an autonomous database.
 func (d *DatabaseService) DownloadWallet(adb *dbv4.AutonomousDatabase) (resp database.GenerateAutonomousDatabaseWalletResponse, err error) {
 	// Prepare wallet password
 	walletPassword, err := d.readPassword(adb.Namespace, adb.Spec.Wallet.Password)
@@ -333,6 +342,7 @@ func (d *DatabaseService) DownloadWallet(adb *dbv4.AutonomousDatabase) (resp dat
  * Autonomous Database Restore
  *******************************/
 
+// RestoreAutonomousDatabase restores an autonomous database to a point in time.
 func (d *DatabaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -352,6 +362,7 @@ func (d *DatabaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime comm
  * Autonomous Database Backup
  *******************************/
 
+// ListAutonomousDatabaseBackups lists backups for an autonomous database.
 func (d *DatabaseService) ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -365,6 +376,7 @@ func (d *DatabaseService) ListAutonomousDatabaseBackups(adbOCID string) (databas
 	return d.dbClient.ListAutonomousDatabaseBackups(context.TODO(), listBackupRequest)
 }
 
+// CreateAutonomousDatabaseBackup creates a backup for the target autonomous database.
 func (d *DatabaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv4.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -390,6 +402,7 @@ func (d *DatabaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv4.Autonom
 	return d.dbClient.CreateAutonomousDatabaseBackup(context.TODO(), createBackupRequest)
 }
 
+// GetAutonomousDatabaseBackup fetches backup details by backup OCID.
 func (d *DatabaseService) GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -403,13 +416,14 @@ func (d *DatabaseService) GetAutonomousDatabaseBackup(backupOCID string) (databa
 	return d.dbClient.GetAutonomousDatabaseBackup(context.TODO(), getBackupRequest)
 }
 
+// CreateAutonomousDatabaseClone creates an autonomous database clone.
 func (d *DatabaseService) CreateAutonomousDatabaseClone(adb *dbv4.AutonomousDatabase) (resp database.CreateAutonomousDatabaseResponse, err error) {
 	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Clone.AdminPassword)
 	if err != nil {
 		return resp, err
 	}
 
-	acdOCID, err := d.readACD_OCID(&adb.Spec.Clone.AutonomousContainerDatabase, adb.Namespace)
+	acdOCID, err := d.readACDOCID(&adb.Spec.Clone.AutonomousContainerDatabase, adb.Namespace)
 	if err != nil {
 		return resp, err
 	}
@@ -451,6 +465,7 @@ func (d *DatabaseService) CreateAutonomousDatabaseClone(adb *dbv4.AutonomousData
 	return d.dbClient.CreateAutonomousDatabase(context.TODO(), request)
 }
 
+// SwitchoverAutonomousDatabase runs a switchover operation for Data Guard-enabled ADB.
 func (d *DatabaseService) SwitchoverAutonomousDatabase(adbOCID string) (database.SwitchoverAutonomousDatabaseResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 
@@ -463,6 +478,7 @@ func (d *DatabaseService) SwitchoverAutonomousDatabase(adbOCID string) (database
 	return d.dbClient.SwitchoverAutonomousDatabase(context.TODO(), request)
 }
 
+// FailoverAutonomousDatabase runs a failover operation for Data Guard-enabled ADB.
 func (d *DatabaseService) FailoverAutonomousDatabase(adbOCID string) (database.FailOverAutonomousDatabaseResponse, error) {
 	retryPolicy := common.DefaultRetryPolicy()
 

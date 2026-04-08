@@ -60,31 +60,34 @@ const (
 	privatekeyKey  = "privatekey"
 )
 
-type ApiKeyAuth struct {
+// APIKeyAuth carries Kubernetes references used to build OCI auth providers.
+type APIKeyAuth struct {
 	ConfigMapName *string
 	SecretName    *string
 	Namespace     string
 }
 
-func GetOciProvider(kubeClient client.Client, authData ApiKeyAuth) (common.ConfigurationProvider, error) {
+// GetOciProvider returns an OCI configuration provider based on provided auth references.
+func GetOciProvider(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
 	if authData.ConfigMapName != nil && authData.SecretName == nil {
 		return getWorkloadIdentityProvider(kubeClient, authData)
-	} else if authData.ConfigMapName != nil && authData.SecretName != nil {
+	}
+	if authData.ConfigMapName != nil && authData.SecretName != nil {
 		provider, err := getProviderWithAPIKey(kubeClient, authData)
 		if err != nil {
 			return nil, err
 		}
 
 		return provider, nil
-	} else if authData.ConfigMapName == nil && authData.SecretName == nil {
-		return auth.InstancePrincipalConfigurationProvider()
-	} else {
-		return nil, errors.New("both the OCI ConfigMap and the privateKey are required to authorize with API signing key; " +
-			"leave them both empty to authorize with Instance Principal")
 	}
+	if authData.ConfigMapName == nil && authData.SecretName == nil {
+		return auth.InstancePrincipalConfigurationProvider()
+	}
+	return nil, errors.New("both the OCI ConfigMap and the privateKey are required to authorize with API signing key; " +
+		"leave them both empty to authorize with Instance Principal")
 }
 
-func getWorkloadIdentityProvider(kubeClient client.Client, authData ApiKeyAuth) (common.ConfigurationProvider, error) {
+func getWorkloadIdentityProvider(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
 	ociConfigMap, err := k8s.FetchConfigMap(kubeClient, authData.Namespace, *authData.ConfigMapName)
 	if err != nil {
 		return nil, err
@@ -108,7 +111,7 @@ func getWorkloadIdentityProvider(kubeClient client.Client, authData ApiKeyAuth) 
 	return auth.OkeWorkloadIdentityConfigurationProvider()
 }
 
-func getProviderWithAPIKey(kubeClient client.Client, authData ApiKeyAuth) (common.ConfigurationProvider, error) {
+func getProviderWithAPIKey(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
 	var region, fingerprint, user, tenancy, passphrase, privatekeyValue string
 
 	// Prepare ConfigMap

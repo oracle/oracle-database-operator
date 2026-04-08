@@ -221,16 +221,16 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		oracleRestart.Status.State = string(oraclerestartdb.OracleRestartPendingState)
 		oracleRestart.Status.DbState = string(oraclerestartdb.OracleRestartPendingState)
 		oracleRestart.Status.Role = string(oraclerestartdb.OracleRestartFieldNotDefined)
-			oracleRestart.Status.ConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
-			oracleRestart.Status.PdbConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
-			oracleRestart.Status.ExternalConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
-			oracleRestart.Status.ReleaseUpdate = string(oraclerestartdb.OracleRestartFieldNotDefined)
-			oracleRestart.Status.ConfigParams.DbHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
-			oracleRestart.Status.ConfigParams.GridHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
-			if err := r.Status().Update(ctx, oracleRestart); err != nil {
-				return ctrl.Result{}, err
-			}
+		oracleRestart.Status.ConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
+		oracleRestart.Status.PdbConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
+		oracleRestart.Status.ExternalConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
+		oracleRestart.Status.ReleaseUpdate = string(oraclerestartdb.OracleRestartFieldNotDefined)
+		oracleRestart.Status.ConfigParams.DbHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
+		oracleRestart.Status.ConfigParams.GridHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
+		if err := r.Status().Update(ctx, oracleRestart); err != nil {
+			return ctrl.Result{}, err
 		}
+	}
 
 	// Kube Client Config Setup
 	if r.kubeConfig == nil && r.kubeClient == nil {
@@ -1599,17 +1599,17 @@ func (r *OracleRestartReconciler) updateDiskSizes(
 			Container: "disk-check",
 		})
 		logs, err := req.Stream(ctx)
-			if err != nil {
-				r.Log.Error(err, "Failed to stream logs", "pod", pod.Name)
-				continue
-			}
-			func() { // Scope for defer
-				defer func() {
-					if closeErr := logs.Close(); closeErr != nil {
-						r.Log.Error(closeErr, "Failed to close logs stream", "pod", pod.Name)
-					}
-				}()
-				scanner := bufio.NewScanner(logs)
+		if err != nil {
+			r.Log.Error(err, "Failed to stream logs", "pod", pod.Name)
+			continue
+		}
+		func() { // Scope for defer
+			defer func() {
+				if closeErr := logs.Close(); closeErr != nil {
+					r.Log.Error(closeErr, "Failed to close logs stream", "pod", pod.Name)
+				}
+			}()
+			scanner := bufio.NewScanner(logs)
 			for scanner.Scan() {
 				var entry struct {
 					Disk   string `json:"disk"`
@@ -1784,7 +1784,7 @@ func (r *OracleRestartReconciler) setDefaults(oracleRestart *oraclerestartdb.Ora
 
 	if oracleRestart.Spec.SshKeySecret != nil {
 		if oracleRestart.Spec.SshKeySecret.KeyMountLocation == "" {
-			oracleRestart.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+			oracleRestart.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 		}
 	}
 
@@ -1888,9 +1888,8 @@ func (r *OracleRestartReconciler) updateGiConfigParamStatus(oracleRestart *oracl
 				if err != nil {
 					oracleRestart.Spec.IsFailed = true
 					return errors.New(("error in responsefile, unable to read inventory_location"))
-				} else {
-					oracleRestart.Status.ConfigParams.Inventory = invlocation
 				}
+				oracleRestart.Status.ConfigParams.Inventory = invlocation
 			}
 		}
 
@@ -1902,9 +1901,8 @@ func (r *OracleRestartReconciler) updateGiConfigParamStatus(oracleRestart *oracl
 				if err != nil {
 					oracleRestart.Spec.IsFailed = true
 					return errors.New(("error in responsefile, unable to read oracle_base"))
-				} else {
-					oracleRestart.Status.ConfigParams.GridBase = gibase
 				}
+				oracleRestart.Status.ConfigParams.GridBase = gibase
 			}
 		}
 		if oracleRestart.Status.ConfigParams.GridHome == "NOT_DEFINED" {
@@ -1915,9 +1913,8 @@ func (r *OracleRestartReconciler) updateGiConfigParamStatus(oracleRestart *oracl
 				if err != nil {
 					oracleRestart.Spec.IsFailed = true
 					return errors.New(("error in responsefile, unable to read oracle_base"))
-				} else {
-					oracleRestart.Status.ConfigParams.GridHome = gihome
 				}
+				oracleRestart.Status.ConfigParams.GridHome = gihome
 			}
 		}
 
@@ -2092,9 +2089,8 @@ func (r *OracleRestartReconciler) updateOracleRestartInstTopologyStatus(oracleRe
 	if len(podNames) == 0 || len(nodeDetails) == 0 {
 		oracleRestart.Spec.IsFailed = true
 		return podNames, nodeDetails, errors.New("error occurred while collecting Oracle Restart pod or node details")
-	} else {
-		oracleRestart.Spec.IsFailed = false
 	}
+	oracleRestart.Spec.IsFailed = false
 
 	return podNames, nodeDetails, nil
 }
@@ -2184,9 +2180,9 @@ func (r *OracleRestartReconciler) validateoraclerestartdb(oracleRestart *oracler
 	return orestartSfSet, orestartPod, fmt.Errorf("failed to update Oracle Restart DB Status after %d attempts", maxRetries)
 }
 
-	// validateOracleRestartInst validates a single Oracle Restart instance,
-	// inspecting associated StatefulSet and pods to drive status updates.
-func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, OraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, specId int) (*appsv1.StatefulSet, *corev1.Pod, error) {
+// validateOracleRestartInst validates a single Oracle Restart instance,
+// inspecting associated StatefulSet and pods to drive status updates.
+func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, OraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, specID int) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
 	var err error
 	var orestartSfSet *appsv1.StatefulSet
@@ -2220,12 +2216,11 @@ func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oracl
 			msg = "unable to validate Oracle Restart pod. The  pod not ready  is: " + notReadyPod.Name
 			oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
 			return orestartSfSet, orestartPod, errors.New(msg)
-		} else {
-			// Handle the case where no pods were found at all
-			msg = "unable to validate Oracle Restart pod. No pods matching the criteria were found"
-			oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
-			return orestartSfSet, orestartPod, errors.New(msg)
 		}
+		// Handle the case where no pods were found at all
+		msg = "unable to validate Oracle Restart pod. No pods matching the criteria were found"
+		oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
+		return orestartSfSet, orestartPod, errors.New(msg)
 
 	}
 	// Update status when PODs are ready
@@ -2361,8 +2356,8 @@ func mergeInstancesFromLatest(instance, latestInstance *oraclerestartdb.OracleRe
 // deployments, assembling data based on the current spec.
 func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.OracleRestart) (map[string]string, error) {
 	configMapData := make(map[string]string, 0)
-	// new_crs_nodes, existing_crs_nodes_healthy, existing_crs_nodes_not_healthy, install_node, new_crs_nodes_list := oraclerestartcommon.GetCrsNodes(instance, r.kubeClient, r.kubeConfig, r.Log, r.Client)
-	install_node := instance.Spec.InstDetails.Name + "-0"
+	// new_crs_nodes, existing_crs_nodes_healthy, existing_crs_nodes_not_healthy, installNode, new_crs_nodes_list := oraclerestartcommon.GetCrsNodes(instance, r.kubeClient, r.kubeConfig, r.Log, r.Client)
+	installNode := instance.Spec.InstDetails.Name + "-0"
 	// asm_devices := oraclerestartcommon.GetAsmDevices(instance)
 	var data []string
 	var addnodeFlag bool
@@ -2375,7 +2370,7 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 
 	if instance.Spec.SshKeySecret != nil {
 		if instance.Spec.SshKeySecret.KeyMountLocation == "" {
-			instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+			instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 		}
 	}
 
@@ -2510,7 +2505,7 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	data = append(data, "PROFILE_FLAG=true")
 	// data = append(data, "SCAN_NAME="+scan_name)
 
-	data = append(data, "INSTALL_NODE="+install_node)
+	data = append(data, "INSTALL_NODE="+installNode)
 
 	if instance.Spec.ConfigParams.DbName != "" {
 		data = append(data, "DB_NAME="+instance.Spec.ConfigParams.DbName)
@@ -3423,19 +3418,17 @@ func (r *OracleRestartReconciler) createOrReplaceSfsAsm(
 		if getAsmAutoUpdateForDisk(oracleRestart, d) {
 			asmAutoUpdate = true
 			break
-		} else {
-			asmAutoUpdate = false
-			break
 		}
+		asmAutoUpdate = false
+		break
 	}
 	for _, d := range removedAsmDisks {
 		if getAsmAutoUpdateForDisk(oracleRestart, d) {
 			asmAutoUpdate = true
 			break
-		} else {
-			asmAutoUpdate = false
-			break
 		}
+		asmAutoUpdate = false
+		break
 	}
 
 	// if !asmAutoUpdate {

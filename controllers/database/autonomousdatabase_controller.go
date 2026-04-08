@@ -75,13 +75,13 @@ import (
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
-// name of our custom finalizer
-const ADB_FINALIZER = "database.oracle.com/adb-finalizer"
+// ADBFinalizer is the finalizer used by AutonomousDatabase resources.
+const ADBFinalizer = "database.oracle.com/adb-finalizer"
 
 var requeueResult ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var emptyResult ctrl.Result = ctrl.Result{}
 
-// *AutonomousDatabaseReconciler reconciles a AutonomousDatabase object
+// AutonomousDatabaseReconciler reconciles AutonomousDatabase objects.
 type AutonomousDatabaseReconciler struct {
 	KubeClient client.Client
 	Log        logr.Logger
@@ -103,7 +103,7 @@ func (r *AutonomousDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		WithOptions(controller.Options{MaxConcurrentReconciles: 50}). // ReconcileHandler is never invoked concurrently with the same object.
 		Complete(r)
 }
-func (r *AutonomousDatabaseReconciler) enqueueMapFn(ctx context.Context, o client.Object) []reconcile.Request {
+func (r *AutonomousDatabaseReconciler) enqueueMapFn(_ context.Context, o client.Object) []reconcile.Request {
 	reqs := make([]reconcile.Request, len(o.GetOwnerReferences()))
 
 	for _, owner := range o.GetOwnerReferences() {
@@ -151,9 +151,9 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 				statusChanged := !reflect.DeepEqual(oldAdb.Status, desiredAdb.Status)
 
 				if (!specChanged && statusChanged) ||
-					(controllerutil.ContainsFinalizer(oldAdb, ADB_FINALIZER) != controllerutil.ContainsFinalizer(desiredAdb, ADB_FINALIZER)) {
+					(controllerutil.ContainsFinalizer(oldAdb, ADBFinalizer) != controllerutil.ContainsFinalizer(desiredAdb, ADBFinalizer)) {
 					// Don't enqueue in the folowing condition:
-					// 1. only status changes 2. ADB_FINALIZER changes
+					// 1. only status changes 2. ADB finalizer changes
 					return false
 				}
 
@@ -178,12 +178,13 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 // +kubebuilder:rbac:groups="",resources=configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// Reconcile reconciles AutonomousDatabase resources.
+func (r *AutonomousDatabaseReconciler) Reconcile(_ context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	var err error
 	// Indicates whether spec has been changed at the end of the reconcile.
-	var specChanged bool = false
+	specChanged := false
 
 	// Get the autonomousdatabase instance from the cluster
 	desiredAdb := &dbv4.AutonomousDatabase{}
@@ -257,33 +258,32 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		// The Autonomous Database is not being deleted. Update the finalizer.
 		if desiredAdb.Spec.HardLink != nil &&
 			*desiredAdb.Spec.HardLink &&
-			!controllerutil.ContainsFinalizer(desiredAdb, ADB_FINALIZER) {
+			!controllerutil.ContainsFinalizer(desiredAdb, ADBFinalizer) {
 
-			if err := k8s.AddFinalizerAndPatch(r.KubeClient, desiredAdb, ADB_FINALIZER); err != nil {
+			if err := k8s.AddFinalizerAndPatch(r.KubeClient, desiredAdb, ADBFinalizer); err != nil {
 				return emptyResult, fmt.Errorf("Failed to add finalizer to Autonomous Database "+desiredAdb.Name+": %w", err)
 			}
 		} else if desiredAdb.Spec.HardLink != nil &&
 			!*desiredAdb.Spec.HardLink &&
-			controllerutil.ContainsFinalizer(desiredAdb, ADB_FINALIZER) {
+			controllerutil.ContainsFinalizer(desiredAdb, ADBFinalizer) {
 
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, desiredAdb, ADB_FINALIZER); err != nil {
+			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, desiredAdb, ADBFinalizer); err != nil {
 				return emptyResult, fmt.Errorf("Failed to remove finalizer to Autonomous Database "+desiredAdb.Name+": %w", err)
 			}
 		}
 	} else {
 		// The Autonomous Database is being deleted
-		if controllerutil.ContainsFinalizer(desiredAdb, ADB_FINALIZER) {
-			if dbv4.IsAdbIntermediateState(desiredAdb.Status.LifecycleState) {
-				// No-op
-			} else if desiredAdb.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated {
+		if controllerutil.ContainsFinalizer(desiredAdb, ADBFinalizer) {
+			if desiredAdb.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated {
 				// The Autonomous Database in OCI has been deleted. Remove the finalizer.
-				if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, desiredAdb, ADB_FINALIZER); err != nil {
+				if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, desiredAdb, ADBFinalizer); err != nil {
 					return emptyResult, fmt.Errorf("Failed to remove finalizer to Autonomous Database "+desiredAdb.Name+": %w", err)
 				}
 				return emptyResult, nil
-			} else {
+			}
+			if !dbv4.IsAdbIntermediateState(desiredAdb.Status.LifecycleState) {
 				// Remove the Autonomous Database in OCI.
-				// Change the action to Terminate and proceed with the rest of the reconcile logic
+				// Change the action to Terminate and proceed with the rest of the reconcile logic.
 				desiredAdb.Spec.Action = "Terminate"
 			}
 		}
@@ -362,16 +362,15 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			WithName("IsAdbIntermediateState").
 			Info("LifecycleState is " + string(desiredAdb.Status.LifecycleState) + "; reconciliation queued")
 		return requeueResult, nil
-	} else {
-		logger.Info("AutonomousDatabase reconciles successfully")
-		return emptyResult, nil
 	}
+	logger.Info("AutonomousDatabase reconciles successfully")
+	return emptyResult, nil
 }
 
 func (r *AutonomousDatabaseReconciler) setupOCIClients(logger logr.Logger, adb *dbv4.AutonomousDatabase) error {
 	var err error
 
-	authData := oci.ApiKeyAuth{
+	authData := oci.APIKeyAuth{
 		ConfigMapName: adb.Spec.OciConfig.ConfigMapName,
 		SecretName:    adb.Spec.OciConfig.SecretName,
 		Namespace:     adb.GetNamespace(),
@@ -403,12 +402,12 @@ func (r *AutonomousDatabaseReconciler) manageError(logger logr.Logger, adb *dbv4
 	return emptyResult, nil
 }
 
-const CONDITION_TYPE_AVAILABLE = "Available"
-const CONDITION_REASON_AVAILABLE = "Available"
-const CONDITION_TYPE_RECONCILE_QUEUED = "ReconcileQueued"
-const CONDITION_REASON_RECONCILE_QUEUED = "LastReconcileQueued"
-const CONDITION_TYPE_RECONCILE_ERROR = "ReconfileError"
-const CONDITION_REASON_RECONCILE_ERROR = "LastReconcileError"
+const conditionTypeAvailable = "Available"
+const conditionReasonAvailable = "Available"
+const conditionTypeReconcileQueued = "ReconcileQueued"
+const conditionReasonReconcileQueued = "LastReconcileQueued"
+const conditionTypeReconcileError = "ReconfileError"
+const conditionReasonReconcileError = "LastReconcileError"
 
 func updateCondition(adb *dbv4.AutonomousDatabase, err error) {
 	var condition metav1.Condition
@@ -421,9 +420,9 @@ func updateCondition(adb *dbv4.AutonomousDatabase, err error) {
 	// Clean up the Conditions array
 	if len(adb.Status.Conditions) > 0 {
 		var allConditions = []string{
-			CONDITION_TYPE_AVAILABLE,
-			CONDITION_TYPE_RECONCILE_QUEUED,
-			CONDITION_TYPE_RECONCILE_ERROR}
+			conditionTypeAvailable,
+			conditionTypeReconcileQueued,
+			conditionTypeReconcileError}
 
 		for _, conditionType := range allConditions {
 			meta.RemoveStatusCondition(&adb.Status.Conditions, conditionType)
@@ -435,28 +434,28 @@ func updateCondition(adb *dbv4.AutonomousDatabase, err error) {
 	// Otherwise, then condition status will be marked as true if no error occurs
 	if err != nil {
 		condition = metav1.Condition{
-			Type:               CONDITION_TYPE_RECONCILE_ERROR,
+			Type:               conditionTypeReconcileError,
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: adb.GetGeneration(),
-			Reason:             CONDITION_REASON_RECONCILE_ERROR,
+			Reason:             conditionReasonReconcileError,
 			Message:            errMsg,
 			Status:             metav1.ConditionFalse,
 		}
 	} else if dbv4.IsAdbIntermediateState(adb.Status.LifecycleState) {
 		condition = metav1.Condition{
-			Type:               CONDITION_TYPE_RECONCILE_QUEUED,
+			Type:               conditionTypeReconcileQueued,
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: adb.GetGeneration(),
-			Reason:             CONDITION_REASON_RECONCILE_QUEUED,
+			Reason:             conditionReasonReconcileQueued,
 			Message:            "no reconcile errors",
 			Status:             metav1.ConditionTrue,
 		}
 	} else {
 		condition = metav1.Condition{
-			Type:               CONDITION_TYPE_AVAILABLE,
+			Type:               conditionTypeAvailable,
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: adb.GetGeneration(),
-			Reason:             CONDITION_REASON_AVAILABLE,
+			Reason:             conditionReasonAvailable,
 			Message:            "no reconcile errors",
 			Status:             metav1.ConditionTrue,
 		}
@@ -759,7 +758,7 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 
 	label := map[string]string{"app": adb.GetName()}
 
-	var lastRotated string = ""
+	lastRotated := ""
 	if getWalletResp.TimeRotated != nil {
 		lastRotated = getWalletResp.TimeRotated.Format(time.RFC3339Nano)
 	}
@@ -794,17 +793,18 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 func isLocalWalletStale(remote *common.SDKTime, local string) (bool, error) {
 	if remote == nil && local == "" {
 		return false, nil
-	} else if remote != nil && local == "" {
-		return true, nil
-	} else if remote == nil && local != "" {
-		return false, nil
-	} else {
-		localTime, err := time.Parse(time.RFC3339Nano, local)
-		if err != nil {
-			return true, err
-		}
-		return localTime.Before(remote.Time), nil
 	}
+	if remote != nil && local == "" {
+		return true, nil
+	}
+	if remote == nil && local != "" {
+		return false, nil
+	}
+	localTime, err := time.Parse(time.RFC3339Nano, local)
+	if err != nil {
+		return true, err
+	}
+	return localTime.Before(remote.Time), nil
 }
 
 // updateBackupResources get the list of AutonomousDatabasBackups and

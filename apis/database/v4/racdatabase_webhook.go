@@ -97,7 +97,7 @@ func (r *RacDatabase) Default(ctx context.Context, obj *RacDatabase) error {
 
 	if cr.Spec.SshKeySecret != nil {
 		if cr.Spec.SshKeySecret.KeyMountLocation == "" {
-			cr.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+			cr.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 		}
 	}
 

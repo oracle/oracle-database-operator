@@ -82,7 +82,8 @@ func (r *AutonomousDatabaseBackupReconciler) SetupWithManager(mgr ctrl.Manager) 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabasebackups/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases,verbs=get;list
 
-func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// Reconcile reconciles AutonomousDatabaseBackup resources.
+func (r *AutonomousDatabaseBackupReconciler) Reconcile(_ context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	backup := &dbv4.AutonomousDatabaseBackup{}
@@ -242,7 +243,7 @@ func (r *AutonomousDatabaseBackupReconciler) verifyTargetAdb(backup *dbv4.Autono
 func (r *AutonomousDatabaseBackupReconciler) setupOCIClients(backup *dbv4.AutonomousDatabaseBackup) error {
 	var err error
 
-	authData := oci.ApiKeyAuth{
+	authData := oci.APIKeyAuth{
 		ConfigMapName: backup.Spec.OCIConfig.ConfigMapName,
 		SecretName:    backup.Spec.OCIConfig.SecretName,
 		Namespace:     backup.GetNamespace(),
