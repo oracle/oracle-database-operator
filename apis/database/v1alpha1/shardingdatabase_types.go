@@ -55,6 +55,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ShardingDatabaseSpec defines the desired state of ShardingDatabase
+// revive:disable:var-naming
 type ShardingDatabaseSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -96,8 +97,8 @@ type ShardingDatabaseSpec struct {
 	TopicId                   string              `json:"topicId,omitempty"`
 }
 
-// To understand Metav1.Condition, please refer the link https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1
 // ShardingDatabaseStatus defines the observed state of ShardingDatabase
+// To understand Metav1.Condition, please refer to https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1.
 type ShardingDatabaseStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -114,6 +115,7 @@ type ShardingDatabaseStatus struct {
 	CrdStatus []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// GsmStatus captures current GSM connectivity, shard, and service state.
 type GsmStatus struct {
 	InternalconnectStr string            `json:"internalConnectStr,omitempty"`
 	ExternalConnectStr string            `json:"externalConnectStr,omitempty"`
@@ -123,12 +125,14 @@ type GsmStatus struct {
 	Services           string            `json:"services,omitempty"`
 }
 
+// GsmShardDetails represents status details for a shard from GSM views.
 type GsmShardDetails struct {
 	Name      string `json:"name,omitempty"`
 	Available string `json:"available,omitempty"`
 	State     string `json:"State,omitempty"`
 }
 
+// GsmStatusDetails represents detailed status for a shard or catalog endpoint.
 type GsmStatusDetails struct {
 	Name             string `json:"name,omitempty"`
 	K8sInternalSvc   string `json:"k8sInternalSvc,omitempty"`
@@ -233,15 +237,14 @@ type GsmSpec struct {
 	DirectorName     string             `json:"directorName,omitempty"`
 }
 
-// ShardGroupSpec Specification
-
+// GsmShardGroupSpec defines shard group placement and deployment mode.
 type GsmShardGroupSpec struct {
 	Name     string `json:"name"` // Name of the shardgroup.
 	Region   string `json:"region,omitempty"`
 	DeployAs string `json:"deployAs,omitempty"`
 }
 
-// ShardSpace Specs
+// GsmShardSpaceSpec defines a shard space and optional protection settings.
 type GsmShardSpaceSpec struct {
 	Name           string `json:"name"`                     // Name of the shardSpace.
 	Chunks         int    `json:"chunks,omitempty"`         //chunks is optional
@@ -249,7 +252,7 @@ type GsmShardSpaceSpec struct {
 	ShardGroup     string `json:"shardGroup,omitempty"`
 }
 
-// Service Definition
+// GsmServiceSpec defines a sharded database service configuration.
 type GsmServiceSpec struct {
 	Name                 string `json:"name"` // Name of the shardSpace.
 	Available            string `json:"available,omitempty"`
@@ -282,7 +285,7 @@ type GsmServiceSpec struct {
 	TfaPolicy            string `json:"tfaPolicy,omitempty"`
 }
 
-// Secret Details
+// SecretDetails defines secret metadata used for sharding components.
 type SecretDetails struct {
 	Name                 string `json:"name"`                  // Name of the secret.
 	KeyFileName          string `json:"keyFileName,omitempty"` // Name of the key.
@@ -310,16 +313,20 @@ type PortMapping struct {
 	Protocol   corev1.Protocol `json:"protocol"`   // IP protocol for the mapping, e.g., "TCP" or "UDP".
 }
 
+// SfsetLabel represents operator labels used on StatefulSets.
 type SfsetLabel string
 
+// SfsetLabel constants define labels used on sharding statefulsets.
 const (
 	ShardingDelLabelKey        SfsetLabel = "sharding.oracle.com/delflag"
 	ShardingDelLabelTrueValue  SfsetLabel = "true"
 	ShardingDelLabelFalseValue SfsetLabel = "false"
 )
 
+// ShardStatusMapKeys identifies keys in shard status maps.
 type ShardStatusMapKeys string
 
+// ShardStatusMapKeys constants define key names used in shard status maps.
 const (
 	Name             ShardStatusMapKeys = "Name"
 	K8sInternalSvc   ShardStatusMapKeys = "K8sInternalSvc"
@@ -334,8 +341,10 @@ const (
 	OpenMode         ShardStatusMapKeys = "OpenMode"
 )
 
+// ShardLifecycleState identifies a shard lifecycle status value.
 type ShardLifecycleState string
 
+// ShardLifecycleState values represent high-level shard lifecycle outcomes.
 const (
 	AvailableState        ShardLifecycleState = "AVAILABLE"
 	FailedState           ShardLifecycleState = "FAILED"
@@ -359,7 +368,8 @@ const (
 	ShardRemoveError      ShardLifecycleState = "SHARD_DELETE_ERROR_FROM_GSM"
 )
 
-// var
+// KubeConfigOnce guards one-time kube config initialization.
+// revive:enable:var-naming
 var KubeConfigOnce sync.Once
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.

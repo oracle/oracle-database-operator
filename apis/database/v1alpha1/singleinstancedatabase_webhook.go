@@ -57,6 +57,7 @@ import (
 // log is for logging in this package.
 var singleinstancedatabaselog = logf.Log.WithName("singleinstancedatabase-resource")
 
+// SetupWebhookWithManager sets up webhook handlers for SingleInstanceDatabase.
 func (r *SingleInstanceDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy[*SingleInstanceDatabase](mgr, r).
 		WithDefaulter(r).
@@ -74,6 +75,7 @@ var _ admission.Validator[*SingleInstanceDatabase] = &SingleInstanceDatabase{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanceDatabase) error {
+	_ = ctx
 	sidb := obj
 
 	singleinstancedatabaselog.Info("default", "name", sidb.Name)
@@ -113,21 +115,23 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 	}
 
 	if sidb.Spec.Sid == "" {
-		if sidb.Spec.Edition == "express" {
+		switch sidb.Spec.Edition {
+		case "express":
 			sidb.Spec.Sid = "XE"
-		} else if sidb.Spec.Edition == "free" {
+		case "free":
 			sidb.Spec.Sid = "FREE"
-		} else {
+		default:
 			sidb.Spec.Sid = "ORCLCDB"
 		}
 	}
 
 	if sidb.Spec.Pdbname == "" {
-		if sidb.Spec.Edition == "express" {
+		switch sidb.Spec.Edition {
+		case "express":
 			sidb.Spec.Pdbname = "XEPDB1"
-		} else if sidb.Spec.Edition == "free" {
+		case "free":
 			sidb.Spec.Pdbname = "FREEPDB1"
-		} else {
+		default:
 			sidb.Spec.Pdbname = "ORCLPDB1"
 		}
 	}
@@ -151,6 +155,7 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj *SingleInstanceDatabase) (admission.Warnings, error) {
+	_ = ctx
 	sidb := obj
 	singleinstancedatabaselog.Info("validate create", "name", sidb.Name)
 	var allErrs field.ErrorList
@@ -421,19 +426,19 @@ func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj *Single
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldRuntimeObject, newRuntimeObj *SingleInstanceDatabase) (admission.Warnings, error) {
-	new := newRuntimeObj
-	singleinstancedatabaselog.Info("validate update", "name", new.Name)
+	newObj := newRuntimeObj
+	singleinstancedatabaselog.Info("validate update", "name", newObj.Name)
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	warnings, err := new.ValidateCreate(ctx, newRuntimeObj)
+	warnings, err := newObj.ValidateCreate(ctx, newRuntimeObj)
 	if err != nil {
 		return warnings, err
 	}
 
 	// Validate Deletion
-	if new.GetDeletionTimestamp() != nil {
-		warnings, err := new.ValidateDelete(ctx, newRuntimeObj)
+	if newObj.GetDeletionTimestamp() != nil {
+		warnings, err := newObj.ValidateDelete(ctx, newRuntimeObj)
 		if err != nil {
 			return warnings, err
 		}
@@ -443,12 +448,12 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldRuntimeO
 	old := oldRuntimeObject
 
 	if old.Status.CreatedAs == "clone" {
-		if new.Spec.Edition != "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, new.Spec.Edition) {
+		if newObj.Spec.Edition != "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, newObj.Spec.Edition) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("edition"), "Edition of a cloned singleinstancedatabase cannot be changed post creation"))
 		}
 
-		if !strings.EqualFold(old.Status.PrimaryDatabase, new.Spec.PrimaryDatabaseRef) {
+		if !strings.EqualFold(old.Status.PrimaryDatabase, newObj.Spec.PrimaryDatabaseRef) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "Primary database of a cloned singleinstancedatabase cannot be changed post creation"))
 		}
@@ -457,36 +462,36 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldRuntimeO
 	if old.Status.Role != dbcommons.ValueUnavailable && old.Status.Role != "PRIMARY" {
 		// Restriciting Patching of secondary databases archiveLog, forceLog, flashBack
 		statusArchiveLog, _ := strconv.ParseBool(old.Status.ArchiveLog)
-		if new.Spec.ArchiveLog != nil && (statusArchiveLog != *new.Spec.ArchiveLog) {
+		if newObj.Spec.ArchiveLog != nil && (statusArchiveLog != *newObj.Spec.ArchiveLog) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("archiveLog"), "cannot be changed"))
 		}
 		statusFlashBack, _ := strconv.ParseBool(old.Status.FlashBack)
-		if new.Spec.FlashBack != nil && (statusFlashBack != *new.Spec.FlashBack) {
+		if newObj.Spec.FlashBack != nil && (statusFlashBack != *newObj.Spec.FlashBack) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("flashBack"), "cannot be changed"))
 		}
 		statusForceLogging, _ := strconv.ParseBool(old.Status.ForceLogging)
-		if new.Spec.ForceLogging != nil && (statusForceLogging != *new.Spec.ForceLogging) {
+		if newObj.Spec.ForceLogging != nil && (statusForceLogging != *newObj.Spec.ForceLogging) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("forceLog"), "cannot be changed"))
 		}
 
 		// Restriciting Patching of secondary databases InitParams
-		if new.Spec.InitParams != nil {
-			if old.Status.InitParams.SgaTarget != new.Spec.InitParams.SgaTarget {
+		if newObj.Spec.InitParams != nil {
+			if old.Status.InitParams.SgaTarget != newObj.Spec.InitParams.SgaTarget {
 				allErrs = append(allErrs,
 					field.Forbidden(field.NewPath("spec").Child("initParams").Child("sgaTarget"), "cannot be changed"))
 			}
-			if old.Status.InitParams.PgaAggregateTarget != new.Spec.InitParams.PgaAggregateTarget {
+			if old.Status.InitParams.PgaAggregateTarget != newObj.Spec.InitParams.PgaAggregateTarget {
 				allErrs = append(allErrs,
 					field.Forbidden(field.NewPath("spec").Child("initParams").Child("pgaAggregateTarget"), "cannot be changed"))
 			}
-			if old.Status.InitParams.CpuCount != new.Spec.InitParams.CpuCount {
+			if old.Status.InitParams.CpuCount != newObj.Spec.InitParams.CpuCount {
 				allErrs = append(allErrs,
 					field.Forbidden(field.NewPath("spec").Child("initParams").Child("cpuCount"), "cannot be changed"))
 			}
-			if old.Status.InitParams.Processes != new.Spec.InitParams.Processes {
+			if old.Status.InitParams.Processes != newObj.Spec.InitParams.Processes {
 				allErrs = append(allErrs,
 					field.Forbidden(field.NewPath("spec").Child("initParams").Child("processes"), "cannot be changed"))
 			}
@@ -494,7 +499,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldRuntimeO
 	}
 
 	// if Db is in a dataguard configuration or referred by Standby databases then Restrict enabling Tcps on the Primary DB
-	if new.Spec.EnableTCPS {
+	if newObj.Spec.EnableTCPS {
 		if old.Status.DgBroker != nil {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is in a dataguard configuration"))
@@ -504,38 +509,38 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldRuntimeO
 		}
 	}
 
-	if old.Status.DatafilesCreated == "true" && (old.Status.PrebuiltDB != new.Spec.Image.PrebuiltDB) {
+	if old.Status.DatafilesCreated == "true" && (old.Status.PrebuiltDB != newObj.Spec.Image.PrebuiltDB) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))
 	}
-	if new.Spec.Edition != "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, new.Spec.Edition) {
+	if newObj.Spec.Edition != "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, newObj.Spec.Edition) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("edition"), "cannot be changed"))
 	}
-	if old.Status.Charset != "" && !strings.EqualFold(old.Status.Charset, new.Spec.Charset) {
+	if old.Status.Charset != "" && !strings.EqualFold(old.Status.Charset, newObj.Spec.Charset) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("charset"), "cannot be changed"))
 	}
-	if old.Status.Sid != "" && !strings.EqualFold(new.Spec.Sid, old.Status.Sid) {
+	if old.Status.Sid != "" && !strings.EqualFold(newObj.Spec.Sid, old.Status.Sid) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("sid"), "cannot be changed"))
 	}
-	if old.Status.Pdbname != "" && !strings.EqualFold(old.Status.Pdbname, new.Spec.Pdbname) {
+	if old.Status.Pdbname != "" && !strings.EqualFold(old.Status.Pdbname, newObj.Spec.Pdbname) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("pdbname"), "cannot be changed"))
 	}
 	if old.Status.CreatedAs == "clone" &&
-		(old.Status.PrimaryDatabase == dbcommons.ValueUnavailable && new.Spec.PrimaryDatabaseRef != "" ||
-			old.Status.PrimaryDatabase != dbcommons.ValueUnavailable && old.Status.PrimaryDatabase != new.Spec.PrimaryDatabaseRef) {
+		(old.Status.PrimaryDatabase == dbcommons.ValueUnavailable && newObj.Spec.PrimaryDatabaseRef != "" ||
+			old.Status.PrimaryDatabase != dbcommons.ValueUnavailable && old.Status.PrimaryDatabase != newObj.Spec.PrimaryDatabaseRef) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "cannot be changed"))
 	}
-	if old.Status.OrdsReference != "" && new.Status.Persistence != new.Spec.Persistence {
+	if old.Status.OrdsReference != "" && newObj.Status.Persistence != newObj.Spec.Persistence {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("persistence"), "uninstall ORDS to change Persistence"))
 	}
 
-	if old.Status.Replicas != new.Spec.Replicas && old.Status.DgBroker != nil {
+	if old.Status.Replicas != newObj.Spec.Replicas && old.Status.DgBroker != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("replicas"), "cannot be updated for a database in a Data Guard configuration"))
 	}
@@ -545,12 +550,13 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldRuntimeO
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
-		new.Name, allErrs)
+		newObj.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *SingleInstanceDatabase) ValidateDelete(ctx context.Context, obj *SingleInstanceDatabase) (admission.Warnings, error) {
+	_ = ctx
 	sidb := obj
 
 	singleinstancedatabaselog.Info("validate delete", "name", sidb.Name)

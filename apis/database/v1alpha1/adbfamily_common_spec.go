@@ -41,24 +41,24 @@ package v1alpha1
 // LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
 const LastSuccessfulSpec string = "lastSuccessfulSpec"
 
-/************************
-*	OCI config
-************************/
+// OciConfigSpec defines OCI configuration references for a resource.
 type OciConfigSpec struct {
 	ConfigMapName *string `json:"configMapName,omitempty"`
 	SecretName    *string `json:"secretName,omitempty"`
 }
 
-/************************
-*	ADB spec
-************************/
+// K8sAdbSpec defines a Kubernetes Autonomous Database reference.
 type K8sAdbSpec struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// OciAdbSpec defines an OCI Autonomous Database reference.
+// revive:disable:var-naming
 type OciAdbSpec struct {
 	Id *string `json:"id,omitempty"`
 }
+
+// revive:enable:var-naming
 
 // TargetSpec defines the spec of the target for backup/restore runs.
 type TargetSpec struct {

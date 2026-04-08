@@ -40,6 +40,8 @@ package v1alpha1
 
 import "encoding/json"
 
+// KMSConfig defines the desired KMS configuration for a DBCS system.
+// revive:disable:var-naming
 type KMSConfig struct {
 	VaultName      string `json:"vaultName,omitempty"`
 	CompartmentId  string `json:"compartmentId,omitempty"`
@@ -47,6 +49,8 @@ type KMSConfig struct {
 	EncryptionAlgo string `json:"encryptionAlgo,omitempty"`
 	VaultType      string `json:"vaultType,omitempty"`
 }
+
+// KMSDetailsStatus defines observed KMS details persisted in status/annotations.
 type KMSDetailsStatus struct {
 	VaultId            string `json:"vaultId,omitempty"`
 	ManagementEndpoint string `json:"managementEndpoint,omitempty"`
@@ -57,6 +61,8 @@ type KMSDetailsStatus struct {
 	EncryptionAlgo     string `json:"encryptionAlgo,omitempty"`
 	VaultType          string `json:"vaultType,omitempty"`
 }
+
+// revive:enable:var-naming
 
 const (
 	lastSuccessfulKMSConfig = "lastSuccessfulKMSConfig"

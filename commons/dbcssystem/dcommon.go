@@ -189,12 +189,11 @@ func GetDBDetails(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (databa
 		dbDetails.PdbName = &dbcs.Spec.DbSystem.PdbName
 	}
 
-	backupCfg := dbcs.Spec.DbSystem.DbBackupConfig
 	if dbcs != nil &&
 		dbcs.Spec.DbSystem != nil &&
-		backupCfg != nil &&
-		backupCfg.AutoBackupEnabled != nil &&
-		*backupCfg.AutoBackupEnabled {
+		dbcs.Spec.DbSystem.DbBackupConfig != nil &&
+		dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupEnabled != nil &&
+		*dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupEnabled {
 
 		backupConfig, err := getBackupConfig(kubeClient, dbcs)
 		if err != nil {

@@ -57,6 +57,7 @@ import (
 // log is for logging in this package.
 var autonomouscontainerdatabaselog = logf.Log.WithName("autonomouscontainerdatabase-resource")
 
+// SetupWebhookWithManager sets up webhook handlers for AutonomousContainerDatabase.
 func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewWebhookManagedBy[*AutonomousContainerDatabase](mgr, r).
@@ -69,12 +70,16 @@ func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) 
 // Update the guard to admission.Validator
 var _ admission.Validator[*AutonomousContainerDatabase] = &AutonomousContainerDatabase{}
 
-// Update signatures to use *AutonomousContainerDatabase
+// ValidateCreate validates AutonomousContainerDatabase create requests.
 func (r *AutonomousContainerDatabase) ValidateCreate(ctx context.Context, obj *AutonomousContainerDatabase) (admission.Warnings, error) {
+	_ = ctx
+	_ = obj
 	return nil, nil
 }
 
+// ValidateUpdate validates AutonomousContainerDatabase update requests.
 func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousContainerDatabase) (admission.Warnings, error) {
+	_ = ctx
 	var (
 		allErrs field.ErrorList
 	)
@@ -89,7 +94,7 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj
 	}
 
 	// cannot update when the old state is in intermediate state, except for the terminate operatrion
-	var copiedSpec *AutonomousContainerDatabaseSpec = newAcd.Spec.DeepCopy()
+	copiedSpec := newAcd.Spec.DeepCopy()
 	changed, err := dbv4.RemoveUnchangedFields(oldAcd.Spec, copiedSpec)
 	if err != nil {
 		allErrs = append(allErrs,
@@ -109,6 +114,9 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj
 		newAcd.Name, allErrs)
 }
 
+// ValidateDelete validates AutonomousContainerDatabase delete requests.
 func (r *AutonomousContainerDatabase) ValidateDelete(ctx context.Context, obj *AutonomousContainerDatabase) (admission.Warnings, error) {
+	_ = ctx
+	_ = obj
 	return nil, nil
 }

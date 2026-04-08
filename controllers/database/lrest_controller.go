@@ -61,7 +61,6 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -185,7 +184,7 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// Auto discover functionality looks for pdb with no crd
-	if lrest.Spec.PdbAutoDiscover == true && lrest.Status.Status == true {
+	if lrest.Spec.PdbAutoDiscover && lrest.Status.Status {
 		log.Info("PDB auto discover turned on")
 		if err := r.PdbAutoDiscover(ctx, req, lrest); err != nil {
 			log.Error(err, "pdb auto discover failed")
@@ -194,7 +193,7 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// Reset database pwd
-	if lrest.Spec.ResetDbPassword == true && lrest.Status.Status == true {
+	if lrest.Spec.ResetDbPassword && lrest.Status.Status {
 		log.Info("ResetDbPassword")
 		if err := r.ResetCredential(ctx, req, lrest); err != nil {
 			log.Error(err, "reset credential failed")
@@ -687,25 +686,25 @@ func (r *LRESTReconciler) createCoreService(lrest *dbapi.LREST) *corev1.Service 
 	svcspecIP := corev1.ServiceSpec{}
 	svcspecIP.Selector = map[string]string{"name": lrest.Name + "-lrest"}
 
-	if lrest.Spec.ClusterIP == false {
+	if !lrest.Spec.ClusterIP {
 		svcspecIP.ClusterIP = corev1.ClusterIPNone
 	} else {
-		svcspecIP.Ports = []v1.ServicePort{
+		svcspecIP.Ports = []corev1.ServicePort{
 			{
-				Protocol:   v1.ProtocolTCP,
+				Protocol:   corev1.ProtocolTCP,
 				Port:       443,
 				TargetPort: intstr.FromInt(443),
 				Name:       "https",
 			},
 			{
-				Protocol:   v1.ProtocolTCP,
+				Protocol:   corev1.ProtocolTCP,
 				Port:       portLrest,
 				TargetPort: intstr.FromInt(lrest.Spec.LRESTPort),
 				Name:       "lrest-port",
 			},
 		}
-		if lrest.Spec.LoadBalancer == true {
-			svcspecIP.Type = v1.ServiceTypeLoadBalancer
+		if lrest.Spec.LoadBalancer {
+			svcspecIP.Type = corev1.ServiceTypeLoadBalancer
 		}
 	}
 
@@ -1019,7 +1018,7 @@ func ContainerEnv(lrest *dbapi.LREST, initcnt bool) []corev1.EnvVar {
 		},
 	}
 
-	if initcnt == true {
+	if initcnt {
 		EnvVar = appendEnvVar(EnvVar, "ARG", "INIT")
 		EnvVar = appendEnvVar(EnvVar, "PUBKEY", lrest.Spec.LRESTPubKey.Secret.Key)
 		EnvVar = appendEnvVar(EnvVar, "PRVKEY", lrest.Spec.LRESTPriKey.Secret.Key)
@@ -1086,7 +1085,7 @@ func ContainerEnv(lrest *dbapi.LREST, initcnt bool) []corev1.EnvVar {
 		EnvVar = append(EnvVar, R4)
 	}
 
-	if initcnt == false {
+	if !initcnt {
 		EnvVar = appendEnvVar(EnvVar, "ARG", "STARTUP")
 	}
 
@@ -1327,7 +1326,7 @@ func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lres
 	log := r.Log.WithValues("DeletePDBS", req.NamespacedName)
 
 	/* =================== DELETE CASCADE ================ */
-	if lrest.Spec.DeletePDBCascade == true {
+	if lrest.Spec.DeletePDBCascade {
 		log.Info("DELETE PDB CASCADE OPTION")
 		lrpdbList := &dbapi.LRPDBList{}
 		listOpts := []client.ListOption{}
@@ -1661,7 +1660,7 @@ func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request,
 	}
 
 	for _, pdbitem := range lrpdbList.Items {
-		if (pdbitem.Spec.CDBName == lrest.Spec.LRESTName) && Bit(pdbitem.Status.PDBBitMask, PDBCRT) == true {
+		if (pdbitem.Spec.CDBName == lrest.Spec.LRESTName) && Bit(pdbitem.Status.PDBBitMask, PDBCRT) {
 			log.Info("CRD(lrpdb): " + pdbitem.Name + ":" + pdbitem.Spec.LRPDBName)
 			pdbNameList = slices.Insert(pdbNameList, len(pdbNameList), pdbitem.Spec.LRPDBName)
 		}
@@ -1673,7 +1672,7 @@ func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request,
 		log.Info("PDB:" + name)
 		if name != "PDB$SEED" {
 			InTheList := SearchElementInDbList(name, pdbNameList)
-			if InTheList == false {
+			if !InTheList {
 				log.Info("Orphan PDB:[" + name + "]")
 				/*** Final check ***/
 				listOpts01 := []client.ListOption{client.MatchingFields{"spec.pdbName": strings.ToLower(name)}}
@@ -1699,10 +1698,10 @@ func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request,
 	/* Check PDB existence */
 
 	for _, pdbitem := range lrpdbList.Items {
-		if (pdbitem.Spec.CDBName == lrest.Spec.LRESTName) && Bit(pdbitem.Status.PDBBitMask, PDBCRT) == true {
+		if (pdbitem.Spec.CDBName == lrest.Spec.LRESTName) && Bit(pdbitem.Status.PDBBitMask, PDBCRT) {
 			InTheList := SearchElementInDbList2(pdbitem.Spec.LRPDBName, ndata)
 			log.Info("PDB " + pdbitem.Spec.LRPDBName + " has been dropped manually dropping the CRD")
-			if InTheList == false {
+			if !InTheList {
 				err := r.DeleteCRDPdb(ctx, req, &pdbitem, lrest)
 				log.Error(err, "Cannot delete crd ")
 			}
@@ -1819,7 +1818,7 @@ func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request,
 	/* Reset parameter before restart the server */
 	lrest.Spec.ResetDbPassword = false
 	err = r.Update(ctx, lrest)
-	if CheckErr(err, r, ctx, req, lrest, nil) == true {
+	if CheckErr(err, r, ctx, req, lrest, nil) {
 		return err
 	}
 
@@ -1835,7 +1834,7 @@ func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request,
 	}
 
 	_, err = NewCallAPISQL(r, ctx, req, lrest, url, values, "POST")
-	if CheckErr(err, r, ctx, req, lrest, nil) == true {
+	if CheckErr(err, r, ctx, req, lrest, nil) {
 		return err
 	}
 

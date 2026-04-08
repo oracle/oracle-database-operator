@@ -65,8 +65,10 @@ import (
 )
 
 const (
+	//nolint:unused // retained for future polling helper usage
 	checkInterval = 30 * time.Second
-	timeout       = 15 * time.Minute
+	//nolint:unused // retained for future polling helper usage
+	timeout = 15 * time.Minute
 	// PatchHistoryEntrySummaryLifecycleStateInProgress indicates patching is still running.
 	PatchHistoryEntrySummaryLifecycleStateInProgress database.PatchHistoryEntrySummaryLifecycleStateEnum = "IN_PROGRESS"
 	// PatchHistoryEntrySummaryLifecycleStateSucceeded indicates patching completed successfully.
@@ -162,7 +164,7 @@ func CreateAndGetDbcsID(compartmentID string, logger logr.Logger, kubeClient cli
 		return " ", err
 	}
 
-	dbcs.Spec.Id = resp.DbSystem.Id
+	dbcs.Spec.Id = resp.Id
 
 	// Change the phase to "Provisioning"
 	if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
@@ -170,7 +172,7 @@ func CreateAndGetDbcsID(compartmentID string, logger logr.Logger, kubeClient cli
 	}
 
 	// Check the State
-	_, err = CheckResourceState(logger, dbClient, *resp.DbSystem.Id, string(databasev4.Provision), string(databasev4.Available))
+	_, err = CheckResourceState(logger, dbClient, *resp.Id, string(databasev4.Provision), string(databasev4.Available))
 	if err != nil {
 		return "", err
 	}
@@ -1876,6 +1878,8 @@ func waitForDbSystemAvailable(cdbID string, dbClient database.DatabaseClient, db
 }
 
 // isFieldUpdated is a helper function that checks if a field value has been updated by comparing the new value with both the old value and the current value from OCI. It returns true if the new value is different from either the old value or the current value, indicating that an update is needed.
+//
+//nolint:unused // retained for future reconciler update-diff handling
 func isFieldUpdated[T comparable](specVal T, oldVal T, currentVal T) bool {
 	return specVal != oldVal || specVal != currentVal
 }
@@ -2092,7 +2096,9 @@ func SetDBCSStatus(state databasev4.LifecycleState, compartmentID string, dbClie
 	if err != nil {
 		return err
 	}
-	compartmentID = *resp.CompartmentId
+	if compartmentID == "" && resp.CompartmentId != nil {
+		compartmentID = *resp.CompartmentId
+	}
 
 	dbcs.Status.AvailabilityDomain = *resp.AvailabilityDomain
 	dbcs.Status.CpuCoreCount = *resp.CpuCoreCount
@@ -2611,16 +2617,15 @@ func RestoreDbcsToPoint(
 			state := dbStateResp.Database.LifecycleState
 			logger.Info("Polling Restore Operation", "DatabaseID", *dbID, "State", state)
 
-			if state == database.DatabaseLifecycleStateAvailable {
+			switch state {
+			case database.DatabaseLifecycleStateAvailable:
 				logger.Info("Database restore completed", "DatabaseID", *dbID)
 				// Change the phase to "Available"
 				if statusErr := SetLifecycleState(compartmentID, kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
 					return statusErr
 				}
 				return nil
-			} else if state == database.DatabaseLifecycleStateRestoreFailed {
-				return fmt.Errorf("restore failed: DatabaseID=%s", *dbID)
-			} else if state == database.DatabaseLifecycleStateFailed {
+			case database.DatabaseLifecycleStateRestoreFailed, database.DatabaseLifecycleStateFailed:
 				return fmt.Errorf("restore failed: DatabaseID=%s", *dbID)
 			}
 		}

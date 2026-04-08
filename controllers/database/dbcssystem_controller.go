@@ -646,10 +646,6 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if dbcsInst.Spec.Id == nil && lastSuccessfullSpec == nil {
 			// If no DbcsSystem ID specified, create a new DB System
 			// ======================== Validate Specs ==============
-			if dbcsInst == nil {
-				// Safety guard
-				return ctrl.Result{}, nil
-			}
 			err = dbcsv4.ValidateSpex(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.Recorder)
 			if err != nil {
 				dbcsInst.Status.Message = err.Error()
@@ -1428,63 +1424,46 @@ func (r *DbcsSystemReconciler) updateSpecsAndStatus(
 	dbSystemID string,
 ) (reconcile.Result, error) {
 
-	const (
-		maxAttempts = 15
-		retryDelay  = 15 * time.Second
-	)
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		latest := &databasev4.DbcsSystem{}
-		if err := r.KubeClient.Get(ctx,
-			types.NamespacedName{
-				Name:      dbcsInst.Name,
-				Namespace: dbcsInst.Namespace,
-			},
-			latest,
-		); err != nil {
-			return reconcile.Result{}, err
-		}
+	const retryDelay = 15 * time.Second
+	latest := &databasev4.DbcsSystem{}
+	if err := r.KubeClient.Get(ctx,
+		types.NamespacedName{
+			Name:      dbcsInst.Name,
+			Namespace: dbcsInst.Namespace,
+		},
+		latest,
+	); err != nil {
+		return reconcile.Result{}, err
+	}
 
-		// Fetch OCI state
-		ociResp, err := r.dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
-			DbSystemId: common.String(dbSystemID),
-		})
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+	// Fetch OCI state
+	ociResp, err := r.dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
+		DbSystemId: common.String(dbSystemID),
+	})
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
-		ociState := string(ociResp.DbSystem.LifecycleState)
+	ociState := string(ociResp.DbSystem.LifecycleState)
 
-		// If already synced → exit cleanly
-		if string(latest.Status.State) == ociState &&
-			latest.Status.Id != nil &&
-			*latest.Status.Id == dbSystemID {
-
-			r.Logger.Info("Status already in sync",
-				"state", ociState)
-			return reconcile.Result{}, nil
-		}
-
-		updated := latest.DeepCopy()
-		updated.Status.Id = &dbSystemID
-		updated.Status.State = databasev4.LifecycleState(ociState)
-
-		if err := r.KubeClient.Status().Update(ctx, updated); err != nil {
-
-			// Retry using requeue (not sleep)
-			if attempt == maxAttempts {
-				return reconcile.Result{}, err
-			}
-
-			return reconcile.Result{RequeueAfter: retryDelay}, nil
-		}
-
-		r.Logger.Info("Successfully updated status",
-			"state", ociState)
-
+	// If already synced -> exit cleanly.
+	if string(latest.Status.State) == ociState &&
+		latest.Status.Id != nil &&
+		*latest.Status.Id == dbSystemID {
+		r.Logger.Info("Status already in sync", "state", ociState)
 		return reconcile.Result{}, nil
 	}
 
-	return reconcile.Result{}, fmt.Errorf("failed after %d attempts", maxAttempts)
+	updated := latest.DeepCopy()
+	updated.Status.Id = &dbSystemID
+	updated.Status.State = databasev4.LifecycleState(ociState)
+
+	if err := r.KubeClient.Status().Update(ctx, updated); err != nil {
+		return reconcile.Result{RequeueAfter: retryDelay}, nil
+	}
+
+	r.Logger.Info("Successfully updated status", "state", ociState)
+	return reconcile.Result{}, nil
 }
 
 // getDbHomeIDByDbSystemID retrieves the DB Home ID associated with the given DB System ID
@@ -2378,6 +2357,8 @@ func (r *DbcsSystemReconciler) getSecret(ctx context.Context, namespace, secretN
 }
 
 // Convert DbBackupConfigAutoBackupWindowEnum to *string
+//
+//nolint:unused // retained for compatibility helpers used by ongoing API transitions
 func autoBackupWindowEnumToStringPtr(enum *database.DbBackupConfigAutoBackupWindowEnum) *string {
 	if enum == nil {
 		return nil
@@ -2385,6 +2366,8 @@ func autoBackupWindowEnumToStringPtr(enum *database.DbBackupConfigAutoBackupWind
 	value := string(*enum)
 	return &value
 }
+
+//nolint:unused // retained for compatibility helpers used by ongoing API transitions
 func (r *DbcsSystemReconciler) stringToDbBackupConfigAutoBackupWindowEnum(value *string) (database.DbBackupConfigAutoBackupWindowEnum, error) {
 	// Define a default value
 	// Define a default value

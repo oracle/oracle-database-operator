@@ -50,14 +50,13 @@ import (
 	//"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
@@ -163,7 +162,10 @@ type PLSQLPayLoad struct {
 // LRPDBFinalizer is the finalizer used by LRPDB resources.
 const LRPDBFinalizer = "database.oracle.com/LRPDBfinalizer"
 
+//nolint:unused // retained for legacy compatibility hooks
 var tdePassword string
+
+//nolint:unused // retained for legacy compatibility hooks
 var tdeSecret string
 var floodControl bool = false
 var imperativeLpdbDeletion bool = false /* Global variable for imperative pdb deletion */
@@ -173,6 +175,8 @@ var imperativeLpdbDeletion bool = false /* Global variable for imperative pdb de
 		name is not set the open and clone yaml file
 */
 var globalconfigmap string
+
+//nolint:unused // retained for legacy SQL status propagation hooks
 var globalsqlcode int
 
 /* mind  https://github.com/kubernetes-sigs/kubebuilder/issues/549 */
@@ -2450,7 +2454,7 @@ func (r *LRPDBReconciler) GetPdbSize(ctx context.Context, req ctrl.Request, lrpd
 }
 
 // UpdateStatus updates LRPDB status on the Kubernetes API.
-func (r *LRPDBReconciler) UpdateStatus(ctx context.Context, req ctrl.Request, lrpdb *databasev4.LRPDB) {
+func (r *LRPDBReconciler) UpdateStatus(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) {
 	log := r.Log.WithValues("UpdateStatus", req.NamespacedName)
 	err := r.Status().Update(ctx, lrpdb)
 	if err != nil {
@@ -2668,6 +2672,10 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 			}
 		}
 	}
+	if err != nil {
+		log.Info("Unable to create HTTP Request", "err", err.Error())
+		return "", err
+	}
 
 	Httpreq.Header.Add("Accept", "application/json")
 	Httpreq.Header.Add("Content-Type", "application/json")
@@ -2685,7 +2693,7 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			bb, _ := ioutil.ReadAll(resp.Body)
+			bb, _ := io.ReadAll(resp.Body)
 
 			if resp.StatusCode == 404 {
 				lrpdb.Status.ConnString = ""
@@ -2726,7 +2734,7 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 			}
 		}()
 
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Print(err.Error())
 		}
@@ -2781,7 +2789,7 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 
 		e.Eventf(lrest, corev1.EventTypeWarning, "Done", lrest.Spec.LRESTName)
 		if resp.StatusCode != http.StatusOK {
-			bb, _ := ioutil.ReadAll(resp.Body)
+			bb, _ := io.ReadAll(resp.Body)
 
 			if resp.StatusCode == 404 {
 				log.Info("error 404")
@@ -2819,7 +2827,7 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 			}
 		}()
 
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Print(err.Error())
 		}

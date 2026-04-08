@@ -66,7 +66,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -164,7 +163,7 @@ func configureLogger() {
 		Development: true,
 		TimeEncoder: zapcore.RFC3339TimeEncoder,
 	}
-	ctrl.SetLogger(zap.New(func(o *zap.Options) { *o = *options }))
+	ctrl.SetLogger(ctrlzap.New(func(o *ctrlzap.Options) { *o = *options }))
 }
 
 func buildManagerOptions(metricsAddr string, enableLeaderElection bool, watchNamespaces map[string]cache.Config) ctrl.Options {

@@ -203,7 +203,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(_ context.Context, req ctrl.Req
 		return r.manageError(
 			logger.WithName("setupOCIClients"),
 			desiredAdb,
-			fmt.Errorf("Failed to get OCI Database Client: %w", err))
+			fmt.Errorf("failed to get OCI Database Client: %w", err))
 	}
 
 	logger.Info("OCI clients configured succesfully")
@@ -220,7 +220,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(_ context.Context, req ctrl.Req
 		return r.manageError(
 			logger.WithName("syncAutonomousDatabase"),
 			desiredAdb,
-			fmt.Errorf("Failed to sync AutonomousDatabase: %w", err))
+			fmt.Errorf("failed to sync AutonomousDatabase: %w", err))
 	}
 
 	// If the lifecycle state changes from any other states to
@@ -236,7 +236,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(_ context.Context, req ctrl.Req
 			return r.manageError(
 				logger.WithName("syncAutonomousDatabase"),
 				desiredAdb,
-				fmt.Errorf("Failed to sync AutonomousDatabase: %w", err))
+				fmt.Errorf("failed to sync AutonomousDatabase: %w", err))
 		}
 	}
 

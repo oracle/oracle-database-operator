@@ -53,6 +53,7 @@ import (
 // log is for logging in this package.
 var oraclerestdataservicelog = logf.Log.WithName("oraclerestdataservice-resource")
 
+// SetupWebhookWithManager sets up webhook handlers for OracleRestDataService.
 func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	// 1. Add the generic type parameter [*OracleRestDataService]
 	return ctrl.NewWebhookManagedBy[*OracleRestDataService](mgr, r).
@@ -67,8 +68,9 @@ func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error 
 var _ admission.Defaulter[*OracleRestDataService] = &OracleRestDataService{}
 var _ admission.Validator[*OracleRestDataService] = &OracleRestDataService{}
 
-// 3. Update Default: change runtime.Object to *OracleRestDataService
+// Default applies default values to OracleRestDataService resources.
 func (r *OracleRestDataService) Default(ctx context.Context, obj *OracleRestDataService) error {
+	_ = ctx
 	ords := obj
 
 	oraclerestdataservicelog.Info("default", "name", ords.Name)
@@ -89,6 +91,7 @@ func (r *OracleRestDataService) Default(ctx context.Context, obj *OracleRestData
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	_ = ctx
 	ords := obj
 
 	oraclerestdataservicelog.Info("validate create", "name", ords.Name)
@@ -143,14 +146,14 @@ func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj *OracleR
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeObject, newRuntimeObject *OracleRestDataService) (admission.Warnings, error) {
-	new := newRuntimeObject
+	newObj := newRuntimeObject
 
-	oraclerestdataservicelog.Info("validate update", "name", new.Name)
+	oraclerestdataservicelog.Info("validate update", "name", newObj.Name)
 
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	warnings, err := new.ValidateCreate(ctx, newRuntimeObject)
+	warnings, err := newObj.ValidateCreate(ctx, newRuntimeObject)
 	if err != nil {
 		return warnings, err
 	}
@@ -158,11 +161,11 @@ func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeOb
 	// Now check for updation errors
 	old := oldRuntimeObject
 
-	if old.Status.DatabaseRef != "" && old.Status.DatabaseRef != new.Spec.DatabaseRef {
+	if old.Status.DatabaseRef != "" && old.Status.DatabaseRef != newObj.Spec.DatabaseRef {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("databaseRef"), "cannot be changed"))
 	}
-	if old.Status.Image.PullFrom != "" && old.Status.Image != new.Spec.Image {
+	if old.Status.Image.PullFrom != "" && old.Status.Image != newObj.Spec.Image {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image"), "cannot be changed"))
 	}
@@ -172,12 +175,14 @@ func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeOb
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
-		new.Name, allErrs)
+		newObj.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *OracleRestDataService) ValidateDelete(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	_ = ctx
+	_ = obj
 	oraclerestdataservicelog.Info("validate delete", "name", r.Name)
 
 	return nil, nil

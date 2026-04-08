@@ -45,7 +45,8 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// OracleRestDataServiceSpec defines the desired state of OracleRestDataService
+// OracleRestDataServiceSpec defines the desired state of OracleRestDataService.
+// revive:disable:var-naming
 type OracleRestDataServiceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -96,7 +97,7 @@ type OracleRestDataServicePassword struct {
 	KeepSecret *bool  `json:"keepSecret,omitempty"`
 }
 
-// OracleRestDataServicePDBSchemas defines the PDB Schemas to be ORDS Enabled
+// OracleRestDataServiceRestEnableSchemas defines schemas to be ORDS-enabled.
 type OracleRestDataServiceRestEnableSchemas struct {
 	PdbName    string `json:"pdbName,omitempty"`
 	SchemaName string `json:"schemaName"`
@@ -104,7 +105,7 @@ type OracleRestDataServiceRestEnableSchemas struct {
 	Enable     bool   `json:"enable"`
 }
 
-// OracleRestDataServiceStatus defines the observed state of OracleRestDataService
+// OracleRestDataServiceStatus defines the observed state of OracleRestDataService.
 type OracleRestDataServiceStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -124,6 +125,8 @@ type OracleRestDataServiceStatus struct {
 
 	Image OracleRestDataServiceImage `json:"image,omitempty"`
 }
+
+// revive:enable:var-naming
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
