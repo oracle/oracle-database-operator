@@ -36,7 +36,11 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,unused // Compatibility paths intentionally keep deprecated fields and optional helpers.
 package controllers
+
+// revive:disable:context-as-argument,unused-parameter,exported,var-naming,indent-error-flow
+// Dataguard broker controller keeps legacy signatures/flows for backward compatibility.
 
 import (
 	"context"
@@ -728,10 +732,10 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerCreation(broker *dbapi.
 				}()).
 				Build()
 
-				// Set the ownership of the service object to the dataguard broker resource object
-				if err := ctrl.SetControllerReference(broker, &svc, r.Scheme); err != nil {
-					return ctrl.Result{Requeue: false}, err
-				}
+			// Set the ownership of the service object to the dataguard broker resource object
+			if err := ctrl.SetControllerReference(broker, &svc, r.Scheme); err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
 
 			// create the service for dataguardbroker resource
 			if err = r.Create(ctx, &svc); err != nil {

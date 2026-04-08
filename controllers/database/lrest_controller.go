@@ -1414,7 +1414,7 @@ func SearchElementInDbList(element string, TheList []string) bool {
 	var inthelist bool
 	inthelist = false
 	for idx := range TheList {
-		if strings.ToLower(element) == strings.ToLower(TheList[idx]) {
+		if strings.EqualFold(element, TheList[idx]) {
 			inthelist = true
 			return inthelist
 		}
@@ -1427,7 +1427,7 @@ func SearchElementInDbList2(element string, TheList []interface{}) bool {
 	var inthelist bool
 	inthelist = false
 	for idx := range TheList {
-		if strings.ToLower(element) == strings.ToLower(TheList[idx].(map[string]interface{})["name"].(string)) {
+		if strings.EqualFold(element, TheList[idx].(map[string]interface{})["name"].(string)) {
 			inthelist = true
 			return inthelist
 		}

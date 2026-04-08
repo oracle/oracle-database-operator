@@ -13,9 +13,7 @@ import (
 func AddSidecarContainers(a *api.DatabaseObserver, listing *[]corev1.Container) {
 
 	if containers := a.Spec.Sidecar.Containers; len(containers) > 0 {
-		for _, container := range containers {
-			*listing = append(*listing, container)
-		}
+		*listing = append(*listing, containers...)
 	}
 }
 
@@ -23,9 +21,7 @@ func AddSidecarContainers(a *api.DatabaseObserver, listing *[]corev1.Container) 
 func AddSidecarVolumes(a *api.DatabaseObserver, listing *[]corev1.Volume) {
 
 	if volumes := a.Spec.Sidecar.Volumes; len(volumes) > 0 {
-		for _, v := range volumes {
-			*listing = append(*listing, v)
-		}
+		*listing = append(*listing, volumes...)
 	}
 }
 
@@ -43,11 +39,9 @@ func GetLabels(a *api.DatabaseObserver, customResourceLabels map[string]string) 
 		}
 	}
 
-	if customResourceLabels != nil {
-		for k, v := range customResourceLabels {
-			if k != DefaultSelectorLabelKey {
-				l[k] = v
-			}
+	for k, v := range customResourceLabels {
+		if k != DefaultSelectorLabelKey {
+			l[k] = v
 		}
 	}
 
@@ -117,9 +111,7 @@ func GetExporterServicePort(a *api.DatabaseObserver) []corev1.ServicePort {
 
 	// get service ports
 	if ports := a.Spec.Service.Ports; len(ports) > 0 {
-		for _, port := range ports {
-			servicePorts = append(servicePorts, port)
-		}
+		servicePorts = append(servicePorts, ports...)
 
 	} else {
 		// if not, provide default service port
@@ -141,9 +133,7 @@ func GetEndpoints(a *api.DatabaseObserver) []monitorv1.Endpoint {
 
 	// get endpoints
 	if es := a.Spec.ServiceMonitor.Endpoints; len(es) > 0 {
-		for _, e := range es {
-			endpoints = append(endpoints, e)
-		}
+		endpoints = append(endpoints, es...)
 	}
 
 	// if not, provide default endpoint
@@ -193,7 +183,7 @@ func GetExporterDeploymentVolumeMounts(a *api.DatabaseObserver) []corev1.VolumeM
 	}
 
 	// a.Spec.Wallet.AdditionalWallets
-	if add := a.Spec.Wallet.AdditionalWallets; add != nil && len(add) > 0 {
+	if add := a.Spec.Wallet.AdditionalWallets; len(add) > 0 {
 		for _, w := range add {
 			// Determine where to mount
 			volM = append(volM, corev1.VolumeMount{
@@ -313,7 +303,7 @@ func GetExporterDeploymentVolumes(a *api.DatabaseObserver) []corev1.Volume {
 	}
 
 	// a.Spec.Wallet.AdditionalWallets
-	if add := a.Spec.Wallet.AdditionalWallets; add != nil && len(add) > 0 {
+	if add := a.Spec.Wallet.AdditionalWallets; len(add) > 0 {
 		for _, w := range add {
 
 			vol = append(vol, corev1.Volume{
@@ -640,7 +630,7 @@ func GetExporterEnvs(a *api.DatabaseObserver) []corev1.EnvVar {
 	}
 
 	// CUSTOM_METRICS environment variable
-	if cms := a.Spec.Metrics.Configmap; cms != nil && len(cms) > 0 {
+	if cms := a.Spec.Metrics.Configmap; len(cms) > 0 {
 		metricsConfigList := make([]string, 0)
 		for _, cm := range cms {
 			metricsConfigList = append(metricsConfigList, DefaultExporterConfigMountRootPath+"/"+cm.Key)

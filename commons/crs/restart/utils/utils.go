@@ -90,7 +90,7 @@ const (
 var serviceCardinality = [...]string{"UNIFORM", "SINGLETON", "DUPLEX"}
 var tafPolicy = [...]string{"NONE", "BASIC", "PRECONNECT"}
 var serviceRole = [...]string{"PRIMARY", "PHYSICAL_STANDBY", "LOGICAL_STANDBY", "SNAPSHOT_STANDBY"}
-var servicePolicy = [...]string{"AUTOMATIC", "MANUAL"}
+var servicePolicy = [...]string{"AUTOMATIC", "MANUAL"} //nolint:unused // Reserved for legacy service-policy parity.
 var serviceResetState = [...]string{"NONE", "LEVEL1"}
 var serviceFailoverType = [...]string{"NONE", "SESSION", "SELECT", "TRANSACTION", "AUTO"}
 

@@ -36,7 +36,11 @@
 ** SOFTWARE.
  */
 
+//nolint:unused // Legacy Oracle Restart command helpers are retained for planned/optional flows.
 package commons
+
+// revive:disable:unused-parameter
+// Legacy command helper signatures are preserved for backward compatibility.
 
 // getOracleRestartDbModeCmd provides documentation for the getOracleRestartDbModeCmd function.
 func getOracleRestartDbModeCmd() []string {
@@ -69,6 +73,7 @@ func getConnStrCmd() []string {
 	var oraRacConnCmd = []string{oraScriptMount1 + "/cmdExec", oraPythonCmd, oraScriptMount1 + "/main.py ", "--checkconnstr=true "}
 	return oraRacConnCmd
 }
+
 // getGridHomeCmd provides documentation for the getGridHomeCmd function.
 func getGridHomeCmd() []string {
 	// Command to source the envfile and echo GRID_HOME

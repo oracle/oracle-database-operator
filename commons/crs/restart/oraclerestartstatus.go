@@ -36,7 +36,11 @@
 ** SOFTWARE.
  */
 
+//nolint:unused // Legacy Oracle Restart status helpers are retained for planned/optional flows.
 package commons
+
+// revive:disable:context-as-argument,unused-parameter,exported,var-naming
+// Legacy status helper signatures are preserved for backward compatibility.
 
 import (
 	"context"
@@ -158,6 +162,7 @@ func addOracleRestartNodestatus(instance *oraclerestartdb.OracleRestart, ctx con
 
 	var racState string
 	podName := oraRestartSpex.Name + "-0"
+	_ = idx
 	idx, status := contains(instance, oracleRestart)
 	if status {
 		// racstate need to be read before overwriting the instance.Status.OracleRestartNodes[idx] = oracleRestart

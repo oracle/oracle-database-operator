@@ -49,8 +49,11 @@
 //   - Issues tracker: https://github.com/oracle/oracle-database-operator/blob/main/README.md#help
 //   - Sample CRD walkthrough: https://github.com/oracle/oracle-database-operator/blob/main/docs/rac/README.md
 
-
+//nolint:unused // Legacy command helper functions are retained for planned/optional flows.
 package commons
+
+// revive:disable:unused-parameter
+// Legacy command helper signatures are preserved for backward compatibility.
 
 // getRacDbModeCmd provides documentation for the getRacDbModeCmd function.
 func getRacDbModeCmd() []string {

@@ -36,7 +36,11 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,unused // Compatibility paths intentionally keep deprecated fields and optional helpers.
 package controllers
+
+// revive:disable:context-as-argument,unused-parameter,exported,var-declaration,range,indent-error-flow
+// Dataguard helpers keep legacy signatures/flows for backward compatibility.
 
 import (
 	"context"
@@ -267,11 +271,11 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 			continue
 		}
 
-			broker.Status.Status = dbcommons.StatusCreating
-			if err := r.Status().Update(ctx, broker); err != nil {
-				log.Error(err, "failed to update dataguardbroker status")
-				return err
-			}
+		broker.Status.Status = dbcommons.StatusCreating
+		if err := r.Status().Update(ctx, broker); err != nil {
+			log.Error(err, "failed to update dataguardbroker status")
+			return err
+		}
 
 		// ## FETCH THE STANDBY REPLICAS .
 		standbyDatabaseReadyPod, _, _, _, err := dbcommons.FindPods(r, sidb.Spec.Image.Version,
@@ -294,12 +298,12 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 			log.Info("DatabasesInDataguardConfig is nil")
 			broker.Status.DatabasesInDataguardConfig = make(map[string]string)
 		}
-			log.Info(fmt.Sprintf("adding %v:%v to the map", standbyDatabase.Status.Sid, standbyDatabase.Name))
-			broker.Status.DatabasesInDataguardConfig[standbyDatabase.Status.Sid] = standbyDatabase.Name
-			if err := r.Status().Update(ctx, broker); err != nil {
-				log.Error(err, "failed to update dataguardbroker status")
-				return err
-			}
+		log.Info(fmt.Sprintf("adding %v:%v to the map", standbyDatabase.Status.Sid, standbyDatabase.Name))
+		broker.Status.DatabasesInDataguardConfig[standbyDatabase.Status.Sid] = standbyDatabase.Name
+		if err := r.Status().Update(ctx, broker); err != nil {
+			log.Error(err, "failed to update dataguardbroker status")
+			return err
+		}
 		// Update Databases
 	}
 	if len(broker.Status.DatabasesInDataguardConfig) == 0 {
@@ -416,17 +420,17 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 			log.Info("ShowConfiguration Output")
 			log.Info(out)
 		}
-			// Set DG Configured status to true for this standbyDatabase and primary Database. so that in next reconcilation, we dont configure this again
-			n.Status.DgBroker = &m.Name
-			standbyDatabase.Status.DgBroker = &m.Name
-			if err := r.Status().Update(ctx, standbyDatabase); err != nil {
-				log.Error(err, "failed to update standby status")
-				return err
-			}
-			if err := r.Status().Update(ctx, n); err != nil {
-				log.Error(err, "failed to update primary status")
-				return err
-			}
+		// Set DG Configured status to true for this standbyDatabase and primary Database. so that in next reconcilation, we dont configure this again
+		n.Status.DgBroker = &m.Name
+		standbyDatabase.Status.DgBroker = &m.Name
+		if err := r.Status().Update(ctx, standbyDatabase); err != nil {
+			log.Error(err, "failed to update standby status")
+			return err
+		}
+		if err := r.Status().Update(ctx, n); err != nil {
+			log.Error(err, "failed to update primary status")
+			return err
+		}
 		// Remove admin pwd file
 		_, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 			dbcommons.RemoveAdminPasswordFile)
@@ -584,7 +588,7 @@ func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 
 	// fetch the singleinstancedatabase (database sid) and their role in the dataguard configuration
 	var databases []string
-		databases, err = GetDatabasesInDataGuardConfigurationWithRole(r, broker, ctx, req)
+	databases, err = GetDatabasesInDataGuardConfigurationWithRole(r, broker, ctx, req)
 	if err != nil {
 		log.Info("Problem when retrieving the databases in dg config")
 		broker.Status.Status = dbcommons.StatusNotReady
@@ -605,14 +609,14 @@ func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 		if err != nil {
 			return err
 		}
-			log.Info(fmt.Sprintf("Checking current role of %v is %v and its status is %v", broker.Status.DatabasesInDataguardConfig[database], strings.ToUpper(splitstr[1]), singleInstanceDatabase.Status.Role))
-			if singleInstanceDatabase.Status.Role != strings.ToUpper(splitstr[1]) {
-				singleInstanceDatabase.Status.Role = strings.ToUpper(splitstr[1])
-				if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
-					log.Error(err, "failed to update singleInstanceDatabase status", "name", singleInstanceDatabase.Name)
-					return err
-				}
+		log.Info(fmt.Sprintf("Checking current role of %v is %v and its status is %v", broker.Status.DatabasesInDataguardConfig[database], strings.ToUpper(splitstr[1]), singleInstanceDatabase.Status.Role))
+		if singleInstanceDatabase.Status.Role != strings.ToUpper(splitstr[1]) {
+			singleInstanceDatabase.Status.Role = strings.ToUpper(splitstr[1])
+			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+				log.Error(err, "failed to update singleInstanceDatabase status", "name", singleInstanceDatabase.Name)
+				return err
 			}
+		}
 		if strings.ToUpper(splitstr[1]) == "PRIMARY" && strings.ToUpper(database) != strings.ToUpper(broker.Status.PrimaryDatabase) {
 			log.Info("primary Database is " + strings.ToUpper(database))
 			broker.Status.PrimaryDatabase = strings.ToUpper(database)

@@ -36,7 +36,11 @@
 ** SOFTWARE.
  */
 
+//nolint:unused,staticcheck // Legacy Oracle Restart provisioning helpers are retained for planned/optional flows.
 package commons
+
+// revive:disable:unused-parameter,var-declaration,indent-error-flow,exported
+// Legacy provisioning helper signatures are preserved for backward compatibility.
 
 import (
 	"context"

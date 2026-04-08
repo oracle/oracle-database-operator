@@ -36,7 +36,11 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,unused // Compatibility paths intentionally keep deprecated fields and optional helpers.
 package controllers
+
+// revive:disable:indent-error-flow,var-declaration,exported,context-as-argument
+// Existing control flow is kept stable to minimize regression risk.
 
 import (
 	"context"

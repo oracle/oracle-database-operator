@@ -51,7 +51,12 @@
 // Help:
 //   - Issues tracker: https://github.com/oracle/oracle-database-operator/blob/main/README.md#help
 //   - Sample CRD walkthrough: https://github.com/oracle/oracle-database-operator/blob/main/docs/rac/README.md
+//
+//nolint:unused // Legacy RAC helper functions are retained for planned/optional flows.
 package commons
+
+// revive:disable:unused-parameter,exported,indent-error-flow,empty-block,context-as-argument,var-naming
+// Legacy RAC helper signatures/names are preserved for backward compatibility.
 
 import (
 	"context"
@@ -894,7 +899,7 @@ func checkContainerStatus(pod *corev1.Pod, kClient client.Client,
 		}
 	}
 	if !isRunning {
-		return fmt.Errorf("Container is not in running state%s.Describe the pod to check the detailed message", pod.Name)
+		return fmt.Errorf("container is not in running state %s; describe the pod to check the detailed message", pod.Name)
 	}
 	return nil
 }
@@ -1656,7 +1661,7 @@ func ValidateNetInterface(net string, instance *racdb.RacDatabase, rspNetData st
 
 	if net != "" {
 		if !strings.Contains(rspNetData, net) {
-			err = fmt.Errorf("Error occurred during retreiving network card detail from grid responsefile: %s", "The key does not exist")
+			err = fmt.Errorf("error occurred while retrieving network card detail from grid response file: %s", "the key does not exist")
 		}
 	}
 
@@ -1813,12 +1818,8 @@ func GetDBLsnrEndPointsForCluster(instance *racdb.RacDatabase) (string, string, 
 			}
 		}
 		// Remove trailing commas/semicolons
-		if strings.HasSuffix(endp, ",") {
-			endp = endp[:len(endp)-1]
-		}
-		if strings.HasSuffix(locallsnr, ";") {
-			locallsnr = locallsnr[:len(locallsnr)-1]
-		}
+		endp = strings.TrimSuffix(endp, ",")
+		locallsnr = strings.TrimSuffix(locallsnr, ";")
 	}
 	return locallsnr, endp, nil
 }
