@@ -6328,6 +6328,7 @@ func buildSIDBSecurityScriptEnvVars(m *dbapi.SingleInstanceDatabase) []corev1.En
 	envs := make([]corev1.EnvVar, 0)
 
 	if getTcpsEnabled(m) {
+		envs = append(envs, corev1.EnvVar{Name: "TCPS_ENABLED", Value: "true"})
 		tcpsCertsLocation := getTcpsCertsLocation(m)
 		if strings.TrimSpace(tcpsCertsLocation) != "" {
 			envs = append(envs,
