@@ -65,7 +65,7 @@ KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
 
 # Unit test packages
-TEST ?= ./apis/database/v1alpha1 ./commons/... ./controllers/...
+TEST ?= ./apis/database/v4 ./commons/... ./controllers/database ./controllers/dataguard
 
 # E2E tests path
 E2ETEST ?= ./test/e2e/

@@ -6355,11 +6355,21 @@ func buildSIDBSecurityScriptEnvVars(m *dbapi.SingleInstanceDatabase) []corev1.En
 
 	if HasTDEPasswordSecret(m) {
 		tdeSecretMountRoot := GetTDEPasswordSecretMountRoot(m)
+		tdeSecretName := GetTDEPasswordSecretName(m)
 		tdeSecretKey := GetTDEPasswordSecretFileName(m)
 		envs = append(envs,
 			corev1.EnvVar{Name: "TDE_ENABLED", Value: "true"},
 			corev1.EnvVar{Name: "SECRET_BASE_DIR", Value: tdeSecretMountRoot},
-			corev1.EnvVar{Name: "ORACLE_TDE_PWD_SECRET_NAME", Value: tdeSecretKey},
+			corev1.EnvVar{
+				Name: "TDE_WALLET_PWD",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: tdeSecretName},
+						Key:                  tdeSecretKey,
+					},
+				},
+			},
+			corev1.EnvVar{Name: "ORACLE_TDE_PWD_SECRET_NAME", Value: tdeSecretName},
 			corev1.EnvVar{Name: "ORACLE_TDE_SECRET_FILE", Value: GetTDEPasswordSecretMountPath(m)},
 		)
 		if tde := getTDEPasswordConfig(m); tde != nil {

@@ -9476,9 +9476,6 @@ spec:
                       type: string
                     timeStarted:
                       type: string
-                  required:
-                  - operationId
-                  - operationType
                   type: object
                 type: array
             required:
@@ -20074,7 +20071,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-mltp1
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sidb-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

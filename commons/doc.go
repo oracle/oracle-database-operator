@@ -39,4 +39,3 @@
 // Package commons contains shared utilities reused across the Oracle Database
 // Operator, including RAC helpers documented in docs/rac.
 package commons
-
