@@ -1366,21 +1366,22 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	m.Status.Persistence = m.Spec.Persistence
 	m.Status.PrebuiltDB = m.Spec.Image.PrebuiltDB
 	if m.Spec.CreateAs == "truecache" {
-		primaryRefName := getPrimaryDatabaseRefName(m)
-		if primaryRefName == "" && !hasPrimaryDatabaseDetails(m) && getPrimaryDatabaseConnectStringValue(m) == "" {
+		primarySource := resolvePrimaryDatabaseSource(m)
+		primaryRefName := primarySource.databaseRef
+		if !primarySource.hasSource() {
 			err := fmt.Errorf("one primary source must be specified for truecache")
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, "SpecError", err.Error())
 			m.Status.Status = dbcommons.StatusError
 			return requeueN, err
 		}
-		if hasPrimaryDatabaseDetails(m) {
+		if primarySource.hasDetails() {
 			if err := ValidatePrimarySourceDetails(m); err != nil {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
 				m.Status.Status = dbcommons.StatusError
 				return requeueN, err
 			}
 			m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, nil)
-		} else if dbcommons.IsSourceDatabaseOnCluster(primaryRefName) {
+		} else if primarySource.isLocalReference() {
 			err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: primaryRefName}, rp)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
@@ -1390,16 +1391,18 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 				}
 				return requeueY, err
 			}
+			m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, rp)
 		} else {
 			m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, nil)
 		}
 	}
 	if m.Spec.CreateAs == "clone" {
-		primaryRefName := getPrimaryDatabaseRefName(m)
+		primarySource := resolvePrimaryDatabaseSource(m)
+		primaryRefName := primarySource.databaseRef
 		m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, nil)
 
 		// Once a clone database has created , it has no link with its reference
-		if m.Status.DatafilesCreated == "true" || !dbcommons.IsSourceDatabaseOnCluster(primaryRefName) {
+		if m.Status.DatafilesCreated == "true" || !primarySource.isLocalReference() {
 			return requeueN, nil
 		}
 
@@ -1438,18 +1441,22 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	}
 
 	if m.Spec.CreateAs == "standby" && m.Status.Role != "PRIMARY" {
-		primaryRefName := getPrimaryDatabaseRefName(m)
+		primarySource := resolvePrimaryDatabaseSource(m)
+		primaryRefName := primarySource.databaseRef
 
 		// External primary standby support
-		if hasPrimaryDatabaseDetails(m) {
-			err = ValidatePrimarySourceDetails(m)
-			if err != nil {
-				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
-				m.Status.Status = dbcommons.StatusError
-				return requeueN, err
+		if primarySource.isExternal() {
+			if primarySource.hasDetails() {
+				err = ValidatePrimarySourceDetails(m)
+				if err != nil {
+					r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
+					m.Status.Status = dbcommons.StatusError
+					return requeueN, err
+				}
 			}
 
-			if strings.EqualFold(m.Spec.Sid, GetPrimaryDatabaseSid(m, nil)) {
+			primarySID := GetPrimaryDatabaseSid(m, nil)
+			if primarySID != "" && strings.EqualFold(m.Spec.Sid, primarySID) {
 				err = fmt.Errorf("standby and external primary database SID can not be same")
 				r.Log.Info(err.Error())
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
@@ -1494,6 +1501,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 			}
 			return requeueY, err
 		}
+		m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, rp)
 
 		if strings.EqualFold(m.Spec.Sid, rp.Spec.Sid) {
 			err = fmt.Errorf("standby and primary database SID can not be same")
@@ -1503,7 +1511,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 			return requeueN, err
 		}
 
-		if m.Status.DatafilesCreated == "true" || !dbcommons.IsSourceDatabaseOnCluster(primaryRefName) {
+		if m.Status.DatafilesCreated == "true" {
 			if err = ValidateStandbyWalletSecretRef(r, m, ctx); err != nil {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
 				m.Status.Status = dbcommons.StatusError
@@ -5760,7 +5768,7 @@ func EnableFlashbackInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod c
 func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
-	if hasPrimaryDatabaseDetails(stdby) {
+	if !isLocalPrimaryDatabaseSource(stdby) {
 		return SetupStandbyDatabaseForExternalPrimary(r, stdby, ctx, req)
 	}
 
@@ -5942,21 +5950,107 @@ func SetupListenerForDGOnDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.
 	return nil
 }
 
+type resolvedPrimaryDatabaseSource struct {
+	databaseRef   string
+	connectString string
+	details       *dbapi.SingleInstanceDatabasePrimaryDetails
+}
+
+func resolvePrimaryDatabaseSource(m *dbapi.SingleInstanceDatabase) resolvedPrimaryDatabaseSource {
+	if m == nil {
+		return resolvedPrimaryDatabaseSource{}
+	}
+
+	if m.Spec.PrimarySource != nil {
+		if ref := strings.TrimSpace(m.Spec.PrimarySource.DatabaseRef); ref != "" {
+			return resolvedPrimaryDatabaseSource{databaseRef: ref}
+		}
+		if connectString := strings.TrimSpace(m.Spec.PrimarySource.ConnectString); connectString != "" {
+			return resolvedPrimaryDatabaseSource{connectString: connectString}
+		}
+		if m.Spec.PrimarySource.Details != nil {
+			return resolvedPrimaryDatabaseSource{details: m.Spec.PrimarySource.Details}
+		}
+	}
+
+	if ref := strings.TrimSpace(m.Spec.PrimaryDatabaseRef); ref != "" {
+		return resolvedPrimaryDatabaseSource{databaseRef: ref}
+	}
+
+	return resolvedPrimaryDatabaseSource{}
+}
+
+func (source resolvedPrimaryDatabaseSource) hasSource() bool {
+	return source.databaseRef != "" || source.connectString != "" || source.details != nil
+}
+
+func (source resolvedPrimaryDatabaseSource) isLocalReference() bool {
+	return source.databaseRef != "" && dbcommons.IsSourceDatabaseOnCluster(source.databaseRef)
+}
+
+func (source resolvedPrimaryDatabaseSource) hasDetails() bool {
+	return source.details != nil && strings.TrimSpace(source.details.Host) != ""
+}
+
+func (source resolvedPrimaryDatabaseSource) isExternal() bool {
+	return source.connectString != "" || source.details != nil || (source.databaseRef != "" && !source.isLocalReference())
+}
+
+type parsedPrimaryConnectString struct {
+	host    string
+	port    int
+	service string
+}
+
+func parsePrimaryConnectString(connectString string) parsedPrimaryConnectString {
+	connectString = strings.TrimSpace(connectString)
+	if connectString == "" {
+		return parsedPrimaryConnectString{}
+	}
+
+	connectString = strings.TrimPrefix(connectString, "//")
+	connectString = strings.TrimPrefix(connectString, "tcp://")
+
+	hostPortPart := connectString
+	servicePart := ""
+	if slashIdx := strings.LastIndex(connectString, "/"); slashIdx >= 0 {
+		hostPortPart = strings.TrimSpace(connectString[:slashIdx])
+		servicePart = strings.TrimSpace(connectString[slashIdx+1:])
+	}
+
+	host := hostPortPart
+	port := int(dbcommons.CONTAINER_LISTENER_PORT)
+	if colonIdx := strings.LastIndex(hostPortPart, ":"); colonIdx >= 0 && colonIdx < len(hostPortPart)-1 {
+		if parsedPort, err := strconv.Atoi(strings.TrimSpace(hostPortPart[colonIdx+1:])); err == nil {
+			port = parsedPort
+			host = strings.TrimSpace(hostPortPart[:colonIdx])
+		}
+	}
+
+	return parsedPrimaryConnectString{
+		host:    strings.TrimSpace(host),
+		port:    port,
+		service: strings.ToUpper(strings.TrimSpace(servicePart)),
+	}
+}
+
 // hasPrimaryDatabaseDetails reports whether the primary source is expressed via explicit details.
 func hasPrimaryDatabaseDetails(m *dbapi.SingleInstanceDatabase) bool {
-	return m != nil &&
-		m.Spec.PrimarySource != nil &&
-		m.Spec.PrimarySource.Details != nil &&
-		strings.TrimSpace(m.Spec.PrimarySource.Details.Host) != ""
+	return resolvePrimaryDatabaseSource(m).hasDetails()
+}
+
+func isLocalPrimaryDatabaseSource(m *dbapi.SingleInstanceDatabase) bool {
+	return resolvePrimaryDatabaseSource(m).isLocalReference()
 }
 
 // ValidatePrimarySourceDetails validates required explicit primary source details.
 func ValidatePrimarySourceDetails(m *dbapi.SingleInstanceDatabase) error {
-	if !hasPrimaryDatabaseDetails(m) {
+	source := resolvePrimaryDatabaseSource(m)
+	if !source.hasDetails() {
 		return nil
 	}
 
-	ref := GetPrimaryDatabaseDetails(m)
+	ref := source.details
 	if ref == nil {
 		return fmt.Errorf("primarySource.details cannot be empty when explicit primary details are configured")
 	}
@@ -5975,8 +6069,12 @@ func ValidatePrimarySourceDetails(m *dbapi.SingleInstanceDatabase) error {
 
 // GetPrimaryDatabaseHost returns primary host from explicit details or referenced resource.
 func GetPrimaryDatabaseHost(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if ref := GetPrimaryDatabaseDetails(m); ref != nil && strings.TrimSpace(ref.Host) != "" {
+	source := resolvePrimaryDatabaseSource(m)
+	if ref := source.details; ref != nil && strings.TrimSpace(ref.Host) != "" {
 		return strings.TrimSpace(ref.Host)
+	}
+	if source.connectString != "" {
+		return parsePrimaryConnectString(source.connectString).host
 	}
 	if rp != nil {
 		return rp.Name
@@ -5986,16 +6084,26 @@ func GetPrimaryDatabaseHost(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleIns
 
 // GetPrimaryDatabasePort returns primary listener port with default fallback.
 func GetPrimaryDatabasePort(m *dbapi.SingleInstanceDatabase) int {
-	if ref := GetPrimaryDatabaseDetails(m); ref != nil && ref.Port > 0 {
+	source := resolvePrimaryDatabaseSource(m)
+	if ref := source.details; ref != nil && ref.Port > 0 {
 		return ref.Port
+	}
+	if source.connectString != "" {
+		if port := parsePrimaryConnectString(source.connectString).port; port > 0 {
+			return port
+		}
 	}
 	return int(dbcommons.CONTAINER_LISTENER_PORT)
 }
 
 // GetPrimaryDatabaseSid returns primary SID from explicit details or referenced resource.
 func GetPrimaryDatabaseSid(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if ref := GetPrimaryDatabaseDetails(m); ref != nil && strings.TrimSpace(ref.Sid) != "" {
+	source := resolvePrimaryDatabaseSource(m)
+	if ref := source.details; ref != nil && strings.TrimSpace(ref.Sid) != "" {
 		return strings.ToUpper(strings.TrimSpace(ref.Sid))
+	}
+	if source.connectString != "" {
+		return parsePrimaryConnectString(source.connectString).service
 	}
 	if rp != nil {
 		return strings.ToUpper(strings.TrimSpace(rp.Spec.Sid))
@@ -6005,7 +6113,8 @@ func GetPrimaryDatabaseSid(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInst
 
 // GetPrimaryDatabasePdbName returns primary PDB name from explicit details or referenced resource.
 func GetPrimaryDatabasePdbName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if ref := GetPrimaryDatabaseDetails(m); ref != nil && strings.TrimSpace(ref.Pdbname) != "" {
+	source := resolvePrimaryDatabaseSource(m)
+	if ref := source.details; ref != nil && strings.TrimSpace(ref.Pdbname) != "" {
 		return strings.ToUpper(strings.TrimSpace(ref.Pdbname))
 	}
 	if rp != nil {
@@ -6016,11 +6125,12 @@ func GetPrimaryDatabasePdbName(m *dbapi.SingleInstanceDatabase, rp *dbapi.Single
 
 // GetPrimaryDatabaseConnectString builds the primary connect string for standby flows.
 func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if connectString := getPrimaryDatabaseConnectStringValue(m); connectString != "" {
-		return connectString
+	source := resolvePrimaryDatabaseSource(m)
+	if source.connectString != "" {
+		return source.connectString
 	}
 
-	if hasPrimaryDatabaseDetails(m) {
+	if source.hasDetails() {
 		host := GetPrimaryDatabaseHost(m, rp)
 		port := GetPrimaryDatabasePort(m)
 		sid := GetPrimaryDatabaseSid(m, rp)
@@ -6030,8 +6140,8 @@ func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.
 		return host + ":" + strconv.Itoa(port) + "/" + sid
 	}
 
-	primaryRef := getPrimaryDatabaseRefName(m)
-	if dbcommons.IsSourceDatabaseOnCluster(primaryRef) && rp != nil {
+	primaryRef := source.databaseRef
+	if source.isLocalReference() && rp != nil {
 		return rp.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + rp.Spec.Sid
 	}
 
@@ -6040,18 +6150,26 @@ func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.
 
 // GetPrimaryDatabaseDisplayName returns user-visible primary identity for logs/events.
 func GetPrimaryDatabaseDisplayName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if hasPrimaryDatabaseDetails(m) {
+	source := resolvePrimaryDatabaseSource(m)
+	if source.hasDetails() {
 		return GetPrimaryDatabaseHost(m, rp)
+	}
+	if source.connectString != "" {
+		if host := GetPrimaryDatabaseHost(m, rp); host != "" {
+			return host
+		}
+		return source.connectString
 	}
 	if rp != nil {
 		return rp.Name
 	}
-	return strings.TrimSpace(getPrimaryDatabaseRefName(m))
+	return strings.TrimSpace(source.databaseRef)
 }
 
 // ShouldCreatePDBFromPrimary determines whether standby should create PDB metadata from primary.
 func ShouldCreatePDBFromPrimary(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if hasPrimaryDatabaseDetails(m) {
+	source := resolvePrimaryDatabaseSource(m)
+	if source.hasDetails() {
 		if strings.TrimSpace(GetPrimaryDatabasePdbName(m, rp)) != "" {
 			return "true"
 		}
@@ -6064,33 +6182,16 @@ func ShouldCreatePDBFromPrimary(m *dbapi.SingleInstanceDatabase, rp *dbapi.Singl
 }
 
 func getPrimaryDatabaseRefName(m *dbapi.SingleInstanceDatabase) string {
-	if m == nil {
-		return ""
-	}
-	if m.Spec.PrimarySource != nil {
-		if name := strings.TrimSpace(m.Spec.PrimarySource.DatabaseRef); name != "" {
-			return name
-		}
-	}
-	return strings.TrimSpace(m.Spec.PrimaryDatabaseRef)
+	return resolvePrimaryDatabaseSource(m).databaseRef
 }
 
 func getPrimaryDatabaseConnectStringValue(m *dbapi.SingleInstanceDatabase) string {
-	if m == nil || m.Spec.PrimarySource == nil {
-		return ""
-	}
-	return strings.TrimSpace(m.Spec.PrimarySource.ConnectString)
+	return resolvePrimaryDatabaseSource(m).connectString
 }
 
 // GetPrimaryDatabaseDetails resolves explicit primary details from the primary source.
 func GetPrimaryDatabaseDetails(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabasePrimaryDetails {
-	if m == nil {
-		return nil
-	}
-	if m.Spec.PrimarySource != nil && m.Spec.PrimarySource.Details != nil {
-		return m.Spec.PrimarySource.Details
-	}
-	return nil
+	return resolvePrimaryDatabaseSource(m).details
 }
 
 // GetStandbyWalletSecretRef returns the standby wallet secret reference.

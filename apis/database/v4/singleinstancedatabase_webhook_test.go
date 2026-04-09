@@ -90,6 +90,62 @@ func TestSIDBWebhookValidateUpdateAllowsMetadataOnlyChangeWhenLocked(t *testing.
 	}
 }
 
+func TestSIDBWebhookValidateUpdateRejectsStandbyPrimarySourceChangeAfterDatafilesCreated(t *testing.T) {
+	oldObj := &SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby", Namespace: "ns1"},
+		Spec: SingleInstanceDatabaseSpec{
+			CreateAs: "standby",
+			PrimarySource: &SingleInstanceDatabasePrimarySource{
+				DatabaseRef: "primary-a",
+			},
+		},
+		Status: SingleInstanceDatabaseStatus{
+			CreatedAs:        "standby",
+			DatafilesCreated: "true",
+		},
+	}
+	newObj := oldObj.DeepCopy()
+	newObj.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{DatabaseRef: "primary-b"}
+
+	_, err := (&SingleInstanceDatabase{}).ValidateUpdate(context.Background(), oldObj, newObj)
+	if err == nil {
+		t.Fatalf("expected standby primary source update to be rejected")
+	}
+	if !strings.Contains(err.Error(), "primary source of a standby database cannot be changed") {
+		t.Fatalf("expected standby lock rejection message, got: %v", err)
+	}
+}
+
+func TestSIDBWebhookValidateUpdateRejectsTrueCachePrimarySourceChangeAfterBlobReady(t *testing.T) {
+	oldObj := &SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-tc", Namespace: "ns1"},
+		Spec: SingleInstanceDatabaseSpec{
+			CreateAs: "truecache",
+			PrimarySource: &SingleInstanceDatabasePrimarySource{
+				DatabaseRef: "primary-a",
+			},
+		},
+		Status: SingleInstanceDatabaseStatus{
+			CreatedAs: "truecache",
+			Conditions: []metav1.Condition{{
+				Type:   "TrueCacheBlobSourceReady",
+				Status: metav1.ConditionTrue,
+				Reason: "BlobConfigMapReady",
+			}},
+		},
+	}
+	newObj := oldObj.DeepCopy()
+	newObj.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{ConnectString: "primary-b:1521/PRIM"}
+
+	_, err := (&SingleInstanceDatabase{}).ValidateUpdate(context.Background(), oldObj, newObj)
+	if err == nil {
+		t.Fatalf("expected truecache primary source update to be rejected")
+	}
+	if !strings.Contains(err.Error(), "primary source of a truecache database cannot be changed") {
+		t.Fatalf("expected truecache lock rejection message, got: %v", err)
+	}
+}
+
 func TestSIDBWebhookTrueCachePrimaryWithoutTrueCacheFieldsPasses(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "primary"

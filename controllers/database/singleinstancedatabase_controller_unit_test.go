@@ -51,6 +51,53 @@ func TestSIDBUnit_GetPrimaryDatabaseConnectStringFromPrimaryDetails(t *testing.T
 	}
 }
 
+func TestSIDBUnit_GetPrimaryDatabaseInfoFromConnectString(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				ConnectString: "primary-host:1522/primdb",
+			},
+		},
+	}
+
+	if got := GetPrimaryDatabaseHost(sidb, nil); got != "primary-host" {
+		t.Fatalf("expected primary host from connect string, got %q", got)
+	}
+	if got := GetPrimaryDatabasePort(sidb); got != 1522 {
+		t.Fatalf("expected primary port from connect string, got %d", got)
+	}
+	if got := GetPrimaryDatabaseSid(sidb, nil); got != "PRIMDB" {
+		t.Fatalf("expected primary sid from connect string, got %q", got)
+	}
+	if got := GetPrimaryDatabaseDisplayName(sidb, nil); got != "primary-host" {
+		t.Fatalf("expected primary display name from connect string, got %q", got)
+	}
+}
+
+func TestSIDBUnit_IsLocalPrimaryDatabaseSource(t *testing.T) {
+	local := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				DatabaseRef: "primary-db",
+			},
+		},
+	}
+	if !isLocalPrimaryDatabaseSource(local) {
+		t.Fatalf("expected databaseRef source to be treated as local")
+	}
+
+	connectString := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				ConnectString: "primary-host:1521/PRIM",
+			},
+		},
+	}
+	if isLocalPrimaryDatabaseSource(connectString) {
+		t.Fatalf("expected connect string source to be treated as external")
+	}
+}
+
 func TestSIDBUnit_GetStandbyWalletDefaults(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{}
 

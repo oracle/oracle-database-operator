@@ -54,7 +54,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -270,8 +272,10 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 		if newSidb.Spec.Edition != "" && oldSidb.Status.Edition != "" && !strings.EqualFold(oldSidb.Status.Edition, newSidb.Spec.Edition) {
 			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("edition"), "edition of a cloned database cannot be changed post creation"))
 		}
+	}
+	if isPrimarySourceLocked(oldSidb) {
 		if resolveEffectivePrimarySource(oldSidb) != resolveEffectivePrimarySource(newSidb) {
-			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("primarySource"), "primary source of a cloned database cannot be changed post creation"))
+			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("primarySource"), primarySourceLockedMessage(oldSidb)))
 		}
 	}
 
@@ -799,6 +803,49 @@ func resolveEffectivePrimarySource(sidb *SingleInstanceDatabase) string {
 		)
 	}
 	return ""
+}
+
+func isPrimarySourceLocked(sidb *SingleInstanceDatabase) bool {
+	if sidb == nil {
+		return false
+	}
+
+	switch strings.ToLower(strings.TrimSpace(sidb.Status.CreatedAs)) {
+	case "clone":
+		return true
+	case "standby":
+		return strings.EqualFold(strings.TrimSpace(sidb.Status.DatafilesCreated), "true") ||
+			(isPopulatedStatusValue(sidb.Status.Role) && !strings.EqualFold(strings.TrimSpace(sidb.Status.Role), "PRIMARY"))
+	case "truecache":
+		return strings.EqualFold(strings.TrimSpace(sidb.Status.DatafilesCreated), "true") ||
+			isConditionTrue(sidb.Status.Conditions, "TrueCacheBlobSourceReady") ||
+			isConditionTrue(sidb.Status.Conditions, "TrueCacheBlobReady")
+	default:
+		return false
+	}
+}
+
+func primarySourceLockedMessage(sidb *SingleInstanceDatabase) string {
+	switch strings.ToLower(strings.TrimSpace(sidb.Status.CreatedAs)) {
+	case "clone":
+		return "primary source of a cloned database cannot be changed post creation"
+	case "standby":
+		return "primary source of a standby database cannot be changed after datafiles are created or the role is populated"
+	case "truecache":
+		return "primary source of a truecache database cannot be changed after source resolution or datafile creation begins"
+	default:
+		return "primary source cannot be changed after creation has progressed"
+	}
+}
+
+func isPopulatedStatusValue(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed != "" && trimmed != dbcommons.ValueUnavailable
+}
+
+func isConditionTrue(conditions []metav1.Condition, conditionType string) bool {
+	condition := meta.FindStatusCondition(conditions, conditionType)
+	return condition != nil && condition.Status == metav1.ConditionTrue
 }
 
 func validatePrimarySourceSpec(sidb *SingleInstanceDatabase, mode string) field.ErrorList {
