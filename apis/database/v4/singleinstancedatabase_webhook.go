@@ -270,8 +270,8 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 		if newSidb.Spec.Edition != "" && oldSidb.Status.Edition != "" && !strings.EqualFold(oldSidb.Status.Edition, newSidb.Spec.Edition) {
 			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("edition"), "edition of a cloned database cannot be changed post creation"))
 		}
-		if !strings.EqualFold(oldSidb.Status.PrimaryDatabase, resolvePrimaryRefForCloneOrStandby(newSidb)) {
-			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "primary database of a cloned database cannot be changed post creation"))
+		if resolveEffectivePrimarySource(oldSidb) != resolveEffectivePrimarySource(newSidb) {
+			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("primarySource"), "primary source of a cloned database cannot be changed post creation"))
 		}
 	}
 
@@ -381,13 +381,13 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	mode := strings.ToLower(strings.TrimSpace(sidb.Spec.CreateAs))
 	allErrs = append(allErrs, validateSIDBRestoreSpec(sidb, mode)...)
 	allErrs = append(allErrs, validateSIDBTrueCacheByMode(sidb, mode)...)
-	if mode == "clone" && resolvePrimaryRefForCloneOrStandby(sidb) == "" {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primaryDatabaseRef"), sidb.Spec.PrimaryDatabaseRef, "primary reference is required for clone"))
+	allErrs = append(allErrs, validatePrimarySourceSpec(sidb, mode)...)
+	if mode == "clone" || mode == "standby" || mode == "truecache" {
+		if !resolvePrimarySourceInputPresent(sidb) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primarySource"), sidb.Spec.PrimarySource, fmt.Sprintf("%s requires one primary source: primarySource.databaseRef, primarySource.connectString, primarySource.details, or deprecated spec.primaryDatabaseRef", mode)))
+		}
 	}
 	if mode == "standby" {
-		if !resolveStandbyPrimaryInputPresent(sidb) {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig"), sidb.Spec.StandbyConfig, "standby requires one primary source: primaryDatabaseRef, standbyConfig.primaryDatabaseRef, standbyConfig.primaryConnectString, or external primary details host/sid"))
-		}
 		if sidb.Spec.ArchiveLog != nil {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("archiveLog"), sidb.Spec.ArchiveLog, "archiveLog cannot be specified for standby"))
 		}
@@ -402,15 +402,15 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		}
 	}
 
-	if details := resolveExternalPrimaryDetails(sidb); details != nil {
+	if details := resolvePrimarySourceDetails(sidb); details != nil {
 		if strings.TrimSpace(details.Host) == "" {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig").Child("primaryDetails").Child("host"), details.Host, "host cannot be empty"))
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primarySource").Child("details").Child("host"), details.Host, "host cannot be empty"))
 		}
 		if strings.TrimSpace(details.Sid) == "" {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig").Child("primaryDetails").Child("sid"), details.Sid, "sid cannot be empty"))
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primarySource").Child("details").Child("sid"), details.Sid, "sid cannot be empty"))
 		}
 		if details.Port < 0 {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig").Child("primaryDetails").Child("port"), details.Port, "port cannot be negative"))
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primarySource").Child("details").Child("port"), details.Port, "port cannot be negative"))
 		}
 	}
 
@@ -745,37 +745,94 @@ func validateSingleInstanceDatabaseAdditionalPVCs(sidb *SingleInstanceDatabase) 
 	return allErrs
 }
 
-func resolvePrimaryRefForCloneOrStandby(sidb *SingleInstanceDatabase) string {
-	if sidb.Spec.StandbyConfig != nil {
-		if ref := strings.TrimSpace(sidb.Spec.StandbyConfig.PrimaryDatabaseRef); ref != "" {
+func resolvePrimarySourceDatabaseRef(sidb *SingleInstanceDatabase) string {
+	if sidb.Spec.PrimarySource != nil {
+		if ref := strings.TrimSpace(sidb.Spec.PrimarySource.DatabaseRef); ref != "" {
 			return ref
 		}
 	}
 	return strings.TrimSpace(sidb.Spec.PrimaryDatabaseRef)
 }
 
-func resolveExternalPrimaryDetails(sidb *SingleInstanceDatabase) *SingleInstanceDatabaseExternalPrimaryRef {
-	if sidb.Spec.StandbyConfig != nil && sidb.Spec.StandbyConfig.PrimaryDetails != nil {
-		d := sidb.Spec.StandbyConfig.PrimaryDetails
-		return &SingleInstanceDatabaseExternalPrimaryRef{
-			Host:    d.Host,
-			Port:    d.Port,
-			Sid:     d.Sid,
-			Pdbname: d.Pdbname,
+func resolvePrimarySourceConnectString(sidb *SingleInstanceDatabase) string {
+	if sidb.Spec.PrimarySource != nil {
+		if c := strings.TrimSpace(sidb.Spec.PrimarySource.ConnectString); c != "" {
+			return c
 		}
 	}
-	return sidb.Spec.ExternalPrimaryDatabaseRef
+	return ""
 }
 
-func resolveStandbyPrimaryInputPresent(sidb *SingleInstanceDatabase) bool {
-	if resolvePrimaryRefForCloneOrStandby(sidb) != "" {
+func resolvePrimarySourceDetails(sidb *SingleInstanceDatabase) *SingleInstanceDatabasePrimaryDetails {
+	if sidb.Spec.PrimarySource != nil && sidb.Spec.PrimarySource.Details != nil {
+		return sidb.Spec.PrimarySource.Details
+	}
+	return nil
+}
+
+func resolvePrimarySourceInputPresent(sidb *SingleInstanceDatabase) bool {
+	if resolvePrimarySourceDatabaseRef(sidb) != "" {
 		return true
 	}
-	if sidb.Spec.StandbyConfig != nil && strings.TrimSpace(sidb.Spec.StandbyConfig.PrimaryConnectString) != "" {
+	if resolvePrimarySourceConnectString(sidb) != "" {
 		return true
 	}
-	if ext := resolveExternalPrimaryDetails(sidb); ext != nil && strings.TrimSpace(ext.Host) != "" {
+	if details := resolvePrimarySourceDetails(sidb); details != nil && strings.TrimSpace(details.Host) != "" {
 		return true
 	}
 	return false
+}
+
+func resolveEffectivePrimarySource(sidb *SingleInstanceDatabase) string {
+	if ref := resolvePrimarySourceDatabaseRef(sidb); ref != "" {
+		return "databaseRef:" + ref
+	}
+	if connectString := resolvePrimarySourceConnectString(sidb); connectString != "" {
+		return "connectString:" + connectString
+	}
+	if details := resolvePrimarySourceDetails(sidb); details != nil {
+		return fmt.Sprintf("details:%s:%d/%s/%s",
+			strings.TrimSpace(details.Host),
+			details.Port,
+			strings.TrimSpace(details.Sid),
+			strings.TrimSpace(details.Pdbname),
+		)
+	}
+	return ""
+}
+
+func validatePrimarySourceSpec(sidb *SingleInstanceDatabase, mode string) field.ErrorList {
+	var allErrs field.ErrorList
+	sourcePath := field.NewPath("spec").Child("primarySource")
+	legacyRefPath := field.NewPath("spec").Child("primaryDatabaseRef")
+
+	if strings.TrimSpace(sidb.Spec.PrimaryDatabaseRef) != "" && sidb.Spec.PrimarySource != nil {
+		allErrs = append(allErrs, field.Forbidden(legacyRefPath, "deprecated spec.primaryDatabaseRef cannot be used with spec.primarySource"))
+	}
+
+	if sidb.Spec.PrimarySource != nil {
+		selected := 0
+		if strings.TrimSpace(sidb.Spec.PrimarySource.DatabaseRef) != "" {
+			selected++
+		}
+		if strings.TrimSpace(sidb.Spec.PrimarySource.ConnectString) != "" {
+			selected++
+		}
+		if sidb.Spec.PrimarySource.Details != nil {
+			selected++
+		}
+
+		if selected == 0 {
+			allErrs = append(allErrs, field.Required(sourcePath, "set exactly one of databaseRef, connectString, or details"))
+		}
+		if selected > 1 {
+			allErrs = append(allErrs, field.Forbidden(sourcePath, "databaseRef, connectString, and details are mutually exclusive; set only one"))
+		}
+	}
+
+	if (mode == "" || mode == "primary") && (sidb.Spec.PrimarySource != nil || strings.TrimSpace(sidb.Spec.PrimaryDatabaseRef) != "") {
+		allErrs = append(allErrs, field.Forbidden(sourcePath, "primary source is supported only when createAs=clone, standby, or truecache"))
+	}
+
+	return allErrs
 }

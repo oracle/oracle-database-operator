@@ -864,7 +864,7 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 	}
 
 	sidb.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(sidb, referredPrimaryDatabase)
-	if !IsExternalPrimaryDatabase(sidb) && referredPrimaryDatabase != nil && referredPrimaryDatabase.Name != "" {
+	if !hasPrimaryDatabaseDetails(sidb) && referredPrimaryDatabase != nil && referredPrimaryDatabase.Name != "" {
 		if len(referredPrimaryDatabase.Status.StandbyDatabases) == 0 {
 			referredPrimaryDatabase.Status.StandbyDatabases = make(map[string]string)
 		}
@@ -1366,27 +1366,22 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	m.Status.Persistence = m.Spec.Persistence
 	m.Status.PrebuiltDB = m.Spec.Image.PrebuiltDB
 	if m.Spec.CreateAs == "truecache" {
-		if m.Spec.PrimaryDatabaseRef == "" && m.Spec.ExternalPrimaryDatabaseRef == nil {
-			err := fmt.Errorf("either primaryDatabaseRef or externalPrimaryDatabaseRef must be specified for truecache")
+		primaryRefName := getPrimaryDatabaseRefName(m)
+		if primaryRefName == "" && !hasPrimaryDatabaseDetails(m) && getPrimaryDatabaseConnectStringValue(m) == "" {
+			err := fmt.Errorf("one primary source must be specified for truecache")
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, "SpecError", err.Error())
 			m.Status.Status = dbcommons.StatusError
 			return requeueN, err
 		}
-		if m.Spec.PrimaryDatabaseRef != "" && m.Spec.ExternalPrimaryDatabaseRef != nil {
-			err := fmt.Errorf("cannot specify both primaryDatabaseRef and externalPrimaryDatabaseRef")
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, "SpecError", err.Error())
-			m.Status.Status = dbcommons.StatusError
-			return requeueN, err
-		}
-		if IsExternalPrimaryDatabase(m) {
-			if err := ValidateExternalPrimaryDatabaseRef(m); err != nil {
+		if hasPrimaryDatabaseDetails(m) {
+			if err := ValidatePrimarySourceDetails(m); err != nil {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
 				m.Status.Status = dbcommons.StatusError
 				return requeueN, err
 			}
 			m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, nil)
-		} else {
-			err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
+		} else if dbcommons.IsSourceDatabaseOnCluster(primaryRefName) {
+			err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: primaryRefName}, rp)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
@@ -1395,16 +1390,21 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 				}
 				return requeueY, err
 			}
+		} else {
+			m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, nil)
 		}
 	}
 	if m.Spec.CreateAs == "clone" {
+		primaryRefName := getPrimaryDatabaseRefName(m)
+		m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, nil)
+
 		// Once a clone database has created , it has no link with its reference
-		if m.Status.DatafilesCreated == "true" || !dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+		if m.Status.DatafilesCreated == "true" || !dbcommons.IsSourceDatabaseOnCluster(primaryRefName) {
 			return requeueN, nil
 		}
 
 		// Fetch the Clone database reference
-		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, n)
+		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: primaryRefName}, n)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
@@ -1441,8 +1441,8 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 		primaryRefName := getPrimaryDatabaseRefName(m)
 
 		// External primary standby support
-		if IsExternalPrimaryDatabase(m) {
-			err = ValidateExternalPrimaryDatabaseRef(m)
+		if hasPrimaryDatabaseDetails(m) {
+			err = ValidatePrimarySourceDetails(m)
 			if err != nil {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
 				m.Status.Status = dbcommons.StatusError
@@ -2067,7 +2067,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 									edition = "enterprise"
 								}
 							} else {
-								if !dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+								if !dbcommons.IsSourceDatabaseOnCluster(getPrimaryDatabaseRefName(m)) {
 									edition = m.Spec.Edition
 								} else {
 									edition = n.Spec.Edition
@@ -2430,13 +2430,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: adminPwdSecretFileName,
 							},
 							{
-								Name: "PRIMARY_DB_CONN_STR",
-								Value: func() string {
-									if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
-										return n.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + n.Spec.Sid
-									}
-									return m.Spec.PrimaryDatabaseRef
-								}(),
+								Name:  "PRIMARY_DB_CONN_STR",
+								Value: GetPrimaryDatabaseConnectString(m, n),
 							},
 							CreateOracleHostnameEnvVarObj(m, n),
 							{
@@ -2639,7 +2634,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	}
 
 	// Adding pod anti-affinity for standby cases
-	if m.Spec.CreateAs == "standby" && !IsExternalPrimaryDatabase(m) && rp != nil && rp.Name != "" {
+	if m.Spec.CreateAs == "standby" && !hasPrimaryDatabaseDetails(m) && rp != nil && rp.Name != "" {
 		weightedPodAffinityTerm := corev1.WeightedPodAffinityTerm{
 			Weight: 100,
 			PodAffinityTerm: corev1.PodAffinityTerm{
@@ -5765,7 +5760,7 @@ func EnableFlashbackInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod c
 func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
-	if IsExternalPrimaryDatabase(stdby) {
+	if hasPrimaryDatabaseDetails(stdby) {
 		return SetupStandbyDatabaseForExternalPrimary(r, stdby, ctx, req)
 	}
 
@@ -5947,35 +5942,32 @@ func SetupListenerForDGOnDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.
 	return nil
 }
 
-// IsExternalPrimaryDatabase reports whether standby uses external primary details.
-func IsExternalPrimaryDatabase(m *dbapi.SingleInstanceDatabase) bool {
-	if m != nil && m.Spec.StandbyConfig != nil && m.Spec.StandbyConfig.PrimaryDetails != nil &&
-		strings.TrimSpace(m.Spec.StandbyConfig.PrimaryDetails.Host) != "" {
-		return true
-	}
+// hasPrimaryDatabaseDetails reports whether the primary source is expressed via explicit details.
+func hasPrimaryDatabaseDetails(m *dbapi.SingleInstanceDatabase) bool {
 	return m != nil &&
-		m.Spec.ExternalPrimaryDatabaseRef != nil &&
-		strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host) != ""
+		m.Spec.PrimarySource != nil &&
+		m.Spec.PrimarySource.Details != nil &&
+		strings.TrimSpace(m.Spec.PrimarySource.Details.Host) != ""
 }
 
-// ValidateExternalPrimaryDatabaseRef validates required external primary fields.
-func ValidateExternalPrimaryDatabaseRef(m *dbapi.SingleInstanceDatabase) error {
-	if !IsExternalPrimaryDatabase(m) {
+// ValidatePrimarySourceDetails validates required explicit primary source details.
+func ValidatePrimarySourceDetails(m *dbapi.SingleInstanceDatabase) error {
+	if !hasPrimaryDatabaseDetails(m) {
 		return nil
 	}
 
 	ref := GetPrimaryDatabaseDetails(m)
 	if ref == nil {
-		return fmt.Errorf("primaryDetails cannot be empty when external primary is configured")
+		return fmt.Errorf("primarySource.details cannot be empty when explicit primary details are configured")
 	}
 	if strings.TrimSpace(ref.Host) == "" {
-		return fmt.Errorf("primaryDetails.host cannot be empty")
+		return fmt.Errorf("primarySource.details.host cannot be empty")
 	}
 	if strings.TrimSpace(ref.Sid) == "" {
-		return fmt.Errorf("primaryDetails.sid cannot be empty")
+		return fmt.Errorf("primarySource.details.sid cannot be empty")
 	}
 	if ref.Port < 0 {
-		return fmt.Errorf("primaryDetails.port cannot be negative")
+		return fmt.Errorf("primarySource.details.port cannot be negative")
 	}
 
 	return nil
@@ -6024,13 +6016,11 @@ func GetPrimaryDatabasePdbName(m *dbapi.SingleInstanceDatabase, rp *dbapi.Single
 
 // GetPrimaryDatabaseConnectString builds the primary connect string for standby flows.
 func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if m != nil && m.Spec.StandbyConfig != nil {
-		if c := strings.TrimSpace(m.Spec.StandbyConfig.PrimaryConnectString); c != "" {
-			return c
-		}
+	if connectString := getPrimaryDatabaseConnectStringValue(m); connectString != "" {
+		return connectString
 	}
 
-	if IsExternalPrimaryDatabase(m) {
+	if hasPrimaryDatabaseDetails(m) {
 		host := GetPrimaryDatabaseHost(m, rp)
 		port := GetPrimaryDatabasePort(m)
 		sid := GetPrimaryDatabaseSid(m, rp)
@@ -6050,7 +6040,7 @@ func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.
 
 // GetPrimaryDatabaseDisplayName returns user-visible primary identity for logs/events.
 func GetPrimaryDatabaseDisplayName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if IsExternalPrimaryDatabase(m) {
+	if hasPrimaryDatabaseDetails(m) {
 		return GetPrimaryDatabaseHost(m, rp)
 	}
 	if rp != nil {
@@ -6061,7 +6051,7 @@ func GetPrimaryDatabaseDisplayName(m *dbapi.SingleInstanceDatabase, rp *dbapi.Si
 
 // ShouldCreatePDBFromPrimary determines whether standby should create PDB metadata from primary.
 func ShouldCreatePDBFromPrimary(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if IsExternalPrimaryDatabase(m) {
+	if hasPrimaryDatabaseDetails(m) {
 		if strings.TrimSpace(GetPrimaryDatabasePdbName(m, rp)) != "" {
 			return "true"
 		}
@@ -6077,29 +6067,30 @@ func getPrimaryDatabaseRefName(m *dbapi.SingleInstanceDatabase) string {
 	if m == nil {
 		return ""
 	}
-	if m.Spec.StandbyConfig != nil {
-		if name := strings.TrimSpace(m.Spec.StandbyConfig.PrimaryDatabaseRef); name != "" {
+	if m.Spec.PrimarySource != nil {
+		if name := strings.TrimSpace(m.Spec.PrimarySource.DatabaseRef); name != "" {
 			return name
 		}
 	}
 	return strings.TrimSpace(m.Spec.PrimaryDatabaseRef)
 }
 
-// GetPrimaryDatabaseDetails resolves external primary details from current and legacy spec fields.
-func GetPrimaryDatabaseDetails(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabaseExternalPrimaryRef {
+func getPrimaryDatabaseConnectStringValue(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil || m.Spec.PrimarySource == nil {
+		return ""
+	}
+	return strings.TrimSpace(m.Spec.PrimarySource.ConnectString)
+}
+
+// GetPrimaryDatabaseDetails resolves explicit primary details from the primary source.
+func GetPrimaryDatabaseDetails(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabasePrimaryDetails {
 	if m == nil {
 		return nil
 	}
-	if m.Spec.StandbyConfig != nil && m.Spec.StandbyConfig.PrimaryDetails != nil {
-		d := m.Spec.StandbyConfig.PrimaryDetails
-		return &dbapi.SingleInstanceDatabaseExternalPrimaryRef{
-			Host:    d.Host,
-			Port:    d.Port,
-			Sid:     d.Sid,
-			Pdbname: d.Pdbname,
-		}
+	if m.Spec.PrimarySource != nil && m.Spec.PrimarySource.Details != nil {
+		return m.Spec.PrimarySource.Details
 	}
-	return m.Spec.ExternalPrimaryDatabaseRef
+	return nil
 }
 
 // GetStandbyWalletSecretRef returns the standby wallet secret reference.
@@ -6134,13 +6125,10 @@ func GetStandbyTDEWalletRoot(m *dbapi.SingleInstanceDatabase) string {
 			return root
 		}
 	}
-	if m == nil || m.Spec.StandbyConfig == nil {
-		if m != nil {
-			return GetWalletDirFromSid(m.Spec.Sid)
-		}
-		return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
+	if m != nil {
+		return GetWalletDirFromSid(m.Spec.Sid)
 	}
-	return GetWalletDirFromSid(m.Spec.Sid)
+	return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
 }
 
 // GetWalletDirFromSid returns the default wallet directory path for the provided SID.
@@ -6444,7 +6432,7 @@ func resolveTrueCacheBlobConfigMap(
 	if m.Spec.TrueCache != nil && strings.TrimSpace(m.Spec.TrueCache.BlobConfigMapRef) != "" {
 		return strings.TrimSpace(m.Spec.TrueCache.BlobConfigMapRef), blobKey
 	}
-	if !IsExternalPrimaryDatabase(m) && rp != nil && rp.Name != "" {
+	if !hasPrimaryDatabaseDetails(m) && rp != nil && rp.Name != "" {
 		return rp.Name + "-truecache-blob", blobKey
 	}
 	return "", blobKey

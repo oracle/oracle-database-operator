@@ -18,26 +18,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestSIDBUnit_GetPrimaryDatabaseConnectStringPrefersStandbyConfig(t *testing.T) {
+func TestSIDBUnit_GetPrimaryDatabaseConnectStringPrefersPrimarySource(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			PrimaryDatabaseRef: "primary-db",
-			StandbyConfig: &dbapi.SingleInstanceDatabaseStandbyConfig{
-				PrimaryConnectString: "custom-host:1521/CDB1",
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				ConnectString: "custom-host:1521/CDB1",
 			},
 		},
 	}
 	got := GetPrimaryDatabaseConnectString(sidb, &dbapi.SingleInstanceDatabase{ObjectMeta: metav1.ObjectMeta{Name: "ignored"}, Spec: dbapi.SingleInstanceDatabaseSpec{Sid: "IGN"}})
 	if got != "custom-host:1521/CDB1" {
-		t.Fatalf("expected standbyConfig primary connect string, got %q", got)
+		t.Fatalf("expected primarySource connect string, got %q", got)
 	}
 }
 
 func TestSIDBUnit_GetPrimaryDatabaseConnectStringFromPrimaryDetails(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{
-			StandbyConfig: &dbapi.SingleInstanceDatabaseStandbyConfig{
-				PrimaryDetails: &dbapi.SingleInstanceDatabasePrimaryDetails{
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				Details: &dbapi.SingleInstanceDatabasePrimaryDetails{
 					Host: "external-primary",
 					Port: 1522,
 					Sid:  "PRIM",

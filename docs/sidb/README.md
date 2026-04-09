@@ -527,7 +527,6 @@ The following attributes cannot be modified after creating the Single Instance D
 - `edition`
 - `charset`
 - `pdbName`
-- `primaryDatabaseRef`
 
 If you attempt to change one of these attributes, then you receive an error similar to the following:
 
@@ -733,7 +732,7 @@ If the `NodePort` service is enabled, then the `listenerPort`, and `tcpsListener
 ### Create a Standby Database
 
 #### Prerequisites
-- Before creating a Standby, ensure that ArchiveLog, FlashBack, and ForceLog on the primary Single Instance Database(`.spec.primaryDatabaseRef`) are turned on.
+- Before creating a Standby, ensure that ArchiveLog, FlashBack, and ForceLog on the primary Single Instance Database referenced by `.spec.primarySource.databaseRef` are turned on.
 - Standby database is not supported for TCPS-enabled Primary databases.
 
 #### Template YAML
@@ -741,7 +740,7 @@ To create a standby database, edit and apply the example YAML file [`config/samp
 
 **Note:**
 - The `adminPassword` field of the above [`config/samples/sidb/singleinstancedatabase_standby.yaml`](../../config/samples/sidb/singleinstancedatabase_standby.yaml) contains an admin password Secret of the primary database referred to for Standby Database creation. By default `keepSecret` is set to `true`, which means that the secret is saved. However, if you want to delete the Secret after the database pod becomes ready, then this Secret will be deleted if the `keepSecret` attribute of `adminPassword` field is set to `false`. .
-- Specify the primary database with which the standby database is associateed in the `.spec.primaryDatabaseRef` yaml file.
+- Specify the primary database with which the standby database is associated in the `.spec.primarySource` yaml block.
 - The `.spec.createAs` field of the yaml file should be set to "standby".
 - Database configuration, such as `Archivelog`, `FlashBack`, `ForceLog`, `TCPS connections`, are not supported for standby database.
 
@@ -784,7 +783,7 @@ After creating standbys, set up an Oracle Data Guard (Data Guard) configuration 
 
 #### Create DataGuardBroker Resource
 
-To use the Data Guard broker, provision a new `dataguardbroker` custom resource for a single instance database(`.spec.primaryDatabaseRef`) by specifying the appropriate values for the primary and standby databases in the example `.yaml` file, and running the following command:
+To use the Data Guard broker, provision a new `dataguardbroker` custom resource for a single instance database referenced by `.spec.primarySource.databaseRef` by specifying the appropriate values for the primary and standby databases in the example `.yaml` file, and running the following command:
 
 ```sh
 $ kubectl create -f dataguardbroker.yaml

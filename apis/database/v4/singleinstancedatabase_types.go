@@ -92,11 +92,9 @@ type SingleInstanceDatabaseSpec struct {
 	// Deprecated: use spec.tcps.tlsSecret.
 	TcpsTlsSecret string `json:"tcpsTlsSecret,omitempty"`
 
+	// Deprecated: use spec.primarySource.databaseRef.
 	PrimaryDatabaseRef string                               `json:"primaryDatabaseRef,omitempty"`
-	StandbyConfig      *SingleInstanceDatabaseStandbyConfig `json:"standbyConfig,omitempty"`
-
-	// New optional field for external / different-cluster primary
-	ExternalPrimaryDatabaseRef *SingleInstanceDatabaseExternalPrimaryRef `json:"externalPrimaryDatabaseRef,omitempty"`
+	PrimarySource      *SingleInstanceDatabasePrimarySource `json:"primarySource,omitempty"`
 
 	// +kubebuilder:validation:Enum=primary;standby;clone;truecache
 	CreateAs string `json:"createAs,omitempty"`
@@ -299,25 +297,17 @@ type SingleInstanceDatabaseResources struct {
 	Requests *SingleInstanceDatabaseResource `json:"requests,omitempty"`
 	Limits   *SingleInstanceDatabaseResource `json:"limits,omitempty"`
 }
-type SingleInstanceDatabaseExternalPrimaryRef struct {
-	Host    string `json:"host,omitempty"`
-	Port    int    `json:"port,omitempty"`
-	Sid     string `json:"sid,omitempty"`
-	Pdbname string `json:"pdbName,omitempty"`
-}
-
 type SingleInstanceDatabasePrimaryDetails struct {
 	Host    string `json:"host,omitempty"`
 	Port    int    `json:"port,omitempty"`
 	Sid     string `json:"sid,omitempty"`
-	Cdbname string `json:"cdbName,omitempty"`
 	Pdbname string `json:"pdbName,omitempty"`
 }
 
-type SingleInstanceDatabaseStandbyConfig struct {
-	PrimaryDatabaseRef   string                                `json:"primaryDatabaseRef,omitempty"`
-	PrimaryConnectString string                                `json:"primaryConnectString,omitempty"`
-	PrimaryDetails       *SingleInstanceDatabasePrimaryDetails `json:"primaryDetails,omitempty"`
+type SingleInstanceDatabasePrimarySource struct {
+	DatabaseRef   string                                `json:"databaseRef,omitempty"`
+	ConnectString string                                `json:"connectString,omitempty"`
+	Details       *SingleInstanceDatabasePrimaryDetails `json:"details,omitempty"`
 }
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC

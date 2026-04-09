@@ -18135,17 +18135,6 @@ spec:
                   - name
                   type: object
                 type: array
-              externalPrimaryDatabaseRef:
-                properties:
-                  host:
-                    type: string
-                  pdbName:
-                    type: string
-                  port:
-                    type: integer
-                  sid:
-                    type: string
-                type: object
               flashBack:
                 type: boolean
               forceLog:
@@ -18268,6 +18257,24 @@ spec:
                 type: object
               primaryDatabaseRef:
                 type: string
+              primarySource:
+                properties:
+                  connectString:
+                    type: string
+                  databaseRef:
+                    type: string
+                  details:
+                    properties:
+                      host:
+                        type: string
+                      pdbName:
+                        type: string
+                      port:
+                        type: integer
+                      sid:
+                        type: string
+                    type: object
+                type: object
               readinessCheckPeriod:
                 type: integer
               replicas:
@@ -18594,26 +18601,6 @@ spec:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
-              standbyConfig:
-                properties:
-                  primaryConnectString:
-                    type: string
-                  primaryDatabaseRef:
-                    type: string
-                  primaryDetails:
-                    properties:
-                      cdbName:
-                        type: string
-                      host:
-                        type: string
-                      pdbName:
-                        type: string
-                      port:
-                        type: integer
-                      sid:
-                        type: string
-                    type: object
-                type: object
               tcps:
                 properties:
                   certMountLocation:

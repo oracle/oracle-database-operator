@@ -238,6 +238,9 @@ func TestSIDBWebhookTrueCacheModeRejectsGenerateFields(t *testing.T) {
 func TestSIDBWebhookTrueCacheModeAllowsBlobConfigMapRef(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
+	}
 	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
 		BlobConfigMapRef: "tc-blob",
 	}
@@ -250,6 +253,9 @@ func TestSIDBWebhookTrueCacheModeAllowsBlobConfigMapRef(t *testing.T) {
 func TestSIDBWebhookTrueCacheModeAllowsConsumerBlobFields(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
+	}
 	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
 		BlobConfigMapRef: "tc-blob",
 		BlobConfigMapKey: "tc-config",
@@ -264,6 +270,9 @@ func TestSIDBWebhookTrueCacheModeAllowsConsumerBlobFields(t *testing.T) {
 func TestSIDBWebhookTrueCacheModeAllowsNestedTrueCacheServices(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
+	}
 	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
 		TrueCacheServices: []string{"svc1", "svc2"},
 	}
@@ -276,6 +285,9 @@ func TestSIDBWebhookTrueCacheModeAllowsNestedTrueCacheServices(t *testing.T) {
 func TestSIDBWebhookTrueCacheModeAllowsLegacyTrueCacheServices(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
+	}
 	sidb.Spec.TrueCacheServices = []string{"svc1", "svc2"}
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
@@ -310,8 +322,8 @@ func TestSIDBWebhookTrueCacheModeRejectsGeneratePath(t *testing.T) {
 func TestSIDBWebhookStandbyWithoutTrueCacheFieldsPasses(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "standby"
-	sidb.Spec.StandbyConfig = &SingleInstanceDatabaseStandbyConfig{
-		PrimaryDatabaseRef: "primary-db",
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
 	}
 	sidb.Spec.TrueCache = nil
 	sidb.Spec.TrueCacheServices = nil
@@ -324,8 +336,8 @@ func TestSIDBWebhookStandbyWithoutTrueCacheFieldsPasses(t *testing.T) {
 func TestSIDBWebhookStandbyRejectsNestedTrueCacheField(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "standby"
-	sidb.Spec.StandbyConfig = &SingleInstanceDatabaseStandbyConfig{
-		PrimaryDatabaseRef: "primary-db",
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
 	}
 	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
 		BlobConfigMapRef: "tc-blob",
@@ -339,8 +351,8 @@ func TestSIDBWebhookStandbyRejectsNestedTrueCacheField(t *testing.T) {
 func TestSIDBWebhookStandbyRejectsLegacyTrueCacheServices(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "standby"
-	sidb.Spec.StandbyConfig = &SingleInstanceDatabaseStandbyConfig{
-		PrimaryDatabaseRef: "primary-db",
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
 	}
 	sidb.Spec.TrueCacheServices = []string{"svc1"}
 
@@ -352,8 +364,8 @@ func TestSIDBWebhookStandbyRejectsLegacyTrueCacheServices(t *testing.T) {
 func TestSIDBWebhookStandbyRejectsTrueCacheSpec(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "standby"
-	sidb.Spec.StandbyConfig = &SingleInstanceDatabaseStandbyConfig{
-		PrimaryDatabaseRef: "primary-db",
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
 	}
 	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
 		BlobConfigMapRef: "tc-blob",
@@ -367,7 +379,9 @@ func TestSIDBWebhookStandbyRejectsTrueCacheSpec(t *testing.T) {
 func TestSIDBWebhookCloneWithoutTrueCacheFieldsPasses(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "clone"
-	sidb.Spec.PrimaryDatabaseRef = "primary-db"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
+	}
 	sidb.Spec.TrueCache = nil
 	sidb.Spec.TrueCacheServices = nil
 
@@ -379,7 +393,9 @@ func TestSIDBWebhookCloneWithoutTrueCacheFieldsPasses(t *testing.T) {
 func TestSIDBWebhookCloneRejectsNestedTrueCacheField(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "clone"
-	sidb.Spec.PrimaryDatabaseRef = "primary-db"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
+	}
 	sidb.Spec.TrueCache = &SingleInstanceDatabaseTrueCacheSpec{
 		BlobConfigMapRef: "tc-blob",
 	}
@@ -392,11 +408,60 @@ func TestSIDBWebhookCloneRejectsNestedTrueCacheField(t *testing.T) {
 func TestSIDBWebhookCloneRejectsLegacyTrueCacheServices(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "clone"
-	sidb.Spec.PrimaryDatabaseRef = "primary-db"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
+	}
 	sidb.Spec.TrueCacheServices = []string{"svc1"}
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
 		t.Fatalf("expected validation error when clone sets legacy trueCacheServices")
+	}
+}
+
+func TestSIDBWebhookPrimarySourceRejectsMixedFields(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef:   "primary-db",
+		ConnectString: "primary-host:1521/PRIM",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when primarySource mixes mutually exclusive fields")
+	}
+}
+
+func TestSIDBWebhookPrimarySourceRejectsDeprecatedPrimaryDatabaseRefMix(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.PrimaryDatabaseRef = "legacy-primary-db"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when deprecated primaryDatabaseRef is mixed with primarySource")
+	}
+}
+
+func TestSIDBWebhookTrueCacheRequiresPrimarySource(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when truecache omits primary source")
+	}
+}
+
+func TestSIDBWebhookPrimaryRejectsPrimarySource(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "primary"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		DatabaseRef: "primary-db",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when primary uses primarySource")
 	}
 }
 
