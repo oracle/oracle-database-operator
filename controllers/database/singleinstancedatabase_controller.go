@@ -5715,15 +5715,27 @@ func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *d
 // #############################################################################
 // SetupPrimaryDBTnsNamesInStandby configures primary DB aliases inside standby tnsnames.ora.
 func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
-	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+	primary *dbapi.SingleInstanceDatabase, dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+
 	tnsFile := getTnsFilePathBySID(s.Spec.Sid)
-	defaultAlias := GetPrimaryDatabaseSid(s, nil)
-	defaultHost := GetPrimaryDatabaseHost(s, nil)
+	defaultAlias := GetPrimaryDatabaseSid(s, primary)
+	defaultHost := GetPrimaryDatabaseHost(s, primary)
 	defaultPort := GetPrimaryDatabasePort(s)
 	if defaultPort == 0 {
 		defaultPort = 1521
 	}
-	alias, host, port, serviceName, protocol, sslDN := resolveTNSAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
+
+	alias, host, port, serviceName, protocol, sslDN :=
+		resolveTNSAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
+
+	r.Log.Info("Primary standby tns alias values",
+		"alias", alias,
+		"host", host,
+		"port", port,
+		"serviceName", serviceName,
+		"protocol", protocol,
+	)
+
 	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, protocol, sslDN)
 }
 
@@ -5788,7 +5800,7 @@ func SetupStandbyDatabaseForLocalPrimary(r *SingleInstanceDatabaseReconciler, st
 	}
 
 	r.Log.Info("Setting up tnsnames entry for primary database in standby database")
-	err = SetupPrimaryDBTnsNamesInStandby(r, stdby, stdbyReadyPod, ctx, req)
+	err = SetupPrimaryDBTnsNamesInStandby(r, stdby, primary, stdbyReadyPod, ctx, req)
 	if err != nil {
 		return err
 	}
