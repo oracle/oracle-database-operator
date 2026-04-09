@@ -5201,7 +5201,7 @@ func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconcil
 
 	r.Recorder.Eventf(stdby, corev1.EventTypeNormal, "Validation", "Primary database is ready")
 
-	adminPassword, err := GetDatabaseAdminPassword(r, stdby, ctx)
+	adminPassword, err := GetDatabaseAdminPassword(r, primary, ctx)
 	if err != nil {
 		stdby.Status.Status = dbcommons.StatusError
 		return err
