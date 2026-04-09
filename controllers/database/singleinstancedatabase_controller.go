@@ -524,16 +524,13 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	result, err = r.runSIDBPhase(req, "validate", func() (ctrl.Result, error) {
-		res, e := r.validate(phaseCtx.singleInstanceDatabase, phaseCtx.cloneFromDatabase, phaseCtx.referredPrimaryDatabase, ctx, req)
-		if res.Requeue {
-			r.Log.Info("Spec validation failed, Reconcile queued")
-			return res, nil
-		}
-		if e != nil {
-			r.Log.Info("Spec validation failed")
-			return res, nil
-		}
-		return res, nil
+		return r.validate(
+			phaseCtx.singleInstanceDatabase,
+			phaseCtx.cloneFromDatabase,
+			phaseCtx.referredPrimaryDatabase,
+			ctx,
+			req,
+		)
 	})
 	if result.Requeue {
 		return result, nil
