@@ -17675,17 +17675,6 @@ spec:
                 type: string
               enableTCPS:
                 type: boolean
-              externalPrimaryDatabaseRef:
-                properties:
-                  host:
-                    type: string
-                  pdbName:
-                    type: string
-                  port:
-                    type: integer
-                  sid:
-                    type: string
-                type: object
               flashBack:
                 type: boolean
               forceLog:

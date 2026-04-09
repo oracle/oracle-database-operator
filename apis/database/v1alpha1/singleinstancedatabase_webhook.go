@@ -246,15 +246,6 @@ func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj *Single
 				"Primary Database reference cannot be null for a clone database"))
 	}
 
-	if sidb.Spec.CreateAs == "standby" &&
-		sidb.Spec.PrimaryDatabaseRef == "" &&
-		(sidb.Spec.ExternalPrimaryDatabaseRef == nil || strings.TrimSpace(sidb.Spec.ExternalPrimaryDatabaseRef.Host) == "") {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("primaryDatabaseRef"),
-				sidb.Spec.PrimaryDatabaseRef,
-				"Primary Database reference cannot be null for a standby database unless externalPrimaryDatabaseRef.host is provided"))
-	}
-
 	if sidb.Spec.Edition == "express" || sidb.Spec.Edition == "free" {
 		if sidb.Spec.CreateAs == "clone" {
 			allErrs = append(allErrs,

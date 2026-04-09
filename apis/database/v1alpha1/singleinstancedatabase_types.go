@@ -72,8 +72,7 @@ type SingleInstanceDatabaseSpec struct {
 	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
 	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
 
-	PrimaryDatabaseRef         string                                    `json:"primaryDatabaseRef,omitempty"`
-	ExternalPrimaryDatabaseRef *SingleInstanceDatabaseExternalPrimaryRef `json:"externalPrimaryDatabaseRef,omitempty"`
+	PrimaryDatabaseRef string `json:"primaryDatabaseRef,omitempty"`
 
 	// +kubebuilder:validation:Enum=primary;standby;clone;truecache
 	CreateAs             string   `json:"createAs,omitempty"`
@@ -103,13 +102,6 @@ type SingleInstanceDatabaseResources struct {
 	Requests *SingleInstanceDatabaseResource `json:"requests,omitempty"`
 	Limits   *SingleInstanceDatabaseResource `json:"limits,omitempty"`
 }
-type SingleInstanceDatabaseExternalPrimaryRef struct {
-	Host    string `json:"host,omitempty"`
-	Port    int    `json:"port,omitempty"`
-	Sid     string `json:"sid,omitempty"`
-	Pdbname string `json:"pdbName,omitempty"`
-}
-
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
 type SingleInstanceDatabasePersistence struct {
 	Size         string `json:"size,omitempty"`
