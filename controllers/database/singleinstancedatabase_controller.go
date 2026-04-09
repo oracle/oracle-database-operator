@@ -5121,30 +5121,65 @@ func GetDatabaseAdminPassword(r client.Reader, d *dbapi.SingleInstanceDatabase, 
 //
 // #############################################################################
 // ValidatePrimaryDatabaseAdminPassword validates SYS admin password against the primary database.
-func ValidatePrimaryDatabaseAdminPassword(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase,
-	adminPassword string, ctx context.Context, req ctrl.Request) error {
+func ValidatePrimaryDatabaseAdminPassword(
+	r *SingleInstanceDatabaseReconciler,
+	p *dbapi.SingleInstanceDatabase,
+	adminPassword string,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
 
 	dbReadyPod, err := GetDatabaseReadyPod(r, p, ctx, req)
 	if err != nil {
+		r.Log.Error(err, "failed to get ready pod for primary database password validation")
 		return err
 	}
 
-	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword), dbcommons.GetSqlClient(p.Spec.Edition)))
+	sqlCmd := fmt.Sprintf(
+		"echo -e \"%s\" | %s",
+		fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword),
+		dbcommons.GetSqlClient(p.Spec.Edition),
+	)
+
+	r.Log.Info(
+		"Validating primary database admin password",
+		"database", p.Name,
+		"pod", dbReadyPod.Name,
+		"namespace", dbReadyPod.Namespace,
+		"edition", p.Spec.Edition,
+	)
+
+	out, err := dbcommons.ExecCommand(
+		r,
+		r.Config,
+		dbReadyPod.Name,
+		dbReadyPod.Namespace,
+		"",
+		ctx,
+		req,
+		true,
+		"bash",
+		"-c",
+		sqlCmd,
+	)
 	if err != nil {
+		r.Log.Error(err, "failed to execute primary database password validation command", "output", out)
 		return err
 	}
+
+	r.Log.Info("primary database password validation command output", "output", out)
 
 	if strings.Contains(out, "USER is \"SYS\"") {
-		r.Log.Info("validated Admin password successfully")
-	} else {
-		if strings.Contains(out, "ORA-01017") {
-			r.Log.Info("Invalid primary database password, Logon denied")
-		}
-		return fmt.Errorf("primary database admin password validation failed")
+		r.Log.Info("validated primary database admin password successfully")
+		return nil
 	}
 
-	return nil
+	if strings.Contains(out, "ORA-01017") {
+		r.Log.Info("invalid primary database password, logon denied")
+		return fmt.Errorf("primary database admin password validation failed: ORA-01017 invalid username/password")
+	}
+
+	return fmt.Errorf("primary database admin password validation failed, output: %s", out)
 }
 
 // #############################################################################
@@ -5176,8 +5211,13 @@ func ValidateDatabaseConfiguration(p *dbapi.SingleInstanceDatabase) error {
 //
 // #############################################################################
 // ValidatePrimaryDatabaseForStandbyCreation validates primary readiness for standby creation.
-func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
-	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
+func ValidatePrimaryDatabaseForStandbyCreation(
+	r *SingleInstanceDatabaseReconciler,
+	stdby *dbapi.SingleInstanceDatabase,
+	primary *dbapi.SingleInstanceDatabase,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
 
 	log := r.Log.WithValues("ValidatePrimaryDatabase", req.NamespacedName)
 
@@ -5223,7 +5263,6 @@ func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconcil
 	}
 
 	r.Recorder.Eventf(stdby, corev1.EventTypeNormal, "Validation", "Successfully validated the primary database admin password and configuration")
-
 	return nil
 }
 
