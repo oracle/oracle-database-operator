@@ -5135,11 +5135,12 @@ func ValidatePrimaryDatabaseAdminPassword(
 		return err
 	}
 
-	sqlCmd := fmt.Sprintf(
-		"echo -e \"%s\" | %s",
-		fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword),
-		dbcommons.GetSqlClient(p.Spec.Edition),
-	)
+	sqlClient := dbcommons.GetSqlClient(p.Spec.Edition)
+
+	sqlCmd := fmt.Sprintf(`%s -s "sys/%s as sysdba" <<'EOF'
+show user;
+exit;
+EOF`, sqlClient, adminPassword)
 
 	r.Log.Info(
 		"Validating primary database admin password",
@@ -5169,14 +5170,17 @@ func ValidatePrimaryDatabaseAdminPassword(
 
 	r.Log.Info("primary database password validation command output", "output", out)
 
-	if strings.Contains(out, "USER is \"SYS\"") {
+	if strings.Contains(out, `USER is "SYS"`) {
 		r.Log.Info("validated primary database admin password successfully")
 		return nil
 	}
 
 	if strings.Contains(out, "ORA-01017") {
-		r.Log.Info("invalid primary database password, logon denied")
 		return fmt.Errorf("primary database admin password validation failed: ORA-01017 invalid username/password")
+	}
+
+	if strings.Contains(out, "ORA-12547") {
+		return fmt.Errorf("primary database admin password validation failed: ORA-12547 lost contact while running sqlplus, output: %s", out)
 	}
 
 	return fmt.Errorf("primary database admin password validation failed, output: %s", out)
