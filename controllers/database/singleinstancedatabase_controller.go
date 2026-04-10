@@ -1681,6 +1681,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	walletDir := GetWalletDirFromSid(m.Spec.Sid)
 	oradataCfg := getOradataPersistenceConfig(m)
 	containerResources := buildSIDBContainerResources(m)
+	imagePullPolicy := resolveSIDBImagePullPolicy(m.Spec.Image.PullFrom, m.Spec.Image.ImagePullPolicy)
 	podSecurityContext, err := buildSIDBPodSecurityContext(m, containerResources)
 	if err != nil {
 		return nil, err
@@ -2006,9 +2007,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				initContainers := []corev1.Container{}
 				if hasOradataPersistence(m) && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
 					initContainers = append(initContainers, corev1.Container{
-						Name:    "init-permissions",
-						Image:   m.Spec.Image.PullFrom,
-						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata || true", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
+						Name:            "init-permissions",
+						Image:           m.Spec.Image.PullFrom,
+						ImagePullPolicy: imagePullPolicy,
+						Command:         []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata || true", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
 						SecurityContext: &corev1.SecurityContext{
 							// User ID 0 means, root user
 							RunAsUser: func() *int64 { i := int64(0); return &i }(),
@@ -2021,9 +2023,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}
 				if m.Spec.Image.PrebuiltDB {
 					initContainers = append(initContainers, corev1.Container{
-						Name:    "init-prebuiltdb",
-						Image:   m.Spec.Image.PullFrom,
-						Command: []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
+						Name:            "init-prebuiltdb",
+						Image:           m.Spec.Image.PullFrom,
+						ImagePullPolicy: imagePullPolicy,
+						Command:         []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
 						SecurityContext: &corev1.SecurityContext{
 							RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
 							RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
@@ -2045,8 +2048,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				// Standby TDE wallet import inputs are independent from DB credential wallet seeding.
 				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB && !GetAdminPasswordSkipInitWallet(m) {
 					initContainers = append(initContainers, corev1.Container{
-						Name:  "init-wallet",
-						Image: m.Spec.Image.PullFrom,
+						Name:            "init-wallet",
+						Image:           m.Spec.Image.PullFrom,
+						ImagePullPolicy: imagePullPolicy,
 						Env: []corev1.EnvVar{
 							{
 								Name:  "ORACLE_SID",
@@ -2094,8 +2098,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				return initContainers
 			}(),
 			Containers: []corev1.Container{{
-				Name:  m.Name,
-				Image: m.Spec.Image.PullFrom,
+				Name:            m.Name,
+				Image:           m.Spec.Image.PullFrom,
+				ImagePullPolicy: imagePullPolicy,
 				SecurityContext: &corev1.SecurityContext{
 					Capabilities: &corev1.Capabilities{
 						// Allow priority elevation for DB processes
@@ -3465,6 +3470,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 
 	oldVersion := ""
 	oldImage := ""
+	oldImagePullPolicy := corev1.PullPolicy("")
+	desiredImagePullPolicy := resolveSIDBImagePullPolicy(m.Spec.Image.PullFrom, m.Spec.Image.ImagePullPolicy)
 
 	// call FindPods() to fetch pods all version/images of the same SIDB kind
 	readyPod, replicasFound, allAvailable, podsMarkedToBeDeleted, err := dbcommons.FindPods(r, "", "", m.Name, m.Namespace, ctx, req)
@@ -3495,11 +3502,14 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		if pod.Spec.Containers[0].Image != m.Spec.Image.PullFrom {
 			oldImage = pod.Spec.Containers[0].Image
 		}
+		if pod.Spec.Containers[0].ImagePullPolicy != desiredImagePullPolicy {
+			oldImagePullPolicy = pod.Spec.Containers[0].ImagePullPolicy
+		}
 
 	}
 
 	// podVersion, podImage if old version PODs are found
-	imageChanged := oldVersion != "" || oldImage != ""
+	imageChanged := oldVersion != "" || oldImage != "" || oldImagePullPolicy != ""
 
 	if !imageChanged {
 		eventReason := ""
@@ -3652,6 +3662,32 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	}
 	return r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
 	// PATCHING END
+}
+
+func resolveSIDBImagePullPolicy(image string, configured corev1.PullPolicy) corev1.PullPolicy {
+	if configured != corev1.PullPolicy("") {
+		return configured
+	}
+	if sidbImageUsesLatestTag(image) {
+		return corev1.PullAlways
+	}
+	return corev1.PullIfNotPresent
+}
+
+func sidbImageUsesLatestTag(image string) bool {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return false
+	}
+	if strings.Contains(image, "@") {
+		return false
+	}
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon <= lastSlash {
+		return true
+	}
+	return image[lastColon+1:] == "latest"
 }
 
 // #############################################################################

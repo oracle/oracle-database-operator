@@ -18166,6 +18166,12 @@ spec:
                 type: array
               image:
                 properties:
+                  imagePullPolicy:
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
+                    type: string
                   prebuiltDB:
                     type: boolean
                   pullFrom:
@@ -20041,7 +20047,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -20057,7 +20063,7 @@ spec:
         - /manager
         env:
         - name: WATCH_NAMESPACE
-          value: ""
+          value: "oracle-database-operator-system,default"
         image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sidb-operator-sa
         imagePullPolicy: Always
         name: manager

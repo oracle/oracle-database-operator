@@ -568,7 +568,7 @@ Patched Oracle Docker images can be built by using this [patching extension](htt
 To patch an existing database, edit and apply the **[`config/samples/sidb/singleinstancedatabase_patch.yaml`](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
 
 ```sh
-kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
+kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","imagePullPolicy":"Always","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
 
 singleinstancedatabase.database.oracle.com/sidb-sample patched
 
@@ -608,7 +608,7 @@ kubectl apply -f singleinstancedatabase_patch.yaml
 This can also be done using the following command:
 
 ```sh
-kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"old-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
+kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"old-image:tag","imagePullPolicy":"Always","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
 
 singleinstancedatabase.database.oracle.com/sidb-sample patched
 
@@ -956,7 +956,7 @@ Databases (both primary and standby) running in you cluster and managed by the O
 To patch an existing database, edit and apply the **[`config/samples/sidb/singleinstancedatabase_patch.yaml`](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
 
 ```sh
-kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase <database-name>
+kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","imagePullPolicy":"Always","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase <database-name>
 
 ```
 Follow these steps for patching databases configured with the Data Guard broker:

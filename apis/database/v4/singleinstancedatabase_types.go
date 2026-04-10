@@ -371,10 +371,12 @@ type SingleInstanceDatabaseInitParams struct {
 
 // SingleInstanceDatabaseImage defines the Image source and pullSecrets for POD
 type SingleInstanceDatabaseImage struct {
-	Version     string `json:"version,omitempty"`
-	PullFrom    string `json:"pullFrom"`
-	PullSecrets string `json:"pullSecrets,omitempty"`
-	PrebuiltDB  bool   `json:"prebuiltDB,omitempty"`
+	Version  string `json:"version,omitempty"`
+	PullFrom string `json:"pullFrom"`
+	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
+	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	PullSecrets     string            `json:"pullSecrets,omitempty"`
+	PrebuiltDB      bool              `json:"prebuiltDB,omitempty"`
 }
 
 // SingleInsatnceAdminPassword defines the secret containing Admin Password mapped to secretKey for Database
