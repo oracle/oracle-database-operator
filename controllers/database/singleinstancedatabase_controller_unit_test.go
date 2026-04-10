@@ -194,6 +194,35 @@ func TestSIDBUnit_SyncDataguardPreviewStatusDisabledClearsStatus(t *testing.T) {
 	}
 }
 
+func TestSIDBUnit_SyncDataguardPreviewStatusTrueCacheIsNotApplicable(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-truecache", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:       "TC01",
+			CreateAs:  "truecache",
+			Dataguard: &dbapi.DataguardProducerSpec{Mode: dbapi.DataguardProducerModePreview},
+		},
+	}
+
+	syncSIDBDataguardPreviewStatus(sidb, nil)
+
+	if sidb.Status.Dataguard == nil {
+		t.Fatalf("expected dataguard status to be populated for not-applicable truecache")
+	}
+	if sidb.Status.Dataguard.Phase != dataguardPreviewPhaseNotApplicable {
+		t.Fatalf("expected phase %q, got %q", dataguardPreviewPhaseNotApplicable, sidb.Status.Dataguard.Phase)
+	}
+	if sidb.Status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be false for truecache")
+	}
+	if sidb.Status.Dataguard.Topology != nil {
+		t.Fatalf("expected no dataguard topology for truecache, got %#v", sidb.Status.Dataguard.Topology)
+	}
+	if sidb.Status.Dataguard.RenderedBrokerSpec != nil {
+		t.Fatalf("expected no rendered broker spec for truecache, got %#v", sidb.Status.Dataguard.RenderedBrokerSpec)
+	}
+}
+
 func TestSIDBUnit_BuildSIDBPreviewTCPSConfigUsesOverrideWalletSecret(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby"},

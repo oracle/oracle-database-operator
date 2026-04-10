@@ -104,8 +104,6 @@ func sidbPreviewMemberRole(m *dbapi.SingleInstanceDatabase) string {
 	switch strings.ToLower(strings.TrimSpace(m.Spec.CreateAs)) {
 	case "standby":
 		return "PHYSICAL_STANDBY"
-	case "truecache":
-		return "TRUECACHE"
 	default:
 		return ""
 	}
@@ -160,11 +158,6 @@ func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleI
 		return nil, memberName, ""
 	}
 
-	pairType := "PHYSICAL"
-	if strings.EqualFold(memberRole, "TRUECACHE") {
-		pairType = "TRUECACHE"
-	}
-
 	topology := &dbapi.DataguardTopologySpec{
 		SourceKind: "SingleInstanceDatabase",
 		SourceRef: &dbapi.DataguardSourceRef{
@@ -177,7 +170,7 @@ func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleI
 		Pairs: []dbapi.DataguardTopologyPair{{
 			Primary: primaryMemberName,
 			Standby: memberName,
-			Type:    pairType,
+			Type:    "PHYSICAL",
 		}},
 	}
 	return topology, memberName, primaryMemberName

@@ -92,6 +92,19 @@ func TestDataguardBrokerWebhookValidateCreateRejectsInvalidTopology(t *testing.T
 	}
 }
 
+func TestDataguardBrokerWebhookValidateCreateRejectsTrueCacheRole(t *testing.T) {
+	obj := validDataguardBrokerTopology()
+	obj.Spec.Topology.Members[1].Role = "TRUECACHE"
+
+	_, err := (&DataguardBroker{}).ValidateCreate(context.Background(), obj)
+	if err == nil {
+		t.Fatalf("expected TRUECACHE topology member role to be rejected")
+	}
+	if !strings.Contains(err.Error(), "must be PRIMARY, PHYSICAL_STANDBY, or SNAPSHOT_STANDBY") {
+		t.Fatalf("expected TRUECACHE role validation error, got: %v", err)
+	}
+}
+
 func TestDataguardBrokerWebhookValidateCreateRejectsExternalTopologyWithoutExecution(t *testing.T) {
 	obj := validDataguardBrokerTopology()
 	obj.Spec.Topology.Members[1].LocalRef = nil

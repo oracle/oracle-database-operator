@@ -243,7 +243,7 @@ func validateDataguardTopology(topology *DataguardTopologySpec) field.ErrorList 
 
 		role := normalizeDataguardMemberRole(member.Role)
 		if !isValidDataguardMemberRole(role) {
-			allErrs = append(allErrs, field.Invalid(memberPath.Child("role"), member.Role, "must be PRIMARY, PHYSICAL_STANDBY, SNAPSHOT_STANDBY, or TRUECACHE"))
+			allErrs = append(allErrs, field.Invalid(memberPath.Child("role"), member.Role, "must be PRIMARY, PHYSICAL_STANDBY, or SNAPSHOT_STANDBY"))
 		}
 		if role == "PRIMARY" {
 			primaryCount++
@@ -399,7 +399,7 @@ func normalizeDataguardMemberRole(role string) string {
 
 func isValidDataguardMemberRole(role string) bool {
 	switch normalizeDataguardMemberRole(role) {
-	case "PRIMARY", "PHYSICAL_STANDBY", "SNAPSHOT_STANDBY", "TRUECACHE":
+	case "PRIMARY", "PHYSICAL_STANDBY", "SNAPSHOT_STANDBY":
 		return true
 	default:
 		return false
@@ -408,7 +408,7 @@ func isValidDataguardMemberRole(role string) bool {
 
 func isStandbyCompatibleDataguardRole(role string) bool {
 	switch normalizeDataguardMemberRole(role) {
-	case "PHYSICAL_STANDBY", "SNAPSHOT_STANDBY", "TRUECACHE":
+	case "PHYSICAL_STANDBY", "SNAPSHOT_STANDBY":
 		return true
 	default:
 		return false
