@@ -101,6 +101,7 @@ spec:
   ## If cloning specify an image that is of same major version as the source DB at same or different patch levels
   image:
     pullFrom:
+    imagePullPolicy: IfNotPresent
     pullSecrets:
     prebuiltDB: false
 

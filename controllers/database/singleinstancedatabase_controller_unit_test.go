@@ -62,6 +62,24 @@ func TestSIDBUnit_GetStandbyWalletDefaults(t *testing.T) {
 	}
 }
 
+func TestSIDBUnit_ResolveSIDBImagePullPolicy(t *testing.T) {
+	if got := resolveSIDBImagePullPolicy("container-registry.oracle.com/database/free:latest", ""); got != corev1.PullAlways {
+		t.Fatalf("expected latest-tag image to default to PullAlways, got %q", got)
+	}
+	if got := resolveSIDBImagePullPolicy("phx.ocir.io/repo/oracle/database:truecache-23.26.0-ee", ""); got != corev1.PullIfNotPresent {
+		t.Fatalf("expected fixed-tag image to default to PullIfNotPresent, got %q", got)
+	}
+	if got := resolveSIDBImagePullPolicy("phx.ocir.io/repo/oracle/database", ""); got != corev1.PullAlways {
+		t.Fatalf("expected untagged image to default to PullAlways, got %q", got)
+	}
+	if got := resolveSIDBImagePullPolicy("phx.ocir.io/repo/oracle/database@sha256:abc123", ""); got != corev1.PullIfNotPresent {
+		t.Fatalf("expected digest-pinned image to default to PullIfNotPresent, got %q", got)
+	}
+	if got := resolveSIDBImagePullPolicy("phx.ocir.io/repo/oracle/database:truecache-23.26.0-ee", corev1.PullAlways); got != corev1.PullAlways {
+		t.Fatalf("expected explicit image pull policy to be preserved, got %q", got)
+	}
+}
+
 func TestSIDBUnit_ValidateStandbyWalletSecretRef(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := corev1.AddToScheme(scheme); err != nil {

@@ -588,6 +588,12 @@ spec:
                 type: array
               image:
                 properties:
+                  imagePullPolicy:
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
+                    type: string
                   prebuiltDB:
                     type: boolean
                   pullFrom:
