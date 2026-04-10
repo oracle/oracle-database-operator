@@ -165,24 +165,41 @@ type DataguardStatusRef struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
+// DataguardRenderedBrokerSpec is the copy-ready subset of DataguardBroker spec published by producers.
+type DataguardRenderedBrokerSpec struct {
+	Execution *DataguardExecutionSpec `json:"execution,omitempty"`
+	Topology  *DataguardTopologySpec  `json:"topology,omitempty"`
+}
+
+// DataguardRenderedBrokerStatus publishes a ready-to-copy DataguardBroker spec snapshot.
+type DataguardRenderedBrokerStatus struct {
+	Name         string                       `json:"name,omitempty"`
+	Namespace    string                       `json:"namespace,omitempty"`
+	Spec         *DataguardRenderedBrokerSpec `json:"spec,omitempty"`
+	TopologyHash string                       `json:"topologyHash,omitempty"`
+	GeneratedAt  *metav1.Time                 `json:"generatedAt,omitempty"`
+	Ready        bool                         `json:"ready,omitempty"`
+}
+
 // ProducerDataguardStatus is the common DG publication handoff for SIDB and RAC.
 type ProducerDataguardStatus struct {
-	BrokerRef             *DataguardStatusRef       `json:"brokerRef,omitempty"`
-	MemberName            string                    `json:"memberName,omitempty"`
-	Role                  string                    `json:"role,omitempty"`
-	DBUniqueName          string                    `json:"dbUniqueName,omitempty"`
-	PrimaryMemberName     string                    `json:"primaryMemberName,omitempty"`
-	Topology              *DataguardTopologySpec    `json:"topology,omitempty"`
-	Execution             *DataguardExecutionStatus `json:"execution,omitempty"`
-	Endpoints             []DataguardEndpointSpec   `json:"endpoints,omitempty"`
-	TCPS                  *DataguardTCPSConfig      `json:"tcps,omitempty"`
-	Phase                 string                    `json:"phase,omitempty"`
-	ReadyForBroker        bool                      `json:"readyForBroker,omitempty"`
-	TopologyHash          string                    `json:"topologyHash,omitempty"`
-	LastPublishedTime     *metav1.Time              `json:"lastPublishedTime,omitempty"`
-	PublishedTopologyHash string                    `json:"publishedTopologyHash,omitempty"`
-	TopologyLocked        bool                      `json:"topologyLocked,omitempty"`
-	Conditions            []metav1.Condition        `json:"conditions,omitempty"`
+	BrokerRef             *DataguardStatusRef            `json:"brokerRef,omitempty"`
+	MemberName            string                         `json:"memberName,omitempty"`
+	Role                  string                         `json:"role,omitempty"`
+	DBUniqueName          string                         `json:"dbUniqueName,omitempty"`
+	PrimaryMemberName     string                         `json:"primaryMemberName,omitempty"`
+	Topology              *DataguardTopologySpec         `json:"topology,omitempty"`
+	Execution             *DataguardExecutionStatus      `json:"execution,omitempty"`
+	RenderedBrokerSpec    *DataguardRenderedBrokerStatus `json:"renderedBrokerSpec,omitempty"`
+	Endpoints             []DataguardEndpointSpec        `json:"endpoints,omitempty"`
+	TCPS                  *DataguardTCPSConfig           `json:"tcps,omitempty"`
+	Phase                 string                         `json:"phase,omitempty"`
+	ReadyForBroker        bool                           `json:"readyForBroker,omitempty"`
+	TopologyHash          string                         `json:"topologyHash,omitempty"`
+	LastPublishedTime     *metav1.Time                   `json:"lastPublishedTime,omitempty"`
+	PublishedTopologyHash string                         `json:"publishedTopologyHash,omitempty"`
+	TopologyLocked        bool                           `json:"topologyLocked,omitempty"`
+	Conditions            []metav1.Condition             `json:"conditions,omitempty"`
 }
 
 // ShardingDataguardMemberStatus tracks one resolved DG member from a sharding topology.
@@ -212,6 +229,7 @@ type ShardingDataguardStatus struct {
 	BrokerRef             *DataguardStatusRef             `json:"brokerRef,omitempty"`
 	Topology              *DataguardTopologySpec          `json:"topology,omitempty"`
 	Execution             *DataguardExecutionStatus       `json:"execution,omitempty"`
+	RenderedBrokerSpec    *DataguardRenderedBrokerStatus  `json:"renderedBrokerSpec,omitempty"`
 	Members               []ShardingDataguardMemberStatus `json:"members,omitempty"`
 	Pairs                 []DataguardPairStatus           `json:"pairs,omitempty"`
 	Phase                 string                          `json:"phase,omitempty"`

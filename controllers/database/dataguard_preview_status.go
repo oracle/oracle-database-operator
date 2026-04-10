@@ -74,6 +74,7 @@ func syncSIDBDataguardPreviewStatus(m *dbapi.SingleInstanceDatabase, rp *dbapi.S
 	next.TCPS = buildSIDBPreviewTCPSConfig(m)
 	next.TopologyLocked = sidbPreviewTopologyLocked(m)
 	next.Topology = topology
+	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(m.Name, m.Namespace, topology, next.Execution, "", false)
 	if topology == nil {
 		next.Phase = dataguardPreviewPhaseWaitingForSource
 		next.ReadyForBroker = false
@@ -91,6 +92,7 @@ func syncSIDBDataguardPreviewStatus(m *dbapi.SingleInstanceDatabase, rp *dbapi.S
 	next.PublishedTopologyHash = next.TopologyHash
 	now := metav1.Now()
 	next.LastPublishedTime = &now
+	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(m.Name, m.Namespace, topology, next.Execution, next.TopologyHash, true)
 	setDataguardPreviewCondition(&next.Conditions, m.Generation, true, "PreviewReady", "resolved Data Guard topology is ready to be copied into DataguardBroker.spec.topology")
 	m.Status.Dataguard = next
 }
@@ -325,6 +327,7 @@ func (r *ShardingDatabaseReconciler) syncShardingDataguardPreviewStatus(instance
 	next.Execution = buildShardingPreviewExecutionStatus(instance)
 	next.Members = members
 	next.Pairs = pairs
+	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(instance.Name, instance.Namespace, topology, next.Execution, "", false)
 	if topology == nil {
 		next.Phase = dataguardPreviewPhaseWaitingForTopology
 		next.ReadyForBroker = false
@@ -339,6 +342,7 @@ func (r *ShardingDatabaseReconciler) syncShardingDataguardPreviewStatus(instance
 	next.ReadyForBroker = ready
 	next.TopologyHash = dataguardTopologyHash(topology)
 	next.PublishedTopologyHash = next.TopologyHash
+	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(instance.Name, instance.Namespace, topology, next.Execution, next.TopologyHash, ready)
 	if ready {
 		now := metav1.Now()
 		next.LastPublishedTime = &now
@@ -691,4 +695,36 @@ func setDataguardPreviewCondition(conditions *[]metav1.Condition, generation int
 		ObservedGeneration: generation,
 		LastTransitionTime: metav1.Now(),
 	})
+}
+
+func buildRenderedBrokerPreviewStatus(resourceName, namespace string, topology *dbapi.DataguardTopologySpec, execution *dbapi.DataguardExecutionStatus, topologyHash string, ready bool) *dbapi.DataguardRenderedBrokerStatus {
+	if topology == nil {
+		return nil
+	}
+	spec := &dbapi.DataguardRenderedBrokerSpec{
+		Topology: topology.DeepCopy(),
+	}
+	if execution != nil && strings.TrimSpace(execution.Image) != "" {
+		spec.Execution = &dbapi.DataguardExecutionSpec{
+			Image:            strings.TrimSpace(execution.Image),
+			ImagePullSecrets: append([]string(nil), execution.ImagePullSecrets...),
+		}
+	}
+	now := metav1.Now()
+	return &dbapi.DataguardRenderedBrokerStatus{
+		Name:         buildRenderedBrokerName(resourceName),
+		Namespace:    strings.TrimSpace(namespace),
+		Spec:         spec,
+		TopologyHash: strings.TrimSpace(topologyHash),
+		GeneratedAt:  &now,
+		Ready:        ready,
+	}
+}
+
+func buildRenderedBrokerName(resourceName string) string {
+	base := sanitizeDataguardMemberName(resourceName, "dataguard")
+	if strings.HasSuffix(base, "-dg") {
+		return base
+	}
+	return base + "-dg"
 }

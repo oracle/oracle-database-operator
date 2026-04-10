@@ -157,6 +157,21 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 	if sidb.Status.Dataguard.Execution == nil || sidb.Status.Dataguard.Execution.Image == "" {
 		t.Fatalf("expected execution image to be published")
 	}
+	if sidb.Status.Dataguard.RenderedBrokerSpec == nil {
+		t.Fatalf("expected renderedBrokerSpec to be published")
+	}
+	if sidb.Status.Dataguard.RenderedBrokerSpec.Name != "sidb-standby-dg" {
+		t.Fatalf("unexpected rendered broker name: %#v", sidb.Status.Dataguard.RenderedBrokerSpec)
+	}
+	if sidb.Status.Dataguard.RenderedBrokerSpec.Namespace != "ns1" {
+		t.Fatalf("unexpected rendered broker namespace: %#v", sidb.Status.Dataguard.RenderedBrokerSpec)
+	}
+	if sidb.Status.Dataguard.RenderedBrokerSpec.Spec == nil || sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
+		t.Fatalf("expected rendered broker spec topology, got %#v", sidb.Status.Dataguard.RenderedBrokerSpec)
+	}
+	if !sidb.Status.Dataguard.RenderedBrokerSpec.Ready {
+		t.Fatalf("expected rendered broker spec to be marked ready")
+	}
 }
 
 func TestSIDBUnit_SyncDataguardPreviewStatusDisabledClearsStatus(t *testing.T) {

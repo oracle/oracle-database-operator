@@ -14532,6 +14532,145 @@ spec:
                     type: string
                   readyForBroker:
                     type: boolean
+                  renderedBrokerSpec:
+                    properties:
+                      generatedAt:
+                        format: date-time
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      ready:
+                        type: boolean
+                      spec:
+                        properties:
+                          execution:
+                            properties:
+                              image:
+                                type: string
+                              imagePullSecrets:
+                                items:
+                                  type: string
+                                type: array
+                              tnsAdminPath:
+                                type: string
+                              walletMountPath:
+                                type: string
+                            type: object
+                          topology:
+                            properties:
+                              members:
+                                items:
+                                  properties:
+                                    adminSecretRef:
+                                      properties:
+                                        secretKey:
+                                          type: string
+                                        secretName:
+                                          type: string
+                                      type: object
+                                    dbUniqueName:
+                                      type: string
+                                    endpoints:
+                                      items:
+                                        properties:
+                                          host:
+                                            type: string
+                                          name:
+                                            type: string
+                                          port:
+                                            format: int32
+                                            type: integer
+                                          protocol:
+                                            type: string
+                                          serviceName:
+                                            type: string
+                                          sslServerDN:
+                                            type: string
+                                        type: object
+                                      type: array
+                                    localRef:
+                                      properties:
+                                        apiVersion:
+                                          type: string
+                                        kind:
+                                          type: string
+                                        name:
+                                          type: string
+                                        namespace:
+                                          type: string
+                                      type: object
+                                    name:
+                                      type: string
+                                    role:
+                                      type: string
+                                    tcps:
+                                      properties:
+                                        clientWalletSecret:
+                                          type: string
+                                        enabled:
+                                          type: boolean
+                                        serverTLSSecret:
+                                          type: string
+                                        sslServerDN:
+                                          type: string
+                                        walletKey:
+                                          type: string
+                                      type: object
+                                  type: object
+                                type: array
+                              observer:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  image:
+                                    type: string
+                                  name:
+                                    type: string
+                                  nodeSelector:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              pairs:
+                                items:
+                                  properties:
+                                    primary:
+                                      type: string
+                                    standby:
+                                      type: string
+                                    type:
+                                      type: string
+                                  type: object
+                                type: array
+                              policy:
+                                properties:
+                                  fastStartFailover:
+                                    type: boolean
+                                  protectionMode:
+                                    type: string
+                                  transportMode:
+                                    type: string
+                                type: object
+                              sourceKind:
+                                type: string
+                              sourceRef:
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                            type: object
+                        type: object
+                      topologyHash:
+                        type: string
+                    type: object
                   role:
                     type: string
                   tcps:
@@ -17987,6 +18126,145 @@ spec:
                     type: string
                   readyForBroker:
                     type: boolean
+                  renderedBrokerSpec:
+                    properties:
+                      generatedAt:
+                        format: date-time
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      ready:
+                        type: boolean
+                      spec:
+                        properties:
+                          execution:
+                            properties:
+                              image:
+                                type: string
+                              imagePullSecrets:
+                                items:
+                                  type: string
+                                type: array
+                              tnsAdminPath:
+                                type: string
+                              walletMountPath:
+                                type: string
+                            type: object
+                          topology:
+                            properties:
+                              members:
+                                items:
+                                  properties:
+                                    adminSecretRef:
+                                      properties:
+                                        secretKey:
+                                          type: string
+                                        secretName:
+                                          type: string
+                                      type: object
+                                    dbUniqueName:
+                                      type: string
+                                    endpoints:
+                                      items:
+                                        properties:
+                                          host:
+                                            type: string
+                                          name:
+                                            type: string
+                                          port:
+                                            format: int32
+                                            type: integer
+                                          protocol:
+                                            type: string
+                                          serviceName:
+                                            type: string
+                                          sslServerDN:
+                                            type: string
+                                        type: object
+                                      type: array
+                                    localRef:
+                                      properties:
+                                        apiVersion:
+                                          type: string
+                                        kind:
+                                          type: string
+                                        name:
+                                          type: string
+                                        namespace:
+                                          type: string
+                                      type: object
+                                    name:
+                                      type: string
+                                    role:
+                                      type: string
+                                    tcps:
+                                      properties:
+                                        clientWalletSecret:
+                                          type: string
+                                        enabled:
+                                          type: boolean
+                                        serverTLSSecret:
+                                          type: string
+                                        sslServerDN:
+                                          type: string
+                                        walletKey:
+                                          type: string
+                                      type: object
+                                  type: object
+                                type: array
+                              observer:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  image:
+                                    type: string
+                                  name:
+                                    type: string
+                                  nodeSelector:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              pairs:
+                                items:
+                                  properties:
+                                    primary:
+                                      type: string
+                                    standby:
+                                      type: string
+                                    type:
+                                      type: string
+                                  type: object
+                                type: array
+                              policy:
+                                properties:
+                                  fastStartFailover:
+                                    type: boolean
+                                  protectionMode:
+                                    type: string
+                                  transportMode:
+                                    type: string
+                                type: object
+                              sourceKind:
+                                type: string
+                              sourceRef:
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                            type: object
+                        type: object
+                      topologyHash:
+                        type: string
+                    type: object
                   topology:
                     properties:
                       members:
@@ -19415,6 +19693,145 @@ spec:
                     type: string
                   readyForBroker:
                     type: boolean
+                  renderedBrokerSpec:
+                    properties:
+                      generatedAt:
+                        format: date-time
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      ready:
+                        type: boolean
+                      spec:
+                        properties:
+                          execution:
+                            properties:
+                              image:
+                                type: string
+                              imagePullSecrets:
+                                items:
+                                  type: string
+                                type: array
+                              tnsAdminPath:
+                                type: string
+                              walletMountPath:
+                                type: string
+                            type: object
+                          topology:
+                            properties:
+                              members:
+                                items:
+                                  properties:
+                                    adminSecretRef:
+                                      properties:
+                                        secretKey:
+                                          type: string
+                                        secretName:
+                                          type: string
+                                      type: object
+                                    dbUniqueName:
+                                      type: string
+                                    endpoints:
+                                      items:
+                                        properties:
+                                          host:
+                                            type: string
+                                          name:
+                                            type: string
+                                          port:
+                                            format: int32
+                                            type: integer
+                                          protocol:
+                                            type: string
+                                          serviceName:
+                                            type: string
+                                          sslServerDN:
+                                            type: string
+                                        type: object
+                                      type: array
+                                    localRef:
+                                      properties:
+                                        apiVersion:
+                                          type: string
+                                        kind:
+                                          type: string
+                                        name:
+                                          type: string
+                                        namespace:
+                                          type: string
+                                      type: object
+                                    name:
+                                      type: string
+                                    role:
+                                      type: string
+                                    tcps:
+                                      properties:
+                                        clientWalletSecret:
+                                          type: string
+                                        enabled:
+                                          type: boolean
+                                        serverTLSSecret:
+                                          type: string
+                                        sslServerDN:
+                                          type: string
+                                        walletKey:
+                                          type: string
+                                      type: object
+                                  type: object
+                                type: array
+                              observer:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  image:
+                                    type: string
+                                  name:
+                                    type: string
+                                  nodeSelector:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              pairs:
+                                items:
+                                  properties:
+                                    primary:
+                                      type: string
+                                    standby:
+                                      type: string
+                                    type:
+                                      type: string
+                                  type: object
+                                type: array
+                              policy:
+                                properties:
+                                  fastStartFailover:
+                                    type: boolean
+                                  protectionMode:
+                                    type: string
+                                  transportMode:
+                                    type: string
+                                type: object
+                              sourceKind:
+                                type: string
+                              sourceRef:
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                            type: object
+                        type: object
+                      topologyHash:
+                        type: string
+                    type: object
                   role:
                     type: string
                   tcps:
