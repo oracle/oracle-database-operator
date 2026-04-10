@@ -99,6 +99,140 @@ func TestSIDBUnit_IsLocalPrimaryDatabaseSource(t *testing.T) {
 	}
 }
 
+func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:      "STBY",
+			CreateAs: "standby",
+			Image:    dbapi.SingleInstanceDatabaseImage{PullFrom: "oracle/db:19.3.0", PullSecrets: "pull-secret"},
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				DatabaseRef: "primary-db",
+			},
+			Dataguard: &dbapi.DataguardProducerSpec{Mode: dbapi.DataguardProducerModePreview},
+		},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			CreatedAs: "standby",
+		},
+	}
+	primary := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "primary-db", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "PRIM",
+		},
+	}
+
+	syncSIDBDataguardPreviewStatus(sidb, primary)
+
+	if sidb.Status.Dataguard == nil {
+		t.Fatalf("expected dataguard preview status to be populated")
+	}
+	if sidb.Status.Dataguard.Phase != dataguardPreviewPhaseReady {
+		t.Fatalf("expected preview phase %q, got %q", dataguardPreviewPhaseReady, sidb.Status.Dataguard.Phase)
+	}
+	if !sidb.Status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be true")
+	}
+	if sidb.Status.Dataguard.Topology == nil || len(sidb.Status.Dataguard.Topology.Members) != 2 {
+		t.Fatalf("expected two topology members, got %#v", sidb.Status.Dataguard.Topology)
+	}
+	if sidb.Status.Dataguard.PrimaryMemberName != "primary-db" {
+		t.Fatalf("expected primary member name primary-db, got %q", sidb.Status.Dataguard.PrimaryMemberName)
+	}
+	if sidb.Status.Dataguard.MemberName != "sidb-standby" {
+		t.Fatalf("expected member name sidb-standby, got %q", sidb.Status.Dataguard.MemberName)
+	}
+	if sidb.Status.Dataguard.Role != "PHYSICAL_STANDBY" {
+		t.Fatalf("expected standby member role, got %q", sidb.Status.Dataguard.Role)
+	}
+	if sidb.Status.Dataguard.PublishedTopologyHash == "" {
+		t.Fatalf("expected published topology hash to be set")
+	}
+	if sidb.Status.Dataguard.TopologyHash == "" {
+		t.Fatalf("expected topology hash to be set")
+	}
+	if sidb.Status.Dataguard.LastPublishedTime == nil {
+		t.Fatalf("expected lastPublishedTime to be set")
+	}
+	if sidb.Status.Dataguard.Execution == nil || sidb.Status.Dataguard.Execution.Image == "" {
+		t.Fatalf("expected execution image to be published")
+	}
+}
+
+func TestSIDBUnit_SyncDataguardPreviewStatusDisabledClearsStatus(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "standby",
+			Dataguard: &dbapi.DataguardProducerSpec{
+				Mode: dbapi.DataguardProducerModeDisabled,
+			},
+		},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			Dataguard: &dbapi.ProducerDataguardStatus{Phase: dataguardPreviewPhaseReady},
+		},
+	}
+
+	syncSIDBDataguardPreviewStatus(sidb, nil)
+
+	if sidb.Status.Dataguard != nil {
+		t.Fatalf("expected dataguard status to be cleared when mode is disabled")
+	}
+}
+
+func TestSIDBUnit_BuildSIDBPreviewTCPSConfigUsesOverrideWalletSecret(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "STBY",
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseTCPS{
+					Enabled:            true,
+					TlsSecret:          "server-tls",
+					ClientWalletSecret: "custom-client-wallet",
+				},
+			},
+		},
+	}
+
+	tcps := buildSIDBPreviewTCPSConfig(sidb)
+	if tcps == nil {
+		t.Fatalf("expected TCPS config")
+	}
+	if tcps.ServerTLSSecret != "server-tls" {
+		t.Fatalf("expected server TLS secret, got %q", tcps.ServerTLSSecret)
+	}
+	if tcps.ClientWalletSecret != "custom-client-wallet" {
+		t.Fatalf("expected custom client wallet secret, got %q", tcps.ClientWalletSecret)
+	}
+}
+
+func TestSIDBUnit_BuildSIDBPreviewTCPSConfigUsesGeneratedWalletSecretWhenEnabled(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "STBY",
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseTCPS{
+					Enabled:   true,
+					TlsSecret: "server-tls",
+				},
+			},
+		},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			IsTcpsEnabled:   true,
+			ClientWalletLoc: "/opt/oracle/oradata/clientWallet/STBY",
+		},
+	}
+
+	tcps := buildSIDBPreviewTCPSConfig(sidb)
+	if tcps == nil {
+		t.Fatalf("expected TCPS config")
+	}
+	if tcps.ClientWalletSecret != "sidb-standby-dg-client-wallet" {
+		t.Fatalf("expected generated client wallet secret, got %q", tcps.ClientWalletSecret)
+	}
+}
+
 func TestSIDBUnit_BuildAutomaticPrimaryTNSAliases(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{
@@ -498,6 +632,134 @@ func TestSIDBUnit_InstantiateTrueCachePodSpecCopiesSIDBHostAliases(t *testing.T)
 	if len(pod.Spec.HostAliases[0].Hostnames) != 2 || pod.Spec.HostAliases[0].Hostnames[0] != "primary.example.com" || pod.Spec.HostAliases[0].Hostnames[1] != "primary-vip.example.com" {
 		t.Fatalf("unexpected truecache pod host alias hostnames: %#v", pod.Spec.HostAliases[0])
 	}
+}
+
+func TestSIDBUnit_InstantiatePodSpecPrefersSeparateNodeFromLocalPrimary(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+
+	t.Run("standby local primary adds anti-affinity and preserves nodeSelector", func(t *testing.T) {
+		sidb := &dbapi.SingleInstanceDatabase{
+			ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby", Namespace: "ns1"},
+			Spec: dbapi.SingleInstanceDatabaseSpec{
+				CreateAs: "standby",
+				Sid:      "STBY",
+				Image: dbapi.SingleInstanceDatabaseImage{
+					PullFrom: "container-registry.oracle.com/database/free:latest",
+				},
+				PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+					DatabaseRef: "primary-db",
+				},
+				NodeSelector: map[string]string{"db-role": "ha"},
+			},
+		}
+		primary := &dbapi.SingleInstanceDatabase{
+			ObjectMeta: metav1.ObjectMeta{Name: "primary-db", Namespace: "ns1"},
+		}
+
+		pod, err := reconciler.instantiatePodSpec(sidb, nil, primary, false)
+		if err != nil {
+			t.Fatalf("instantiatePodSpec returned err: %v", err)
+		}
+		if got := pod.Spec.NodeSelector["db-role"]; got != "ha" {
+			t.Fatalf("expected nodeSelector to be preserved, got %q", got)
+		}
+		if pod.Spec.Affinity == nil || pod.Spec.Affinity.PodAntiAffinity == nil {
+			t.Fatalf("expected pod anti-affinity to be configured")
+		}
+		terms := pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+		if len(terms) == 0 {
+			t.Fatalf("expected preferred anti-affinity terms")
+		}
+		last := terms[len(terms)-1]
+		if last.Weight != 100 {
+			t.Fatalf("unexpected anti-affinity weight: %d", last.Weight)
+		}
+		values := last.PodAffinityTerm.LabelSelector.MatchExpressions[0].Values
+		if len(values) != 1 || values[0] != "primary-db" {
+			t.Fatalf("unexpected anti-affinity target values: %#v", values)
+		}
+		if last.PodAffinityTerm.TopologyKey != "kubernetes.io/hostname" {
+			t.Fatalf("unexpected topology key: %q", last.PodAffinityTerm.TopologyKey)
+		}
+	})
+
+	t.Run("truecache local primary adds anti-affinity", func(t *testing.T) {
+		sidb := &dbapi.SingleInstanceDatabase{
+			ObjectMeta: metav1.ObjectMeta{Name: "sidb-tc", Namespace: "ns1"},
+			Spec: dbapi.SingleInstanceDatabaseSpec{
+				CreateAs: "truecache",
+				Sid:      "TCDB",
+				Image: dbapi.SingleInstanceDatabaseImage{
+					PullFrom: "container-registry.oracle.com/database/free:latest",
+				},
+				PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+					DatabaseRef: "primary-db",
+				},
+			},
+		}
+		primary := &dbapi.SingleInstanceDatabase{
+			ObjectMeta: metav1.ObjectMeta{Name: "primary-db", Namespace: "ns1"},
+		}
+
+		pod, err := reconciler.instantiatePodSpec(sidb, nil, primary, false)
+		if err != nil {
+			t.Fatalf("instantiatePodSpec returned err: %v", err)
+		}
+		if pod.Spec.Affinity == nil || pod.Spec.Affinity.PodAntiAffinity == nil {
+			t.Fatalf("expected truecache pod anti-affinity to be configured")
+		}
+		terms := pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+		if len(terms) == 0 {
+			t.Fatalf("expected preferred anti-affinity terms for truecache")
+		}
+		values := terms[len(terms)-1].PodAffinityTerm.LabelSelector.MatchExpressions[0].Values
+		if len(values) != 1 || values[0] != "primary-db" {
+			t.Fatalf("unexpected truecache anti-affinity target values: %#v", values)
+		}
+	})
+
+	t.Run("external primary source does not add anti-affinity", func(t *testing.T) {
+		sidb := &dbapi.SingleInstanceDatabase{
+			ObjectMeta: metav1.ObjectMeta{Name: "sidb-ext", Namespace: "ns1"},
+			Spec: dbapi.SingleInstanceDatabaseSpec{
+				CreateAs: "standby",
+				Sid:      "STBY",
+				Image: dbapi.SingleInstanceDatabaseImage{
+					PullFrom: "container-registry.oracle.com/database/free:latest",
+				},
+				PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+					ConnectString: "primary-host:1521/PRIM",
+				},
+			},
+		}
+		primary := &dbapi.SingleInstanceDatabase{
+			ObjectMeta: metav1.ObjectMeta{Name: "primary-db", Namespace: "ns1"},
+		}
+
+		pod, err := reconciler.instantiatePodSpec(sidb, nil, primary, false)
+		if err != nil {
+			t.Fatalf("instantiatePodSpec returned err: %v", err)
+		}
+		if pod.Spec.Affinity == nil || pod.Spec.Affinity.PodAntiAffinity == nil {
+			t.Fatalf("expected base pod anti-affinity to exist")
+		}
+		for _, term := range pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
+			if term.PodAffinityTerm.LabelSelector == nil || len(term.PodAffinityTerm.LabelSelector.MatchExpressions) == 0 {
+				continue
+			}
+			values := term.PodAffinityTerm.LabelSelector.MatchExpressions[0].Values
+			if len(values) == 1 && values[0] == "primary-db" {
+				t.Fatalf("did not expect external primary anti-affinity term to target primary-db")
+			}
+		}
+	})
 }
 
 func TestSIDBUnit_PhaseScheduleFutureRequeueIsPerContext(t *testing.T) {

@@ -109,12 +109,13 @@ type ShardingDatabaseSpec struct {
 	TdeWalletPvc    string `json:"tdeWalletPvc,omitempty"`
 	FssStorageClass string `json:"fssStorageClass,omitempty"`
 	// Deprecated: use tdeWallet.mountPath.
-	TdeWalletPvcMountLocation string            `json:"tdeWalletPvcMountLocation,omitempty"`
-	TDEWallet                 *TDEWalletConfig  `json:"tdeWallet,omitempty"`
-	DbEdition                 string            `json:"dbEdition,omitempty"`
-	TopicId                   string            `json:"topicId,omitempty"`
-	SrvAccountName            string            `json:"serviceAccountName,omitempty"`
-	ShardInfo                 []ShardingDetails `json:"shardInfo,omitempty"`
+	TdeWalletPvcMountLocation string                 `json:"tdeWalletPvcMountLocation,omitempty"`
+	TDEWallet                 *TDEWalletConfig       `json:"tdeWallet,omitempty"`
+	DbEdition                 string                 `json:"dbEdition,omitempty"`
+	TopicId                   string                 `json:"topicId,omitempty"`
+	SrvAccountName            string                 `json:"serviceAccountName,omitempty"`
+	ShardInfo                 []ShardingDetails      `json:"shardInfo,omitempty"`
+	Dataguard                 *DataguardProducerSpec `json:"dataguard,omitempty"`
 	// New fields for GDD-style YAML
 	Region                []RegionSpec       `json:"region,omitempty"`
 	ShardGroup            []ShardGroupSpec   `json:"shardGroup,omitempty"`
@@ -135,8 +136,9 @@ type ShardingDatabaseStatus struct {
 	Shard   map[string]string `json:"shards,omitempty"`
 	Catalog map[string]string `json:"catalogs,omitempty"`
 
-	Gsm GsmStatus `json:"gsm,omitempty"`
-	Dg  DgStatus  `json:"dg,omitempty"`
+	Gsm       GsmStatus                `json:"gsm,omitempty"`
+	Dg        DgStatus                 `json:"dg,omitempty"`
+	Dataguard *ShardingDataguardStatus `json:"dataguard,omitempty"`
 	// TDEKeyRefresh tracks manual token-triggered key refresh progress.
 	TDEKeyRefresh *TDEKeyRefreshStatus `json:"tdeKeyRefresh,omitempty"`
 
@@ -610,6 +612,13 @@ type PrimaryEndpointRef struct {
 	PdbName       string `json:"pdbName,omitempty"`
 }
 
+// StandbyPrimarySource defines a single standby primary source using one mutually exclusive mode.
+type StandbyPrimarySource struct {
+	DatabaseRef   *PrimaryDatabaseCRRef `json:"databaseRef,omitempty"`
+	ConnectString string                `json:"connectString,omitempty"`
+	Details       *PrimaryEndpointRef   `json:"details,omitempty"`
+}
+
 // TDEWalletConfig provides common wallet configuration for both global and standby-specific flows.
 type TDEWalletConfig struct {
 	// +kubebuilder:validation:Enum=enable;disable
@@ -631,10 +640,8 @@ type StandbyConfig struct {
 	// +kubebuilder:validation:Enum=SYNC;ASYNC
 	TransportMode string `json:"transportMode,omitempty"`
 
-	PrimaryDatabaseRefs   []PrimaryDatabaseCRRef `json:"primaryDatabaseRefs,omitempty"`
-	PrimaryConnectStrings []string               `json:"primaryConnectStrings,omitempty"`
-	PrimaryEndpoints      []PrimaryEndpointRef   `json:"primaryEndpoints,omitempty"`
-	TDEWallet             *TDEWalletConfig       `json:"tdeWallet,omitempty"`
+	PrimarySources []StandbyPrimarySource `json:"primarySources,omitempty"`
+	TDEWallet      *TDEWalletConfig       `json:"tdeWallet,omitempty"`
 }
 
 // EnvironmentVariable represents a named variable accessible for containers.

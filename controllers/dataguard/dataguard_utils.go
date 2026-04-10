@@ -36,11 +36,7 @@
 ** SOFTWARE.
  */
 
-//nolint:staticcheck,unused // Compatibility paths intentionally keep deprecated fields and optional helpers.
 package controllers
-
-// revive:disable:context-as-argument,unused-parameter,exported,var-declaration,range,indent-error-flow
-// Dataguard helpers keep legacy signatures/flows for backward compatibility.
 
 import (
 	"context"
@@ -68,6 +64,10 @@ func cleanupDataguardBroker(r *DataguardBrokerReconciler, broker *dbapi.Dataguar
 	log := ctrllog.FromContext(ctx).WithValues("cleanupDataguardBroker", req.NamespacedName)
 
 	log.Info(fmt.Sprintf("Cleaning for dataguard broker %v deletion", broker.Name))
+	if broker.Spec.Topology != nil {
+		desired := resolveDataguardBrokerDesiredSpec(broker)
+		return cleanupDataguardTopologyBroker(ctx, r, broker, &desired, req)
+	}
 
 	// Fetch Primary Database Reference
 	var sidb dbapi.SingleInstanceDatabase
@@ -187,7 +187,8 @@ func validateSidbReadiness(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 			// Connection to the pod is failing after broker came up and running
 			// Might suggest disconnect or pod/vm going down
 			log.Info("Dialing connection error")
-			if err := updateReconcileStatus(r, broker, ctx, req); err != nil {
+			desired := resolveDataguardBrokerDesiredSpec(broker)
+			if err := updateReconcileStatus(r, broker, &desired, ctx, req); err != nil {
 				return err
 			}
 		}
@@ -215,7 +216,7 @@ func validateSidbReadiness(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 //	Setup the requested dataguard Configuration
 //
 // #############################################################################
-func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, sidb *dbapi.SingleInstanceDatabase,
+func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, sidb *dbapi.SingleInstanceDatabase,
 	ctx context.Context, req ctrl.Request) error {
 
 	log := r.Log.WithValues("setupDataguardBrokerConfiguration", req.NamespacedName)
@@ -228,9 +229,9 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 		return err
 	}
 
-	log.Info(fmt.Sprintf("broker.Spec.StandbyDatabaseRefs are %v", broker.Spec.StandbyDatabaseRefs))
+	log.Info(fmt.Sprintf("desired standby databases are %v", desired.StandbyDatabaseRefs))
 
-	for _, database := range broker.Spec.StandbyDatabaseRefs {
+	for _, database := range desired.StandbyDatabaseRefs {
 
 		log.Info(fmt.Sprintf("adding database %v", database))
 
@@ -272,10 +273,6 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 		}
 
 		broker.Status.Status = dbcommons.StatusCreating
-		if err := r.Status().Update(ctx, broker); err != nil {
-			log.Error(err, "failed to update dataguardbroker status")
-			return err
-		}
 
 		// ## FETCH THE STANDBY REPLICAS .
 		standbyDatabaseReadyPod, _, _, _, err := dbcommons.FindPods(r, sidb.Spec.Image.Version,
@@ -290,7 +287,7 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 			return err
 		}
 		var adminPassword string = string(adminPasswordSecret.Data[sidb.Spec.AdminPassword.SecretKey])
-		if err := setupDataguardBrokerConfigurationForGivenDB(r, broker, sidb, &standbyDatabase, standbyDatabaseReadyPod, sidbReadyPod, ctx, req, adminPassword); err != nil {
+		if err := setupDataguardBrokerConfigurationForGivenDB(r, broker, desired, sidb, &standbyDatabase, standbyDatabaseReadyPod, sidbReadyPod, ctx, req, adminPassword); err != nil {
 			log.Error(err, fmt.Sprintf(" Error while setting up DG broker for the Database %v:%v", standbyDatabase.Status.Sid, standbyDatabase.Name))
 			return err
 		}
@@ -300,10 +297,6 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 		}
 		log.Info(fmt.Sprintf("adding %v:%v to the map", standbyDatabase.Status.Sid, standbyDatabase.Name))
 		broker.Status.DatabasesInDataguardConfig[standbyDatabase.Status.Sid] = standbyDatabase.Name
-		if err := r.Status().Update(ctx, broker); err != nil {
-			log.Error(err, "failed to update dataguardbroker status")
-			return err
-		}
 		// Update Databases
 	}
 	if len(broker.Status.DatabasesInDataguardConfig) == 0 {
@@ -316,7 +309,7 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 	eventMsg := ""
 
 	// Patch DataguardBroker Service to point selector to Current Primary Name
-	if err := patchService(r, broker, ctx, req); err != nil {
+	if err := patchService(r, broker, desired, ctx, req); err != nil {
 		log.Error(err, err.Error())
 		return err
 	}
@@ -331,7 +324,7 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 //	Set up dataguard Configuration for a given StandbyDatabase
 //
 // #############################################################################
-func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m *dbapi.DataguardBroker, n *dbapi.SingleInstanceDatabase, standbyDatabase *dbapi.SingleInstanceDatabase,
+func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, n *dbapi.SingleInstanceDatabase, standbyDatabase *dbapi.SingleInstanceDatabase,
 	standbyDatabaseReadyPod corev1.Pod, sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request, adminPassword string) error {
 
 	log := r.Log.WithValues("setupDataguardBrokerConfigurationForGivenDB", req.NamespacedName)
@@ -365,7 +358,7 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 
 	//  ORA-16532: Oracle Data Guard broker configuration does not exist , so create one
 	if strings.Contains(out, "ORA-16532") {
-		if m.Spec.ProtectionMode == "MaxPerformance" {
+		if desired.ProtectionMode == "MaxPerformance" {
 			// Construct the password file and dgbroker command file
 			out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 				fmt.Sprintf(dbcommons.CreateDGMGRLScriptFile, dbcommons.DataguardBrokerMaxPerformanceCMD))
@@ -385,7 +378,7 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 			}
 			log.Info("DgConfigurationMaxPerformance Output")
 			log.Info(out)
-		} else if m.Spec.ProtectionMode == "MaxAvailability" {
+		} else if desired.ProtectionMode == "MaxAvailability" {
 			// ## DG CONFIGURATION FOR PRIMARY DB || MODE : MAX AVAILABILITY ##
 			out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 				fmt.Sprintf(dbcommons.CreateDGMGRLScriptFile, dbcommons.DataguardBrokerMaxAvailabilityCMD))
@@ -444,7 +437,7 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 	}
 
 	// DG Configuration Exists . So add the standbyDatabase to the existing DG Configuration
-	databases, err := GetDatabasesInDataGuardConfigurationWithRole(r, m, ctx, req)
+	databases, err := GetDatabasesInDataGuardConfigurationWithRole(r, m, desired, ctx, req)
 	if err != nil {
 		log.Info("Error while setting up the dataguard configuration")
 		log.Error(err, err.Error())
@@ -464,7 +457,7 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 		primaryConnectString = m.Status.DatabasesInDataguardConfig[strings.ToUpper(primarySid)] + ":1521/" + primarySid
 	}
 
-	if m.Spec.ProtectionMode == "MaxPerformance" {
+	if desired.ProtectionMode == "MaxPerformance" {
 		// ## DG CONFIGURATION FOR PRIMARY DB || MODE : MAXPERFORMANCE ##
 		out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 			fmt.Sprintf(dbcommons.CreateDGMGRLScriptFile, dbcommons.DataguardBrokerAddDBMaxPerformanceCMD))
@@ -484,7 +477,7 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 		log.Info("DgConfigurationMaxPerformance Output")
 		log.Info(out)
 
-	} else if m.Spec.ProtectionMode == "MaxAvailability" {
+	} else if desired.ProtectionMode == "MaxAvailability" {
 		// ## DG CONFIGURATION FOR PRIMARY DB || MODE : MAX AVAILABILITY ##
 		out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 			fmt.Sprintf(dbcommons.CreateDGMGRLScriptFile, dbcommons.DataguardBrokerAddDBMaxAvailabilityCMD))
@@ -534,7 +527,7 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 //	Patch the service for dataguardbroker resource to point selector to current Primary Name
 //
 // ###########################################################################################################
-func patchService(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, ctx context.Context, req ctrl.Request) error {
+func patchService(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, ctx context.Context, req ctrl.Request) error {
 	log := r.Log.WithValues("patchService", req.NamespacedName)
 
 	primaryDatabaseRef := broker.Status.DatabasesInDataguardConfig[broker.Status.PrimaryDatabase]
@@ -557,7 +550,7 @@ func patchService(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, c
 
 	// updating the dataguardbroker resource connect strings
 	broker.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/DATAGUARD"
-	if broker.Spec.LoadBalancer {
+	if desired != nil && desired.LoadBalancer {
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
 			lbAddress := svc.Status.LoadBalancer.Ingress[0].Hostname
 			if lbAddress == "" {
@@ -582,20 +575,32 @@ func patchService(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, c
 //	Update Reconcile Status
 //
 // ###########################################################################################################
-func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, ctx context.Context, req ctrl.Request) (err error) {
+func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, ctx context.Context, req ctrl.Request) (err error) {
 
 	log := r.Log.WithValues("updateReconcileStatus", req.NamespacedName)
+	if desired != nil && desired.Path == dataguardBrokerPathTopology {
+		runtime, ready, message, runtimeErr := resolveDataguardBrokerExecutionRuntime(ctx, r, broker)
+		if runtimeErr != nil {
+			return runtimeErr
+		}
+		if !ready {
+			broker.Status.Status = dbcommons.StatusNotReady
+			log.Info("Topology execution runtime not ready", "message", message)
+			return nil
+		}
+		state, resolveErr := resolveDataguardTopologyState(ctx, r, broker, runtime)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		return updateDataguardTopologyReconcileStatus(ctx, r, broker, desired, req, state)
+	}
 
 	// fetch the singleinstancedatabase (database sid) and their role in the dataguard configuration
 	var databases []string
-	databases, err = GetDatabasesInDataGuardConfigurationWithRole(r, broker, ctx, req)
+	databases, err = GetDatabasesInDataGuardConfigurationWithRole(r, broker, desired, ctx, req)
 	if err != nil {
 		log.Info("Problem when retrieving the databases in dg config")
 		broker.Status.Status = dbcommons.StatusNotReady
-		if updateErr := r.Status().Update(ctx, broker); updateErr != nil {
-			log.Error(updateErr, "failed to update dataguardbroker status")
-			return updateErr
-		}
 		return nil
 	}
 
@@ -632,14 +637,12 @@ func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 	}
 
 	broker.Status.StandbyDatabases = standbyDatabases
-	broker.Status.ProtectionMode = broker.Spec.ProtectionMode
-	if err := r.Status().Update(ctx, broker); err != nil {
-		log.Error(err, "failed to update dataguardbroker status")
-		return err
+	if desired != nil {
+		broker.Status.ProtectionMode = desired.ProtectionMode
 	}
 
 	// patch the dataguardbroker resource service
-	if err := patchService(r, broker, ctx, req); err != nil {
+	if err := patchService(r, broker, desired, ctx, req); err != nil {
 		return err
 	}
 
@@ -752,6 +755,9 @@ func setFSFOTargets(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker,
 func createObserverPods(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, ctx context.Context, req ctrl.Request) error {
 
 	log := r.Log.WithValues("createObserverPods", req.NamespacedName)
+	if broker.Spec.Topology != nil {
+		return createDataguardTopologyObserverPod(ctx, r, broker, req)
+	}
 
 	// fetch the current primary singleinstancedatabase resourcce
 	var currPrimaryDatabase dbapi.SingleInstanceDatabase
@@ -1050,349 +1056,20 @@ func disableFSFOForDGConfig(r *DataguardBrokerReconciler, broker *dbapi.Dataguar
 	return nil
 }
 
-// ---------------------------
-// External password getter
-// ---------------------------
-func getExternalSysPassword(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, ctx context.Context) (string, error) {
-	// expects:
-	// broker.Spec.ExternalAdminPassword.SecretName / SecretKey
-	if strings.TrimSpace(broker.Spec.ExternalAdminPassword.SecretName) == "" ||
-		strings.TrimSpace(broker.Spec.ExternalAdminPassword.SecretKey) == "" {
-		return "", errors.New("external admin password secret ref not set (spec.externalAdminPassword.secretName/secretKey)")
-	}
-
-	var sec corev1.Secret
-	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: broker.Namespace,
-		Name:      broker.Spec.ExternalAdminPassword.SecretName,
-	}, &sec); err != nil {
-		return "", err
-	}
-
-	pwd := string(sec.Data[broker.Spec.ExternalAdminPassword.SecretKey])
-	if strings.TrimSpace(pwd) == "" {
-		return "", errors.New("external admin password secret value is empty")
-	}
-	return pwd, nil
-}
-
-// ---------------------------
-// Choose a primary connect string (host:port/svc) from extDbInfo list
-// ---------------------------
-func pickPrimaryConnectString(dbInfos []extDbInfo) (string, error) {
-	for _, d := range dbInfos {
-		if strings.EqualFold(strings.TrimSpace(d.Role), "PRIMARY") {
-			return d.ConnectString, nil
-		}
-	}
-	return "", errors.New("no PRIMARY found to choose a connect string")
-}
-
-// ---------------------------
-// Build FSFO target list for each DB_UNIQUE_NAME
-// ---------------------------
-func buildFsfoTargets(allDbUnique []string, self string) string {
-	var tgt []string
-	for _, n := range allDbUnique {
-		if !strings.EqualFold(n, self) {
-			tgt = append(tgt, n)
-		}
-	}
-	return strings.Join(tgt, ",")
-}
-
-// #############################################################################
-//
-// setFSFOTargetsExternal
-// - uses db_unique_name (as dgmgrl database identifier)
-// - connects to dgmgrl using sys/<pwd>@<primaryConnectString>
-//
-// #############################################################################
-func setFSFOTargetsExternal(
-	r *DataguardBrokerReconciler,
-	broker *dbapi.DataguardBroker,
-	runnerPod corev1.Pod,
-	primaryConnectString string,
-	sysPwd string,
-	ctx context.Context,
-	req ctrl.Request,
-) error {
-
-	log := r.Log.WithValues("setFSFOTargetsExternal", req.NamespacedName)
-
-	// collect all db_unique_names from mapping
-	uniqSet := map[string]struct{}{}
-	for p, s := range broker.Status.ExternalDgMapping {
-		if strings.TrimSpace(p) != "" {
-			uniqSet[p] = struct{}{}
-		}
-		if strings.TrimSpace(s) != "" {
-			uniqSet[s] = struct{}{}
-		}
-	}
-	if len(uniqSet) < 2 {
-		return fmt.Errorf("externalDgMapping must contain at least 2 db_unique_names; got %d", len(uniqSet))
-	}
-
-	allUniq := make([]string, 0, len(uniqSet))
-	for u := range uniqSet {
-		allUniq = append(allUniq, u)
-	}
-
-	for _, dbUnique := range allUniq {
-		targets := buildFsfoTargets(allUniq, dbUnique)
-		log.Info("Setting FSFO target", "db_unique_name", dbUnique, "targets", targets)
-
-		// Note: some dgmgrl versions accept unquoted list; safest to quote the value
-		cmd := fmt.Sprintf(`echo -e "EDIT DATABASE %s SET PROPERTY FastStartFailoverTarget='%s';" | dgmgrl sys/%s@%s`,
-			dbUnique, targets, sysPwd, primaryConnectString)
-
-		out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
-		if err != nil {
-			log.Error(err, "Failed setting FSFO target", "output", out)
-			return err
-		}
-
-		// optional verify
-		verify := fmt.Sprintf(`echo -e "SHOW DATABASE %s FastStartFailoverTarget;" | dgmgrl sys/%s@%s`,
-			dbUnique, sysPwd, primaryConnectString)
-		vout, verr := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", verify)
-		if verr != nil {
-			log.Error(verr, "Failed verifying FSFO target", "output", vout)
-			return verr
-		}
-		log.Info("FSFO target set", "db_unique_name", dbUnique, "verify", vout)
-	}
-
-	return nil
-}
-
-// #############################################################################
-//
-// disableFSFOForDGConfigExternal
-// - connects to dgmgrl using sys/<pwd>@<primaryConnectString>
-//
-// #############################################################################
-func disableFSFOForDGConfigExternal(
-	r *DataguardBrokerReconciler,
-	broker *dbapi.DataguardBroker,
-	runnerPod corev1.Pod,
-	primaryConnectString string,
-	sysPwd string,
-	ctx context.Context,
-	req ctrl.Request,
-) error {
-
-	log := r.Log.WithValues("disableFSFOForDGConfigExternal", req.NamespacedName)
-
-	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Disabling FastStartFailover",
-		fmt.Sprintf("Disabling FastStartFailover for dataguard broker %s", broker.Name))
-	log.Info("Disabling FastStartFailover (external)", "broker", broker.Name, "primaryConnectString", primaryConnectString)
-
-	cmd := fmt.Sprintf(`echo -e "%s" | dgmgrl sys/%s@%s`,
-		fmt.Sprintf(dbcommons.DisableFSFOCMD, broker.Name), sysPwd, primaryConnectString)
-
-	out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
-	if err != nil {
-		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Disabling FastStartFailover failed",
-			fmt.Sprintf("Disabling FSFO for %s failed", broker.Name))
-		log.Error(err, "Disable FSFO failed", "output", out)
-		return err
-	}
-
-	log.Info("Disable FSFO output", "output", out)
-	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Disabling FastStartFailover successful",
-		fmt.Sprintf("FSFO disabled for %s", broker.Name))
-
-	return nil
-}
-
-// #############################################################################
-//
-// enableFSFOForDgConfigExternal
-// - connects to dgmgrl using sys/<pwd>@<primaryConnectString>
-//
-// #############################################################################
-func enableFSFOForDgConfigExternal(
-	r *DataguardBrokerReconciler,
-	broker *dbapi.DataguardBroker,
-	runnerPod corev1.Pod,
-	primaryConnectString string,
-	sysPwd string,
-	ctx context.Context,
-	req ctrl.Request,
-) error {
-
-	log := r.Log.WithValues("enableFSFOForDgConfigExternal", req.NamespacedName)
-
-	r.Recorder.Eventf(
-		broker,
-		corev1.EventTypeNormal,
-		"Enabling FastStartFailover",
-		fmt.Sprintf("Enabling FastStartFailover for dataguard broker %s", broker.Name),
-	)
-
-	cmd := fmt.Sprintf(`
-dgmgrl /nolog <<EOF
-connect sys/"%s"@%s as sysdba
-show configuration;
-enable fast_start failover;
-show fast_start failover;
-show configuration;
-exit
-EOF
-`, sysPwd, primaryConnectString)
-
-	out, err := dbcommons.ExecCommand(
-		r, r.Config, runnerPod.Name, runnerPod.Namespace, "",
-		ctx, req, false, "bash", "-lc", cmd,
-	)
-	if err != nil {
-		r.Recorder.Eventf(
-			broker,
-			corev1.EventTypeWarning,
-			"Enabling FastStartFailover failed",
-			fmt.Sprintf("Enabling FSFO for %s failed", broker.Name),
-		)
-		log.Error(err, "Enable FSFO failed", "output", out)
-		return fmt.Errorf("enable FSFO failed: %w output=%s", err, out)
-	}
-
-	log.Info("Enable FSFO output", "output", out)
-
-	r.Recorder.Eventf(
-		broker,
-		corev1.EventTypeNormal,
-		"Enabling FastStartFailover successful",
-		fmt.Sprintf("FSFO enabled for %s", broker.Name),
-	)
-
-	return nil
-}
-
-// #############################################################################
-//
-// createObserverPodsExternal
-// - creates an observer pod using spec.observerImage
-// - observer uses PRIMARY_DB_CONN_STR = <primaryConnectString>
-// - ORACLE_PWD comes from spec.externalAdminPassword secret
-//
-// #############################################################################
-func createObserverPodsExternal(
-	r *DataguardBrokerReconciler,
-	broker *dbapi.DataguardBroker,
-	primaryConnectString string,
-	ctx context.Context,
-	req ctrl.Request,
-) error {
-
-	log := r.Log.WithValues("createObserverPodsExternal", req.NamespacedName)
-
-	// if observer already exists, return
-	_, brokerReplicasFound, _, _, err := dbcommons.FindPods(r, "", "", broker.Name, broker.Namespace, ctx, req)
-	if err != nil {
-		log.Error(err, err.Error())
-		return err
-	}
-	if brokerReplicasFound > 0 {
-		return nil
-	}
-
-	observerImage := strings.TrimSpace(broker.Spec.ObserverImage)
-	if observerImage == "" {
-		return errors.New("spec.observerImage must be set for external mode observer pod")
-	}
-
-	// observer pod spec
-	pod := dbcommons.NewRealPodBuilder().
-		SetNamespacedName(types.NamespacedName{
-			Name:      broker.Name + "-" + dbcommons.GenerateRandomString(5),
-			Namespace: broker.Namespace,
-		}).
-		SetLabels(map[string]string{
-			"app": broker.Name,
-		}).
-		SetTerminationGracePeriodSeconds(int64(30)).
-		SetNodeSelector(func() map[string]string {
-			nsRule := map[string]string{}
-			for k, v := range broker.Spec.NodeSelector {
-				nsRule[k] = v
-			}
-			return nsRule
-		}()).
-		SetSecurityContext(corev1.PodSecurityContext{
-			RunAsUser: func() *int64 { i := int64(54321); return &i }(),
-			FSGroup:   func() *int64 { i := int64(54321); return &i }(),
-		}).
-		AppendContainers(corev1.Container{
-			Name:            broker.Name,
-			Image:           observerImage,
-			ImagePullPolicy: corev1.PullAlways,
-			Ports:           []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
-			ReadinessProbe: &corev1.Probe{
-				ProbeHandler: corev1.ProbeHandler{
-					Exec: &corev1.ExecAction{
-						Command: []string{"/bin/sh", "-c", "$ORACLE_BASE/checkDBLockStatus.sh"},
-					},
-				},
-				InitialDelaySeconds: 20,
-				TimeoutSeconds:      20,
-				PeriodSeconds:       40,
-			},
-			Env: []corev1.EnvVar{
-				{Name: "SVC_HOST", Value: broker.Name},
-				{Name: "SVC_PORT", Value: "1521"},
-				{Name: "PRIMARY_DB_CONN_STR", Value: primaryConnectString},
-				{Name: "DG_OBSERVER_ONLY", Value: "true"},
-				{Name: "DG_OBSERVER_NAME", Value: broker.Name},
-				{Name: "ORACLE_SID", Value: "OBSRVR" + dbcommons.GenerateRandomString(5)},
-				{
-					Name: "ORACLE_PWD",
-					ValueFrom: &corev1.EnvVarSource{
-						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: broker.Spec.ExternalAdminPassword.SecretName,
-							},
-							Key: broker.Spec.ExternalAdminPassword.SecretKey,
-						},
-					},
-				},
-			},
-		}).
-		Build()
-
-	// owner ref
-	if err := ctrl.SetControllerReference(broker, &pod, r.Scheme); err != nil {
-		log.Error(err, "failed to set controller reference for observer pod")
-		return err
-	}
-
-	log.Info("Creating observer pod", "namespace", pod.Namespace, "name", pod.Name)
-	if err := r.Create(ctx, &pod); err != nil {
-		log.Error(err, "Failed to create observer pod", "namespace", pod.Namespace, "name", pod.Name)
-		return err
-	}
-
-	// wait creation
-	timeout := 30
-	if err := dbcommons.WaitForStatusChange(r, pod.Name, broker.Namespace, ctx, req, time.Duration(timeout)*time.Second, "pod", "creation"); err != nil {
-		log.Error(err, "Error waiting for observer pod creation", "name", pod.Name)
-		return err
-	}
-
-	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "SUCCESS", "observer pod created")
-	log.Info("Observer pod created", "name", pod.Name)
-	return nil
-}
-
 // #############################################################################
 //
 //	Get databases in dataguard configuration along with their roles
 //
 // #############################################################################
-func GetDatabasesInDataGuardConfigurationWithRole(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, ctx context.Context, req ctrl.Request) ([]string, error) {
-	r.Log.Info(fmt.Sprintf("GetDatabasesInDataGuardConfiguration are %v", broker.GetDatabasesInDataGuardConfiguration()))
-	for _, database := range broker.GetDatabasesInDataGuardConfiguration() {
+func GetDatabasesInDataGuardConfigurationWithRole(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, ctx context.Context, req ctrl.Request) ([]string, error) {
+	var databaseRefs []string
+	if desired != nil {
+		databaseRefs = desired.databaseRefs()
+	} else {
+		databaseRefs = broker.GetDatabasesInDataGuardConfiguration()
+	}
+	r.Log.Info(fmt.Sprintf("GetDatabasesInDataGuardConfiguration are %v", databaseRefs))
+	for _, database := range databaseRefs {
 
 		var singleInstanceDatabase dbapi.SingleInstanceDatabase
 		if err := r.Get(context.TODO(), types.NamespacedName{Namespace: broker.Namespace, Name: database}, &singleInstanceDatabase); err != nil {
@@ -1426,309 +1103,4 @@ func GetDatabasesInDataGuardConfigurationWithRole(r *DataguardBrokerReconciler, 
 	}
 
 	return []string{}, errors.New("cannot get databases in dataguard configuration")
-}
-
-func stopObserverIfExistsExternal(
-	r *DataguardBrokerReconciler,
-	broker *dbapi.DataguardBroker,
-	runnerPod corev1.Pod,
-	primaryConnectString string,
-	sysPwd string,
-	ctx context.Context,
-	req ctrl.Request,
-) error {
-
-	log := r.Log.WithValues("stopObserverIfExistsExternal", req.NamespacedName)
-
-	cmd := fmt.Sprintf(`
-dgmgrl /nolog <<EOF
-connect sys/"%s"@%s as sysdba
-show fast_start failover;
-stop observer;
-show fast_start failover;
-exit
-EOF
-`, sysPwd, primaryConnectString)
-
-	out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-lc", cmd)
-	if err != nil {
-		log.Info("STOP OBSERVER best-effort failed; continuing",
-			"err", err.Error(),
-			"output", out)
-		return nil
-	}
-
-	log.Info("STOP OBSERVER executed", "output", out)
-	return nil
-}
-
-// ======================= Non-SIDB (external connect string) helpers =======================
-
-// extDbInfo holds DB facts collected via sqlplus for external/non-SIDB databases.
-type extDbInfo struct {
-	Key           string // unique key for this connect string
-	ConnectString string // //host:port/svc
-	Role          string
-	OpenMode      string
-	Name          string
-	DbUniqueName  string
-	FalServer     string
-	LogArchiveD1  string
-	LogArchiveD2  string
-}
-
-func buildNetService(host string, port int32, svc string) string {
-	return fmt.Sprintf("//%s:%d/%s", host, port, svc)
-}
-
-// Reads password from Secret. SecretKey defaults to "password" if empty.
-func getPwdFromSecret(r *DataguardBrokerReconciler, ns string, secretName, secretKey string, ctx context.Context) (string, error) {
-	if secretKey == "" {
-		secretKey = "password"
-	}
-	var sec corev1.Secret
-	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, &sec); err != nil {
-		return "", err
-	}
-	b, ok := sec.Data[secretKey]
-	if !ok {
-		return "", fmt.Errorf("secret %s missing key %s", secretName, secretKey)
-	}
-	return string(b), nil
-}
-
-func nonEmptyLines(s string) []string {
-	raw := strings.Split(s, "\n")
-	out := make([]string, 0, len(raw))
-	for _, l := range raw {
-		t := strings.TrimSpace(l)
-		if t != "" {
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
-// collectExternalDbInfo runs sqlplus against each external DB and returns role/open_mode/db_unique_name + fal_server + log_archive_dest_1
-func collectExternalDbInfo(
-	r *DataguardBrokerReconciler,
-	broker *dbapi.DataguardBroker,
-	runnerPod corev1.Pod,
-	connects []dbapi.DbConnectString,
-	ctx context.Context,
-	req ctrl.Request,
-) ([]extDbInfo, error) {
-
-	results := make([]extDbInfo, 0, len(connects))
-
-	for _, c := range connects {
-		if c.UserName == "" {
-			c.UserName = "sys"
-		}
-		if c.Port == 0 {
-			c.Port = 1521
-		}
-		if c.HostName == "" || c.SvcName == "" || c.Secret == "" {
-			return nil, fmt.Errorf("invalid connect string entry: hostName/svcName/secret must be set")
-		}
-
-		pwd, err := getPwdFromSecret(r, broker.Namespace, c.Secret, c.SecretKey, ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		netSvc := buildNetService(c.HostName, c.Port, c.SvcName)
-
-		sql := `
-set heading off feedback off pages 0 echo off verify off trimspool on lines 400
-select name||'|'||database_role||'|'||open_mode||'|'||db_unique_name from v$database;
-select nvl((select value from v$parameter where name='fal_server'),'') from dual;
-select nvl((select value from v$parameter where name='log_archive_dest_1'),'') from dual;
-select nvl((select value from v$parameter where name='log_archive_dest_2'),'') from dual;
-exit;
-`
-
-		cmd := fmt.Sprintf(`sqlplus -s "%s/%s@%s as sysdba" <<'EOF'
-%s
-EOF`, c.UserName, pwd, netSvc, sql)
-
-		out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query db %s: %w", netSvc, err)
-		}
-
-		lines := sanitizeSQLPlusLines(out)
-
-		dbIdx := -1
-		var parts []string
-		for i, line := range lines {
-			p := strings.Split(line, "|")
-			if len(p) >= 4 {
-				dbIdx = i
-				parts = p
-				break
-			}
-		}
-
-		if dbIdx == -1 {
-			return nil, fmt.Errorf("unexpected sqlplus output for %s: %q", netSvc, out)
-		}
-
-		falServer := ""
-		logArchiveD1 := ""
-		logArchiveD2 := ""
-
-		if dbIdx+1 < len(lines) {
-			falServer = strings.TrimSpace(lines[dbIdx+1])
-		}
-		if dbIdx+2 < len(lines) {
-			logArchiveD1 = strings.TrimSpace(lines[dbIdx+2])
-		}
-		if dbIdx+3 < len(lines) {
-			logArchiveD2 = strings.TrimSpace(lines[dbIdx+3])
-		}
-
-		info := extDbInfo{
-			Key:           netSvc,
-			ConnectString: netSvc,
-			Name:          strings.TrimSpace(parts[0]),
-			Role:          strings.TrimSpace(parts[1]),
-			OpenMode:      strings.TrimSpace(parts[2]),
-			DbUniqueName:  strings.TrimSpace(parts[3]),
-			FalServer:     falServer,
-			LogArchiveD1:  logArchiveD1,
-			LogArchiveD2:  logArchiveD2,
-		}
-
-		r.Log.Info("Collected external DB info",
-			"db_unique_name", info.DbUniqueName,
-			"role", info.Role,
-			"connect", info.ConnectString,
-			"fal_server", info.FalServer,
-			"log_archive_dest_1", info.LogArchiveD1,
-			"log_archive_dest_2", info.LogArchiveD2)
-
-		results = append(results, info)
-	}
-
-	return results, nil
-}
-
-func sanitizeSQLPlusLines(out string) []string {
-	raw := strings.Split(out, "\n")
-	lines := make([]string, 0, len(raw))
-
-	for _, line := range raw {
-		s := strings.TrimSpace(line)
-		if s == "" {
-			continue
-		}
-
-		low := strings.ToLower(s)
-
-		// Ignore SQL*Plus/banner/noise lines
-		if strings.HasPrefix(s, "SQL>") {
-			continue
-		}
-		if strings.HasPrefix(low, "connected to:") {
-			continue
-		}
-		if strings.HasPrefix(low, "copyright") {
-			continue
-		}
-		if strings.Contains(low, "oracle database") {
-			continue
-		}
-		if strings.Contains(low, "release ") {
-			continue
-		}
-		if strings.HasPrefix(low, "version ") {
-			continue
-		}
-
-		lines = append(lines, s)
-	}
-
-	return lines
-}
-
-// inferPrimaryHintFromStandby tries to discover the primary identifier from FAL_SERVER / LOG_ARCHIVE_DEST_1.
-// Works for formats like SERVICE=..., DB_UNIQUE_NAME=...
-func inferPrimaryHintFromStandby(stby extDbInfo) string {
-	u := strings.ToUpper(
-		strings.Join([]string{
-			stby.FalServer,
-			stby.LogArchiveD1,
-			stby.LogArchiveD2,
-		}, " "),
-	)
-
-	for _, key := range []string{"DB_UNIQUE_NAME=", "SERVICE="} {
-		idx := strings.Index(u, key)
-		if idx >= 0 {
-			rest := u[idx+len(key):]
-			stop := len(rest)
-			for i, ch := range rest {
-				if ch == ' ' || ch == ',' || ch == ')' || ch == '(' || ch == ';' {
-					stop = i
-					break
-				}
-			}
-			val := strings.TrimSpace(rest[:stop])
-			val = strings.Trim(val, `"`)
-			if val != "" {
-				return val
-			}
-		}
-	}
-
-	return ""
-}
-
-// mapStandbyToPrimary returns mapping: primaryDbUniqueName -> standbyDbUniqueName
-// plus a list of standbys that cannot be mapped.
-func mapStandbyToPrimary(
-	primaries map[string]extDbInfo,
-	standbys []extDbInfo,
-) (map[string]string, []extDbInfo) {
-
-	mapping := make(map[string]string)
-	unmapped := make([]extDbInfo, 0)
-
-	primaryByUnique := make(map[string]string)
-	for pUniq := range primaries {
-		primaryByUnique[strings.ToUpper(pUniq)] = pUniq
-	}
-
-	for _, s := range standbys {
-		hint := inferPrimaryHintFromStandby(s)
-		if hint == "" {
-			unmapped = append(unmapped, s)
-			continue
-		}
-
-		// Direct unique-name match
-		if pUniq, ok := primaryByUnique[strings.ToUpper(hint)]; ok {
-			mapping[pUniq] = s.DbUniqueName
-			continue
-		}
-
-		// Last resort: substring match
-		matched := ""
-		for pUniq := range primaries {
-			if strings.Contains(strings.ToUpper(hint), strings.ToUpper(pUniq)) ||
-				strings.Contains(strings.ToUpper(pUniq), strings.ToUpper(hint)) {
-				matched = pUniq
-				break
-			}
-		}
-
-		if matched == "" {
-			unmapped = append(unmapped, s)
-			continue
-		}
-		mapping[matched] = s.DbUniqueName
-	}
-
-	return mapping, unmapped
 }

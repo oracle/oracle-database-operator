@@ -38,9 +38,6 @@
 
 package v4
 
-// revive:disable:exported,var-naming
-// Legacy API field/type names are preserved for backward compatibility.
-
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -49,37 +46,6 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // DataguardBrokerSpec defines the desired state of DataguardBroker
-
-// DbConnectString defines how to connect to an external/non-SIDB database
-type DbConnectString struct {
-	// HostName is the DB host (IP or DNS)
-	HostName string `json:"hostName"`
-
-	// Port is the listener port (default 1521)
-	// +kubebuilder:default=1521
-	Port int32 `json:"port,omitempty"`
-
-	// SvcName is the service name used in connect string
-	SvcName string `json:"svcName"`
-
-	// UserName for login (default SYS)
-	// +kubebuilder:default=sys
-	UserName string `json:"userName,omitempty"`
-
-	// Secret is the K8s Secret name containing the DB password
-	Secret string `json:"secret"`
-
-	// SecretKey is the key inside secret (default "password")
-	// +kubebuilder:default=password
-	SecretKey string `json:"secretKey,omitempty"`
-}
-
-// SecretRef defines K8s secret reference (name + key)
-type SecretRef struct {
-	SecretName string `json:"secretName"`
-	SecretKey  string `json:"secretKey"`
-}
-
 type DataguardBrokerSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -93,25 +59,25 @@ type DataguardBrokerSpec struct {
 	ProtectionMode string            `json:"protectionMode"`
 	NodeSelector   map[string]string `json:"nodeSelector,omitempty"`
 
-	FastStartFailover bool `json:"fastStartFailover,omitempty"`
-	// IsNonSingleInstanceDatabase indicates this DataguardBroker is managing external/non-SIDB databases.
-	// When true, controller should NOT try to Get() SingleInstanceDatabase resources.
-	IsNonSingleInstanceDatabase bool `json:"isNonSingleInstanceDatabase,omitempty"`
-
-	// ExternalDatabaseConnectStrings is the list of database connect targets (primary+standby, can be more).
-	// Minimum 2 required when IsNonSingleInstanceDatabase=true.
-	// +kubebuilder:validation:MinItems=2
-	ExternalDatabaseConnectStrings []DbConnectString `json:"externalDatabaseConnectStrings,omitempty"`
-
-	// ExternalAdminPassword is required when IsNonSingleInstanceDatabase=true.
-	// This password is used for dgmgrl/sqlplus in external mode (typically SYS).
-	ExternalAdminPassword SecretRef `json:"externalAdminPassword,omitempty"`
-
-	// ObserverImage is required when IsNonSingleInstanceDatabase=true to create observer pod.
-	// Image must contain dgmgrl + sqlplus.
-	ObserverImage string `json:"observerImage,omitempty"`
+	FastStartFailover bool                    `json:"fastStartFailover,omitempty"`
+	Execution         *DataguardExecutionSpec `json:"execution,omitempty"`
+	Topology          *DataguardTopologySpec  `json:"topology,omitempty"`
 }
 
+// DataguardExecutionSpec defines broker-side runtime settings used when the
+// controller needs a dedicated execution pod for topology-native DG actions.
+type DataguardExecutionSpec struct {
+	// Image is the Oracle client/database image used for DG broker execution.
+	Image string `json:"image,omitempty"`
+	// ImagePullSecrets lists image pull secret names for the execution runtime.
+	ImagePullSecrets []string `json:"imagePullSecrets,omitempty"`
+	// WalletMountPath is where TCPS client wallet secrets are mounted in the runner pod.
+	WalletMountPath string `json:"walletMountPath,omitempty"`
+	// TNSAdminPath is the generated Oracle Net admin path used by the runner pod.
+	TNSAdminPath string `json:"tnsAdminPath,omitempty"`
+}
+
+// DataguardBrokerStatus defines the observed state of DataguardBroker
 type DataguardBrokerStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -124,10 +90,12 @@ type DataguardBrokerStatus struct {
 	ClusterConnectString  string `json:"clusterConnectString,omitempty"`
 	Status                string `json:"status,omitempty"`
 
-	FastStartFailover          string            `json:"fastStartFailover,omitempty"`
-	DatabasesInDataguardConfig map[string]string `json:"databasesInDataguardConfig,omitempty"`
-	// Non-SIDB primary->standby mapping using db_unique_name
-	ExternalDgMapping map[string]string `json:"externalDgMapping,omitempty"`
+	FastStartFailover          string                          `json:"fastStartFailover,omitempty"`
+	DatabasesInDataguardConfig map[string]string               `json:"databasesInDataguardConfig,omitempty"`
+	ObservedTopologyHash       string                          `json:"observedTopologyHash,omitempty"`
+	ResolvedMembers            []DataguardResolvedMemberStatus `json:"resolvedMembers,omitempty"`
+	ObservedPairs              []DataguardPairStatus           `json:"observedPairs,omitempty"`
+	Conditions                 []metav1.Condition              `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -156,9 +124,6 @@ type DataguardBroker struct {
 // Returns the current primary database in the dataguard configuration from the resource status/spec
 // //////////////////////////////////////////////////////////////////////////////////////////////////
 func (broker *DataguardBroker) GetCurrentPrimaryDatabase() string {
-	if broker.Spec.IsNonSingleInstanceDatabase {
-		return broker.Spec.PrimaryDatabaseRef
-	}
 	if broker.Status.PrimaryDatabase != "" {
 		return broker.Status.DatabasesInDataguardConfig[broker.Status.PrimaryDatabase]
 	}
@@ -169,9 +134,6 @@ func (broker *DataguardBroker) GetCurrentPrimaryDatabase() string {
 // Returns databases in Dataguard configuration from the resource status/spec
 // //////////////////////////////////////////////////////////////////////////////////////////////////
 func (broker *DataguardBroker) GetDatabasesInDataGuardConfiguration() []string {
-	if broker.Spec.IsNonSingleInstanceDatabase {
-		return nil
-	}
 	var databases []string
 	if len(broker.Status.DatabasesInDataguardConfig) > 0 {
 		for _, value := range broker.Status.DatabasesInDataguardConfig {
@@ -179,6 +141,7 @@ func (broker *DataguardBroker) GetDatabasesInDataGuardConfiguration() []string {
 				databases = append(databases, value)
 			}
 		}
+
 		return databases
 	}
 
@@ -198,6 +161,7 @@ func (broker *DataguardBroker) GetStandbyDatabasesInDgConfig() []string {
 				databases = append(databases, value)
 			}
 		}
+
 		return databases
 	}
 

@@ -135,6 +135,10 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 	if sidb.Spec.TrueCacheServices == nil {
 		sidb.Spec.TrueCacheServices = make([]string, 0)
 	}
+	if sidb.Spec.Dataguard == nil {
+		sidb.Spec.Dataguard = &DataguardProducerSpec{}
+	}
+	sidb.Spec.Dataguard.Mode = normalizeDataguardProducerMode(sidb.Spec.Dataguard)
 	defaultSIDBPersistence(&sidb.Spec.Persistence)
 	defaultSIDBAdditionalPVCs(&sidb.Spec.Persistence.AdditionalPVCs)
 	defaultSIDBRestoreSpec(&sidb.Spec.Restore)
@@ -174,6 +178,16 @@ func sidbTcpsTlsSecret(sidb *SingleInstanceDatabase) string {
 		return strings.TrimSpace(sidb.Spec.TCPS.TlsSecret)
 	}
 	return strings.TrimSpace(sidb.Spec.TcpsTlsSecret)
+}
+
+func sidbTcpsClientWalletSecret(sidb *SingleInstanceDatabase) string {
+	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && strings.TrimSpace(sidb.Spec.Security.TCPS.ClientWalletSecret) != "" {
+		return strings.TrimSpace(sidb.Spec.Security.TCPS.ClientWalletSecret)
+	}
+	if sidb.Spec.TCPS != nil && strings.TrimSpace(sidb.Spec.TCPS.ClientWalletSecret) != "" {
+		return strings.TrimSpace(sidb.Spec.TCPS.ClientWalletSecret)
+	}
+	return ""
 }
 
 func sidbTcpsCertRenewInterval(sidb *SingleInstanceDatabase) string {
@@ -315,6 +329,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 			allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("namespace"), sidb.Namespace, "operator does not watch this namespace"))
 		}
 	}
+	allErrs = append(allErrs, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), sidb.Spec.Dataguard)...)
 
 	oradata := sidbOradataPersistence(sidb)
 	if sidb.Spec.Persistence.Oradata != nil && (sidb.Spec.Persistence.Size != "" || sidb.Spec.Persistence.StorageClass != "" || sidb.Spec.Persistence.AccessMode != "") {
@@ -445,6 +460,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 
 	tcpsEnabled := sidbTcpsEnabled(sidb)
 	tcpsTlsSecret := sidbTcpsTlsSecret(sidb)
+	tcpsClientWalletSecret := sidbTcpsClientWalletSecret(sidb)
 	tcpsCertRenewInterval := sidbTcpsCertRenewInterval(sidb)
 	tcpsListenerPort := sidbTcpsListenerPort(sidb)
 
@@ -462,6 +478,9 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	}
 	if !tcpsEnabled && tcpsTlsSecret != "" {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("tcpsTlsSecret"), "allowed only when enableTCPS=true"))
+	}
+	if !tcpsEnabled && tcpsClientWalletSecret != "" {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("security").Child("tcps").Child("clientWalletSecret"), "allowed only when enableTCPS=true"))
 	}
 	if tcpsTlsSecret != "" && tcpsCertRenewInterval != "" {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("tcpsCertRenewInterval"), "not applicable when tcpsTlsSecret is provided"))
@@ -809,6 +828,9 @@ func isPrimarySourceLocked(sidb *SingleInstanceDatabase) bool {
 	if sidb == nil {
 		return false
 	}
+	if sidb.Status.Dataguard != nil && sidb.Status.Dataguard.TopologyLocked {
+		return true
+	}
 
 	switch strings.ToLower(strings.TrimSpace(sidb.Status.CreatedAs)) {
 	case "clone":
@@ -826,6 +848,19 @@ func isPrimarySourceLocked(sidb *SingleInstanceDatabase) bool {
 }
 
 func primarySourceLockedMessage(sidb *SingleInstanceDatabase) string {
+	if sidb != nil && sidb.Status.Dataguard != nil && sidb.Status.Dataguard.TopologyLocked {
+		switch strings.ToLower(strings.TrimSpace(sidb.Status.CreatedAs)) {
+		case "clone":
+			return "primary source of a cloned database cannot be changed post creation"
+		case "standby":
+			return "primary source of a standby database cannot be changed after dataguard topology is locked"
+		case "truecache":
+			return "primary source of a truecache database cannot be changed after dataguard topology is locked"
+		default:
+			return "primary source cannot be changed after dataguard topology is locked"
+		}
+	}
+
 	switch strings.ToLower(strings.TrimSpace(sidb.Status.CreatedAs)) {
 	case "clone":
 		return "primary source of a cloned database cannot be changed post creation"
@@ -846,6 +881,20 @@ func isPopulatedStatusValue(value string) bool {
 func isConditionTrue(conditions []metav1.Condition, conditionType string) bool {
 	condition := meta.FindStatusCondition(conditions, conditionType)
 	return condition != nil && condition.Status == metav1.ConditionTrue
+}
+
+func validateDataguardProducerSpec(path *field.Path, spec *DataguardProducerSpec) field.ErrorList {
+	var allErrs field.ErrorList
+	mode := normalizeDataguardProducerMode(spec)
+	switch mode {
+	case DataguardProducerModeDisabled, DataguardProducerModePreview:
+		return allErrs
+	case DataguardProducerModeManaged:
+		allErrs = append(allErrs, field.Forbidden(path.Child("mode"), "Managed mode is reserved for future DataguardBroker automation and is not supported yet"))
+	default:
+		allErrs = append(allErrs, field.Invalid(path.Child("mode"), mode, "must be Disabled, Preview, or Managed"))
+	}
+	return allErrs
 }
 
 func validatePrimarySourceSpec(sidb *SingleInstanceDatabase, mode string) field.ErrorList {

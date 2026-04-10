@@ -44,6 +44,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -346,6 +347,37 @@ func getTcpsTLSSecret(m *dbapi.SingleInstanceDatabase) string {
 	return strings.TrimSpace(m.Spec.TcpsTlsSecret)
 }
 
+func getTcpsClientWalletSecretOverride(m *dbapi.SingleInstanceDatabase) string {
+	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && strings.TrimSpace(m.Spec.Security.TCPS.ClientWalletSecret) != "" {
+		return strings.TrimSpace(m.Spec.Security.TCPS.ClientWalletSecret)
+	}
+	if m.Spec.TCPS != nil && strings.TrimSpace(m.Spec.TCPS.ClientWalletSecret) != "" {
+		return strings.TrimSpace(m.Spec.TCPS.ClientWalletSecret)
+	}
+	return ""
+}
+
+func getDataguardClientWalletSecretName(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	if override := getTcpsClientWalletSecretOverride(m); override != "" {
+		return override
+	}
+	return getGeneratedDataguardClientWalletSecretName(m)
+}
+
+func getGeneratedDataguardClientWalletSecretName(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	name := strings.TrimSpace(m.Name)
+	if name == "" {
+		return ""
+	}
+	return name + "-dg-client-wallet"
+}
+
 func getTcpsCertRenewInterval(m *dbapi.SingleInstanceDatabase) string {
 	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && strings.TrimSpace(m.Spec.Security.TCPS.CertRenewInterval) != "" {
 		return strings.TrimSpace(m.Spec.Security.TCPS.CertRenewInterval)
@@ -380,6 +412,23 @@ func getTcpsCertsLocation(m *dbapi.SingleInstanceDatabase) string {
 		}
 	}
 	return defaultLocation
+}
+
+func isGeneratedDataguardClientWalletSecret(m *dbapi.SingleInstanceDatabase) bool {
+	return m != nil && getTcpsClientWalletSecretOverride(m) == ""
+}
+
+func getDataguardClientWalletSourceDir(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	if walletLoc := strings.TrimSpace(m.Status.ClientWalletLoc); walletLoc != "" {
+		return walletLoc
+	}
+	if sid := strings.TrimSpace(m.Spec.Sid); sid != "" {
+		return fmt.Sprintf(dbcommons.ClientWalletLocation, sid)
+	}
+	return ""
 }
 
 func buildSIDBPodSecurityContext(
@@ -886,6 +935,7 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 
 func (r *SingleInstanceDatabaseReconciler) phaseModePreReady(ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
 	_ = ctx
+	syncSIDBDataguardPreviewStatus(phaseCtx.singleInstanceDatabase, phaseCtx.referredPrimaryDatabase)
 	mode := strings.ToLower(strings.TrimSpace(phaseCtx.singleInstanceDatabase.Spec.CreateAs))
 	switch mode {
 	case "", "primary", "clone", "truecache", "standby":
@@ -923,6 +973,7 @@ func (r *SingleInstanceDatabaseReconciler) phaseUpdateFinalStatus(ctx context.Co
 	if err := r.updateSidbStatus(phaseCtx.singleInstanceDatabase, phaseCtx.readyPod, ctx, req); err != nil {
 		return requeueY, err
 	}
+	syncSIDBDataguardPreviewStatus(phaseCtx.singleInstanceDatabase, phaseCtx.referredPrimaryDatabase)
 	r.updateORDSStatus(phaseCtx.singleInstanceDatabase, ctx, req)
 	return requeueN, nil
 }
@@ -2648,32 +2699,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 		},
 	}
 
-	// Adding pod anti-affinity for standby cases
-	if m.Spec.CreateAs == "standby" && !hasPrimaryDatabaseDetails(m) && rp != nil && rp.Name != "" {
-		weightedPodAffinityTerm := corev1.WeightedPodAffinityTerm{
-			Weight: 100,
-			PodAffinityTerm: corev1.PodAffinityTerm{
-				LabelSelector: &metav1.LabelSelector{
-					MatchExpressions: []metav1.LabelSelectorRequirement{{
-						Key:      "app",
-						Operator: metav1.LabelSelectorOpIn,
-						Values:   []string{rp.Name},
-					}},
-				},
-				TopologyKey: "kubernetes.io/hostname",
-			},
-		}
-		if getOradataPersistenceConfig(m).AccessMode == "ReadWriteOnce" {
-			pod.Spec.Affinity.PodAntiAffinity = &corev1.PodAntiAffinity{
-				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-					weightedPodAffinityTerm,
-				},
-			}
-		} else {
-			pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution =
-				append(pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, weightedPodAffinityTerm)
-		}
-	}
+	applyPrimarySeparationPreference(pod, m, rp)
 
 	r.addTrueCacheBlobVolumeMount(pod, m, rp)
 	// Set SingleInstanceDatabase instance as the owner and controller
@@ -2682,6 +2708,40 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	}
 	return pod, nil
 
+}
+
+func applyPrimarySeparationPreference(pod *corev1.Pod, sidb *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) {
+	if pod == nil || sidb == nil || primary == nil || strings.TrimSpace(primary.Name) == "" {
+		return
+	}
+	if sidb.Spec.CreateAs != "standby" && sidb.Spec.CreateAs != "truecache" {
+		return
+	}
+	if !isLocalPrimaryDatabaseSource(sidb) {
+		return
+	}
+	if pod.Spec.Affinity == nil {
+		pod.Spec.Affinity = &corev1.Affinity{}
+	}
+	if pod.Spec.Affinity.PodAntiAffinity == nil {
+		pod.Spec.Affinity.PodAntiAffinity = &corev1.PodAntiAffinity{}
+	}
+
+	weightedPodAffinityTerm := corev1.WeightedPodAffinityTerm{
+		Weight: 100,
+		PodAffinityTerm: corev1.PodAffinityTerm{
+			LabelSelector: &metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{{
+					Key:      "app",
+					Operator: metav1.LabelSelectorOpIn,
+					Values:   []string{primary.Name},
+				}},
+			},
+			TopologyKey: "kubernetes.io/hostname",
+		},
+	}
+	pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution =
+		append(pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, weightedPodAffinityTerm)
 }
 
 // #############################################################################
@@ -4113,6 +4173,99 @@ func (r *SingleInstanceDatabaseReconciler) updateClientWallet(m *dbapi.SingleIns
 	return nil
 }
 
+func (r *SingleInstanceDatabaseReconciler) publishDataguardClientWalletSecret(
+	m *dbapi.SingleInstanceDatabase,
+	readyPod corev1.Pod,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+	if m == nil || !getTcpsEnabled(m) || !m.Status.IsTcpsEnabled {
+		return nil
+	}
+	if !isGeneratedDataguardClientWalletSecret(m) {
+		return nil
+	}
+
+	sourceDir := strings.TrimSpace(getDataguardClientWalletSourceDir(m))
+	secretName := strings.TrimSpace(getDataguardClientWalletSecretName(m))
+	if sourceDir == "" || secretName == "" {
+		return nil
+	}
+
+	files := map[string]string{
+		"cwallet.sso":  filepath.Join(sourceDir, "cwallet.sso"),
+		"ewallet.p12":  filepath.Join(sourceDir, "ewallet.p12"),
+		"sqlnet.ora":   filepath.Join(sourceDir, "sqlnet.ora"),
+		"tnsnames.ora": filepath.Join(sourceDir, "tnsnames.ora"),
+	}
+	data := make(map[string][]byte, len(files))
+	for key, path := range files {
+		content, err := r.readBase64FileFromPod(readyPod, path, ctx, req)
+		if err != nil {
+			return err
+		}
+		if len(content) == 0 {
+			if key == "cwallet.sso" || key == "sqlnet.ora" || key == "tnsnames.ora" {
+				return fmt.Errorf("required client wallet file %q not found at %q", key, path)
+			}
+			continue
+		}
+		data[key] = content
+	}
+
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: m.Namespace}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
+		secret.Type = corev1.SecretTypeOpaque
+		secret.Data = data
+		if secret.Labels == nil {
+			secret.Labels = map[string]string{}
+		}
+		secret.Labels["database.oracle.com/managed-by"] = "singleinstancedatabase-controller"
+		secret.Labels["database.oracle.com/tcps-client-wallet"] = m.Name
+		return ctrl.SetControllerReference(m, secret, r.Scheme)
+	})
+	return err
+}
+
+func (r *SingleInstanceDatabaseReconciler) deleteGeneratedDataguardClientWalletSecret(m *dbapi.SingleInstanceDatabase, ctx context.Context) error {
+	if m == nil {
+		return nil
+	}
+	secretName := strings.TrimSpace(getGeneratedDataguardClientWalletSecretName(m))
+	if secretName == "" {
+		return nil
+	}
+	if override := strings.TrimSpace(getTcpsClientWalletSecretOverride(m)); override != "" && override == secretName {
+		return nil
+	}
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: m.Namespace}, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	return r.Delete(ctx, secret)
+}
+
+func (r *SingleInstanceDatabaseReconciler) readBase64FileFromPod(
+	readyPod corev1.Pod,
+	path string,
+	ctx context.Context,
+	req ctrl.Request,
+) ([]byte, error) {
+	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", fmt.Sprintf("if [ -f %q ]; then base64 -w0 %q; fi", path, path))
+	if err != nil {
+		return nil, err
+	}
+	encoded := strings.TrimSpace(out)
+	if encoded == "" {
+		return nil, nil
+	}
+	return base64.StdEncoding.DecodeString(encoded)
+}
+
 // #############################################################################
 //
 //	Configuring TCPS
@@ -4211,6 +4364,18 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			r.Log.Error(err, "Error in updating tnsnames.ora in clientWallet...")
 			return requeueY, nil
 		}
+		if getTcpsClientWalletSecretOverride(m) != "" {
+			if err := r.deleteGeneratedDataguardClientWalletSecret(m, ctx); err != nil {
+				r.Log.Error(err, "Error deleting generated Dataguard client wallet secret")
+				return requeueY, nil
+			}
+		} else {
+			err = r.publishDataguardClientWalletSecret(m, readyPod, ctx, req)
+			if err != nil {
+				r.Log.Error(err, "Error publishing Dataguard client wallet secret")
+				return requeueY, nil
+			}
+		}
 	} else if !tcpsEnabled && m.Status.IsTcpsEnabled {
 		// Disable TCPS
 		m.Status.Status = dbcommons.StatusUpdating
@@ -4236,6 +4401,10 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 
 		if err := r.Status().Update(ctx, m); err != nil {
 			return requeueY, err
+		}
+		if err := r.deleteGeneratedDataguardClientWalletSecret(m, ctx); err != nil {
+			r.Log.Error(err, "Error deleting generated Dataguard client wallet secret")
+			return requeueY, nil
 		}
 
 		eventMsg = "TCPS Disabled."
@@ -4285,12 +4454,36 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			r.Log.Error(err, "Error in updating tnsnames.ora clientWallet...")
 			return requeueY, nil
 		}
+		if getTcpsClientWalletSecretOverride(m) != "" {
+			if err := r.deleteGeneratedDataguardClientWalletSecret(m, ctx); err != nil {
+				r.Log.Error(err, "Error deleting generated Dataguard client wallet secret")
+				return requeueY, nil
+			}
+		} else {
+			err = r.publishDataguardClientWalletSecret(m, readyPod, ctx, req)
+			if err != nil {
+				r.Log.Error(err, "Error publishing Dataguard client wallet secret")
+				return requeueY, nil
+			}
+		}
 	} else if tcpsEnabled && m.Status.IsTcpsEnabled && tcpsCertRenewInterval == "" {
 		// update clientWallet
 		err := r.updateClientWallet(m, readyPod, ctx, req)
 		if err != nil {
 			r.Log.Error(err, "Error in updating tnsnames.ora clientWallet...")
 			return requeueY, nil
+		}
+		if getTcpsClientWalletSecretOverride(m) != "" {
+			if err := r.deleteGeneratedDataguardClientWalletSecret(m, ctx); err != nil {
+				r.Log.Error(err, "Error deleting generated Dataguard client wallet secret")
+				return requeueY, nil
+			}
+		} else {
+			err = r.publishDataguardClientWalletSecret(m, readyPod, ctx, req)
+			if err != nil {
+				r.Log.Error(err, "Error publishing Dataguard client wallet secret")
+				return requeueY, nil
+			}
 		}
 	}
 	return requeueN, nil

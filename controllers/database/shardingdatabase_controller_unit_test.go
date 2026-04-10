@@ -219,6 +219,154 @@ func TestShardingUnit_ValidateStandbyWalletSecretRefUsesLongestPrefix(t *testing
 	}
 }
 
+func TestShardingUnit_SyncDataguardPreviewStatusUserDG(t *testing.T) {
+	inst := &databasev4.ShardingDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "shdb", Namespace: "ns1"},
+		Spec: databasev4.ShardingDatabaseSpec{
+			ReplicationType:   "DG",
+			ShardingType:      "USER",
+			DbImage:           "oracle/sharding-db:23ai",
+			DbImagePullSecret: "db-pull-secret",
+			Dataguard:         &databasev4.DataguardProducerSpec{Mode: databasev4.DataguardProducerModePreview},
+			Shard: []databasev4.ShardSpec{
+				{Name: "primary1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+				{Name: "standby1", ShardSpace: "ss1", DeployAs: "STANDBY"},
+			},
+		},
+	}
+	status := &databasev4.ShardingDatabaseStatus{}
+
+	r := &ShardingDatabaseReconciler{}
+	r.syncShardingDataguardPreviewStatus(inst, status)
+
+	if status.Dataguard == nil {
+		t.Fatalf("expected dataguard preview status to be populated")
+	}
+	if status.Dataguard.Phase != dataguardPreviewPhaseReady {
+		t.Fatalf("expected preview phase %q, got %q", dataguardPreviewPhaseReady, status.Dataguard.Phase)
+	}
+	if !status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be true")
+	}
+	if status.Dataguard.Topology == nil || len(status.Dataguard.Topology.Pairs) != 1 {
+		t.Fatalf("expected one topology pair, got %#v", status.Dataguard.Topology)
+	}
+	if len(status.Dataguard.Members) != 2 {
+		t.Fatalf("expected two member statuses, got %#v", status.Dataguard.Members)
+	}
+	if status.Dataguard.PublishedTopologyHash == "" {
+		t.Fatalf("expected topology hash to be set")
+	}
+	if status.Dataguard.TopologyHash == "" {
+		t.Fatalf("expected topologyHash to be set")
+	}
+	if status.Dataguard.LastPublishedTime == nil {
+		t.Fatalf("expected lastPublishedTime to be set")
+	}
+	if status.Dataguard.Execution == nil || status.Dataguard.Execution.Image != "oracle/sharding-db:23ai" {
+		t.Fatalf("expected sharding execution image to be published, got %#v", status.Dataguard.Execution)
+	}
+}
+
+func TestShardingUnit_SyncDataguardPreviewStatusDisabledClearsStatus(t *testing.T) {
+	inst := &databasev4.ShardingDatabase{
+		Spec: databasev4.ShardingDatabaseSpec{
+			ReplicationType: "DG",
+			Dataguard: &databasev4.DataguardProducerSpec{
+				Mode: databasev4.DataguardProducerModeDisabled,
+			},
+		},
+	}
+	status := &databasev4.ShardingDatabaseStatus{
+		Dataguard: &databasev4.ShardingDataguardStatus{Phase: dataguardPreviewPhaseReady},
+	}
+
+	r := &ShardingDatabaseReconciler{}
+	r.syncShardingDataguardPreviewStatus(inst, status)
+
+	if status.Dataguard != nil {
+		t.Fatalf("expected dataguard status to be cleared when preview is disabled")
+	}
+}
+
+func TestShardingUnit_BuildPrimaryIdentitiesUsesStandbyPrimarySources(t *testing.T) {
+	inst := &databasev4.ShardingDatabase{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "shdb",
+			Namespace: "shns",
+		},
+	}
+
+	t.Run("databaseRef", func(t *testing.T) {
+		cfg := &databasev4.StandbyConfig{
+			PrimarySources: []databasev4.StandbyPrimarySource{{
+				DatabaseRef: &databasev4.PrimaryDatabaseCRRef{Name: "primary-db"},
+			}},
+		}
+		ids := buildPrimaryIdentities(inst, cfg)
+		if len(ids) != 1 || ids[0].Key != "shns/primary-db" || ids[0].Source != "PrimaryDatabaseRef" {
+			t.Fatalf("unexpected primary identities for databaseRef: %#v", ids)
+		}
+	})
+
+	t.Run("details", func(t *testing.T) {
+		cfg := &databasev4.StandbyConfig{
+			PrimarySources: []databasev4.StandbyPrimarySource{{
+				Details: &databasev4.PrimaryEndpointRef{
+					Host:    "primary-host",
+					Port:    1522,
+					CdbName: "primdb",
+				},
+			}},
+		}
+		ids := buildPrimaryIdentities(inst, cfg)
+		if len(ids) != 1 {
+			t.Fatalf("expected one primary identity, got %#v", ids)
+		}
+		if ids[0].Source != "Endpoint" {
+			t.Fatalf("expected endpoint source, got %#v", ids[0])
+		}
+		if ids[0].Connect != "//primary-host:1522/PRIMDB_DGMGRL" {
+			t.Fatalf("unexpected endpoint connect string: %#v", ids[0])
+		}
+	})
+
+	t.Run("multiple", func(t *testing.T) {
+		cfg := &databasev4.StandbyConfig{
+			PrimarySources: []databasev4.StandbyPrimarySource{
+				{ConnectString: "//phx-primary:1521/PHX_DGMGRL"},
+				{ConnectString: "//ash-primary:1521/ASH_DGMGRL"},
+			},
+		}
+		ids := buildPrimaryIdentities(inst, cfg)
+		if len(ids) != 2 {
+			t.Fatalf("expected two primary identities, got %#v", ids)
+		}
+	})
+}
+
+func TestShardingUnit_StandbyConfigPrimaryCountControllerSupportsPrimarySources(t *testing.T) {
+	cfg := &databasev4.StandbyConfig{
+		PrimarySources: []databasev4.StandbyPrimarySource{
+			{ConnectString: "//phx-primary:1521/PHX_DGMGRL"},
+			{ConnectString: "//ash-primary:1521/ASH_DGMGRL"},
+		},
+	}
+
+	if got := standbyConfigPrimaryCountController(cfg); got != 2 {
+		t.Fatalf("expected primary source count 2, got %d", got)
+	}
+	if got := standbyConfigDerivedShardCountController(&databasev4.StandbyConfig{
+		StandbyPerPrimary: 2,
+		PrimarySources: []databasev4.StandbyPrimarySource{
+			{ConnectString: "//phx-primary:1521/PHX_DGMGRL"},
+			{ConnectString: "//ash-primary:1521/ASH_DGMGRL"},
+		},
+	}); got != 4 {
+		t.Fatalf("expected derived shard count 4, got %d", got)
+	}
+}
+
 func TestShardingUnit_ParseAndSerializeImportedTDEShards(t *testing.T) {
 	parsed := parseImportedTDEShards(" shard2,Shard1,, shard2 ")
 	if !parsed["shard1"] || !parsed["shard2"] || len(parsed) != 2 {

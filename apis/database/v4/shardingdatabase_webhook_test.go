@@ -7,6 +7,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
 func hasErrContaining(errs []error, want string) bool {
@@ -16,6 +18,29 @@ func hasErrContaining(errs []error, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestShardingWebhookDefaultSetsDataguardModePreview(t *testing.T) {
+	cr := &ShardingDatabase{}
+
+	if err := cr.Default(context.Background(), cr); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+	if cr.Spec.Dataguard == nil {
+		t.Fatalf("expected dataguard spec to be defaulted")
+	}
+	if cr.Spec.Dataguard.Mode != DataguardProducerModePreview {
+		t.Fatalf("expected dataguard mode %q, got %q", DataguardProducerModePreview, cr.Spec.Dataguard.Mode)
+	}
+}
+
+func TestShardingWebhookRejectsManagedDataguardMode(t *testing.T) {
+	errs := validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), &DataguardProducerSpec{
+		Mode: DataguardProducerModeManaged,
+	})
+	if len(errs) == 0 {
+		t.Fatalf("expected validation error for managed dataguard mode")
+	}
 }
 
 func TestValidateShardOperationRules(t *testing.T) {
@@ -272,8 +297,10 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 						Name: "ss1",
 					},
 					StandbyConfig: &StandbyConfig{
-						StandbyPerPrimary:     2,
-						PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+						StandbyPerPrimary: 2,
+						PrimarySources: []StandbyPrimarySource{{
+							ConnectString: "//phx-primary:1521/PHX_DGMGRL",
+						}},
 					},
 				}},
 			},
@@ -293,12 +320,14 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 						Name: "ss1",
 					},
 					StandbyConfig: &StandbyConfig{
-						StandbyPerPrimary:     2,
-						PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+						StandbyPerPrimary: 2,
+						PrimarySources: []StandbyPrimarySource{{
+							ConnectString: "//phx-primary:1521/PHX_DGMGRL",
+						}},
 					},
 				}},
 			},
-			wantErr: "uses standbyConfig primary source; do not set local deployAs=PRIMARY",
+			wantErr: "uses standbyConfig.primarySources; do not set local deployAs=PRIMARY",
 		},
 		{
 			name: "user DG rejects standby shard without shardRegion",
@@ -428,8 +457,10 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							DeployAs: "STANDBY",
 						},
 						StandbyConfig: &StandbyConfig{
-							StandbyPerPrimary:     2,
-							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+							StandbyPerPrimary: 2,
+							PrimarySources: []StandbyPrimarySource{{
+								ConnectString: "//phx-primary:1521/PHX_DGMGRL",
+							}},
 						},
 					},
 				},
@@ -622,7 +653,7 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 			wantErr: "region PHOENIX is already used by shardGroup SG-PRIMARY",
 		},
 		{
-			name: "system DG rejects duplicate primary connect strings in standbyConfig",
+			name: "system DG rejects duplicate primary sources in standbyConfig",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "SYSTEM",
 				ReplicationType: "DG",
@@ -645,46 +676,49 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							DeployAs: "STANDBY",
 						},
 						StandbyConfig: &StandbyConfig{
-							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL", " //phx-primary:1521/PHX_DGMGRL "},
-						},
-					},
-				},
-			},
-			wantErr: "does not support standbyConfig primary source fields",
-		},
-		{
-			name: "system DG rejects duplicate primary database refs in standbyConfig",
-			spec: ShardingDatabaseSpec{
-				ShardingType:    "SYSTEM",
-				ReplicationType: "DG",
-				ShardInfo: []ShardingDetails{
-					{
-						ShardPreFixName: "prm",
-						ShardNum:        2,
-						ShardGroupDetails: &ShardGroupSpec{
-							Name:     "sg-primary",
-							Region:   "phoenix",
-							DeployAs: "PRIMARY",
-						},
-					},
-					{
-						ShardPreFixName: "std",
-						ShardNum:        1,
-						ShardGroupDetails: &ShardGroupSpec{
-							Name:     "sg-ashburn",
-							Region:   "ashburn",
-							DeployAs: "STANDBY",
-						},
-						StandbyConfig: &StandbyConfig{
-							PrimaryDatabaseRefs: []PrimaryDatabaseCRRef{
-								{Name: "primary-db", Namespace: "shns"},
-								{Name: "primary-db", Namespace: "shns"},
+							PrimarySources: []StandbyPrimarySource{
+								{ConnectString: "//phx-primary:1521/PHX_DGMGRL"},
+								{ConnectString: " //phx-primary:1521/PHX_DGMGRL "},
 							},
 						},
 					},
 				},
 			},
-			wantErr: "does not support standbyConfig primary source fields",
+			wantErr: "Duplicate value",
+		},
+		{
+			name: "system DG rejects mixed source modes in one primarySources item",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "std",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-ashburn",
+							Region:   "ashburn",
+							DeployAs: "STANDBY",
+						},
+						StandbyConfig: &StandbyConfig{
+							PrimarySources: []StandbyPrimarySource{{
+								DatabaseRef:   &PrimaryDatabaseCRRef{Name: "primary-db", Namespace: "shns"},
+								ConnectString: "//phx-primary:1521/PHX_DGMGRL",
+							}},
+						},
+					},
+				},
+			},
+			wantErr: "mutually exclusive",
 		},
 		{
 			name: "system NATIVE allows shardGroup ru_mode when deployAs is unset",
@@ -744,7 +778,7 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 			wantErr: "mutually exclusive",
 		},
 		{
-			name: "user DG allows single primary source in shardInfo standbyConfig per shardspace",
+			name: "user DG allows single primary source in standbyConfig.primarySources per shardspace",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "USER",
 				ReplicationType: "DG",
@@ -756,8 +790,10 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							Name: "ss1",
 						},
 						StandbyConfig: &StandbyConfig{
-							StandbyPerPrimary:     1,
-							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+							StandbyPerPrimary: 1,
+							PrimarySources: []StandbyPrimarySource{{
+								ConnectString: "//phx-primary:1521/PHX_DGMGRL",
+							}},
 						},
 					},
 				},
@@ -863,16 +899,18 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							DeployAs: "PRIMARY",
 						},
 						StandbyConfig: &StandbyConfig{
-							StandbyPerPrimary:     1,
-							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+							StandbyPerPrimary: 1,
+							PrimarySources: []StandbyPrimarySource{{
+								ConnectString: "//phx-primary:1521/PHX_DGMGRL",
+							}},
 						},
 					},
 				},
 			},
-			wantErr: "uses standbyConfig primary source; do not set shardSpaceDetails.deployAs=PRIMARY",
+			wantErr: "uses standbyConfig.primarySources; do not set shardSpaceDetails.deployAs=PRIMARY",
 		},
 		{
-			name: "user DG rejects multiple primary sources in shardInfo standbyConfig per shardspace",
+			name: "user DG allows multiple primary sources in shardInfo standbyConfig per shardspace",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "USER",
 				ReplicationType: "DG",
@@ -884,13 +922,35 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							Name: "ss1",
 						},
 						StandbyConfig: &StandbyConfig{
-							StandbyPerPrimary:     1,
-							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL", "//ash-primary:1521/ASH_DGMGRL"},
+							StandbyPerPrimary: 1,
+							PrimarySources: []StandbyPrimarySource{
+								{ConnectString: "//phx-primary:1521/PHX_DGMGRL"},
+								{ConnectString: "//ash-primary:1521/ASH_DGMGRL"},
+							},
 						},
 					},
 				},
 			},
-			wantErr: "at most one primary source per shardSpace",
+		},
+		{
+			name: "user DG rejects empty primarySources item",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "us1",
+						ShardNum:        1,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name: "ss1",
+						},
+						StandbyConfig: &StandbyConfig{
+							PrimarySources: []StandbyPrimarySource{{}},
+						},
+					},
+				},
+			},
+			wantErr: "set exactly one of databaseRef, connectString, or details",
 		},
 	}
 
@@ -1323,6 +1383,59 @@ func TestValidateUpdateRejectsShardingTypeChange(t *testing.T) {
 	_, err := (&ShardingDatabase{}).ValidateUpdate(context.Background(), oldCR, newCR)
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "shardingtype is immutable") {
 		t.Fatalf("expected shardingType immutability error, got: %v", err)
+	}
+}
+
+func validShardingWebhookDGObject() *ShardingDatabase {
+	return &ShardingDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "gdd1", Namespace: "ns1"},
+		Spec: ShardingDatabaseSpec{
+			ReplicationType: "DG",
+			ShardingType:    "USER",
+			EnableTCPS:      false,
+			ShardInfo: []ShardingDetails{{
+				ShardPreFixName: "sh",
+				ShardNum:        1,
+				ShardSpaceDetails: &ShardSpaceSpec{
+					Name:     "ss1",
+					DeployAs: "STANDBY",
+				},
+				StandbyConfig: &StandbyConfig{
+					PrimarySources: []StandbyPrimarySource{{
+						ConnectString: "primary-a:1521/PRIM",
+					}},
+				},
+			}},
+		},
+	}
+}
+
+func TestValidateUpdateRejectsShardingDataguardTopologyChangeWhenLocked(t *testing.T) {
+	oldCR := validShardingWebhookDGObject()
+	oldCR.Status.Dataguard = &ShardingDataguardStatus{TopologyLocked: true}
+
+	newCR := oldCR.DeepCopy()
+	newCR.Spec.ShardInfo[0].StandbyConfig.PrimarySources[0].ConnectString = "primary-b:1521/PRIM"
+
+	_, err := (&ShardingDatabase{}).ValidateUpdate(context.Background(), oldCR, newCR)
+	if err == nil {
+		t.Fatalf("expected topology update to be rejected when dataguard topology is locked")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "topology-defining fields cannot be changed") {
+		t.Fatalf("expected dataguard topology lock rejection, got: %v", err)
+	}
+}
+
+func TestValidateUpdateAllowsNonTopologyShardingChangeWhenDataguardLocked(t *testing.T) {
+	oldCR := validShardingWebhookDGObject()
+	oldCR.Status.Dataguard = &ShardingDataguardStatus{TopologyLocked: true}
+
+	newCR := oldCR.DeepCopy()
+	newCR.Spec.IsDebug = true
+
+	_, err := (&ShardingDatabase{}).ValidateUpdate(context.Background(), oldCR, newCR)
+	if err != nil {
+		t.Fatalf("expected non-topology update to pass when dataguard topology is locked, got: %v", err)
 	}
 }
 

@@ -313,7 +313,7 @@ func (r *ShardingDatabaseReconciler) phaseDelete(
 // Phase 4 : Validate + Plan
 // phaseValidateAndPlan validates spec and applies prerequisite spec patches before core reconciliation.
 func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
-	ctx context.Context, inst *databasev4.ShardingDatabase, _ *databasev4.ShardingDatabaseStatus, _ *conditionSet,
+	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, _ *conditionSet,
 ) phaseResult {
 	plog := r.phaseLogger(inst, "validate_plan")
 	if err := r.validateSpex(inst); err != nil {
@@ -348,6 +348,10 @@ func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
 	if err := r.syncDgPairsFromStandbyConfig(inst); err != nil {
 		plog.Error(err, "failed to sync dg pair status from standbyConfig", "reason", "DgPairStatusSyncRetry")
 		return phaseResult{wait: true, requeueAfter: 30 * time.Second, reason: "DgPairStatusSyncRetry", message: err.Error()}
+	}
+	if st != nil {
+		st.Dg.Pairs = r.buildDgPairsFromStandbyConfig(inst)
+		r.syncShardingDataguardPreviewStatus(inst, st)
 	}
 
 	origScaleOut := inst.DeepCopy()
@@ -834,9 +838,12 @@ func (r *ShardingDatabaseReconciler) phaseScaleOps(
 func (r *ShardingDatabaseReconciler) phasePostSync(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = st
 	_ = c
 	plog := r.phaseLogger(inst, "post_sync")
+
+	if st != nil {
+		r.syncShardingDataguardPreviewStatus(inst, st)
+	}
 
 	// Existing behavior: always refresh aggregate shard topology status near end of reconcile.
 	defer r.updateShardTopologyStatus(inst)
@@ -1817,6 +1824,96 @@ type primaryIdentity struct {
 	Source  string
 }
 
+type resolvedStandbyPrimarySource struct {
+	databaseRef   *databasev4.PrimaryDatabaseCRRef
+	connectString string
+	details       *databasev4.PrimaryEndpointRef
+}
+
+func resolveStandbyPrimarySources(cfg *databasev4.StandbyConfig) []resolvedStandbyPrimarySource {
+	if cfg == nil {
+		return nil
+	}
+	out := make([]resolvedStandbyPrimarySource, 0, len(cfg.PrimarySources))
+	for i := range cfg.PrimarySources {
+		source := cfg.PrimarySources[i]
+		if ref := source.DatabaseRef; ref != nil && strings.TrimSpace(ref.Name) != "" {
+			out = append(out, resolvedStandbyPrimarySource{databaseRef: ref})
+			continue
+		}
+		if connect := strings.TrimSpace(source.ConnectString); connect != "" {
+			out = append(out, resolvedStandbyPrimarySource{connectString: connect})
+			continue
+		}
+		if source.Details != nil {
+			out = append(out, resolvedStandbyPrimarySource{details: source.Details})
+		}
+	}
+	return out
+}
+
+func (source resolvedStandbyPrimarySource) hasSource() bool {
+	return source.databaseRef != nil || source.connectString != "" || source.details != nil
+}
+
+func (source resolvedStandbyPrimarySource) toIdentity(defaultNamespace string) *primaryIdentity {
+	if source.databaseRef != nil && strings.TrimSpace(source.databaseRef.Name) != "" {
+		ns := strings.TrimSpace(source.databaseRef.Namespace)
+		if ns == "" {
+			ns = defaultNamespace
+		}
+		return &primaryIdentity{
+			Key:    ns + "/" + strings.TrimSpace(source.databaseRef.Name),
+			Source: "PrimaryDatabaseRef",
+		}
+	}
+	if source.connectString != "" {
+		return &primaryIdentity{
+			Key:     source.connectString,
+			Connect: source.connectString,
+			Source:  "ConnectString",
+		}
+	}
+	if source.details != nil {
+		connect := buildExternalPrimaryConnectString(source.details)
+		key := connect
+		if key == "" {
+			host := strings.ToLower(strings.TrimSpace(source.details.Host))
+			cdb := strings.ToUpper(strings.TrimSpace(source.details.CdbName))
+			pdb := strings.ToUpper(strings.TrimSpace(source.details.PdbName))
+			key = host + ":" + strconv.Itoa(int(source.details.Port)) + "/" + cdb + "/" + pdb
+		}
+		if key == "" {
+			return nil
+		}
+		return &primaryIdentity{
+			Key:     key,
+			Connect: connect,
+			Source:  "Endpoint",
+		}
+	}
+	return nil
+}
+
+func buildExternalPrimaryConnectString(endpoint *databasev4.PrimaryEndpointRef) string {
+	if endpoint == nil {
+		return ""
+	}
+	if connect := strings.TrimSpace(endpoint.ConnectString); connect != "" {
+		return connect
+	}
+	host := strings.TrimSpace(endpoint.Host)
+	cdb := strings.TrimSpace(endpoint.CdbName)
+	if host == "" || cdb == "" {
+		return ""
+	}
+	port := endpoint.Port
+	if port <= 0 {
+		port = 1521
+	}
+	return fmt.Sprintf("//%s:%d/%s", host, port, shardingv1.BuildDgmgrlServiceName(cdb))
+}
+
 func (r *ShardingDatabaseReconciler) buildDgPairsFromStandbyConfig(instance *databasev4.ShardingDatabase) []databasev4.DgPairStatus {
 	if effectiveShardingTypeForConstraints(instance) != "USER" {
 		return nil
@@ -1884,61 +1981,11 @@ func buildPrimaryIdentities(instance *databasev4.ShardingDatabase, cfg *database
 		ids = append(ids, pid)
 	}
 
-	appendRefs := func() {
-		for i := range cfg.PrimaryDatabaseRefs {
-			ref := cfg.PrimaryDatabaseRefs[i]
-			name := strings.TrimSpace(ref.Name)
-			if name == "" {
-				continue
-			}
-			ns := strings.TrimSpace(ref.Namespace)
-			if ns == "" {
-				ns = instance.Namespace
-			}
-			appendID(primaryIdentity{
-				Key:    ns + "/" + name,
-				Source: "PrimaryDatabaseRef",
-			})
+	for _, resolved := range resolveStandbyPrimarySources(cfg) {
+		if pid := resolved.toIdentity(instance.Namespace); pid != nil {
+			appendID(*pid)
 		}
 	}
-	appendConnects := func() {
-		for i := range cfg.PrimaryConnectStrings {
-			c := strings.TrimSpace(cfg.PrimaryConnectStrings[i])
-			if c == "" {
-				continue
-			}
-			appendID(primaryIdentity{
-				Key:     c,
-				Connect: c,
-				Source:  "ConnectString",
-			})
-		}
-	}
-	appendEndpoints := func() {
-		for i := range cfg.PrimaryEndpoints {
-			e := cfg.PrimaryEndpoints[i]
-			connect := strings.TrimSpace(e.ConnectString)
-			key := connect
-			if key == "" {
-				host := strings.TrimSpace(e.Host)
-				cdb := strings.TrimSpace(e.CdbName)
-				pdb := strings.TrimSpace(e.PdbName)
-				if host == "" && cdb == "" && pdb == "" {
-					continue
-				}
-				key = strings.ToLower(host) + ":" + strconv.Itoa(int(e.Port)) + "/" + strings.ToUpper(cdb) + "/" + strings.ToUpper(pdb)
-			}
-			appendID(primaryIdentity{
-				Key:     key,
-				Connect: connect,
-				Source:  "Endpoint",
-			})
-		}
-	}
-
-	appendRefs()
-	appendConnects()
-	appendEndpoints()
 
 	sort.Slice(ids, func(i, j int) bool { return ids[i].Key < ids[j].Key })
 	return ids
@@ -2549,7 +2596,7 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 		}
 
 		if standbyConfigPrimaryCountController(info.StandbyConfig) > 0 {
-			// standbyConfig explicitly provides primary source(s); no local primary-ref autofill required.
+			// standbyConfig explicitly provides primarySources; no local primary-ref autofill required.
 			continue
 		}
 
@@ -4014,7 +4061,7 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 		}
 		if spaceExternalPrimary[ss] {
 			if cnt > 0 {
-				return fmt.Errorf("user sharding shardSpace %s uses standbyConfig primary source; do not set local deployAs=PRIMARY", ss)
+				return fmt.Errorf("user sharding shardSpace %s uses standbyConfig.primarySources; do not set local deployAs=PRIMARY", ss)
 			}
 			continue
 		}
@@ -4984,65 +5031,15 @@ func standbyConfigPrimaryCountController(cfg *databasev4.StandbyConfig) int32 {
 		return 0
 	}
 
-	if c := countUniquePrimaryDatabaseRefsController(cfg.PrimaryDatabaseRefs); c > 0 {
-		return c
-	}
-	if c := countUniqueStringsController(cfg.PrimaryConnectStrings); c > 0 {
-		return c
-	}
-	return countUniquePrimaryEndpointsController(cfg.PrimaryEndpoints)
-}
-
-func countUniquePrimaryDatabaseRefsController(in []databasev4.PrimaryDatabaseCRRef) int32 {
 	seen := map[string]bool{}
 	var count int32
-	for i := range in {
-		ref := in[i]
-		name := strings.ToLower(strings.TrimSpace(ref.Name))
-		if name == "" {
+	for _, resolved := range resolveStandbyPrimarySources(cfg) {
+		pid := resolved.toIdentity("")
+		if pid == nil {
 			continue
 		}
-		ns := strings.ToLower(strings.TrimSpace(ref.Namespace))
-		key := ns + "/" + name
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		count++
-	}
-	return count
-}
-
-func countUniqueStringsController(in []string) int32 {
-	seen := map[string]bool{}
-	var count int32
-	for i := range in {
-		v := strings.ToLower(strings.TrimSpace(in[i]))
-		if v == "" || seen[v] {
-			continue
-		}
-		seen[v] = true
-		count++
-	}
-	return count
-}
-
-func countUniquePrimaryEndpointsController(in []databasev4.PrimaryEndpointRef) int32 {
-	seen := map[string]bool{}
-	var count int32
-	for i := range in {
-		e := in[i]
-		key := strings.ToLower(strings.TrimSpace(e.ConnectString))
-		if key == "" {
-			host := strings.ToLower(strings.TrimSpace(e.Host))
-			cdb := strings.ToLower(strings.TrimSpace(e.CdbName))
-			pdb := strings.ToLower(strings.TrimSpace(e.PdbName))
-			if host == "" && cdb == "" && pdb == "" {
-				continue
-			}
-			key = host + ":" + strconv.Itoa(int(e.Port)) + "/" + cdb + "/" + pdb
-		}
-		if seen[key] {
+		key := strings.ToLower(strings.TrimSpace(pid.Key))
+		if key == "" || seen[key] {
 			continue
 		}
 		seen[key] = true

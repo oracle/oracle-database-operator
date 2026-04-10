@@ -13,7 +13,46 @@ import (
 func sidbWebhookValidBaseSpec() *SingleInstanceDatabase {
 	return &SingleInstanceDatabase{
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb-test", Namespace: "default"},
-		Spec:       SingleInstanceDatabaseSpec{CreateAs: "primary"},
+		Spec: SingleInstanceDatabaseSpec{
+			CreateAs: "primary",
+			Image:    SingleInstanceDatabaseImage{},
+		},
+	}
+}
+
+func TestSIDBWebhookDefaultSetsDataguardModePreview(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+
+	if err := (&SingleInstanceDatabase{}).Default(context.Background(), sidb); err != nil {
+		t.Fatalf("expected default to succeed, got: %v", err)
+	}
+	if sidb.Spec.Dataguard == nil {
+		t.Fatalf("expected dataguard spec to be defaulted")
+	}
+	if sidb.Spec.Dataguard.Mode != DataguardProducerModePreview {
+		t.Fatalf("expected dataguard mode %q, got %q", DataguardProducerModePreview, sidb.Spec.Dataguard.Mode)
+	}
+}
+
+func TestSIDBWebhookRejectsManagedDataguardMode(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Dataguard = &DataguardProducerSpec{Mode: DataguardProducerModeManaged}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for managed dataguard mode")
+	}
+}
+
+func TestSIDBWebhookRejectsClientWalletSecretWhenTCPSDisabled(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{
+		TCPS: &SingleInstanceDatabaseTCPS{
+			ClientWalletSecret: "dg-client-wallet",
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when clientWalletSecret is set but TCPS is disabled")
 	}
 }
 
@@ -143,6 +182,34 @@ func TestSIDBWebhookValidateUpdateRejectsTrueCachePrimarySourceChangeAfterBlobRe
 	}
 	if !strings.Contains(err.Error(), "primary source of a truecache database cannot be changed") {
 		t.Fatalf("expected truecache lock rejection message, got: %v", err)
+	}
+}
+
+func TestSIDBWebhookValidateUpdateRejectsPrimarySourceChangeWhenDataguardTopologyLocked(t *testing.T) {
+	oldObj := &SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby", Namespace: "ns1"},
+		Spec: SingleInstanceDatabaseSpec{
+			CreateAs: "standby",
+			PrimarySource: &SingleInstanceDatabasePrimarySource{
+				DatabaseRef: "primary-a",
+			},
+		},
+		Status: SingleInstanceDatabaseStatus{
+			CreatedAs: "standby",
+			Dataguard: &ProducerDataguardStatus{
+				TopologyLocked: true,
+			},
+		},
+	}
+	newObj := oldObj.DeepCopy()
+	newObj.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{DatabaseRef: "primary-b"}
+
+	_, err := (&SingleInstanceDatabase{}).ValidateUpdate(context.Background(), oldObj, newObj)
+	if err == nil {
+		t.Fatalf("expected primary source update to be rejected when dataguard topology is locked")
+	}
+	if !strings.Contains(err.Error(), "dataguard topology is locked") {
+		t.Fatalf("expected dataguard lock rejection message, got: %v", err)
 	}
 }
 

@@ -95,6 +95,7 @@ type SingleInstanceDatabaseSpec struct {
 	// Deprecated: use spec.primarySource.databaseRef.
 	PrimaryDatabaseRef string                               `json:"primaryDatabaseRef,omitempty"`
 	PrimarySource      *SingleInstanceDatabasePrimarySource `json:"primarySource,omitempty"`
+	Dataguard          *DataguardProducerSpec               `json:"dataguard,omitempty"`
 
 	// +kubebuilder:validation:Enum=primary;standby;clone;truecache
 	CreateAs string `json:"createAs,omitempty"`
@@ -201,6 +202,10 @@ type SingleInstanceDatabaseTCPS struct {
 	ListenerPort int `json:"listenerPort,omitempty"`
 	// TlsSecret references the Kubernetes TLS secret containing tls.crt and tls.key.
 	TlsSecret string `json:"tlsSecret,omitempty"`
+	// ClientWalletSecret optionally overrides the Secret used by DataguardBroker
+	// for TCPS client connectivity. When unset, the SIDB controller publishes an
+	// operator-generated wallet secret for Data Guard consumers.
+	ClientWalletSecret string `json:"clientWalletSecret,omitempty"`
 	// CertRenewInterval is used only when self-signed certificates are used.
 	CertRenewInterval string `json:"certRenewInterval,omitempty"`
 	// CertMountLocation is the in-pod mount path for the TCPS TLS secret.
@@ -419,7 +424,8 @@ type SingleInstanceDatabaseStatus struct {
 	ClientWalletLoc       string `json:"clientWalletLoc,omitempty"`
 	PrimaryDatabase       string `json:"primaryDatabase,omitempty"`
 	// +kubebuilder:default:=""
-	TcpsTlsSecret string `json:"tcpsTlsSecret"`
+	TcpsTlsSecret string                   `json:"tcpsTlsSecret"`
+	Dataguard     *ProducerDataguardStatus `json:"dataguard,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge

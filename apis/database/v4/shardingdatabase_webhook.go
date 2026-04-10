@@ -126,6 +126,10 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj *ShardingDatabase) e
 	if strings.TrimSpace(getTDEWalletEnabledFromSpec(&cr.Spec)) == "" {
 		cr.Spec.IsTdeWallet = "disable"
 	}
+	if cr.Spec.Dataguard == nil {
+		cr.Spec.Dataguard = &DataguardProducerSpec{}
+	}
+	cr.Spec.Dataguard.Mode = normalizeDataguardProducerMode(cr.Spec.Dataguard)
 
 	applyGlobalShardingReplicationDefaults(&cr.Spec)
 
@@ -666,6 +670,7 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj *ShardingData
 	warnings := deprecatedLegacyPVCFieldWarnings(&cr.Spec)
 	logger = logger.WithValues("name", cr.Name, "namespace", cr.Namespace)
 	logger.Info("running create validation")
+	validationErr = append(validationErr, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), cr.Spec.Dataguard)...)
 
 	//namespaces := db.GetWatchNamespaces()
 	//_, containsNamespace := namespaces[r.Namespace]
@@ -788,6 +793,7 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *S
 	oldCR := oldObj
 	newCR := newObj
 	warnings := deprecatedLegacyPVCFieldWarnings(&newCR.Spec)
+	validationErr = append(validationErr, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), newCR.Spec.Dataguard)...)
 
 	oldMode := detectShardingMode(&oldCR.Spec)
 	newMode := detectShardingMode(&newCR.Spec)
@@ -828,6 +834,11 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *S
 					field.Forbidden(field.NewPath("spec"), msg),
 				)
 			}
+		}
+		if isShardingDataguardTopologyLocked(oldCR) && hasShardingDataguardTopologyChange(oldCR, newCR) {
+			validationErr = append(validationErr,
+				field.Forbidden(field.NewPath("spec"),
+					"Data Guard topology-defining fields cannot be changed after sharding dataguard topology is locked"))
 		}
 	}
 
@@ -1377,7 +1388,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 						if cfg := r.Spec.ShardInfo[pindex].StandbyConfig; cfg != nil && standbyConfigPrimaryCount(cfg) > 0 {
 							validationErrs = append(validationErrs,
 								field.Forbidden(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("standbyConfig"),
-									"system sharding does not support standbyConfig primary source fields; standby mapping must follow shardGroup primary topology"))
+									"system sharding does not support standbyConfig.primarySources; standby mapping must follow shardGroup primary topology"))
 						}
 					}
 				}
@@ -1528,7 +1539,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 				if cfg := r.Spec.ShardInfo[pindex].StandbyConfig; cfg != nil && standbyConfigPrimaryCount(cfg) > 0 {
 					validationErrs = append(validationErrs,
 						field.Forbidden(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("standbyConfig"),
-							"composite sharding does not support standbyConfig primary source fields; standby mapping must follow shardGroup primary topology"))
+							"composite sharding does not support standbyConfig.primarySources; standby mapping must follow shardGroup primary topology"))
 				}
 				replicaCount := replicas
 				if replicaCount <= 0 {
@@ -1643,14 +1654,6 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	}
 
 	if replType == replDG && modeHint == modeUser {
-		for spaceKey, count := range userPrimarySourceCountBySpace {
-			if count > 1 {
-				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("standbyConfig"),
-						spaceKey,
-						fmt.Sprintf("User sharding: shardInfo allows at most one primary source per shardSpace; shardSpace %s has %d", spaceKey, count)))
-			}
-		}
 		for spaceKey := range userSpaceSeenInShardInfo {
 			primaryReplicas := userPrimaryReplicaCountBySpace[spaceKey]
 			standbyReplicas := userStandbyReplicaCountBySpace[spaceKey]
@@ -1659,7 +1662,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 				if primaryReplicas > 0 {
 					validationErrs = append(validationErrs,
 						field.Forbidden(field.NewPath("spec").Child("shardInfo"),
-							fmt.Sprintf("user sharding shardSpace %s uses standbyConfig primary source; do not set shardSpaceDetails.deployAs=PRIMARY", spaceKey)))
+							fmt.Sprintf("user sharding shardSpace %s uses standbyConfig.primarySources; do not set shardSpaceDetails.deployAs=PRIMARY", spaceKey)))
 				}
 				continue
 			}
@@ -1693,60 +1696,6 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	return nil
 }
 
-func validateUniquePrimarySourcesForSystemShardInfo(r *ShardingDatabase, index int) field.ErrorList {
-	var errs field.ErrorList
-	if r == nil || index < 0 || index >= len(r.Spec.ShardInfo) {
-		return errs
-	}
-	cfg := r.Spec.ShardInfo[index].StandbyConfig
-	if cfg == nil {
-		return errs
-	}
-
-	connectSeen := map[string]bool{}
-	for i := range cfg.PrimaryConnectStrings {
-		raw := strings.TrimSpace(cfg.PrimaryConnectStrings[i])
-		if raw == "" {
-			continue
-		}
-		key := strings.ToLower(raw)
-		if connectSeen[key] {
-			errs = append(errs,
-				field.Duplicate(
-					field.NewPath("spec").Child("shardInfo").Index(index).Child("standbyConfig").Child("primaryConnectStrings").Index(i),
-					cfg.PrimaryConnectStrings[i],
-				))
-			continue
-		}
-		connectSeen[key] = true
-	}
-
-	refSeen := map[string]bool{}
-	for i := range cfg.PrimaryDatabaseRefs {
-		ref := cfg.PrimaryDatabaseRefs[i]
-		name := strings.TrimSpace(ref.Name)
-		if name == "" {
-			continue
-		}
-		ns := strings.TrimSpace(ref.Namespace)
-		if ns == "" {
-			ns = r.Namespace
-		}
-		key := strings.ToLower(ns + "/" + name)
-		if refSeen[key] {
-			errs = append(errs,
-				field.Duplicate(
-					field.NewPath("spec").Child("shardInfo").Index(index).Child("standbyConfig").Child("primaryDatabaseRefs").Index(i),
-					fmt.Sprintf("%s/%s", ns, name),
-				))
-			continue
-		}
-		refSeen[key] = true
-	}
-
-	return errs
-}
-
 func validateStandbyConfigPrimarySourceExclusive(r *ShardingDatabase, index int) field.ErrorList {
 	var errs field.ErrorList
 	if r == nil || index < 0 || index >= len(r.Spec.ShardInfo) {
@@ -1757,24 +1706,50 @@ func validateStandbyConfigPrimarySourceExclusive(r *ShardingDatabase, index int)
 		return errs
 	}
 
-	hasRefs := countUniquePrimaryDatabaseRefs(cfg.PrimaryDatabaseRefs) > 0
-	hasConnects := countUniqueStrings(cfg.PrimaryConnectStrings) > 0
-	hasEndpoints := countUniquePrimaryEndpoints(cfg.PrimaryEndpoints) > 0
-
-	count := 0
-	if hasRefs {
-		count++
-	}
-	if hasConnects {
-		count++
-	}
-	if hasEndpoints {
-		count++
-	}
-
 	path := field.NewPath("spec").Child("shardInfo").Index(index).Child("standbyConfig")
-	if count > 1 {
-		errs = append(errs, field.Invalid(path, cfg, "primary source fields are mutually exclusive; set only one of primaryDatabaseRefs, primaryConnectStrings, or primaryEndpoints"))
+	seen := map[string]bool{}
+	for i := range cfg.PrimarySources {
+		source := &cfg.PrimarySources[i]
+		sourcePath := path.Child("primarySources").Index(i)
+		selected := 0
+		if source.DatabaseRef != nil {
+			selected++
+		}
+		if strings.TrimSpace(source.ConnectString) != "" {
+			selected++
+		}
+		if source.Details != nil {
+			selected++
+		}
+		if selected == 0 {
+			errs = append(errs, field.Required(sourcePath, "set exactly one of databaseRef, connectString, or details"))
+		}
+		if selected > 1 {
+			errs = append(errs, field.Forbidden(sourcePath, "databaseRef, connectString, and details are mutually exclusive; set only one"))
+		}
+		if source.DatabaseRef != nil && strings.TrimSpace(source.DatabaseRef.Name) == "" {
+			errs = append(errs, field.Required(sourcePath.Child("databaseRef").Child("name"), "name is required"))
+		}
+		if details := source.Details; details != nil {
+			if strings.TrimSpace(details.ConnectString) == "" {
+				if strings.TrimSpace(details.Host) == "" {
+					errs = append(errs, field.Required(sourcePath.Child("details").Child("host"), "host is required when connectString is not set"))
+				}
+				if strings.TrimSpace(details.CdbName) == "" {
+					errs = append(errs, field.Required(sourcePath.Child("details").Child("cdbName"), "cdbName is required when connectString is not set"))
+				}
+			}
+			if details.Port < 0 {
+				errs = append(errs, field.Invalid(sourcePath.Child("details").Child("port"), details.Port, "must be >= 0"))
+			}
+		}
+		if key := standbyPrimarySourceIdentityKey(source, r.Namespace); key != "" {
+			if seen[key] {
+				errs = append(errs, field.Duplicate(sourcePath, key))
+				continue
+			}
+			seen[key] = true
+		}
 	}
 	return errs
 }
@@ -2186,7 +2161,7 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 				if cnt > 0 {
 					validationErrs = append(validationErrs,
 						field.Forbidden(field.NewPath("spec").Child("shard"),
-							fmt.Sprintf("user sharding shardSpace %s uses standbyConfig primary source; do not set local deployAs=PRIMARY", spaceKey)))
+							fmt.Sprintf("user sharding shardSpace %s uses standbyConfig.primarySources; do not set local deployAs=PRIMARY", spaceKey)))
 				}
 				continue
 			}
@@ -2692,27 +2667,19 @@ func standbyConfigPrimaryCount(cfg *StandbyConfig) int32 {
 		return 0
 	}
 
-	if c := countUniquePrimaryDatabaseRefs(cfg.PrimaryDatabaseRefs); c > 0 {
-		return c
-	}
-	if c := countUniqueStrings(cfg.PrimaryConnectStrings); c > 0 {
-		return c
-	}
-	return countUniquePrimaryEndpoints(cfg.PrimaryEndpoints)
+	return standbyConfigPrimarySourceCount(cfg, "")
 }
 
-func countUniquePrimaryDatabaseRefs(in []PrimaryDatabaseCRRef) int32 {
+func standbyConfigPrimarySourceCount(cfg *StandbyConfig, defaultNamespace string) int32 {
+	if cfg == nil {
+		return 0
+	}
+
 	seen := map[string]bool{}
 	var count int32
-	for i := range in {
-		ref := in[i]
-		name := strings.ToLower(strings.TrimSpace(ref.Name))
-		if name == "" {
-			continue
-		}
-		ns := strings.ToLower(strings.TrimSpace(ref.Namespace))
-		key := ns + "/" + name
-		if seen[key] {
+	for i := range cfg.PrimarySources {
+		key := standbyPrimarySourceIdentityKey(&cfg.PrimarySources[i], defaultNamespace)
+		if key == "" || seen[key] {
 			continue
 		}
 		seen[key] = true
@@ -2721,40 +2688,127 @@ func countUniquePrimaryDatabaseRefs(in []PrimaryDatabaseCRRef) int32 {
 	return count
 }
 
-func countUniqueStrings(in []string) int32 {
-	seen := map[string]bool{}
-	var count int32
-	for i := range in {
-		v := strings.ToLower(strings.TrimSpace(in[i]))
-		if v == "" || seen[v] {
-			continue
-		}
-		seen[v] = true
-		count++
+func standbyPrimarySourceIdentityKey(source *StandbyPrimarySource, defaultNamespace string) string {
+	if source == nil {
+		return ""
 	}
-	return count
+	if ref := source.DatabaseRef; ref != nil && strings.TrimSpace(ref.Name) != "" {
+		ns := strings.TrimSpace(ref.Namespace)
+		if ns == "" {
+			ns = defaultNamespace
+		}
+		return "ref:" + strings.ToLower(ns+"/"+strings.TrimSpace(ref.Name))
+	}
+	if connect := strings.TrimSpace(source.ConnectString); connect != "" {
+		return "connect:" + strings.ToLower(connect)
+	}
+	if details := source.Details; details != nil {
+		if connect := strings.TrimSpace(details.ConnectString); connect != "" {
+			return "endpoint:" + strings.ToLower(connect)
+		}
+		host := strings.ToLower(strings.TrimSpace(details.Host))
+		cdb := strings.ToLower(strings.TrimSpace(details.CdbName))
+		pdb := strings.ToLower(strings.TrimSpace(details.PdbName))
+		if host == "" && cdb == "" && pdb == "" {
+			return ""
+		}
+		port := details.Port
+		if port <= 0 {
+			port = 1521
+		}
+		return fmt.Sprintf("endpoint:%s:%d/%s/%s", host, port, cdb, pdb)
+	}
+	return ""
 }
 
-func countUniquePrimaryEndpoints(in []PrimaryEndpointRef) int32 {
-	seen := map[string]bool{}
-	var count int32
-	for i := range in {
-		e := in[i]
-		key := strings.ToLower(strings.TrimSpace(e.ConnectString))
-		if key == "" {
-			host := strings.ToLower(strings.TrimSpace(e.Host))
-			cdb := strings.ToLower(strings.TrimSpace(e.CdbName))
-			pdb := strings.ToLower(strings.TrimSpace(e.PdbName))
-			if host == "" && cdb == "" && pdb == "" {
-				continue
-			}
-			key = host + ":" + strconv.Itoa(int(e.Port)) + "/" + cdb + "/" + pdb
-		}
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		count++
+func isShardingDataguardTopologyLocked(cr *ShardingDatabase) bool {
+	return cr != nil && cr.Status.Dataguard != nil && cr.Status.Dataguard.TopologyLocked
+}
+
+func hasShardingDataguardTopologyChange(oldCR, newCR *ShardingDatabase) bool {
+	return !reflect.DeepEqual(buildShardingDataguardTopologyProjection(oldCR), buildShardingDataguardTopologyProjection(newCR))
+}
+
+type shardingDataguardTopologyProjection struct {
+	ReplicationType string
+	ShardingType    string
+	EnableTCPS      bool
+	TcpsTlsSecret   string
+	Shard           []shardingDataguardShardProjection
+	ShardInfo       []shardingDataguardShardInfoProjection
+	ShardGroup      []ShardGroupSpec
+	ShardSpace      []ShardSpaceSpec
+}
+
+type shardingDataguardShardProjection struct {
+	Name               string
+	ShardSpace         string
+	ShardGroup         string
+	ShardRegion        string
+	DeployAs           string
+	PrimaryDatabaseRef *DatabaseRef
+	StandbyConfig      *StandbyConfig
+}
+
+type shardingDataguardShardInfoProjection struct {
+	ShardPreFixName    string
+	ShardNum           int32
+	Replicas           int32
+	ShardGroupDetails  *ShardGroupSpec
+	ShardSpaceDetails  *ShardSpaceSpec
+	PrimaryDatabaseRef *DatabaseRef
+	StandbyConfig      *StandbyConfig
+}
+
+func buildShardingDataguardTopologyProjection(cr *ShardingDatabase) shardingDataguardTopologyProjection {
+	var projection shardingDataguardTopologyProjection
+	if cr == nil {
+		return projection
 	}
-	return count
+
+	projection.ReplicationType = normalizeReplicationType(&cr.Spec)
+	projection.ShardingType = string(detectShardingMode(&cr.Spec))
+	projection.EnableTCPS = cr.Spec.EnableTCPS
+	projection.TcpsTlsSecret = strings.TrimSpace(cr.Spec.TcpsTlsSecret)
+
+	if len(cr.Spec.Shard) > 0 {
+		projection.Shard = make([]shardingDataguardShardProjection, 0, len(cr.Spec.Shard))
+		for i := range cr.Spec.Shard {
+			shard := cr.Spec.Shard[i]
+			projection.Shard = append(projection.Shard, shardingDataguardShardProjection{
+				Name:               shard.Name,
+				ShardSpace:         shard.ShardSpace,
+				ShardGroup:         shard.ShardGroup,
+				ShardRegion:        shard.ShardRegion,
+				DeployAs:           shard.DeployAs,
+				PrimaryDatabaseRef: shard.PrimaryDatabaseRef,
+				StandbyConfig:      shard.StandbyConfig,
+			})
+		}
+	}
+
+	if len(cr.Spec.ShardInfo) > 0 {
+		projection.ShardInfo = make([]shardingDataguardShardInfoProjection, 0, len(cr.Spec.ShardInfo))
+		for i := range cr.Spec.ShardInfo {
+			info := cr.Spec.ShardInfo[i]
+			projection.ShardInfo = append(projection.ShardInfo, shardingDataguardShardInfoProjection{
+				ShardPreFixName:    info.ShardPreFixName,
+				ShardNum:           info.ShardNum,
+				Replicas:           info.Replicas,
+				ShardGroupDetails:  info.ShardGroupDetails,
+				ShardSpaceDetails:  info.ShardSpaceDetails,
+				PrimaryDatabaseRef: info.PrimaryDatabaseRef,
+				StandbyConfig:      info.StandbyConfig,
+			})
+		}
+	}
+
+	if len(cr.Spec.ShardGroup) > 0 {
+		projection.ShardGroup = append(projection.ShardGroup, cr.Spec.ShardGroup...)
+	}
+	if len(cr.Spec.ShardSpace) > 0 {
+		projection.ShardSpace = append(projection.ShardSpace, cr.Spec.ShardSpace...)
+	}
+
+	return projection
 }

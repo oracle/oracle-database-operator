@@ -452,6 +452,15 @@ spec:
                 - clone
                 - truecache
                 type: string
+              dataguard:
+                properties:
+                  mode:
+                    enum:
+                    - Disabled
+                    - Preview
+                    - Managed
+                    type: string
+                type: object
               disableDefaultDiagVolumeClaim:
                 type: boolean
               edition:
@@ -900,25 +909,12 @@ spec:
                         type: string
                       certRenewInterval:
                         type: string
+                      clientWalletSecret:
+                        type: string
                       enabled:
                         type: boolean
                       listenerPort:
                         type: integer
-                      peer:
-                        properties:
-                          alias:
-                            type: string
-                          enabled:
-                            type: boolean
-                          host:
-                            type: string
-                          port:
-                            type: integer
-                          service:
-                            type: string
-                          sslServerDN:
-                            type: string
-                        type: object
                       tlsSecret:
                         type: string
                     type: object
@@ -1018,25 +1014,12 @@ spec:
                     type: string
                   certRenewInterval:
                     type: string
+                  clientWalletSecret:
+                    type: string
                   enabled:
                     type: boolean
                   listenerPort:
                     type: integer
-                  peer:
-                    properties:
-                      alias:
-                        type: string
-                      enabled:
-                        type: boolean
-                      host:
-                        type: string
-                      port:
-                        type: integer
-                      service:
-                        type: string
-                      sslServerDN:
-                        type: string
-                    type: object
                   tlsSecret:
                     type: string
                 type: object
@@ -1046,6 +1029,23 @@ spec:
                 type: integer
               tcpsTlsSecret:
                 type: string
+              tnsAliases:
+                items:
+                  properties:
+                    host:
+                      type: string
+                    name:
+                      type: string
+                    port:
+                      type: integer
+                    protocol:
+                      type: string
+                    serviceName:
+                      type: string
+                    sslServerDN:
+                      type: string
+                  type: object
+                type: array
               trueCache:
                 properties:
                   blobConfigMapKey:
@@ -1139,6 +1139,222 @@ spec:
               datafilesPatched:
                 default: "false"
                 type: string
+              dataguard:
+                properties:
+                  brokerRef:
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    type: object
+                  conditions:
+                    items:
+                      properties:
+                        lastTransitionTime:
+                          format: date-time
+                          type: string
+                        message:
+                          maxLength: 32768
+                          type: string
+                        observedGeneration:
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        reason:
+                          maxLength: 1024
+                          minLength: 1
+                          pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                          type: string
+                        status:
+                          enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                          type: string
+                        type:
+                          maxLength: 316
+                          pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                          type: string
+                      required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                      type: object
+                    type: array
+                  dbUniqueName:
+                    type: string
+                  endpoints:
+                    items:
+                      properties:
+                        host:
+                          type: string
+                        name:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
+                        protocol:
+                          type: string
+                        serviceName:
+                          type: string
+                        sslServerDN:
+                          type: string
+                      type: object
+                    type: array
+                  execution:
+                    properties:
+                      image:
+                        type: string
+                      imagePullSecrets:
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  lastPublishedTime:
+                    format: date-time
+                    type: string
+                  memberName:
+                    type: string
+                  phase:
+                    type: string
+                  primaryMemberName:
+                    type: string
+                  publishedTopologyHash:
+                    type: string
+                  readyForBroker:
+                    type: boolean
+                  role:
+                    type: string
+                  tcps:
+                    properties:
+                      clientWalletSecret:
+                        type: string
+                      enabled:
+                        type: boolean
+                      serverTLSSecret:
+                        type: string
+                      sslServerDN:
+                        type: string
+                      walletKey:
+                        type: string
+                    type: object
+                  topology:
+                    properties:
+                      members:
+                        items:
+                          properties:
+                            adminSecretRef:
+                              properties:
+                                secretKey:
+                                  type: string
+                                secretName:
+                                  type: string
+                              type: object
+                            dbUniqueName:
+                              type: string
+                            endpoints:
+                              items:
+                                properties:
+                                  host:
+                                    type: string
+                                  name:
+                                    type: string
+                                  port:
+                                    format: int32
+                                    type: integer
+                                  protocol:
+                                    type: string
+                                  serviceName:
+                                    type: string
+                                  sslServerDN:
+                                    type: string
+                                type: object
+                              type: array
+                            localRef:
+                              properties:
+                                apiVersion:
+                                  type: string
+                                kind:
+                                  type: string
+                                name:
+                                  type: string
+                                namespace:
+                                  type: string
+                              type: object
+                            name:
+                              type: string
+                            role:
+                              type: string
+                            tcps:
+                              properties:
+                                clientWalletSecret:
+                                  type: string
+                                enabled:
+                                  type: boolean
+                                serverTLSSecret:
+                                  type: string
+                                sslServerDN:
+                                  type: string
+                                walletKey:
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                      observer:
+                        properties:
+                          enabled:
+                            type: boolean
+                          image:
+                            type: string
+                          name:
+                            type: string
+                          nodeSelector:
+                            additionalProperties:
+                              type: string
+                            type: object
+                        type: object
+                      pairs:
+                        items:
+                          properties:
+                            primary:
+                              type: string
+                            standby:
+                              type: string
+                            type:
+                              type: string
+                          type: object
+                        type: array
+                      policy:
+                        properties:
+                          fastStartFailover:
+                            type: boolean
+                          protectionMode:
+                            type: string
+                          transportMode:
+                            type: string
+                        type: object
+                      sourceKind:
+                        type: string
+                      sourceRef:
+                        properties:
+                          apiVersion:
+                            type: string
+                          kind:
+                            type: string
+                          name:
+                            type: string
+                          namespace:
+                            type: string
+                        type: object
+                    type: object
+                  topologyHash:
+                    type: string
+                  topologyLocked:
+                    type: boolean
+                type: object
               dgBroker:
                 type: string
               edition:
