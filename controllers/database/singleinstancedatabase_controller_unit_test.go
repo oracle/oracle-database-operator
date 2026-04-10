@@ -3,6 +3,7 @@ package controllers
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -95,6 +96,107 @@ func TestSIDBUnit_IsLocalPrimaryDatabaseSource(t *testing.T) {
 	}
 	if isLocalPrimaryDatabaseSource(connectString) {
 		t.Fatalf("expected connect string source to be treated as external")
+	}
+}
+
+func TestSIDBUnit_BuildAutomaticPrimaryTNSAliases(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "standby",
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				DatabaseRef: "primary-db",
+			},
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseTCPS{
+					Enabled: true,
+				},
+			},
+		},
+	}
+	primary := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "primary-db"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "ORCLCDB",
+		},
+	}
+
+	aliases, names := buildAutomaticPrimaryTNSAliases(sidb, primary)
+	expectedNames := []string{"ORCLCDB", "ORCLCDBTCPS", "ORCLCDBTCPS_DGMGRL", "ORCLCDB_DGMGRL"}
+	if !reflect.DeepEqual(names, expectedNames) {
+		t.Fatalf("unexpected generated alias names: got %v want %v", names, expectedNames)
+	}
+
+	if got := aliases["ORCLCDB"]; got.Host != "primary-db" || got.Port != 1521 || got.ServiceName != "ORCLCDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
+		t.Fatalf("unexpected base primary alias: %#v", got)
+	}
+	if got := aliases["ORCLCDB_DGMGRL"]; got.Host != "primary-db" || got.Port != 1521 || got.ServiceName != "ORCLCDB_DGMGRL" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
+		t.Fatalf("unexpected dgmgrl alias: %#v", got)
+	}
+	if got := aliases["ORCLCDBTCPS"]; got.Host != "primary-db" || got.Port != 2484 || got.ServiceName != "ORCLCDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
+		t.Fatalf("unexpected tcps alias: %#v", got)
+	}
+	if got := aliases["ORCLCDBTCPS_DGMGRL"]; got.Host != "primary-db" || got.Port != 2484 || got.ServiceName != "ORCLCDB_DGMGRL" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
+		t.Fatalf("unexpected tcps dgmgrl alias: %#v", got)
+	}
+}
+
+func TestSIDBUnit_BuildManagedTNSAliasesAppliesOverridesAndAppendsExtras(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "truecache",
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				Details: &dbapi.SingleInstanceDatabasePrimaryDetails{
+					Host: "primary-host",
+					Sid:  "PRIMDB",
+				},
+			},
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseTCPS{
+					Enabled: true,
+				},
+			},
+			TNSAliases: []dbapi.SingleInstanceDatabaseTNSAlias{
+				{
+					Name:        "PRIMDB",
+					Host:        "override-host",
+					Port:        1525,
+					ServiceName: "override_svc",
+				},
+				{
+					Name:        "PRIMDBTCPS",
+					Host:        "secure-host",
+					ServiceName: "primdb",
+					SSLServerDN: "CN=primary",
+				},
+				{
+					Name:        "DATAGUARD",
+					Host:        "dg-host",
+					ServiceName: "DATAGUARD",
+				},
+			},
+		},
+	}
+
+	aliases, names := buildManagedTNSAliases(sidb, nil)
+	expectedNames := []string{"DATAGUARD", "PRIMDB", "PRIMDBTCPS", "PRIMDB_DGMGRL"}
+	if !reflect.DeepEqual(names, expectedNames) {
+		t.Fatalf("unexpected managed alias names: got %v want %v", names, expectedNames)
+	}
+
+	if got := aliases["PRIMDB"]; got.Host != "override-host" || got.Port != 1525 || got.ServiceName != "OVERRIDE_SVC" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
+		t.Fatalf("unexpected overridden PRIMDB alias: %#v", got)
+	}
+	if got := aliases["PRIMDBTCPS"]; got.Host != "secure-host" || got.Port != 2484 || got.ServiceName != "PRIMDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS || got.SSLServerDN != "CN=primary" {
+		t.Fatalf("unexpected merged PRIMDBTCPS alias: %#v", got)
+	}
+	if got := aliases["PRIMDB_DGMGRL"]; got.Host != "primary-host" || got.Port != 1521 || got.ServiceName != "PRIMDB_DGMGRL" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
+		t.Fatalf("unexpected generated PRIMDB_DGMGRL alias: %#v", got)
+	}
+	if _, exists := aliases["PRIMDBTCPS_DGMGRL"]; exists {
+		t.Fatalf("did not expect PRIMDBTCPS_DGMGRL alias for truecache")
+	}
+	if got := aliases["DATAGUARD"]; got.Host != "dg-host" || got.ServiceName != "DATAGUARD" {
+		t.Fatalf("unexpected appended DATAGUARD alias: %#v", got)
 	}
 }
 

@@ -828,7 +828,7 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		if result.Requeue || err != nil {
 			return result, err
 		}
-		if err := syncConfiguredTNSAliasesInPod(r, sidb, readyPod, ctx, req); err != nil {
+		if err := syncConfiguredTNSAliasesInPod(r, sidb, referredPrimaryDatabase, readyPod, ctx, req); err != nil {
 			return requeueY, err
 		}
 		return requeueN, nil
@@ -859,7 +859,14 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		r.Log.Info(out)
 	}
 
-	if err := syncConfiguredTNSAliasesInPod(r, sidb, readyPod, ctx, req); err != nil {
+	if getTcpsEnabled(sidb) && (sidb.Spec.CreateAs == "standby" || sidb.Spec.CreateAs == "truecache") {
+		tcpsResult, err := r.configTcps(sidb, readyPod, ctx, req, phaseCtx)
+		if tcpsResult.Requeue || err != nil {
+			return tcpsResult, err
+		}
+	}
+
+	if err := syncConfiguredTNSAliasesInPod(r, sidb, referredPrimaryDatabase, readyPod, ctx, req); err != nil {
 		return requeueY, err
 	}
 
@@ -5412,25 +5419,14 @@ func writeManagedTNSAliasesStateInPod(r *SingleInstanceDatabaseReconciler, pod c
 	return nil
 }
 
-func syncConfiguredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner *dbapi.SingleInstanceDatabase, pod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+func syncConfiguredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase, pod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	if owner == nil {
 		return nil
 	}
 	tnsFile := getTnsFilePathBySID(owner.Spec.Sid)
 	stateFile := tnsFile + ".operator_aliases"
 
-	desired := make(map[string]dbapi.SingleInstanceDatabaseTNSAlias, len(owner.Spec.TNSAliases))
-	desiredNames := make([]string, 0, len(owner.Spec.TNSAliases))
-	for i := range owner.Spec.TNSAliases {
-		item := owner.Spec.TNSAliases[i]
-		name := strings.ToUpper(strings.TrimSpace(item.Name))
-		if name == "" {
-			continue
-		}
-		desired[name] = item
-		desiredNames = append(desiredNames, name)
-	}
-	sort.Strings(desiredNames)
+	desired, desiredNames := buildManagedTNSAliases(owner, primary)
 
 	for _, alias := range desiredNames {
 		item := desired[alias]
@@ -5473,6 +5469,124 @@ func syncConfiguredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner *d
 	}
 
 	return writeManagedTNSAliasesStateInPod(r, pod, ctx, req, stateFile, desiredNames)
+}
+
+func buildManagedTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
+	desired, _ := buildAutomaticPrimaryTNSAliases(owner, primary)
+
+	for i := range owner.Spec.TNSAliases {
+		item := normalizeTNSAlias(owner.Spec.TNSAliases[i])
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		if generated, exists := desired[name]; exists {
+			desired[name] = mergeTNSAliasOverride(generated, item)
+			continue
+		}
+		desired[name] = item
+	}
+
+	desiredNames := make([]string, 0, len(desired))
+	for name := range desired {
+		desiredNames = append(desiredNames, name)
+	}
+	sort.Strings(desiredNames)
+	return desired, desiredNames
+}
+
+func buildAutomaticPrimaryTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
+	desired := map[string]dbapi.SingleInstanceDatabaseTNSAlias{}
+	if owner == nil {
+		return desired, nil
+	}
+	if owner.Spec.CreateAs != "standby" && owner.Spec.CreateAs != "truecache" {
+		return desired, nil
+	}
+
+	primaryAlias := strings.ToUpper(strings.TrimSpace(GetPrimaryDatabaseSid(owner, primary)))
+	primaryHost := strings.TrimSpace(GetPrimaryDatabaseHost(owner, primary))
+	if primaryAlias == "" || primaryHost == "" {
+		return desired, nil
+	}
+
+	desired[primaryAlias] = dbapi.SingleInstanceDatabaseTNSAlias{
+		Name:        primaryAlias,
+		Host:        primaryHost,
+		Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
+		ServiceName: primaryAlias,
+		Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
+	}
+	desired[primaryAlias+"_DGMGRL"] = dbapi.SingleInstanceDatabaseTNSAlias{
+		Name:        primaryAlias + "_DGMGRL",
+		Host:        primaryHost,
+		Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
+		ServiceName: primaryAlias + "_DGMGRL",
+		Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
+	}
+
+	if getTcpsEnabled(owner) {
+		desired[primaryAlias+"TCPS"] = dbapi.SingleInstanceDatabaseTNSAlias{
+			Name:        primaryAlias + "TCPS",
+			Host:        primaryHost,
+			Port:        int(dbcommons.CONTAINER_TCPS_PORT),
+			ServiceName: primaryAlias,
+			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
+		}
+		if owner.Spec.CreateAs == "standby" {
+			desired[primaryAlias+"TCPS_DGMGRL"] = dbapi.SingleInstanceDatabaseTNSAlias{
+				Name:        primaryAlias + "TCPS_DGMGRL",
+				Host:        primaryHost,
+				Port:        int(dbcommons.CONTAINER_TCPS_PORT),
+				ServiceName: primaryAlias + "_DGMGRL",
+				Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
+			}
+		}
+	}
+
+	desiredNames := make([]string, 0, len(desired))
+	for name := range desired {
+		desiredNames = append(desiredNames, name)
+	}
+	sort.Strings(desiredNames)
+	return desired, desiredNames
+}
+
+func normalizeTNSAlias(item dbapi.SingleInstanceDatabaseTNSAlias) dbapi.SingleInstanceDatabaseTNSAlias {
+	item.Name = strings.ToUpper(strings.TrimSpace(item.Name))
+	item.Host = strings.TrimSpace(item.Host)
+	item.ServiceName = strings.ToUpper(strings.TrimSpace(item.ServiceName))
+	item.SSLServerDN = strings.TrimSpace(item.SSLServerDN)
+	if item.Protocol != "" {
+		item.Protocol = dbapi.SingleInstanceDatabaseTNSAliasProtocol(normalizeTNSAliasProtocol(string(item.Protocol)))
+	}
+	return item
+}
+
+func mergeTNSAliasOverride(base dbapi.SingleInstanceDatabaseTNSAlias, override dbapi.SingleInstanceDatabaseTNSAlias) dbapi.SingleInstanceDatabaseTNSAlias {
+	merged := normalizeTNSAlias(base)
+	override = normalizeTNSAlias(override)
+
+	if override.Name != "" {
+		merged.Name = override.Name
+	}
+	if override.Host != "" {
+		merged.Host = override.Host
+	}
+	if override.Port > 0 {
+		merged.Port = override.Port
+	}
+	if override.ServiceName != "" {
+		merged.ServiceName = override.ServiceName
+	}
+	if override.Protocol != "" {
+		merged.Protocol = override.Protocol
+	}
+	if override.SSLServerDN != "" {
+		merged.SSLServerDN = override.SSLServerDN
+	}
+
+	return merged
 }
 
 func resolveTNSAliasSettings(owner *dbapi.SingleInstanceDatabase, defaultAlias, defaultHost string, defaultPort int, defaultService string) (alias, host string, port int, serviceName, protocol, sslDN string) {
@@ -5721,25 +5835,21 @@ func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dba
 	primary *dbapi.SingleInstanceDatabase, dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 
 	tnsFile := getTnsFilePathBySID(s.Spec.Sid)
-	defaultAlias := GetPrimaryDatabaseSid(s, primary)
-	defaultHost := GetPrimaryDatabaseHost(s, primary)
-	defaultPort := GetPrimaryDatabasePort(s)
-	if defaultPort == 0 {
-		defaultPort = 1521
+	desired, desiredNames := buildAutomaticPrimaryTNSAliases(s, primary)
+	for _, alias := range desiredNames {
+		item := desired[alias]
+		r.Log.Info("Primary standby tns alias values",
+			"alias", alias,
+			"host", item.Host,
+			"port", item.Port,
+			"serviceName", item.ServiceName,
+			"protocol", item.Protocol,
+		)
+		if err := upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, item.Host, item.Port, item.ServiceName, string(item.Protocol), item.SSLServerDN); err != nil {
+			return err
+		}
 	}
-
-	alias, host, port, serviceName, protocol, sslDN :=
-		resolveTNSAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
-
-	r.Log.Info("Primary standby tns alias values",
-		"alias", alias,
-		"host", host,
-		"port", port,
-		"serviceName", serviceName,
-		"protocol", protocol,
-	)
-
-	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, protocol, sslDN)
+	return nil
 }
 
 // #############################################################################
@@ -5909,14 +6019,14 @@ func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPr
 func SetupExternalPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	tnsFile := getTnsFilePathBySID(s.Spec.Sid)
-	defaultAlias := GetPrimaryDatabaseSid(s, nil)
-	defaultHost := GetPrimaryDatabaseHost(s, nil)
-	defaultPort := GetPrimaryDatabasePort(s)
-	if defaultPort == 0 {
-		defaultPort = 1521
+	desired, desiredNames := buildAutomaticPrimaryTNSAliases(s, nil)
+	for _, alias := range desiredNames {
+		item := desired[alias]
+		if err := upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, item.Host, item.Port, item.ServiceName, string(item.Protocol), item.SSLServerDN); err != nil {
+			return err
+		}
 	}
-	alias, host, port, serviceName, protocol, sslDN := resolveTNSAliasSettings(s, defaultAlias, defaultHost, defaultPort, defaultAlias)
-	return upsertTnsAliasInPod(r, dbReadyPod, ctx, req, tnsFile, alias, host, port, serviceName, protocol, sslDN)
+	return nil
 }
 
 // SetupListenerForDGOnDatabase updates listener entries needed for Data Guard on a database.
