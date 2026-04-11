@@ -81,6 +81,10 @@ spec:
                 items:
                   type: string
                 type: array
+            required:
+            - primaryDatabaseRef
+            - protectionMode
+            - standbyDatabaseRefs
             type: object
           status:
             properties:
@@ -106,6 +110,8 @@ spec:
                 type: string
             type: object
         type: object
+    deprecated: true
+    deprecationWarning: DataguardBroker v1alpha1 is deprecated; use apiVersion database.oracle.com/v4. Existing v1alpha1 resources remain supported for migration only.
     served: true
     storage: false
     subresources:

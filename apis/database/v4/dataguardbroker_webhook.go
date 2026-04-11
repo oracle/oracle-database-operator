@@ -54,6 +54,7 @@ import (
 func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewWebhookManagedBy[*DataguardBroker](mgr, r).
+		WithValidator(r).
 		Complete()
 }
 
