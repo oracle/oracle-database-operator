@@ -50,13 +50,13 @@ type DataguardBrokerSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	PrimaryDatabaseRef   string            `json:"primaryDatabaseRef"`
-	StandbyDatabaseRefs  []string          `json:"standbyDatabaseRefs"`
+	PrimaryDatabaseRef   string            `json:"primaryDatabaseRef,omitempty"`
+	StandbyDatabaseRefs  []string          `json:"standbyDatabaseRefs,omitempty"`
 	SetAsPrimaryDatabase string            `json:"setAsPrimaryDatabase,omitempty"`
 	LoadBalancer         bool              `json:"loadBalancer,omitempty"`
 	ServiceAnnotations   map[string]string `json:"serviceAnnotations,omitempty"`
 	// +kubebuilder:validation:Enum=MaxPerformance;MaxAvailability
-	ProtectionMode string            `json:"protectionMode"`
+	ProtectionMode string            `json:"protectionMode,omitempty"`
 	NodeSelector   map[string]string `json:"nodeSelector,omitempty"`
 
 	FastStartFailover bool                    `json:"fastStartFailover,omitempty"`

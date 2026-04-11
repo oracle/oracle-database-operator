@@ -79,10 +79,6 @@ spec:
                 items:
                   type: string
                 type: array
-            required:
-            - primaryDatabaseRef
-            - protectionMode
-            - standbyDatabaseRefs
             type: object
           status:
             properties:
@@ -176,10 +172,6 @@ spec:
                 items:
                   type: string
                 type: array
-            required:
-            - primaryDatabaseRef
-            - protectionMode
-            - standbyDatabaseRefs
             type: object
           status:
             properties:
