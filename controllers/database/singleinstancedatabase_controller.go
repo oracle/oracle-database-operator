@@ -1859,16 +1859,6 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: tcpsTLSSecret,
 								Optional:   func() *bool { i := true; return &i }(),
-								Items: []corev1.KeyToPath{
-									{
-										Key:  "tls.crt",  // Mount the certificate
-										Path: "cert.crt", // Mount path inside the container
-									},
-									{
-										Key:  "tls.key",    // Mount the private key
-										Path: "client.key", // Mount path inside the container
-									},
-								},
 							},
 						}
 					}(),
