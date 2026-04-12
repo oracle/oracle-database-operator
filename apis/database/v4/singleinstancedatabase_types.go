@@ -369,6 +369,7 @@ type SingleInstanceDatabaseImage struct {
 	Version     string             `json:"version,omitempty"`
 	PullFrom    string             `json:"pullFrom"`
 	PullSecrets string             `json:"pullSecrets,omitempty"`
+	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
 	PullPolicy  *corev1.PullPolicy `json:"pullPolicy,omitempty"`
 	PrebuiltDB  bool               `json:"prebuiltDB,omitempty"`
 }

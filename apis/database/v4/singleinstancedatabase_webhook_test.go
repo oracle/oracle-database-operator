@@ -694,3 +694,25 @@ func TestSIDBWebhookRestoreFileSystemWithDBIDEnvVarPasses(t *testing.T) {
 		t.Fatalf("expected no validation errors, got: %v", errs)
 	}
 }
+
+func TestSIDBWebhookRejectsInvalidPullPolicy(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	invalid := corev1.PullPolicy("Sometimes")
+	sidb.Spec.Image.PullFrom = "example.com/repo/image:tag"
+	sidb.Spec.Image.PullPolicy = &invalid
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for invalid pullPolicy")
+	}
+}
+
+func TestSIDBWebhookAcceptsValidPullPolicy(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	valid := corev1.PullAlways
+	sidb.Spec.Image.PullFrom = "example.com/repo/image:tag"
+	sidb.Spec.Image.PullPolicy = &valid
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors for valid pullPolicy, got: %v", errs)
+	}
+}

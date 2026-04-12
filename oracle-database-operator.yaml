@@ -19074,6 +19074,12 @@ spec:
                     type: boolean
                   pullFrom:
                     type: string
+                  pullPolicy:
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
+                    type: string
                   pullSecrets:
                     type: string
                   version:

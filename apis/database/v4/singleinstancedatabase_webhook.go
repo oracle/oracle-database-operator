@@ -330,6 +330,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		}
 	}
 	allErrs = append(allErrs, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), sidb.Spec.Dataguard)...)
+	allErrs = append(allErrs, validateSIDBImageSpec(field.NewPath("spec").Child("image"), &sidb.Spec.Image)...)
 
 	oradata := sidbOradataPersistence(sidb)
 	if sidb.Spec.Persistence.Oradata != nil && (sidb.Spec.Persistence.Size != "" || sidb.Spec.Persistence.StorageClass != "" || sidb.Spec.Persistence.AccessMode != "") {
@@ -549,6 +550,24 @@ func validateTNSAliases(sidb *SingleInstanceDatabase) field.ErrorList {
 	}
 
 	return allErrs
+}
+
+func validateSIDBImageSpec(path *field.Path, image *SingleInstanceDatabaseImage) field.ErrorList {
+	var allErrs field.ErrorList
+	if image == nil || image.PullPolicy == nil {
+		return allErrs
+	}
+
+	switch *image.PullPolicy {
+	case corev1.PullAlways, corev1.PullIfNotPresent, corev1.PullNever:
+		return allErrs
+	default:
+		return append(allErrs, field.NotSupported(
+			path.Child("pullPolicy"),
+			*image.PullPolicy,
+			[]string{string(corev1.PullAlways), string(corev1.PullIfNotPresent), string(corev1.PullNever)},
+		))
+	}
 }
 
 func defaultSIDBRestoreSpec(restore **SingleInstanceDatabaseRestoreSpec) {

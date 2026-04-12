@@ -590,15 +590,15 @@ spec:
                 type: array
               image:
                 properties:
+                  prebuiltDB:
+                    type: boolean
+                  pullFrom:
+                    type: string
                   pullPolicy:
                     enum:
                     - Always
                     - IfNotPresent
                     - Never
-                    type: string
-                  prebuiltDB:
-                    type: boolean
-                  pullFrom:
                     type: string
                   pullSecrets:
                     type: string

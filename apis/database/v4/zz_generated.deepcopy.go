@@ -6273,7 +6273,7 @@ func (in *SingleInstanceDatabaseSpec) DeepCopyInto(out *SingleInstanceDatabaseSp
 		}
 	}
 	in.AdminPassword.DeepCopyInto(&out.AdminPassword)
-	out.Image = in.Image
+	in.Image.DeepCopyInto(&out.Image)
 	in.Persistence.DeepCopyInto(&out.Persistence)
 	if in.InitParams != nil {
 		in, out := &in.InitParams, &out.InitParams
