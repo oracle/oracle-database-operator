@@ -376,7 +376,7 @@ func (r *ShardingDatabaseReconciler) syncShardingDataguardPreviewStatus(instance
 		return
 	}
 
-	topology, members, pairs, ready := r.buildShardingPreviewTopology(instance)
+	topology, members, pairs, previewMessage, previewReason, ready := r.buildShardingPreviewTopology(instance)
 	next.Topology = topology
 	next.Execution = buildShardingPreviewExecutionStatus(instance)
 	next.Members = members
@@ -388,28 +388,46 @@ func (r *ShardingDatabaseReconciler) syncShardingDataguardPreviewStatus(instance
 		next.TopologyHash = ""
 		next.PublishedTopologyHash = ""
 		next.LastPublishedTime = nil
-		setDataguardPreviewCondition(&next.Conditions, instance.Generation, false, "WaitingForTopology", "resolved Data Guard topology is not ready yet")
+		msg := "resolved Data Guard topology is not ready yet"
+		if strings.TrimSpace(previewMessage) != "" {
+			msg = previewMessage
+		}
+		setDataguardPreviewCondition(&next.Conditions, instance.Generation, false, "WaitingForTopology", msg)
 		st.Dataguard = next
 		return
 	}
-	next.Phase = dataguardPreviewPhaseReady
-	next.ReadyForBroker = ready
 	next.TopologyHash = dataguardTopologyHash(topology)
-	next.PublishedTopologyHash = next.TopologyHash
 	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(instance.Name, instance.Namespace, topology, next.Execution, next.TopologyHash, ready)
 	if ready {
+		next.Phase = dataguardPreviewPhaseReady
+		next.ReadyForBroker = true
+		next.PublishedTopologyHash = next.TopologyHash
 		now := metav1.Now()
 		next.LastPublishedTime = &now
 		setDataguardPreviewCondition(&next.Conditions, instance.Generation, true, "PreviewReady", "resolved Data Guard topology is ready to be copied into DataguardBroker.spec.topology")
-	} else {
+	} else if previewReason == "WaitingForUserInput" {
+		next.Phase = dataguardPreviewPhaseWaitingForUserInput
+		next.ReadyForBroker = false
+		next.PublishedTopologyHash = ""
 		next.LastPublishedTime = nil
-		setDataguardPreviewCondition(&next.Conditions, instance.Generation, false, "WaitingForTopology", "resolved Data Guard topology is still incomplete")
+		msg := "resolved Data Guard topology requires additional user input before it can be copied into DataguardBroker.spec.topology"
+		if strings.TrimSpace(previewMessage) != "" {
+			msg = previewMessage
+		}
+		setDataguardPreviewCondition(&next.Conditions, instance.Generation, false, "WaitingForUserInput", msg)
+	} else {
+		next.Phase = dataguardPreviewPhaseWaitingForTopology
+		next.ReadyForBroker = false
+		next.PublishedTopologyHash = ""
+		next.LastPublishedTime = nil
+		msg := "resolved Data Guard topology is still incomplete"
+		if strings.TrimSpace(previewMessage) != "" {
+			msg = previewMessage
+		}
+		setDataguardPreviewCondition(&next.Conditions, instance.Generation, false, "WaitingForTopology", msg)
 	}
 	if !next.TopologyLocked {
 		next.TopologyLocked = false
-	}
-	if !ready {
-		next.Phase = dataguardPreviewPhaseWaitingForTopology
 	}
 	st.Dataguard = next
 }
@@ -429,9 +447,9 @@ func buildShardingPreviewExecutionStatus(instance *dbapi.ShardingDatabase) *dbap
 	return status
 }
 
-func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbapi.ShardingDatabase) (*dbapi.DataguardTopologySpec, []dbapi.ShardingDataguardMemberStatus, []dbapi.DataguardPairStatus, bool) {
+func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbapi.ShardingDatabase) (*dbapi.DataguardTopologySpec, []dbapi.ShardingDataguardMemberStatus, []dbapi.DataguardPairStatus, string, string, bool) {
 	if instance == nil || shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) != "DG" {
-		return nil, nil, nil, false
+		return nil, nil, nil, "", "WaitingForTopology", false
 	}
 
 	topology := &dbapi.DataguardTopologySpec{
@@ -448,18 +466,27 @@ func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbap
 	pairStatuses := []dbapi.DataguardPairStatus{}
 	memberIndex := map[string]int{}
 	ready := true
+	previewMessages := []string{}
+	previewReason := "PreviewReady"
 
-	addMember := func(member dbapi.DataguardTopologyMember, shard dbapi.ShardSpec, primaryMemberName string, message string) string {
+	addMember := func(member dbapi.DataguardTopologyMember, shard dbapi.ShardSpec, primaryMemberName, phase, message string) string {
 		name := sanitizeDataguardMemberName(member.Name, "member")
 		member.Name = name
 		if idx, ok := memberIndex[name]; ok {
 			if message != "" && idx < len(memberStatuses) && strings.TrimSpace(memberStatuses[idx].Message) == "" {
 				memberStatuses[idx].Message = message
 			}
+			if phase != "" && phase != dataguardPreviewPhaseReady && idx < len(memberStatuses) {
+				memberStatuses[idx].Phase = phase
+			}
 			return name
 		}
 		memberIndex[name] = len(topology.Members)
 		topology.Members = append(topology.Members, member)
+		statusPhase := strings.TrimSpace(phase)
+		if statusPhase == "" {
+			statusPhase = dataguardPreviewPhaseReady
+		}
 		memberStatuses = append(memberStatuses, dbapi.ShardingDataguardMemberStatus{
 			Name:              name,
 			Role:              member.Role,
@@ -469,7 +496,7 @@ func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbap
 			PrimaryMemberName: primaryMemberName,
 			Endpoints:         append([]dbapi.DataguardEndpointSpec(nil), member.Endpoints...),
 			TCPS:              member.TCPS,
-			Phase:             dataguardPreviewPhaseReady,
+			Phase:             statusPhase,
 			Message:           message,
 		})
 		return name
@@ -483,11 +510,24 @@ func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbap
 		}
 
 		standbyMember := buildShardingLocalTopologyMember(instance, shard, "PHYSICAL_STANDBY")
-		standbyName := addMember(standbyMember, shard, "", "")
+		if adminSecretRef, msg, ok := buildShardingPreviewAdminSecretRef(instance); ok {
+			standbyMember.AdminSecretRef = adminSecretRef
+		} else {
+			ready = false
+			previewReason = "WaitingForTopology"
+			if strings.TrimSpace(msg) != "" {
+				previewMessages = append(previewMessages, msg)
+			}
+		}
+		standbyName := addMember(standbyMember, shard, "", "", "")
 
-		primaryMember, primaryName, msg, resolved := r.buildShardingPrimaryPreviewMember(instance, shard)
+		primaryMember, primaryName, msg, resolved, pairReady := r.buildShardingPrimaryPreviewMember(instance, shard)
 		if !resolved {
 			ready = false
+			previewReason = "WaitingForTopology"
+			if strings.TrimSpace(msg) != "" {
+				previewMessages = append(previewMessages, msg)
+			}
 			pairStatuses = append(pairStatuses, dbapi.DataguardPairStatus{
 				Primary: "",
 				Standby: standbyName,
@@ -499,9 +539,22 @@ func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbap
 			memberStatuses[idx].Message = msg
 			continue
 		}
-		primaryName = addMember(*primaryMember, dbapi.ShardSpec{}, "", msg)
+		if strings.TrimSpace(msg) != "" {
+			previewMessages = append(previewMessages, msg)
+		}
+		primaryPhase := dataguardPreviewPhaseReady
+		standbyPhase := dataguardPreviewPhaseReady
+		if !pairReady {
+			ready = false
+			previewReason = "WaitingForUserInput"
+			primaryPhase = dataguardPreviewPhaseWaitingForUserInput
+			standbyPhase = dataguardPreviewPhaseWaitingForUserInput
+		}
+		primaryName = addMember(*primaryMember, dbapi.ShardSpec{}, "", primaryPhase, msg)
 		idx := memberIndex[standbyName]
 		memberStatuses[idx].PrimaryMemberName = primaryName
+		memberStatuses[idx].Phase = standbyPhase
+		memberStatuses[idx].Message = msg
 
 		topology.Pairs = append(topology.Pairs, dbapi.DataguardTopologyPair{
 			Primary: primaryName,
@@ -517,9 +570,9 @@ func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbap
 	}
 
 	if len(topology.Members) == 0 || len(topology.Pairs) == 0 {
-		return nil, memberStatuses, pairStatuses, false
+		return nil, memberStatuses, pairStatuses, strings.Join(previewMessages, "; "), previewReason, false
 	}
-	return topology, memberStatuses, pairStatuses, ready
+	return topology, memberStatuses, pairStatuses, strings.Join(previewMessages, "; "), previewReason, ready
 }
 
 func buildShardingLocalTopologyMember(instance *dbapi.ShardingDatabase, shard dbapi.ShardSpec, role string) dbapi.DataguardTopologyMember {
@@ -553,31 +606,67 @@ func buildShardingLocalTopologyMember(instance *dbapi.ShardingDatabase, shard db
 	return member
 }
 
-func (r *ShardingDatabaseReconciler) buildShardingPrimaryPreviewMember(instance *dbapi.ShardingDatabase, standby dbapi.ShardSpec) (*dbapi.DataguardTopologyMember, string, string, bool) {
+func (r *ShardingDatabaseReconciler) buildShardingPrimaryPreviewMember(instance *dbapi.ShardingDatabase, standby dbapi.ShardSpec) (*dbapi.DataguardTopologyMember, string, string, bool, bool) {
 	if instance == nil {
-		return nil, "", "instance is nil", false
+		return nil, "", "instance is nil", false, false
 	}
 
 	desiredPairs := r.buildDgPairsFromStandbyConfig(instance)
 	if pair := findPreviewPairForStandby(desiredPairs, standby.Name); pair != nil {
 		if p := r.findPrimaryByPair(instance, *pair); p != nil {
 			member := buildShardingLocalTopologyMember(instance, *p, "PRIMARY")
-			return &member, member.Name, strings.TrimSpace(pair.Message), true
+			if adminSecretRef, msg, ok := buildShardingPreviewAdminSecretRef(instance); ok {
+				member.AdminSecretRef = adminSecretRef
+				return &member, member.Name, strings.TrimSpace(pair.Message), true, true
+			} else {
+				return &member, member.Name, msg, true, false
+			}
 		}
 		if primaryMember := buildShardingExternalPrimaryPreviewMember(pair); primaryMember != nil {
-			return primaryMember, primaryMember.Name, strings.TrimSpace(pair.Message), true
+			primaryMember.AdminSecretRef = &dbapi.DataguardSecretRef{
+				SecretName: dataguardPreviewExternalSecretPlaceholder,
+				SecretKey:  dataguardPreviewExternalSecretKey,
+			}
+			message := fmt.Sprintf("topology member %q is external; update adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker", primaryMember.Name)
+			return primaryMember, primaryMember.Name, message, true, false
 		}
 	}
 
 	p, err := r.findPrimaryForStandby(instance, standby)
 	if err != nil {
-		return nil, "", err.Error(), false
+		return nil, "", err.Error(), false, false
 	}
 	if p == nil {
-		return nil, "", fmt.Sprintf("no primary resolved for standby %s", standby.Name), false
+		return nil, "", fmt.Sprintf("no primary resolved for standby %s", standby.Name), false, false
 	}
 	member := buildShardingLocalTopologyMember(instance, *p, "PRIMARY")
-	return &member, member.Name, "resolved from sharding topology", true
+	if adminSecretRef, msg, ok := buildShardingPreviewAdminSecretRef(instance); ok {
+		member.AdminSecretRef = adminSecretRef
+		return &member, member.Name, "resolved from sharding topology", true, true
+	} else {
+		return &member, member.Name, msg, true, false
+	}
+}
+
+func buildShardingPreviewAdminSecretRef(instance *dbapi.ShardingDatabase) (*dbapi.DataguardSecretRef, string, bool) {
+	if instance == nil {
+		return nil, "shardingdatabase is nil", false
+	}
+	if instance.Spec.DbSecret == nil {
+		return nil, fmt.Sprintf("shardingdatabase %q does not publish spec.dbSecret", instance.Name), false
+	}
+	secretName := strings.TrimSpace(instance.Spec.DbSecret.Name)
+	if secretName == "" {
+		return nil, fmt.Sprintf("shardingdatabase %q does not publish spec.dbSecret.name", instance.Name), false
+	}
+	secretKey := strings.TrimSpace(instance.Spec.DbSecret.DbAdmin.PasswordKey)
+	if secretKey == "" {
+		return nil, fmt.Sprintf("shardingdatabase %q does not publish spec.dbSecret.dbAdmin.passwordKey", instance.Name), false
+	}
+	return &dbapi.DataguardSecretRef{
+		SecretName: secretName,
+		SecretKey:  secretKey,
+	}, "", true
 }
 
 func findPreviewPairForStandby(pairs []dbapi.DgPairStatus, standbyName string) *dbapi.DgPairStatus {

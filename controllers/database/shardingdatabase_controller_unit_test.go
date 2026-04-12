@@ -9,6 +9,7 @@ import (
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -227,6 +228,12 @@ func TestShardingUnit_SyncDataguardPreviewStatusUserDG(t *testing.T) {
 			ShardingType:      "USER",
 			DbImage:           "oracle/sharding-db:23ai",
 			DbImagePullSecret: "db-pull-secret",
+			DbSecret: &databasev4.SecretDetails{
+				Name: "shard-db-secret",
+				DbAdmin: databasev4.PasswordSecretConfig{
+					PasswordKey: "oracle_pwd",
+				},
+			},
 			Dataguard:         &databasev4.DataguardProducerSpec{Mode: databasev4.DataguardProducerModePreview},
 			Shard: []databasev4.ShardSpec{
 				{Name: "primary1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
@@ -277,6 +284,107 @@ func TestShardingUnit_SyncDataguardPreviewStatusUserDG(t *testing.T) {
 	}
 	if status.Dataguard.RenderedBrokerSpec.Spec == nil || status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
 		t.Fatalf("expected rendered broker spec topology, got %#v", status.Dataguard.RenderedBrokerSpec)
+	}
+	for _, member := range status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members {
+		if member.AdminSecretRef == nil {
+			t.Fatalf("expected adminSecretRef for member %#v", member)
+		}
+		if member.AdminSecretRef.SecretName != "shard-db-secret" || member.AdminSecretRef.SecretKey != "oracle_pwd" {
+			t.Fatalf("unexpected adminSecretRef for member %#v", member)
+		}
+	}
+}
+
+func TestShardingUnit_SyncDataguardPreviewStatusExternalPrimaryRequiresUserInput(t *testing.T) {
+	inst := &databasev4.ShardingDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "shdb", Namespace: "ns1"},
+		Spec: databasev4.ShardingDatabaseSpec{
+			ReplicationType: "DG",
+			ShardingType:    "USER",
+			DbImage:         "oracle/sharding-db:23ai",
+			DbSecret: &databasev4.SecretDetails{
+				Name: "shard-db-secret",
+				DbAdmin: databasev4.PasswordSecretConfig{
+					PasswordKey: "oracle_pwd",
+				},
+			},
+			Dataguard: &databasev4.DataguardProducerSpec{Mode: databasev4.DataguardProducerModePreview},
+			Shard: []databasev4.ShardSpec{
+				{Name: "standby1", ShardSpace: "ss1", DeployAs: "STANDBY"},
+			},
+			ShardInfo: []databasev4.ShardingDetails{{
+				ShardPreFixName: "standby",
+				StandbyConfig: &databasev4.StandbyConfig{
+					StandbyPerPrimary: 1,
+					PrimarySources: []databasev4.StandbyPrimarySource{{
+						Details: &databasev4.PrimaryEndpointRef{
+							Host:    "external-primary",
+							Port:    1521,
+							CdbName: "PRIM",
+						},
+					}},
+				},
+			}},
+		},
+	}
+	status := &databasev4.ShardingDatabaseStatus{}
+
+	r := &ShardingDatabaseReconciler{}
+	r.syncShardingDataguardPreviewStatus(inst, status)
+
+	if status.Dataguard == nil {
+		t.Fatalf("expected dataguard preview status to be populated")
+	}
+	if status.Dataguard.Phase != dataguardPreviewPhaseWaitingForUserInput {
+		t.Fatalf("expected preview phase %q, got %q", dataguardPreviewPhaseWaitingForUserInput, status.Dataguard.Phase)
+	}
+	if status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be false")
+	}
+	if status.Dataguard.RenderedBrokerSpec == nil || status.Dataguard.RenderedBrokerSpec.Spec == nil || status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
+		t.Fatalf("expected rendered broker spec topology to be published")
+	}
+	if status.Dataguard.RenderedBrokerSpec.Ready {
+		t.Fatalf("expected rendered broker spec to be marked not ready")
+	}
+	condition := meta.FindStatusCondition(status.Dataguard.Conditions, "TopologyPreviewReady")
+	if condition == nil {
+		t.Fatalf("expected TopologyPreviewReady condition to be set")
+	}
+	if condition.Reason != "WaitingForUserInput" {
+		t.Fatalf("expected WaitingForUserInput condition reason, got %#v", condition)
+	}
+	if !strings.Contains(condition.Message, "adminSecretRef.secretName") {
+		t.Fatalf("expected condition message to explain adminSecretRef update, got %#v", condition)
+	}
+	members := status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
+	if len(members) != 2 {
+		t.Fatalf("expected two topology members, got %#v", members)
+	}
+	var primaryMember *databasev4.DataguardTopologyMember
+	var standbyMember *databasev4.DataguardTopologyMember
+	for i := range members {
+		switch members[i].Role {
+		case "PRIMARY":
+			primaryMember = &members[i]
+		case "PHYSICAL_STANDBY":
+			standbyMember = &members[i]
+		}
+	}
+	if primaryMember == nil || standbyMember == nil {
+		t.Fatalf("expected primary and standby members, got %#v", members)
+	}
+	if primaryMember.AdminSecretRef == nil {
+		t.Fatalf("expected placeholder adminSecretRef for external primary")
+	}
+	if primaryMember.AdminSecretRef.SecretName != dataguardPreviewExternalSecretPlaceholder || primaryMember.AdminSecretRef.SecretKey != dataguardPreviewExternalSecretKey {
+		t.Fatalf("unexpected placeholder adminSecretRef %#v", primaryMember.AdminSecretRef)
+	}
+	if standbyMember.AdminSecretRef == nil {
+		t.Fatalf("expected local standby adminSecretRef")
+	}
+	if standbyMember.AdminSecretRef.SecretName != "shard-db-secret" || standbyMember.AdminSecretRef.SecretKey != "oracle_pwd" {
+		t.Fatalf("unexpected standby adminSecretRef %#v", standbyMember.AdminSecretRef)
 	}
 }
 
