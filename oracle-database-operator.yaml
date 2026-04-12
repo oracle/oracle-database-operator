@@ -19414,9 +19414,37 @@ spec:
                         type: string
                       enabled:
                         type: boolean
-                      listenerPort:
-                        type: integer
                       tlsSecret:
+                        type: string
+                    type: object
+                type: object
+              services:
+                properties:
+                  external:
+                    properties:
+                      tcp:
+                        properties:
+                          enabled:
+                            type: boolean
+                          nodePort:
+                            type: integer
+                          port:
+                            type: integer
+                        type: object
+                      tcps:
+                        properties:
+                          enabled:
+                            type: boolean
+                          nodePort:
+                            type: integer
+                          port:
+                            type: integer
+                        type: object
+                      type:
+                        enum:
+                        - Disabled
+                        - NodePort
+                        - LoadBalancer
                         type: string
                     type: object
                 type: object
@@ -19504,6 +19532,36 @@ spec:
               serviceAnnotations:
                 additionalProperties:
                   type: string
+                type: object
+              services:
+                properties:
+                  external:
+                    properties:
+                      tcp:
+                        properties:
+                          enabled:
+                            type: boolean
+                          nodePort:
+                            type: integer
+                          port:
+                            type: integer
+                        type: object
+                      tcps:
+                        properties:
+                          enabled:
+                            type: boolean
+                          nodePort:
+                            type: integer
+                          port:
+                            type: integer
+                        type: object
+                      type:
+                        enum:
+                        - Disabled
+                        - NodePort
+                        - LoadBalancer
+                        type: string
+                    type: object
                 type: object
               sid:
                 maxLength: 12

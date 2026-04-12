@@ -110,7 +110,7 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 			AdminPassword: dbapi.SingleInstanceDatabaseAdminPassword{
 				SecretName: "standby-admin",
 			},
-			Image:    dbapi.SingleInstanceDatabaseImage{PullFrom: "oracle/db:19.3.0", PullSecrets: "pull-secret"},
+			Image: dbapi.SingleInstanceDatabaseImage{PullFrom: "oracle/db:19.3.0", PullSecrets: "pull-secret"},
 			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
 				DatabaseRef: "primary-db",
 			},
@@ -321,7 +321,7 @@ func TestSIDBUnit_BuildSIDBPreviewTCPSConfigUsesOverrideWalletSecret(t *testing.
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			Sid: "STBY",
 			Security: &dbapi.SingleInstanceDatabaseSecurity{
-				TCPS: &dbapi.SingleInstanceDatabaseTCPS{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{
 					Enabled:            true,
 					TlsSecret:          "server-tls",
 					ClientWalletSecret: "custom-client-wallet",
@@ -348,7 +348,7 @@ func TestSIDBUnit_BuildSIDBPreviewTCPSConfigUsesGeneratedWalletSecretWhenEnabled
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			Sid: "STBY",
 			Security: &dbapi.SingleInstanceDatabaseSecurity{
-				TCPS: &dbapi.SingleInstanceDatabaseTCPS{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{
 					Enabled:   true,
 					TlsSecret: "server-tls",
 				},
@@ -377,7 +377,7 @@ func TestSIDBUnit_BuildAutomaticPrimaryTNSAliases(t *testing.T) {
 				DatabaseRef: "primary-db",
 			},
 			Security: &dbapi.SingleInstanceDatabaseSecurity{
-				TCPS: &dbapi.SingleInstanceDatabaseTCPS{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{
 					Enabled: true,
 				},
 			},
@@ -421,7 +421,7 @@ func TestSIDBUnit_BuildManagedTNSAliasesAppliesOverridesAndAppendsExtras(t *test
 				},
 			},
 			Security: &dbapi.SingleInstanceDatabaseSecurity{
-				TCPS: &dbapi.SingleInstanceDatabaseTCPS{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{
 					Enabled: true,
 				},
 			},
@@ -467,6 +467,58 @@ func TestSIDBUnit_BuildManagedTNSAliasesAppliesOverridesAndAppendsExtras(t *test
 	}
 	if got := aliases["DATAGUARD"]; got.Host != "dg-host" || got.ServiceName != "DATAGUARD" {
 		t.Fatalf("unexpected appended DATAGUARD alias: %#v", got)
+	}
+}
+
+func TestSIDBUnit_ResolveExternalServiceConfigUsesNewLoadBalancerDefaults(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{Enabled: true},
+			},
+			Services: &dbapi.SingleInstanceDatabaseServices{
+				External: &dbapi.SingleInstanceDatabaseExternalService{
+					Type: dbapi.SingleInstanceDatabaseExternalServiceTypeLoadBalancer,
+					TCP:  &dbapi.SingleInstanceDatabaseExternalServicePort{Enabled: true},
+					TCPS: &dbapi.SingleInstanceDatabaseExternalServicePort{Enabled: true},
+				},
+			},
+		},
+	}
+
+	cfg := resolveExternalServiceConfig(sidb)
+	if cfg.Disabled {
+		t.Fatalf("expected external service to be enabled")
+	}
+	if cfg.Type != corev1.ServiceTypeLoadBalancer {
+		t.Fatalf("expected load balancer type, got %q", cfg.Type)
+	}
+	if !cfg.TCPEnabled || cfg.TCPServicePort != dbcommons.CONTAINER_LISTENER_PORT {
+		t.Fatalf("expected default tcp load balancer port %d, got %#v", dbcommons.CONTAINER_LISTENER_PORT, cfg)
+	}
+	if !cfg.TCPSEnabled || cfg.TCPSServicePort != dbcommons.CONTAINER_TCPS_PORT {
+		t.Fatalf("expected default tcps load balancer port %d, got %#v", dbcommons.CONTAINER_TCPS_PORT, cfg)
+	}
+}
+
+func TestSIDBUnit_ResolveExternalServiceConfigRetainsLegacyCompatibility(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			ListenerPort:     32001,
+			TcpsListenerPort: 32002,
+			TCPS:             &dbapi.SingleInstanceDatabaseTCPS{Enabled: true},
+		},
+	}
+
+	cfg := resolveExternalServiceConfig(sidb)
+	if cfg.Type != corev1.ServiceTypeNodePort {
+		t.Fatalf("expected nodeport type, got %q", cfg.Type)
+	}
+	if !cfg.TCPEnabled || cfg.TCPNodePort != 32001 {
+		t.Fatalf("expected legacy tcp nodeport 32001, got %#v", cfg)
+	}
+	if !cfg.TCPSEnabled || cfg.TCPSNodePort != 32002 {
+		t.Fatalf("expected legacy tcps nodeport 32002, got %#v", cfg)
 	}
 }
 

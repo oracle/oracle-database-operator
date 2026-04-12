@@ -161,9 +161,6 @@ func sidbTcpsEnabled(sidb *SingleInstanceDatabase) bool {
 }
 
 func sidbTcpsListenerPort(sidb *SingleInstanceDatabase) int {
-	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && sidb.Spec.Security.TCPS.ListenerPort != 0 {
-		return sidb.Spec.Security.TCPS.ListenerPort
-	}
 	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.ListenerPort != 0 {
 		return sidb.Spec.TCPS.ListenerPort
 	}
@@ -256,10 +253,11 @@ func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj *Single
 	singleinstancedatabaselog.Info("validate create", "name", sidb.Name)
 
 	allErrs := validateSingleInstanceDatabaseSpec(sidb)
+	warnings := sidbDeprecatedServiceConfigWarnings(sidb)
 	if len(allErrs) == 0 {
-		return nil, nil
+		return warnings, nil
 	}
-	return nil, apierrors.NewInvalid(
+	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		sidb.Name, allErrs)
 }
@@ -269,6 +267,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 	singleinstancedatabaselog.Info("validate update", "name", newSidb.Name)
 
 	allErrs := validateSingleInstanceDatabaseSpec(newSidb)
+	warnings := sidbDeprecatedServiceConfigWarnings(newSidb)
 	specChanged := !reflect.DeepEqual(oldSidb.Spec, newSidb.Spec)
 	if specChanged {
 		if locked, lockGen, lockMsg := lockpolicy.IsControllerUpdateLocked(oldSidb.Status.Conditions, lockpolicy.DefaultReconcilingConditionType, lockpolicy.DefaultUpdateLockReason); locked {
@@ -309,9 +308,9 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 	}
 
 	if len(allErrs) == 0 {
-		return nil, nil
+		return warnings, nil
 	}
-	return nil, apierrors.NewInvalid(
+	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		newSidb.Name, allErrs)
 }
@@ -331,6 +330,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	}
 	allErrs = append(allErrs, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), sidb.Spec.Dataguard)...)
 	allErrs = append(allErrs, validateSIDBImageSpec(field.NewPath("spec").Child("image"), &sidb.Spec.Image)...)
+	allErrs = append(allErrs, validateSIDBExternalServices(field.NewPath("spec").Child("services").Child("external"), sidb)...)
 
 	oradata := sidbOradataPersistence(sidb)
 	if sidb.Spec.Persistence.Oradata != nil && (sidb.Spec.Persistence.Size != "" || sidb.Spec.Persistence.StorageClass != "" || sidb.Spec.Persistence.AccessMode != "") {
@@ -486,15 +486,17 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	if tcpsTlsSecret != "" && tcpsCertRenewInterval != "" {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("tcpsCertRenewInterval"), "not applicable when tcpsTlsSecret is provided"))
 	}
-	if tcpsEnabled && sidb.Spec.ListenerPort != 0 && tcpsListenerPort != 0 && sidb.Spec.ListenerPort == tcpsListenerPort {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "listenerPort and tcpsListenerPort cannot be equal"))
-	}
-	if !sidb.Spec.LoadBalancer {
-		if sidb.Spec.ListenerPort != 0 && (sidb.Spec.ListenerPort < 30000 || sidb.Spec.ListenerPort > 32767) {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("listenerPort"), sidb.Spec.ListenerPort, "must be in 30000-32767 for NodePort"))
+	if !sidbUsesNewExternalServices(sidb) {
+		if tcpsEnabled && sidb.Spec.ListenerPort != 0 && tcpsListenerPort != 0 && sidb.Spec.ListenerPort == tcpsListenerPort {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "listenerPort and tcpsListenerPort cannot be equal"))
 		}
-		if tcpsEnabled && tcpsListenerPort != 0 && (tcpsListenerPort < 30000 || tcpsListenerPort > 32767) {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "must be in 30000-32767 for NodePort"))
+		if !sidb.Spec.LoadBalancer {
+			if sidb.Spec.ListenerPort != 0 && (sidb.Spec.ListenerPort < 30000 || sidb.Spec.ListenerPort > 32767) {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("listenerPort"), sidb.Spec.ListenerPort, "must be in 30000-32767 for NodePort"))
+			}
+			if tcpsEnabled && tcpsListenerPort != 0 && (tcpsListenerPort < 30000 || tcpsListenerPort > 32767) {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "must be in 30000-32767 for NodePort"))
+			}
 		}
 	}
 	allErrs = append(allErrs, validateTNSAliases(sidb)...)
@@ -509,6 +511,126 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	allErrs = append(allErrs, validateSingleInstanceDatabaseAdditionalPVCs(sidb)...)
 
 	return allErrs
+}
+
+func sidbUsesNewExternalServices(sidb *SingleInstanceDatabase) bool {
+	return sidb != nil && sidb.Spec.Services != nil && sidb.Spec.Services.External != nil
+}
+
+func sidbDeprecatedServiceConfigWarnings(sidb *SingleInstanceDatabase) admission.Warnings {
+	if sidb == nil {
+		return nil
+	}
+	var warnings admission.Warnings
+	if sidb.Spec.LoadBalancer {
+		warnings = append(warnings, "spec.loadBalancer is deprecated; use spec.services.external.type")
+	}
+	if sidb.Spec.ListenerPort != 0 {
+		warnings = append(warnings, "spec.listenerPort is deprecated; use spec.services.external.tcp")
+	}
+	if sidb.Spec.TcpsListenerPort != 0 {
+		warnings = append(warnings, "spec.tcpsListenerPort is deprecated; use spec.services.external.tcps")
+	}
+	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.ListenerPort != 0 {
+		warnings = append(warnings, "spec.tcps.listenerPort is deprecated; use spec.services.external.tcps")
+	}
+	return warnings
+}
+
+func validateSIDBExternalServices(path *field.Path, sidb *SingleInstanceDatabase) field.ErrorList {
+	var allErrs field.ErrorList
+	if sidb == nil || sidb.Spec.Services == nil || sidb.Spec.Services.External == nil {
+		return allErrs
+	}
+
+	external := sidb.Spec.Services.External
+	typePath := path.Child("type")
+	switch external.Type {
+	case SingleInstanceDatabaseExternalServiceTypeDisabled:
+	case SingleInstanceDatabaseExternalServiceTypeNodePort:
+	case SingleInstanceDatabaseExternalServiceTypeLoadBalancer:
+	default:
+		allErrs = append(allErrs, field.Required(typePath, "type must be set to Disabled, NodePort, or LoadBalancer"))
+		return allErrs
+	}
+
+	tcpEnabled := external.TCP != nil && external.TCP.Enabled
+	tcpsEnabled := external.TCPS != nil && external.TCPS.Enabled
+	if external.Type != SingleInstanceDatabaseExternalServiceTypeDisabled && !tcpEnabled && !tcpsEnabled {
+		allErrs = append(allErrs, field.Invalid(path, external, "enable at least one of tcp or tcps when external service type is not Disabled"))
+	}
+	if tcpsEnabled && !sidbTcpsEnabled(sidb) {
+		allErrs = append(allErrs, field.Forbidden(path.Child("tcps"), "tcps exposure requires TCPS to be enabled in the database spec"))
+	}
+
+	allErrs = append(allErrs, validateSIDBExternalServicePort(path.Child("tcp"), external.Type, external.TCP)...)
+	allErrs = append(allErrs, validateSIDBExternalServicePort(path.Child("tcps"), external.Type, external.TCPS)...)
+
+	if external.Type == SingleInstanceDatabaseExternalServiceTypeLoadBalancer {
+		tcpPort := intOrDefault(0, 1521, tcpEnabled && external.TCP != nil && external.TCP.Port == 0)
+		if external.TCP != nil && external.TCP.Port != 0 {
+			tcpPort = external.TCP.Port
+		}
+		tcpsPort := intOrDefault(0, 2484, tcpsEnabled && external.TCPS != nil && external.TCPS.Port == 0)
+		if external.TCPS != nil && external.TCPS.Port != 0 {
+			tcpsPort = external.TCPS.Port
+		}
+		if tcpEnabled && tcpsEnabled && tcpPort == tcpsPort {
+			allErrs = append(allErrs, field.Invalid(path.Child("tcps").Child("port"), tcpsPort, "tcp.port and tcps.port cannot be equal"))
+		}
+	}
+	if external.Type == SingleInstanceDatabaseExternalServiceTypeNodePort &&
+		tcpEnabled && tcpsEnabled &&
+		external.TCP != nil && external.TCPS != nil &&
+		external.TCP.NodePort != 0 && external.TCP.NodePort == external.TCPS.NodePort {
+		allErrs = append(allErrs, field.Invalid(path.Child("tcps").Child("nodePort"), external.TCPS.NodePort, "tcp.nodePort and tcps.nodePort cannot be equal"))
+	}
+
+	return allErrs
+}
+
+func validateSIDBExternalServicePort(path *field.Path, serviceType SingleInstanceDatabaseExternalServiceType, port *SingleInstanceDatabaseExternalServicePort) field.ErrorList {
+	var allErrs field.ErrorList
+	if port == nil {
+		return allErrs
+	}
+	if !port.Enabled {
+		if port.Port != 0 {
+			allErrs = append(allErrs, field.Forbidden(path.Child("port"), "port is allowed only when enabled=true"))
+		}
+		if port.NodePort != 0 {
+			allErrs = append(allErrs, field.Forbidden(path.Child("nodePort"), "nodePort is allowed only when enabled=true"))
+		}
+		return allErrs
+	}
+
+	switch serviceType {
+	case SingleInstanceDatabaseExternalServiceTypeDisabled:
+		allErrs = append(allErrs, field.Forbidden(path.Child("enabled"), "enabled endpoints are not allowed when external service type is Disabled"))
+	case SingleInstanceDatabaseExternalServiceTypeLoadBalancer:
+		if port.NodePort != 0 {
+			allErrs = append(allErrs, field.Forbidden(path.Child("nodePort"), "nodePort is not used when external service type is LoadBalancer"))
+		}
+		if port.Port != 0 && (port.Port < 1 || port.Port > 65535) {
+			allErrs = append(allErrs, field.Invalid(path.Child("port"), port.Port, "must be in 1-65535"))
+		}
+	case SingleInstanceDatabaseExternalServiceTypeNodePort:
+		if port.Port != 0 {
+			allErrs = append(allErrs, field.Forbidden(path.Child("port"), "port is not used when external service type is NodePort"))
+		}
+		if port.NodePort != 0 && (port.NodePort < 30000 || port.NodePort > 32767) {
+			allErrs = append(allErrs, field.Invalid(path.Child("nodePort"), port.NodePort, "must be in 30000-32767 for NodePort"))
+		}
+	}
+
+	return allErrs
+}
+
+func intOrDefault(current, fallback int, useFallback bool) int {
+	if useFallback {
+		return fallback
+	}
+	return current
 }
 
 func validateTNSAliases(sidb *SingleInstanceDatabase) field.ErrorList {

@@ -100,6 +100,18 @@ type sidbPhaseContext struct {
 	futureRequeue           ctrl.Result
 }
 
+type sidbResolvedExternalServiceConfig struct {
+	Defined         bool
+	Disabled        bool
+	Type            corev1.ServiceType
+	TCPEnabled      bool
+	TCPServicePort  int32
+	TCPNodePort     int32
+	TCPSEnabled     bool
+	TCPSServicePort int32
+	TCPSNodePort    int32
+}
+
 // To requeue after 15 secs allowing graceful state changes.
 var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
@@ -332,9 +344,6 @@ func getTcpsEnabled(m *dbapi.SingleInstanceDatabase) bool {
 }
 
 func getTcpsListenerPort(m *dbapi.SingleInstanceDatabase) int {
-	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && m.Spec.Security.TCPS.ListenerPort != 0 {
-		return m.Spec.Security.TCPS.ListenerPort
-	}
 	if m.Spec.TCPS != nil && m.Spec.TCPS.ListenerPort != 0 {
 		return m.Spec.TCPS.ListenerPort
 	}
@@ -349,6 +358,167 @@ func getTcpsTLSSecret(m *dbapi.SingleInstanceDatabase) string {
 		return strings.TrimSpace(m.Spec.TCPS.TlsSecret)
 	}
 	return strings.TrimSpace(m.Spec.TcpsTlsSecret)
+}
+
+func usesNewExternalServiceConfig(m *dbapi.SingleInstanceDatabase) bool {
+	return m != nil && m.Spec.Services != nil && m.Spec.Services.External != nil
+}
+
+func resolveExternalServiceConfig(m *dbapi.SingleInstanceDatabase) sidbResolvedExternalServiceConfig {
+	cfg := sidbResolvedExternalServiceConfig{Defined: true}
+	tcpsEnabled := getTcpsEnabled(m)
+	tcpsListenerPort := getTcpsListenerPort(m)
+
+	if usesNewExternalServiceConfig(m) {
+		external := m.Spec.Services.External
+		switch external.Type {
+		case dbapi.SingleInstanceDatabaseExternalServiceTypeDisabled:
+			cfg.Disabled = true
+			return cfg
+		case dbapi.SingleInstanceDatabaseExternalServiceTypeLoadBalancer:
+			cfg.Type = corev1.ServiceTypeLoadBalancer
+		default:
+			cfg.Type = corev1.ServiceTypeNodePort
+		}
+
+		if external.TCP != nil && external.TCP.Enabled {
+			cfg.TCPEnabled = true
+			if cfg.Type == corev1.ServiceTypeLoadBalancer {
+				cfg.TCPServicePort = int32(external.TCP.Port)
+				if cfg.TCPServicePort == 0 {
+					cfg.TCPServicePort = dbcommons.CONTAINER_LISTENER_PORT
+				}
+			} else {
+				cfg.TCPServicePort = dbcommons.CONTAINER_LISTENER_PORT
+				cfg.TCPNodePort = int32(external.TCP.NodePort)
+			}
+		}
+		if tcpsEnabled && external.TCPS != nil && external.TCPS.Enabled {
+			cfg.TCPSEnabled = true
+			if cfg.Type == corev1.ServiceTypeLoadBalancer {
+				cfg.TCPSServicePort = int32(external.TCPS.Port)
+				if cfg.TCPSServicePort == 0 {
+					cfg.TCPSServicePort = dbcommons.CONTAINER_TCPS_PORT
+				}
+			} else {
+				cfg.TCPSServicePort = dbcommons.CONTAINER_TCPS_PORT
+				cfg.TCPSNodePort = int32(external.TCPS.NodePort)
+			}
+		}
+		return cfg
+	}
+
+	if m.Spec.LoadBalancer {
+		cfg.Type = corev1.ServiceTypeLoadBalancer
+	} else {
+		cfg.Type = corev1.ServiceTypeNodePort
+	}
+
+	cfg.TCPEnabled = !tcpsEnabled || m.Spec.ListenerPort != 0
+	if cfg.TCPEnabled {
+		if cfg.Type == corev1.ServiceTypeLoadBalancer {
+			cfg.TCPServicePort = int32(m.Spec.ListenerPort)
+			if cfg.TCPServicePort == 0 {
+				cfg.TCPServicePort = dbcommons.CONTAINER_LISTENER_PORT
+			}
+		} else {
+			cfg.TCPServicePort = dbcommons.CONTAINER_LISTENER_PORT
+			cfg.TCPNodePort = int32(m.Spec.ListenerPort)
+		}
+	}
+	if tcpsEnabled {
+		cfg.TCPSEnabled = true
+		if cfg.Type == corev1.ServiceTypeLoadBalancer {
+			cfg.TCPSServicePort = int32(tcpsListenerPort)
+			if cfg.TCPSServicePort == 0 {
+				cfg.TCPSServicePort = dbcommons.CONTAINER_TCPS_PORT
+			}
+		} else {
+			cfg.TCPSServicePort = dbcommons.CONTAINER_TCPS_PORT
+			cfg.TCPSNodePort = int32(tcpsListenerPort)
+		}
+	}
+	return cfg
+}
+
+func desiredSIDBClusterServicePorts(tcpsEnabled bool) []corev1.ServicePort {
+	ports := []corev1.ServicePort{{
+		Name:     "listener",
+		Port:     dbcommons.CONTAINER_LISTENER_PORT,
+		Protocol: corev1.ProtocolTCP,
+	}}
+	if tcpsEnabled {
+		ports = append(ports, corev1.ServicePort{
+			Name:     "listener-tcps",
+			Port:     dbcommons.CONTAINER_TCPS_PORT,
+			Protocol: corev1.ProtocolTCP,
+		})
+	}
+	return ports
+}
+
+func desiredSIDBExternalServicePorts(cfg sidbResolvedExternalServiceConfig) []corev1.ServicePort {
+	ports := []corev1.ServicePort{{
+		Name:     "xmldb",
+		Port:     5500,
+		Protocol: corev1.ProtocolTCP,
+	}}
+	if cfg.TCPEnabled {
+		port := corev1.ServicePort{
+			Name:       "listener",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       dbcommons.CONTAINER_LISTENER_PORT,
+			TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_LISTENER_PORT)),
+		}
+		if cfg.Type == corev1.ServiceTypeLoadBalancer {
+			port.Port = cfg.TCPServicePort
+		} else if cfg.TCPNodePort != 0 {
+			port.NodePort = cfg.TCPNodePort
+		}
+		ports = append(ports, port)
+	}
+	if cfg.TCPSEnabled {
+		port := corev1.ServicePort{
+			Name:       "listener-tcps",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       dbcommons.CONTAINER_TCPS_PORT,
+			TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_TCPS_PORT)),
+		}
+		if cfg.Type == corev1.ServiceTypeLoadBalancer {
+			port.Port = cfg.TCPSServicePort
+		} else if cfg.TCPSNodePort != 0 {
+			port.NodePort = cfg.TCPSNodePort
+		}
+		ports = append(ports, port)
+	}
+	return ports
+}
+
+func servicePortsMatchDesired(existing, desired []corev1.ServicePort, svcType corev1.ServiceType) bool {
+	if len(existing) != len(desired) {
+		return false
+	}
+	for i := range desired {
+		if existing[i].Name != desired[i].Name || existing[i].Port != desired[i].Port || existing[i].Protocol != desired[i].Protocol {
+			return false
+		}
+		if desired[i].TargetPort.IntVal != 0 && existing[i].TargetPort.IntVal != desired[i].TargetPort.IntVal {
+			return false
+		}
+		if svcType == corev1.ServiceTypeNodePort && desired[i].NodePort != 0 && existing[i].NodePort != desired[i].NodePort {
+			return false
+		}
+	}
+	return true
+}
+
+func servicePortByName(ports []corev1.ServicePort, name string) *corev1.ServicePort {
+	for i := range ports {
+		if ports[i].Name == name {
+			return &ports[i]
+		}
+	}
+	return nil
 }
 
 func getTcpsClientWalletSecretOverride(m *dbapi.SingleInstanceDatabase) string {
@@ -3283,257 +3453,92 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 
 	log := r.Log.WithValues("createOrReplaceSVC", req.NamespacedName)
 
-	/** Two k8s services gets created:
-		  1. One service is ClusterIP service for cluster only communications on the listener port 1521,
-		  2. One service is NodePort/LoadBalancer (according to the YAML specs) for users to connect
-	 **/
-
-	// clusterSvc is the cluster-wide service and extSvc is the external service for the users to connect
+	// clusterSvc is the cluster-wide service and extSvc is the optional external service for the users to connect.
 	clusterSvc := &corev1.Service{}
 	extSvc := &corev1.Service{}
 
 	clusterSvcName := m.Name
 	extSvcName := m.Name + "-ext"
-
-	// svcPort is the intended port for extSvc taken from singleinstancedatabase YAML file for normal database connection
-	// If loadBalancer is true, it would be the listener port otherwise it would be node port
-	svcPort := func() int32 {
-		if m.Spec.ListenerPort != 0 {
-			return int32(m.Spec.ListenerPort)
-		} else {
-			return dbcommons.CONTAINER_LISTENER_PORT
-		}
-	}()
 	tcpsEnabled := getTcpsEnabled(m)
-	tcpsListenerPort := getTcpsListenerPort(m)
+	externalCfg := resolveExternalServiceConfig(m)
 
-	// tcpsSvcPort is the intended port for extSvc taken from singleinstancedatabase YAML file for TCPS connection
-	// If loadBalancer is true, it would be the listener port otherwise it would be node port
-	tcpsSvcPort := func() int32 {
-		if tcpsListenerPort != 0 {
-			return int32(tcpsListenerPort)
-		} else {
-			return dbcommons.CONTAINER_TCPS_PORT
-		}
-	}()
-
-	// Querying for the K8s service resources
-	getClusterSvcErr := r.Get(ctx, types.NamespacedName{Name: clusterSvcName, Namespace: m.Namespace}, clusterSvc)
-	getExtSvcErr := r.Get(ctx, types.NamespacedName{Name: extSvcName, Namespace: m.Namespace}, extSvc)
-
-	if getClusterSvcErr != nil && apierrors.IsNotFound(getClusterSvcErr) {
-		// Create a new ClusterIP service
-		ports := []corev1.ServicePort{{Name: "listener", Port: dbcommons.CONTAINER_LISTENER_PORT, Protocol: corev1.ProtocolTCP}}
-		svc := r.instantiateSVCSpec(m, clusterSvcName, ports, corev1.ServiceType("ClusterIP"), true)
-		log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
-		err := r.Create(ctx, svc)
-		if err != nil {
-			log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+	// Reconcile internal ClusterIP service.
+	if err := r.Get(ctx, types.NamespacedName{Name: clusterSvcName, Namespace: m.Namespace}, clusterSvc); err != nil {
+		if !apierrors.IsNotFound(err) {
+			log.Error(err, "Error encountered in obtaining the service", clusterSvcName)
 			return requeueY, err
 		}
-	} else if getClusterSvcErr != nil {
-		// Error encountered in obtaining the clusterSvc service resource
-		log.Error(getClusterSvcErr, "Error encountered in obtaining the service", clusterSvcName)
-		return requeueY, getClusterSvcErr
+		desiredClusterSvc := r.instantiateSVCSpec(m, clusterSvcName, desiredSIDBClusterServicePorts(tcpsEnabled), corev1.ServiceTypeClusterIP, true)
+		log.Info("Creating a new service", "Service.Namespace", desiredClusterSvc.Namespace, "Service.Name", desiredClusterSvc.Name)
+		if err = r.Create(ctx, desiredClusterSvc); err != nil {
+			log.Error(err, "Failed to create new service", "Service.Namespace", desiredClusterSvc.Namespace, "Service.Name", desiredClusterSvc.Name)
+			return requeueY, err
+		}
+		clusterSvc = desiredClusterSvc
+	} else if !servicePortsMatchDesired(clusterSvc.Spec.Ports, desiredSIDBClusterServicePorts(tcpsEnabled), corev1.ServiceTypeClusterIP) {
+		clusterSvc.Spec.Ports = desiredSIDBClusterServicePorts(tcpsEnabled)
+		if err := r.Update(ctx, clusterSvc); err != nil {
+			log.Error(err, "Failed to update cluster service", "Service.Namespace", clusterSvc.Namespace, "Service.Name", clusterSvc.Name)
+			return requeueY, err
+		}
+		return requeueY, nil
 	}
 
-	// extSvcType defines the type of the service (LoadBalancer/NodePort) for extSvc as specified in the singleinstancedatabase.yaml file
-	extSvcType := corev1.ServiceType("NodePort")
-	if m.Spec.LoadBalancer {
-		extSvcType = corev1.ServiceType("LoadBalancer")
-	}
-
-	isExtSvcFound := true
-
-	if getExtSvcErr != nil && apierrors.IsNotFound(getExtSvcErr) {
-		isExtSvcFound = false
-	} else if getExtSvcErr != nil {
-		// Error encountered in obtaining the extSvc service resource
-		log.Error(getExtSvcErr, "Error encountered in obtaining the service", extSvcName)
-		return requeueY, getExtSvcErr
-	} else {
-		// Counting required number of ports in extSvc
-		requiredPorts := 2
-		if tcpsEnabled && m.Spec.ListenerPort != 0 {
-			requiredPorts = 3
-		}
-
-		// Obtaining all ports of the extSvc k8s service
-		var targetPorts []int32
-		for _, port := range extSvc.Spec.Ports {
-			if extSvc.Spec.Type == corev1.ServiceType("LoadBalancer") {
-				targetPorts = append(targetPorts, port.Port)
-			} else if extSvc.Spec.Type == corev1.ServiceType("NodePort") {
-				targetPorts = append(targetPorts, port.NodePort)
-			}
-		}
-
-		patchSvc := false
-
-		// Conditions to determine whether to patch or not
-		if extSvc.Spec.Type != extSvcType || len(extSvc.Spec.Ports) != requiredPorts {
-			patchSvc = true
-		}
-
-		if (m.Spec.ListenerPort != 0 && svcPort != targetPorts[1]) || (tcpsEnabled && tcpsListenerPort != 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1]) {
-			patchSvc = true
-		}
-
-		if m.Spec.LoadBalancer {
-			if tcpsEnabled {
-				if tcpsListenerPort == 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1] {
-					patchSvc = true
-				}
-			} else {
-				if m.Spec.ListenerPort == 0 && svcPort != targetPorts[1] {
-					patchSvc = true
-				}
-			}
-		} else {
-			if tcpsEnabled {
-				if tcpsListenerPort == 0 && tcpsSvcPort != extSvc.Spec.Ports[len(targetPorts)-1].TargetPort.IntVal {
-					patchSvc = true
-				}
-			} else {
-				if m.Spec.ListenerPort == 0 && svcPort != extSvc.Spec.Ports[1].TargetPort.IntVal {
-					patchSvc = true
-				}
-			}
-		}
-
-		if patchSvc {
-			// Reset connect strings whenever patching happens
+	// Reconcile optional external service.
+	getExtSvcErr := r.Get(ctx, types.NamespacedName{Name: extSvcName, Namespace: m.Namespace}, extSvc)
+	if externalCfg.Disabled {
+		if getExtSvcErr == nil {
 			m.Status.Status = dbcommons.StatusUpdating
 			m.Status.ConnectString = dbcommons.ValueUnavailable
 			m.Status.PdbConnectString = dbcommons.ValueUnavailable
 			m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 			m.Status.TcpsConnectString = dbcommons.ValueUnavailable
 			m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
-
-			// Payload formation for patching the service
-			var payload string
-			if m.Spec.LoadBalancer {
-				if tcpsEnabled {
-					if m.Spec.ListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.ThreePortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrPort, svcPort), fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
-					} else {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
-					}
-				} else {
-					payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrPort, svcPort))
-				}
-			} else {
-				if tcpsEnabled {
-					if m.Spec.ListenerPort != 0 && tcpsListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.ThreePortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort), fmt.Sprintf(dbcommons.TcpsNodePort, tcpsSvcPort))
-					} else if m.Spec.ListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.ThreePortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort), fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
-					} else if tcpsListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.TcpsNodePort, tcpsSvcPort))
-					} else {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
-					}
-				} else {
-					if m.Spec.ListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort))
-					} else {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrPort, svcPort))
-					}
-				}
+			if err := r.Delete(ctx, extSvc); err != nil {
+				log.Error(err, "Failed to delete external service", "Service.Namespace", extSvc.Namespace, "Service.Name", extSvc.Name)
+				return requeueY, err
 			}
-
-			//Attemp Service Pathcing
-			log.Info("Patching the service", "Service.Name", extSvc.Name, "payload", payload)
-			err := dbcommons.PatchService(r.Config, m.Namespace, ctx, req, extSvcName, payload)
-			if err != nil {
-				log.Error(err, "Failed to patch Service")
+			return requeueY, nil
+		}
+		if getExtSvcErr != nil && !apierrors.IsNotFound(getExtSvcErr) {
+			log.Error(getExtSvcErr, "Error encountered in obtaining the service", extSvcName)
+			return requeueY, getExtSvcErr
+		}
+	} else {
+		desiredExtPorts := desiredSIDBExternalServicePorts(externalCfg)
+		switch {
+		case getExtSvcErr != nil && apierrors.IsNotFound(getExtSvcErr):
+			m.Status.Status = dbcommons.StatusUpdating
+			m.Status.ConnectString = dbcommons.ValueUnavailable
+			m.Status.PdbConnectString = dbcommons.ValueUnavailable
+			m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+			m.Status.TcpsConnectString = dbcommons.ValueUnavailable
+			m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
+			svc := r.instantiateSVCSpec(m, extSvcName, desiredExtPorts, externalCfg.Type, false)
+			log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+			if err := r.Create(ctx, svc); err != nil {
+				log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+				return requeueY, err
 			}
-			//Requeue once after patching
-			return requeueY, err
-		}
-	}
-
-	if !isExtSvcFound {
-		// Reset connect strings whenever extSvc is recreated
-		m.Status.Status = dbcommons.StatusUpdating
-		m.Status.ConnectString = dbcommons.ValueUnavailable
-		m.Status.PdbConnectString = dbcommons.ValueUnavailable
-		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
-		m.Status.TcpsConnectString = dbcommons.ValueUnavailable
-		m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
-
-		// New service has to be created
-		ports := []corev1.ServicePort{
-			{
-				Name:     "xmldb",
-				Port:     5500,
-				Protocol: corev1.ProtocolTCP,
-			},
-		}
-
-		if m.Spec.LoadBalancer {
-			if tcpsEnabled {
-				if m.Spec.ListenerPort != 0 {
-					ports = append(ports, corev1.ServicePort{
-						Name:       "listener",
-						Protocol:   corev1.ProtocolTCP,
-						Port:       svcPort,
-						TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_LISTENER_PORT)),
-					})
-				}
-				ports = append(ports, corev1.ServicePort{
-					Name:       "listener-tcps",
-					Protocol:   corev1.ProtocolTCP,
-					Port:       tcpsSvcPort,
-					TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_TCPS_PORT)),
-				})
-			} else {
-				ports = append(ports, corev1.ServicePort{
-					Name:       "listener",
-					Protocol:   corev1.ProtocolTCP,
-					Port:       svcPort,
-					TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_LISTENER_PORT)),
-				})
+			if err := r.Get(ctx, types.NamespacedName{Name: extSvcName, Namespace: m.Namespace}, extSvc); err != nil {
+				return requeueY, err
 			}
-		} else {
-			if tcpsEnabled {
-				if m.Spec.ListenerPort != 0 {
-					ports = append(ports, corev1.ServicePort{
-						Name:     "listener",
-						Protocol: corev1.ProtocolTCP,
-						Port:     dbcommons.CONTAINER_LISTENER_PORT,
-						NodePort: svcPort,
-					})
-				}
-				ports = append(ports, corev1.ServicePort{
-					Name:     "listener-tcps",
-					Protocol: corev1.ProtocolTCP,
-					Port:     dbcommons.CONTAINER_TCPS_PORT,
-				})
-				if tcpsListenerPort != 0 {
-					ports[len(ports)-1].NodePort = tcpsSvcPort
-				}
-			} else {
-				ports = append(ports, corev1.ServicePort{
-					Name:     "listener",
-					Protocol: corev1.ProtocolTCP,
-					Port:     dbcommons.CONTAINER_LISTENER_PORT,
-				})
-				if m.Spec.ListenerPort != 0 {
-					ports[len(ports)-1].NodePort = svcPort
-				}
+		case getExtSvcErr != nil:
+			log.Error(getExtSvcErr, "Error encountered in obtaining the service", extSvcName)
+			return requeueY, getExtSvcErr
+		case extSvc.Spec.Type != externalCfg.Type || !servicePortsMatchDesired(extSvc.Spec.Ports, desiredExtPorts, externalCfg.Type):
+			m.Status.Status = dbcommons.StatusUpdating
+			m.Status.ConnectString = dbcommons.ValueUnavailable
+			m.Status.PdbConnectString = dbcommons.ValueUnavailable
+			m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+			m.Status.TcpsConnectString = dbcommons.ValueUnavailable
+			m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
+			if err := r.Delete(ctx, extSvc); err != nil {
+				log.Error(err, "Failed to recreate external service", "Service.Namespace", extSvc.Namespace, "Service.Name", extSvc.Name)
+				return requeueY, err
 			}
+			return requeueY, nil
 		}
-
-		// Create the service
-		svc := r.instantiateSVCSpec(m, extSvcName, ports, extSvcType, false)
-		log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
-		err := r.Create(ctx, svc)
-		if err != nil {
-			log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
-			return requeueY, err
-		}
-		extSvc = svc
 	}
 
 	var sid, pdbName string
@@ -3557,32 +3562,57 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	if pdbName == "" {
 		pdbName = strings.ToUpper(m.Spec.Pdbname)
 	}
-	if m.Spec.LoadBalancer {
-		m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
-		if len(extSvc.Status.LoadBalancer.Ingress) > 0 {
-			// 'lbAddress' will contain the Fully Qualified Hostname of the LB. If the hostname is not available it will contain the IP address of the LB
-			lbAddress := extSvc.Status.LoadBalancer.Ingress[0].Hostname
-			if lbAddress == "" {
-				lbAddress = extSvc.Status.LoadBalancer.Ingress[0].IP
-			}
-			m.Status.ConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
-			m.Status.PdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(pdbName)
-			m.Status.OemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[0].Port) + "/em"
-			if tcpsEnabled {
-				m.Status.TcpsConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(sid)
-				m.Status.TcpsPdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(pdbName)
-			}
+
+	m.Status.ClusterConnectString = clusterSvcName + "." + m.Namespace + ":" + fmt.Sprint(dbcommons.CONTAINER_LISTENER_PORT) + "/" + strings.ToUpper(sid)
+	m.Status.ConnectString = dbcommons.ValueUnavailable
+	m.Status.PdbConnectString = dbcommons.ValueUnavailable
+	m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	m.Status.TcpsConnectString = dbcommons.ValueUnavailable
+	m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
+
+	if !externalCfg.Disabled && extSvc.Name != "" {
+		xmldbPort := servicePortByName(extSvc.Spec.Ports, "xmldb")
+		tcpPort := servicePortByName(extSvc.Spec.Ports, "listener")
+		tcpsPort := servicePortByName(extSvc.Spec.Ports, "listener-tcps")
+		if tcpPort != nil {
+			m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(tcpPort.Port) + "/" + strings.ToUpper(sid)
+		} else if tcpsPort != nil {
+			m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(tcpsPort.Port) + "/" + strings.ToUpper(sid)
 		}
-	} else {
-		m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
-		nodeip := dbcommons.GetNodeIp(r, ctx, req)
-		if nodeip != "" {
-			m.Status.ConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(sid)
-			m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(pdbName)
-			m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[0].NodePort) + "/em"
-			if tcpsEnabled {
-				m.Status.TcpsConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(sid)
-				m.Status.TcpsPdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(pdbName)
+		if externalCfg.Type == corev1.ServiceTypeLoadBalancer {
+			if len(extSvc.Status.LoadBalancer.Ingress) > 0 {
+				host := extSvc.Status.LoadBalancer.Ingress[0].Hostname
+				if host == "" {
+					host = extSvc.Status.LoadBalancer.Ingress[0].IP
+				}
+				if host != "" {
+					if xmldbPort != nil {
+						m.Status.OemExpressUrl = "https://" + host + ":" + fmt.Sprint(xmldbPort.Port) + "/em"
+					}
+					if externalCfg.TCPEnabled && tcpPort != nil {
+						m.Status.ConnectString = host + ":" + fmt.Sprint(tcpPort.Port) + "/" + strings.ToUpper(sid)
+						m.Status.PdbConnectString = host + ":" + fmt.Sprint(tcpPort.Port) + "/" + strings.ToUpper(pdbName)
+					}
+					if externalCfg.TCPSEnabled && tcpsPort != nil {
+						m.Status.TcpsConnectString = host + ":" + fmt.Sprint(tcpsPort.Port) + "/" + strings.ToUpper(sid)
+						m.Status.TcpsPdbConnectString = host + ":" + fmt.Sprint(tcpsPort.Port) + "/" + strings.ToUpper(pdbName)
+					}
+				}
+			}
+		} else {
+			nodeip := dbcommons.GetNodeIp(r, ctx, req)
+			if nodeip != "" {
+				if xmldbPort != nil {
+					m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(xmldbPort.NodePort) + "/em"
+				}
+				if externalCfg.TCPEnabled && tcpPort != nil {
+					m.Status.ConnectString = nodeip + ":" + fmt.Sprint(tcpPort.NodePort) + "/" + strings.ToUpper(sid)
+					m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(tcpPort.NodePort) + "/" + strings.ToUpper(pdbName)
+				}
+				if externalCfg.TCPSEnabled && tcpsPort != nil {
+					m.Status.TcpsConnectString = nodeip + ":" + fmt.Sprint(tcpsPort.NodePort) + "/" + strings.ToUpper(sid)
+					m.Status.TcpsPdbConnectString = nodeip + ":" + fmt.Sprint(tcpsPort.NodePort) + "/" + strings.ToUpper(pdbName)
+				}
 			}
 		}
 	}

@@ -76,13 +76,60 @@ func TestSIDBWebhookRejectsRelativeDataguardPrereqsBrokerConfigDir(t *testing.T)
 func TestSIDBWebhookRejectsClientWalletSecretWhenTCPSDisabled(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{
-		TCPS: &SingleInstanceDatabaseTCPS{
+		TCPS: &SingleInstanceDatabaseSecurityTCPS{
 			ClientWalletSecret: "dg-client-wallet",
 		},
 	}
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
 		t.Fatalf("expected validation error when clientWalletSecret is set but TCPS is disabled")
+	}
+}
+
+func TestSIDBWebhookAllowsNewExternalNodePortConfig(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Services = &SingleInstanceDatabaseServices{
+		External: &SingleInstanceDatabaseExternalService{
+			Type: SingleInstanceDatabaseExternalServiceTypeNodePort,
+			TCP:  &SingleInstanceDatabaseExternalServicePort{Enabled: true},
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors for services.external nodeport config, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookRejectsExternalTCPSWithoutDatabaseTCPS(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Services = &SingleInstanceDatabaseServices{
+		External: &SingleInstanceDatabaseExternalService{
+			Type: SingleInstanceDatabaseExternalServiceTypeLoadBalancer,
+			TCPS: &SingleInstanceDatabaseExternalServicePort{
+				Enabled: true,
+				Port:    2484,
+			},
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when tcps service is enabled without tcps database config")
+	}
+}
+
+func TestSIDBWebhookValidateCreateReturnsDeprecatedServiceWarnings(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.LoadBalancer = true
+	sidb.Spec.ListenerPort = 32001
+	sidb.Spec.TcpsListenerPort = 32002
+	sidb.Spec.TCPS = &SingleInstanceDatabaseTCPS{ListenerPort: 32003}
+
+	warnings, err := (&SingleInstanceDatabase{}).ValidateCreate(context.Background(), sidb)
+	if err != nil {
+		t.Fatalf("expected validate create to succeed, got: %v", err)
+	}
+	if len(warnings) != 4 {
+		t.Fatalf("expected 4 deprecation warnings, got %#v", warnings)
 	}
 }
 
