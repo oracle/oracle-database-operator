@@ -29,6 +29,15 @@ const (
 	dataguardPreviewExternalSecretKey          = "password"
 )
 
+func dataguardPreviewReadyMessage(note string) string {
+	msg := "resolved Data Guard topology is ready to be copied into DataguardBroker.spec.topology"
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return msg
+	}
+	return msg + "; " + note
+}
+
 func dataguardProducerMode(spec *dbapi.DataguardProducerSpec) dbapi.DataguardProducerMode {
 	return dbapi.EffectiveDataguardProducerMode(spec)
 }
@@ -102,7 +111,7 @@ func syncSIDBDataguardPreviewStatus(m *dbapi.SingleInstanceDatabase, rp *dbapi.S
 		next.PublishedTopologyHash = next.TopologyHash
 		now := metav1.Now()
 		next.LastPublishedTime = &now
-		setDataguardPreviewCondition(&next.Conditions, m.Generation, true, "PreviewReady", "resolved Data Guard topology is ready to be copied into DataguardBroker.spec.topology")
+		setDataguardPreviewCondition(&next.Conditions, m.Generation, true, "PreviewReady", dataguardPreviewReadyMessage(previewMessage))
 		m.Status.Dataguard = next
 		return
 	}
@@ -262,20 +271,16 @@ func buildSIDBPreviewPrimaryMember(m *dbapi.SingleInstanceDatabase, rp *dbapi.Si
 		SecretName: dataguardPreviewExternalSecretPlaceholder,
 		SecretKey:  dataguardPreviewExternalSecretKey,
 	}
-	return member, memberName, fmt.Sprintf("topology member %q is external; update adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker", memberName), false
+	return member, memberName, fmt.Sprintf("topology member %q is external; rendered DataguardBroker includes placeholder adminSecretRef values, so replace adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker", memberName), true
 }
 
 func buildSIDBPreviewLocalAdminSecretRef(m *dbapi.SingleInstanceDatabase) (*dbapi.DataguardSecretRef, string, bool) {
 	if m == nil {
 		return nil, "singleinstancedatabase is nil", false
 	}
-	secretName := strings.TrimSpace(m.Spec.AdminPassword.SecretName)
-	if secretName == "" {
-		return nil, fmt.Sprintf("singleinstancedatabase %q does not publish spec.adminPassword.secretName", m.Name), false
-	}
-	secretKey := strings.TrimSpace(m.Spec.AdminPassword.SecretKey)
-	if secretKey == "" {
-		secretKey = dataguardPreviewDefaultSecretKey
+	secretName, secretKey, ok := dbapi.ResolveSIDBAdminSecretRef(m)
+	if !ok {
+		return nil, fmt.Sprintf("singleinstancedatabase %q does not publish admin password secret metadata", m.Name), false
 	}
 	return &dbapi.DataguardSecretRef{
 		SecretName: secretName,
@@ -404,7 +409,7 @@ func (r *ShardingDatabaseReconciler) syncShardingDataguardPreviewStatus(instance
 		next.PublishedTopologyHash = next.TopologyHash
 		now := metav1.Now()
 		next.LastPublishedTime = &now
-		setDataguardPreviewCondition(&next.Conditions, instance.Generation, true, "PreviewReady", "resolved Data Guard topology is ready to be copied into DataguardBroker.spec.topology")
+		setDataguardPreviewCondition(&next.Conditions, instance.Generation, true, "PreviewReady", dataguardPreviewReadyMessage(previewMessage))
 	} else if previewReason == "WaitingForUserInput" {
 		next.Phase = dataguardPreviewPhaseWaitingForUserInput
 		next.ReadyForBroker = false
@@ -627,8 +632,8 @@ func (r *ShardingDatabaseReconciler) buildShardingPrimaryPreviewMember(instance 
 				SecretName: dataguardPreviewExternalSecretPlaceholder,
 				SecretKey:  dataguardPreviewExternalSecretKey,
 			}
-			message := fmt.Sprintf("topology member %q is external; update adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker", primaryMember.Name)
-			return primaryMember, primaryMember.Name, message, true, false
+			message := fmt.Sprintf("topology member %q is external; rendered DataguardBroker includes placeholder adminSecretRef values, so replace adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker", primaryMember.Name)
+			return primaryMember, primaryMember.Name, message, true, true
 		}
 	}
 

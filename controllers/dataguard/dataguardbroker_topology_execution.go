@@ -196,13 +196,9 @@ func resolveDataguardTopologyMemberAdminSecretRef(ctx context.Context, r *Datagu
 		if err := r.Get(ctx, types.NamespacedName{Namespace: localNamespace, Name: strings.TrimSpace(member.LocalRef.Name)}, &sidb); err != nil {
 			return "", "", "", err
 		}
-		secretName := strings.TrimSpace(sidb.Spec.AdminPassword.SecretName)
-		if secretName == "" {
+		secretName, secretKey, ok := dbapi.ResolveSIDBAdminSecretRef(&sidb)
+		if !ok {
 			return "", "", "", fmt.Errorf("singleinstancedatabase %q does not publish admin password secret metadata", sidb.Name)
-		}
-		secretKey := strings.TrimSpace(sidb.Spec.AdminPassword.SecretKey)
-		if secretKey == "" {
-			secretKey = "oracle_pwd"
 		}
 		return secretName, secretKey, sidb.Namespace, nil
 	default:

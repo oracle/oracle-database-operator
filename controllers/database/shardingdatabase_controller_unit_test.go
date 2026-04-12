@@ -234,7 +234,7 @@ func TestShardingUnit_SyncDataguardPreviewStatusUserDG(t *testing.T) {
 					PasswordKey: "oracle_pwd",
 				},
 			},
-			Dataguard:         &databasev4.DataguardProducerSpec{Mode: databasev4.DataguardProducerModePreview},
+			Dataguard: &databasev4.DataguardProducerSpec{Mode: databasev4.DataguardProducerModePreview},
 			Shard: []databasev4.ShardSpec{
 				{Name: "primary1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
 				{Name: "standby1", ShardSpace: "ss1", DeployAs: "STANDBY"},
@@ -335,27 +335,30 @@ func TestShardingUnit_SyncDataguardPreviewStatusExternalPrimaryRequiresUserInput
 	if status.Dataguard == nil {
 		t.Fatalf("expected dataguard preview status to be populated")
 	}
-	if status.Dataguard.Phase != dataguardPreviewPhaseWaitingForUserInput {
-		t.Fatalf("expected preview phase %q, got %q", dataguardPreviewPhaseWaitingForUserInput, status.Dataguard.Phase)
+	if status.Dataguard.Phase != dataguardPreviewPhaseReady {
+		t.Fatalf("expected preview phase %q, got %q", dataguardPreviewPhaseReady, status.Dataguard.Phase)
 	}
-	if status.Dataguard.ReadyForBroker {
-		t.Fatalf("expected readyForBroker to be false")
+	if !status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be true")
 	}
 	if status.Dataguard.RenderedBrokerSpec == nil || status.Dataguard.RenderedBrokerSpec.Spec == nil || status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
 		t.Fatalf("expected rendered broker spec topology to be published")
 	}
-	if status.Dataguard.RenderedBrokerSpec.Ready {
-		t.Fatalf("expected rendered broker spec to be marked not ready")
+	if !status.Dataguard.RenderedBrokerSpec.Ready {
+		t.Fatalf("expected rendered broker spec to be marked ready")
 	}
 	condition := meta.FindStatusCondition(status.Dataguard.Conditions, "TopologyPreviewReady")
 	if condition == nil {
 		t.Fatalf("expected TopologyPreviewReady condition to be set")
 	}
-	if condition.Reason != "WaitingForUserInput" {
-		t.Fatalf("expected WaitingForUserInput condition reason, got %#v", condition)
+	if condition.Reason != "PreviewReady" {
+		t.Fatalf("expected PreviewReady condition reason, got %#v", condition)
 	}
-	if !strings.Contains(condition.Message, "adminSecretRef.secretName") {
-		t.Fatalf("expected condition message to explain adminSecretRef update, got %#v", condition)
+	if condition.Status != metav1.ConditionTrue {
+		t.Fatalf("expected TopologyPreviewReady condition status true, got %#v", condition)
+	}
+	if !strings.Contains(condition.Message, "placeholder adminSecretRef") {
+		t.Fatalf("expected condition message to explain placeholder replacement, got %#v", condition)
 	}
 	members := status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
 	if len(members) != 2 {

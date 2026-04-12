@@ -490,13 +490,11 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		if tcpsEnabled && sidb.Spec.ListenerPort != 0 && tcpsListenerPort != 0 && sidb.Spec.ListenerPort == tcpsListenerPort {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "listenerPort and tcpsListenerPort cannot be equal"))
 		}
-		if !sidb.Spec.LoadBalancer {
-			if sidb.Spec.ListenerPort != 0 && (sidb.Spec.ListenerPort < 30000 || sidb.Spec.ListenerPort > 32767) {
-				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("listenerPort"), sidb.Spec.ListenerPort, "must be in 30000-32767 for NodePort"))
-			}
-			if tcpsEnabled && tcpsListenerPort != 0 && (tcpsListenerPort < 30000 || tcpsListenerPort > 32767) {
-				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "must be in 30000-32767 for NodePort"))
-			}
+		if sidb.Spec.ListenerPort != 0 && (sidb.Spec.ListenerPort < 1 || sidb.Spec.ListenerPort > 65535) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("listenerPort"), sidb.Spec.ListenerPort, "must be in 1-65535"))
+		}
+		if tcpsEnabled && tcpsListenerPort != 0 && (tcpsListenerPort < 1 || tcpsListenerPort > 65535) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "must be in 1-65535"))
 		}
 	}
 	allErrs = append(allErrs, validateTNSAliases(sidb)...)

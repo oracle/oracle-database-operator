@@ -194,7 +194,7 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 	}
 }
 
-func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryRequiresUserInput(t *testing.T) {
+func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryPublishesReadyPreviewWithPlaceholder(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby", Namespace: "ns1"},
 		Spec: dbapi.SingleInstanceDatabaseSpec{
@@ -219,27 +219,30 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryRequiresUserInput(t *
 	if sidb.Status.Dataguard == nil {
 		t.Fatalf("expected dataguard preview status to be populated")
 	}
-	if sidb.Status.Dataguard.Phase != dataguardPreviewPhaseWaitingForUserInput {
-		t.Fatalf("expected phase %q, got %q", dataguardPreviewPhaseWaitingForUserInput, sidb.Status.Dataguard.Phase)
+	if sidb.Status.Dataguard.Phase != dataguardPreviewPhaseReady {
+		t.Fatalf("expected phase %q, got %q", dataguardPreviewPhaseReady, sidb.Status.Dataguard.Phase)
 	}
-	if sidb.Status.Dataguard.ReadyForBroker {
-		t.Fatalf("expected readyForBroker to be false when external input is required")
+	if !sidb.Status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be true when placeholder values are published")
 	}
 	if sidb.Status.Dataguard.RenderedBrokerSpec == nil || sidb.Status.Dataguard.RenderedBrokerSpec.Spec == nil || sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
 		t.Fatalf("expected rendered broker spec topology to be published")
 	}
-	if sidb.Status.Dataguard.RenderedBrokerSpec.Ready {
-		t.Fatalf("expected rendered broker spec to be marked not ready")
+	if !sidb.Status.Dataguard.RenderedBrokerSpec.Ready {
+		t.Fatalf("expected rendered broker spec to be marked ready")
 	}
 	condition := meta.FindStatusCondition(sidb.Status.Dataguard.Conditions, "TopologyPreviewReady")
 	if condition == nil {
 		t.Fatalf("expected TopologyPreviewReady condition to be set")
 	}
-	if condition.Reason != "WaitingForUserInput" {
-		t.Fatalf("expected WaitingForUserInput condition reason, got %#v", condition)
+	if condition.Reason != "PreviewReady" {
+		t.Fatalf("expected PreviewReady condition reason, got %#v", condition)
 	}
-	if !strings.Contains(condition.Message, "adminSecretRef.secretName") {
-		t.Fatalf("expected condition message to explain adminSecretRef update, got %#v", condition)
+	if condition.Status != metav1.ConditionTrue {
+		t.Fatalf("expected TopologyPreviewReady condition status true, got %#v", condition)
+	}
+	if !strings.Contains(condition.Message, "placeholder adminSecretRef") {
+		t.Fatalf("expected condition message to explain placeholder replacement, got %#v", condition)
 	}
 	members := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
 	if len(members) != 2 {
@@ -519,6 +522,27 @@ func TestSIDBUnit_ResolveExternalServiceConfigRetainsLegacyCompatibility(t *test
 	}
 	if !cfg.TCPSEnabled || cfg.TCPSNodePort != 32002 {
 		t.Fatalf("expected legacy tcps nodeport 32002, got %#v", cfg)
+	}
+}
+
+func TestSIDBUnit_ResolveExternalServiceConfigTreatsLegacyNonNodePortAsServicePort(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			ListenerPort:     1522,
+			TcpsListenerPort: 2484,
+			TCPS:             &dbapi.SingleInstanceDatabaseTCPS{Enabled: true},
+		},
+	}
+
+	cfg := resolveExternalServiceConfig(sidb)
+	if cfg.Type != corev1.ServiceTypeNodePort {
+		t.Fatalf("expected nodeport type, got %q", cfg.Type)
+	}
+	if !cfg.TCPEnabled || cfg.TCPServicePort != 1522 || cfg.TCPNodePort != 0 {
+		t.Fatalf("expected legacy tcp port 1522 with auto nodePort, got %#v", cfg)
+	}
+	if !cfg.TCPSEnabled || cfg.TCPSServicePort != 2484 || cfg.TCPSNodePort != 0 {
+		t.Fatalf("expected legacy tcps port 2484 with auto nodePort, got %#v", cfg)
 	}
 }
 

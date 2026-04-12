@@ -133,6 +133,16 @@ func TestSIDBWebhookValidateCreateReturnsDeprecatedServiceWarnings(t *testing.T)
 	}
 }
 
+func TestSIDBWebhookAllowsLegacyTcpsListenerPortOutsideNodePortRange(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.TCPS = &SingleInstanceDatabaseTCPS{Enabled: true}
+	sidb.Spec.TcpsListenerPort = 2484
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected legacy tcpsListenerPort 2484 to be accepted, got: %v", errs)
+	}
+}
+
 func TestSIDBWebhookValidateUpdateRejectsSpecChangeWhenLockedWithoutOverride(t *testing.T) {
 	oldObj := &SingleInstanceDatabase{
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb1", Namespace: "ns1", Generation: 3},
@@ -761,5 +771,50 @@ func TestSIDBWebhookAcceptsValidPullPolicy(t *testing.T) {
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
 		t.Fatalf("expected no validation errors for valid pullPolicy, got: %v", errs)
+	}
+}
+
+func TestResolveSIDBAdminSecretRefPrefersGroupedField(t *testing.T) {
+	sidb := &SingleInstanceDatabase{
+		Spec: SingleInstanceDatabaseSpec{
+			AdminPassword: SingleInstanceDatabaseAdminPassword{
+				SecretName: "legacy-admin",
+				SecretKey:  "legacy-key",
+			},
+			Security: &SingleInstanceDatabaseSecurity{
+				Secrets: &SingleInstanceDatabaseSecrets{
+					Admin: &SingleInstanceDatabaseAdminPassword{
+						SecretName: "grouped-admin",
+						SecretKey:  "grouped-key",
+					},
+				},
+			},
+		},
+	}
+
+	secretName, secretKey, ok := ResolveSIDBAdminSecretRef(sidb)
+	if !ok {
+		t.Fatalf("expected grouped secret metadata to resolve")
+	}
+	if secretName != "grouped-admin" || secretKey != "grouped-key" {
+		t.Fatalf("unexpected resolved grouped secret ref: %q/%q", secretName, secretKey)
+	}
+}
+
+func TestResolveSIDBAdminSecretRefFallsBackToLegacyField(t *testing.T) {
+	sidb := &SingleInstanceDatabase{
+		Spec: SingleInstanceDatabaseSpec{
+			AdminPassword: SingleInstanceDatabaseAdminPassword{
+				SecretName: "legacy-admin",
+			},
+		},
+	}
+
+	secretName, secretKey, ok := ResolveSIDBAdminSecretRef(sidb)
+	if !ok {
+		t.Fatalf("expected legacy secret metadata to resolve")
+	}
+	if secretName != "legacy-admin" || secretKey != DefaultSIDBAdminSecretKey {
+		t.Fatalf("unexpected resolved legacy secret ref: %q/%q", secretName, secretKey)
 	}
 }

@@ -260,3 +260,44 @@ func TestResolveDataguardBrokerExecutionRuntimeRequiresTCPSWalletSecret(t *testi
 		t.Fatalf("expected missing wallet message")
 	}
 }
+
+func TestResolveDataguardTopologyMemberAdminSecretRefUsesGroupedSIDBSecret(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{}
+	sidb.Namespace = "ns1"
+	sidb.Name = "sidb-standby"
+	sidb.Spec.Security = &dbapi.SingleInstanceDatabaseSecurity{
+		Secrets: &dbapi.SingleInstanceDatabaseSecrets{
+			Admin: &dbapi.SingleInstanceDatabaseAdminPassword{
+				SecretName: "grouped-admin",
+				SecretKey:  "oracle_pwd",
+			},
+		},
+	}
+
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(sidb).Build(),
+	}
+	broker := &dbapi.DataguardBroker{}
+	broker.Namespace = "ns1"
+	member := &dbapi.DataguardTopologyMember{
+		Name: "standby-a",
+		LocalRef: &dbapi.DataguardLocalRef{
+			Kind:      "SingleInstanceDatabase",
+			Namespace: "ns1",
+			Name:      "sidb-standby",
+		},
+	}
+
+	secretName, secretKey, secretNamespace, err := resolveDataguardTopologyMemberAdminSecretRef(context.Background(), reconciler, broker, member)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if secretName != "grouped-admin" || secretKey != "oracle_pwd" || secretNamespace != "ns1" {
+		t.Fatalf("unexpected resolved secret ref: %q/%q in %q", secretName, secretKey, secretNamespace)
+	}
+}

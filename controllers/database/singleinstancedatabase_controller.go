@@ -423,7 +423,11 @@ func resolveExternalServiceConfig(m *dbapi.SingleInstanceDatabase) sidbResolvedE
 			}
 		} else {
 			cfg.TCPServicePort = dbcommons.CONTAINER_LISTENER_PORT
-			cfg.TCPNodePort = int32(m.Spec.ListenerPort)
+			if legacyPortIsNodePort(m.Spec.ListenerPort) {
+				cfg.TCPNodePort = int32(m.Spec.ListenerPort)
+			} else if m.Spec.ListenerPort != 0 {
+				cfg.TCPServicePort = int32(m.Spec.ListenerPort)
+			}
 		}
 	}
 	if tcpsEnabled {
@@ -435,10 +439,18 @@ func resolveExternalServiceConfig(m *dbapi.SingleInstanceDatabase) sidbResolvedE
 			}
 		} else {
 			cfg.TCPSServicePort = dbcommons.CONTAINER_TCPS_PORT
-			cfg.TCPSNodePort = int32(tcpsListenerPort)
+			if legacyPortIsNodePort(tcpsListenerPort) {
+				cfg.TCPSNodePort = int32(tcpsListenerPort)
+			} else if tcpsListenerPort != 0 {
+				cfg.TCPSServicePort = int32(tcpsListenerPort)
+			}
 		}
 	}
 	return cfg
+}
+
+func legacyPortIsNodePort(port int) bool {
+	return port >= 30000 && port <= 32767
 }
 
 func desiredSIDBClusterServicePorts(tcpsEnabled bool) []corev1.ServicePort {
@@ -464,10 +476,14 @@ func desiredSIDBExternalServicePorts(cfg sidbResolvedExternalServiceConfig) []co
 		Protocol: corev1.ProtocolTCP,
 	}}
 	if cfg.TCPEnabled {
+		servicePort := cfg.TCPServicePort
+		if servicePort == 0 {
+			servicePort = dbcommons.CONTAINER_LISTENER_PORT
+		}
 		port := corev1.ServicePort{
 			Name:       "listener",
 			Protocol:   corev1.ProtocolTCP,
-			Port:       dbcommons.CONTAINER_LISTENER_PORT,
+			Port:       servicePort,
 			TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_LISTENER_PORT)),
 		}
 		if cfg.Type == corev1.ServiceTypeLoadBalancer {
@@ -478,10 +494,14 @@ func desiredSIDBExternalServicePorts(cfg sidbResolvedExternalServiceConfig) []co
 		ports = append(ports, port)
 	}
 	if cfg.TCPSEnabled {
+		servicePort := cfg.TCPSServicePort
+		if servicePort == 0 {
+			servicePort = dbcommons.CONTAINER_TCPS_PORT
+		}
 		port := corev1.ServicePort{
 			Name:       "listener-tcps",
 			Protocol:   corev1.ProtocolTCP,
-			Port:       dbcommons.CONTAINER_TCPS_PORT,
+			Port:       servicePort,
 			TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_TCPS_PORT)),
 		}
 		if cfg.Type == corev1.ServiceTypeLoadBalancer {
