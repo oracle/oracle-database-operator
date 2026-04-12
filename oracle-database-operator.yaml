@@ -9144,10 +9144,6 @@ spec:
                         type: string
                     type: object
                 type: object
-            required:
-            - primaryDatabaseRef
-            - protectionMode
-            - standbyDatabaseRefs
             type: object
           status:
             properties:
@@ -16203,6 +16199,15 @@ spec:
                     - Preview
                     - Managed
                     type: string
+                  prereqs:
+                    properties:
+                      brokerConfigDir:
+                        type: string
+                      enabled:
+                        type: boolean
+                      standbyRedoSize:
+                        type: string
+                    type: object
                 type: object
               dbEdition:
                 type: string
@@ -18379,6 +18384,14 @@ spec:
                   topologyLocked:
                     type: boolean
                 type: object
+              dataguardPrereqsHash:
+                additionalProperties:
+                  type: string
+                type: object
+              dataguardPrereqsRerunToken:
+                additionalProperties:
+                  type: string
+                type: object
               dg:
                 properties:
                   broker:
@@ -18927,6 +18940,15 @@ spec:
                     - Preview
                     - Managed
                     type: string
+                  prereqs:
+                    properties:
+                      brokerConfigDir:
+                        type: string
+                      enabled:
+                        type: boolean
+                      standbyRedoSize:
+                        type: string
+                    type: object
                 type: object
               disableDefaultDiagVolumeClaim:
                 type: boolean
@@ -19961,6 +19983,10 @@ spec:
                   topologyLocked:
                     type: boolean
                 type: object
+              dataguardPrereqsHash:
+                type: string
+              dataguardPrereqsRerunToken:
+                type: string
               dgBroker:
                 type: string
               edition:
@@ -20574,56 +20600,6 @@ spec:
     targetPort: 9443
   selector:
     control-plane: controller-manager
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    control-plane: controller-manager
-  name: oracle-database-operator-controller-manager
-  namespace: oracle-database-operator-system
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      control-plane: controller-manager
-  template:
-    metadata:
-      labels:
-        control-plane: controller-manager
-    spec:
-      containers:
-      - args:
-        - --enable-leader-election
-        command:
-        - /manager
-        env:
-        - name: WATCH_NAMESPACE
-          value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sidb-operator-sa
-        imagePullPolicy: Always
-        name: manager
-        ports:
-        - containerPort: 9443
-          name: webhook-server
-          protocol: TCP
-        resources:
-          limits:
-            cpu: 400m
-            memory: 400Mi
-          requests:
-            cpu: 400m
-            memory: 400Mi
-        volumeMounts:
-        - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: cert
-          readOnly: true
-      terminationGracePeriodSeconds: 10
-      volumes:
-      - name: cert
-        secret:
-          defaultMode: 420
-          secretName: webhook-server-cert
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -21315,3 +21291,54 @@ webhooks:
     resources:
     - singleinstancedatabases
   sideEffects: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: oracle-database-operator-controller-manager
+  namespace: oracle-database-operator-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+    spec:
+      containers:
+      - args:
+        - --enable-leader-election
+        command:
+        - /manager
+        env:
+        - name: WATCH_NAMESPACE
+          value: ""
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-mltp1
+        imagePullPolicy: Always
+        name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 400m
+            memory: 400Mi
+          requests:
+            cpu: 400m
+            memory: 400Mi
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: webhook-server-cert
+---

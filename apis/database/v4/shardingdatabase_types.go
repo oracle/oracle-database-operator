@@ -139,6 +139,10 @@ type ShardingDatabaseStatus struct {
 	Gsm       GsmStatus                `json:"gsm,omitempty"`
 	Dg        DgStatus                 `json:"dg,omitempty"`
 	Dataguard *ShardingDataguardStatus `json:"dataguard,omitempty"`
+	// DataguardPrereqsHash stores the last successfully applied DG prerequisite hash per local shard pod.
+	DataguardPrereqsHash map[string]string `json:"dataguardPrereqsHash,omitempty"`
+	// DataguardPrereqsRerunToken stores the last processed rerun token per local shard pod.
+	DataguardPrereqsRerunToken map[string]string `json:"dataguardPrereqsRerunToken,omitempty"`
 	// TDEKeyRefresh tracks manual token-triggered key refresh progress.
 	TDEKeyRefresh *TDEKeyRefreshStatus `json:"tdeKeyRefresh,omitempty"`
 

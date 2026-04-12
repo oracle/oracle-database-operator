@@ -52,10 +52,22 @@ const (
 	DataguardProducerModeManaged  DataguardProducerMode = "Managed"
 )
 
+// DataguardPrereqsSpec controls local database prerequisite setup for broker usage.
+type DataguardPrereqsSpec struct {
+	Enabled bool `json:"enabled,omitempty"`
+	// BrokerConfigDir optionally overrides the dg_broker_config_file location root.
+	// Use an absolute filesystem path for SIDB or an ASM path such as +DATA/... for RAC/shared storage.
+	BrokerConfigDir string `json:"brokerConfigDir,omitempty"`
+	// StandbyRedoSize optionally overrides the standby redo log size (for example 200M, 1G).
+	StandbyRedoSize string `json:"standbyRedoSize,omitempty"`
+}
+
 // DataguardProducerSpec configures how a producer exposes or manages DG topology.
 type DataguardProducerSpec struct {
 	// +kubebuilder:validation:Enum=Disabled;Preview;Managed
 	Mode DataguardProducerMode `json:"mode,omitempty"`
+	// Prereqs optionally enables local database prerequisite configuration for Data Guard broker usage.
+	Prereqs *DataguardPrereqsSpec `json:"prereqs,omitempty"`
 }
 
 func normalizeDataguardProducerMode(spec *DataguardProducerSpec) DataguardProducerMode {
@@ -67,6 +79,24 @@ func EffectiveDataguardProducerMode(spec *DataguardProducerSpec) DataguardProduc
 		return DataguardProducerModePreview
 	}
 	return DataguardProducerMode(strings.TrimSpace(string(spec.Mode)))
+}
+
+func DataguardProducerPrereqsEnabled(spec *DataguardProducerSpec) bool {
+	return spec != nil && spec.Prereqs != nil && spec.Prereqs.Enabled
+}
+
+func DataguardProducerBrokerConfigDir(spec *DataguardProducerSpec) string {
+	if spec == nil || spec.Prereqs == nil {
+		return ""
+	}
+	return strings.TrimSpace(spec.Prereqs.BrokerConfigDir)
+}
+
+func DataguardProducerStandbyRedoSize(spec *DataguardProducerSpec) string {
+	if spec == nil || spec.Prereqs == nil {
+		return ""
+	}
+	return strings.TrimSpace(spec.Prereqs.StandbyRedoSize)
 }
 
 // DataguardSourceRef identifies the producer object that published a DG topology.

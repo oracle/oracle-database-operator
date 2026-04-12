@@ -888,11 +888,18 @@ func validateDataguardProducerSpec(path *field.Path, spec *DataguardProducerSpec
 	mode := normalizeDataguardProducerMode(spec)
 	switch mode {
 	case DataguardProducerModeDisabled, DataguardProducerModePreview:
-		return allErrs
 	case DataguardProducerModeManaged:
 		allErrs = append(allErrs, field.Forbidden(path.Child("mode"), "Managed mode is reserved for future DataguardBroker automation and is not supported yet"))
 	default:
 		allErrs = append(allErrs, field.Invalid(path.Child("mode"), mode, "must be Disabled, Preview, or Managed"))
+	}
+	if spec != nil && spec.Prereqs != nil {
+		if dir := strings.TrimSpace(spec.Prereqs.BrokerConfigDir); dir != "" && !strings.HasPrefix(dir, "/") && !strings.HasPrefix(dir, "+") {
+			allErrs = append(allErrs, field.Invalid(path.Child("prereqs").Child("brokerConfigDir"), spec.Prereqs.BrokerConfigDir, "must be an absolute path or ASM path starting with '+'"))
+		}
+		if size := strings.TrimSpace(spec.Prereqs.StandbyRedoSize); strings.ContainsAny(size, " \t\r\n") {
+			allErrs = append(allErrs, field.Invalid(path.Child("prereqs").Child("standbyRedoSize"), spec.Prereqs.StandbyRedoSize, "must not contain whitespace"))
+		}
 	}
 	return allErrs
 }

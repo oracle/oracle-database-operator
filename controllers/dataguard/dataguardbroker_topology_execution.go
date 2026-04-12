@@ -225,6 +225,53 @@ func readDataguardTopologyMemberAdminPassword(ctx context.Context, r *DataguardB
 	return string(value), nil
 }
 
+func ensureDataguardTopologyLocalDatabasePrereqs(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, state *dataguardTopologyResolvedState, req ctrl.Request) error {
+	if state == nil {
+		return fmt.Errorf("topology state is incomplete")
+	}
+
+	for _, member := range state.Members {
+		if member == nil || member.LocalRef == nil {
+			continue
+		}
+		kind := strings.TrimSpace(member.LocalRef.Kind)
+		if kind != "" && kind != "SingleInstanceDatabase" {
+			continue
+		}
+
+		namespace := strings.TrimSpace(member.LocalRef.Namespace)
+		if namespace == "" {
+			namespace = broker.Namespace
+		}
+
+		var sidb dbapi.SingleInstanceDatabase
+		if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: strings.TrimSpace(member.LocalRef.Name)}, &sidb); err != nil {
+			return err
+		}
+
+		readyPod, _, _, _, err := dbcommons.FindPods(r, sidb.Spec.Image.Version, "", sidb.Name, sidb.Namespace, ctx, req)
+		if err != nil {
+			return fmt.Errorf("failed to find ready pod for local member %s: %w", member.Name, err)
+		}
+		if strings.TrimSpace(readyPod.Name) == "" {
+			return fmt.Errorf("local member %s does not have a ready database pod yet", member.Name)
+		}
+
+		command := dbcommons.BuildDataguardPrereqsCommand(
+			"configure",
+			dbapi.DataguardProducerBrokerConfigDir(sidb.Spec.Dataguard),
+			dbapi.DataguardProducerStandbyRedoSize(sidb.Spec.Dataguard),
+		)
+		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c", command)
+		if err != nil {
+			return fmt.Errorf("failed to configure Data Guard prerequisites for local member %s: %w", member.Name, err)
+		}
+		r.Log.Info("Configured local database Data Guard prerequisites", "member", member.Name, "pod", readyPod.Name, "output", out)
+	}
+
+	return nil
+}
+
 func ensureDataguardTopologyNetConfiguration(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, state *dataguardTopologyResolvedState, req ctrl.Request) error {
 	if broker == nil || state == nil || state.Runtime == nil {
 		return fmt.Errorf("topology runtime state is incomplete")
@@ -375,6 +422,9 @@ exit
 func ensureDataguardTopologyBrokerConfiguration(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, req ctrl.Request, state *dataguardTopologyResolvedState) error {
 	if state == nil || state.Primary == nil {
 		return fmt.Errorf("topology state is incomplete")
+	}
+	if err := ensureDataguardTopologyLocalDatabasePrereqs(ctx, r, broker, state, req); err != nil {
+		return err
 	}
 	if err := ensureDataguardTopologyNetConfiguration(ctx, r, broker, state, req); err != nil {
 		return err

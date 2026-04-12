@@ -99,8 +99,6 @@ spec:
             - workRequestOCID
             type: object
         type: object
-    deprecated: true
-    deprecationWarning: AutonomousDatabaseRestore v1alpha1 is deprecated; use apiVersion database.oracle.com/v4. Existing v1alpha1 resources remain supported for migration only.
     served: true
     storage: false
     subresources:

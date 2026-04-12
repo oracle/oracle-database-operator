@@ -44,7 +44,9 @@ package controllers
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -103,6 +105,8 @@ var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Se
 var requeueN ctrl.Result = ctrl.Result{}
 
 const singleInstanceDatabaseFinalizer = "database.oracle.com/singleinstancedatabasefinalizer"
+const sidbConditionDataguardPrereqsReady = "DataguardPrereqsReady"
+const sidbDataguardPrereqsRerunAnnotation = "database.oracle.com/dataguard-prereqs-rerun-token"
 
 // ErrNotPhysicalStandby indicates the database role is not PHYSICAL_STANDBY.
 var ErrNotPhysicalStandby error = errors.New("database not in PHYSICAL_STANDBY role")
@@ -412,6 +416,64 @@ func getTcpsCertsLocation(m *dbapi.SingleInstanceDatabase) string {
 		}
 	}
 	return defaultLocation
+}
+
+func getDataguardPrereqsEnabled(m *dbapi.SingleInstanceDatabase) bool {
+	if m == nil {
+		return false
+	}
+	return dbapi.DataguardProducerPrereqsEnabled(m.Spec.Dataguard)
+}
+
+func getDataguardPrereqsBrokerConfigDir(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	return dbapi.DataguardProducerBrokerConfigDir(m.Spec.Dataguard)
+}
+
+func getDataguardPrereqsStandbyRedoSize(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	return dbapi.DataguardProducerStandbyRedoSize(m.Spec.Dataguard)
+}
+
+func getDataguardPrereqsRerunToken(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	return strings.TrimSpace(m.GetAnnotations()[sidbDataguardPrereqsRerunAnnotation])
+}
+
+func dataguardPrereqsDesiredHash(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		getDataguardPrereqsBrokerConfigDir(m),
+		getDataguardPrereqsStandbyRedoSize(m),
+	}, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+func shouldRunDataguardPrereqs(m *dbapi.SingleInstanceDatabase) bool {
+	if !getDataguardPrereqsEnabled(m) || m == nil {
+		return false
+	}
+	desiredHash := dataguardPrereqsDesiredHash(m)
+	rerunToken := getDataguardPrereqsRerunToken(m)
+	condition := meta.FindStatusCondition(m.Status.Conditions, sidbConditionDataguardPrereqsReady)
+	if condition == nil || condition.Status != metav1.ConditionTrue {
+		return true
+	}
+	if strings.TrimSpace(m.Status.DataguardPrereqsHash) != desiredHash {
+		return true
+	}
+	if strings.TrimSpace(m.Status.DataguardPrereqsRerunToken) != rerunToken {
+		return true
+	}
+	return false
 }
 
 func isGeneratedDataguardClientWalletSecret(m *dbapi.SingleInstanceDatabase) bool {
@@ -877,6 +939,10 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		if result.Requeue || err != nil {
 			return result, err
 		}
+		result, err = r.configDataguardPrereqs(sidb, readyPod, ctx, req)
+		if result.Requeue || err != nil {
+			return result, err
+		}
 		if err := syncConfiguredTNSAliasesInPod(r, sidb, referredPrimaryDatabase, readyPod, ctx, req); err != nil {
 			return requeueY, err
 		}
@@ -913,6 +979,10 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		if tcpsResult.Requeue || err != nil {
 			return tcpsResult, err
 		}
+	}
+	result, err := r.configDataguardPrereqs(sidb, readyPod, ctx, req)
+	if result.Requeue || err != nil {
+		return result, err
 	}
 
 	if err := syncConfiguredTNSAliasesInPod(r, sidb, referredPrimaryDatabase, readyPod, ctx, req); err != nil {
@@ -4254,6 +4324,58 @@ func (r *SingleInstanceDatabaseReconciler) readBase64FileFromPod(
 		return nil, nil
 	}
 	return base64.StdEncoding.DecodeString(encoded)
+}
+
+func setSIDBDataguardPrereqsCondition(sidb *dbapi.SingleInstanceDatabase, status metav1.ConditionStatus, reason, message string) {
+	if sidb == nil {
+		return
+	}
+	meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+		Type:               sidbConditionDataguardPrereqsReady,
+		Status:             status,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: sidb.Generation,
+		Reason:             reason,
+		Message:            message,
+	})
+}
+
+func (r *SingleInstanceDatabaseReconciler) configDataguardPrereqs(m *dbapi.SingleInstanceDatabase,
+	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if !getDataguardPrereqsEnabled(m) {
+		return requeueN, nil
+	}
+	if !shouldRunDataguardPrereqs(m) {
+		return requeueN, nil
+	}
+
+	desiredHash := dataguardPrereqsDesiredHash(m)
+	rerunToken := getDataguardPrereqsRerunToken(m)
+	command := dbcommons.BuildDataguardPrereqsCommand(
+		"configure",
+		getDataguardPrereqsBrokerConfigDir(m),
+		getDataguardPrereqsStandbyRedoSize(m),
+	)
+	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", command)
+	if err != nil {
+		r.Log.Error(err, "Error configuring Data Guard prerequisites", "pod", readyPod.Name)
+		setSIDBDataguardPrereqsCondition(m, metav1.ConditionFalse, "ConfigureFailed", fmt.Sprintf("failed to configure Data Guard prerequisites: %v", err))
+		if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+			r.Log.Error(updateErr, "failed to update Data Guard prerequisite condition after error")
+		}
+		return requeueY, nil
+	}
+
+	r.Log.Info("configureDataguardPrereqs Output : \n" + out)
+	m.Status.DataguardPrereqsHash = desiredHash
+	m.Status.DataguardPrereqsRerunToken = rerunToken
+	setSIDBDataguardPrereqsCondition(m, metav1.ConditionTrue, "Configured", "database-side Data Guard broker prerequisites are configured")
+	if err := r.Status().Update(ctx, m); err != nil {
+		return requeueY, err
+	}
+	r.Recorder.Eventf(m, corev1.EventTypeNormal, "Configuring Data Guard Prerequisites", "Configured Data Guard prerequisites in pod %s", readyPod.Name)
+	return requeueN, nil
 }
 
 // #############################################################################

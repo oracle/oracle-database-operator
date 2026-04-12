@@ -426,6 +426,10 @@ type SingleInstanceDatabaseStatus struct {
 	// +kubebuilder:default:=""
 	TcpsTlsSecret string                   `json:"tcpsTlsSecret"`
 	Dataguard     *ProducerDataguardStatus `json:"dataguard,omitempty"`
+	// DataguardPrereqsHash stores the last successfully applied SIDB Data Guard prerequisite configuration hash.
+	DataguardPrereqsHash string `json:"dataguardPrereqsHash,omitempty"`
+	// DataguardPrereqsRerunToken stores the last processed explicit rerun token annotation value.
+	DataguardPrereqsRerunToken string `json:"dataguardPrereqsRerunToken,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge

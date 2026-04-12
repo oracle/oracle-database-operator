@@ -43,6 +43,36 @@ func TestSIDBWebhookRejectsManagedDataguardMode(t *testing.T) {
 	}
 }
 
+func TestSIDBWebhookAllowsDataguardPrereqsOverrides(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Dataguard = &DataguardProducerSpec{
+		Mode: DataguardProducerModePreview,
+		Prereqs: &DataguardPrereqsSpec{
+			Enabled:         true,
+			BrokerConfigDir: "/opt/oracle/oradata/dbconfig/ORCLCDB",
+			StandbyRedoSize: "512M",
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors for dataguard prereqs overrides, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookRejectsRelativeDataguardPrereqsBrokerConfigDir(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Dataguard = &DataguardProducerSpec{
+		Prereqs: &DataguardPrereqsSpec{
+			Enabled:         true,
+			BrokerConfigDir: "relative/path",
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for relative dataguard prereqs brokerConfigDir")
+	}
+}
+
 func TestSIDBWebhookRejectsClientWalletSecretWhenTCPSDisabled(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{

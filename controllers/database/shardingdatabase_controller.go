@@ -74,6 +74,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	dataguardcommon "github.com/oracle/oracle-database-operator/commons/dataguard"
 	dgsharding "github.com/oracle/oracle-database-operator/commons/dataguard/sharding"
 	sharedk8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
@@ -114,7 +115,8 @@ const (
 	updateLockRequeue    = 15 * time.Second
 	statusRefreshRequeue = 60 * time.Second
 
-	lockOverrideAnnotation = lockpolicy.DefaultOverrideAnnotation
+	lockOverrideAnnotation                  = lockpolicy.DefaultOverrideAnnotation
+	shardingDataguardPrereqsRerunAnnotation = "database.oracle.com/dataguard-prereqs-rerun-token"
 
 	credentialSyncConditionType         = "CredentialSync"
 	credentialSyncHashAnnotation        = "database.oracle.com/credential-sync-hash"
@@ -2935,6 +2937,16 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(_ context.Context, instanc
 
 			cfgName := r.buildDgConfigName(instance, *primary, OraShardSpex)
 			standbyConnects := []string{r.buildShardConnectIdentifier(instance, OraShardSpex, strings.ToUpper(strings.TrimSpace(OraShardSpex.Name)))}
+			if err := r.ensureShardDataguardPrereqs(instance, *primary); err != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:primary-prereqs:"+err.Error())
+				return err
+			}
+			if err := r.ensureShardDataguardPrereqs(instance, OraShardSpex); err != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:standby-prereqs:"+err.Error())
+				return err
+			}
 
 			workflow := dgsharding.NewStandbyWorkflow(dgsharding.StandbyWorkflowOptions{
 				Instance:        instance,
@@ -3530,6 +3542,78 @@ func (r *ShardingDatabaseReconciler) dgBrokerDone(instance *databasev4.ShardingD
 	}
 	v := strings.ToLower(strings.TrimSpace(instance.Status.Dg.Broker[shardName]))
 	return v == "true" || v == "enabled" || v == "configured"
+}
+
+func getShardingDataguardPrereqsEnabled(instance *databasev4.ShardingDatabase) bool {
+	if instance == nil {
+		return false
+	}
+	return databasev4.DataguardProducerPrereqsEnabled(instance.Spec.Dataguard)
+}
+
+func getShardingDataguardPrereqsRerunToken(instance *databasev4.ShardingDatabase) string {
+	if instance == nil {
+		return ""
+	}
+	return strings.TrimSpace(instance.GetAnnotations()[shardingDataguardPrereqsRerunAnnotation])
+}
+
+func shardingDataguardPrereqsDesiredHash(instance *databasev4.ShardingDatabase) string {
+	if instance == nil {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		databasev4.DataguardProducerBrokerConfigDir(instance.Spec.Dataguard),
+		databasev4.DataguardProducerStandbyRedoSize(instance.Spec.Dataguard),
+	}, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+func shouldRunShardingDataguardPrereqs(instance *databasev4.ShardingDatabase, shardName string) bool {
+	if !getShardingDataguardPrereqsEnabled(instance) {
+		return false
+	}
+	name := strings.TrimSpace(shardName)
+	if name == "" {
+		return false
+	}
+	desiredHash := shardingDataguardPrereqsDesiredHash(instance)
+	rerunToken := getShardingDataguardPrereqsRerunToken(instance)
+	if instance.Status.DataguardPrereqsHash == nil || strings.TrimSpace(instance.Status.DataguardPrereqsHash[name]) != desiredHash {
+		return true
+	}
+	if instance.Status.DataguardPrereqsRerunToken == nil || strings.TrimSpace(instance.Status.DataguardPrereqsRerunToken[name]) != rerunToken {
+		return true
+	}
+	return false
+}
+
+func (r *ShardingDatabaseReconciler) ensureShardDataguardPrereqs(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) error {
+	if !shouldRunShardingDataguardPrereqs(instance, shard.Name) {
+		return nil
+	}
+	podName := strings.TrimSpace(shard.Name) + "-0"
+	command := dbcommons.BuildDataguardPrereqsCommand(
+		"configure",
+		databasev4.DataguardProducerBrokerConfigDir(instance.Spec.Dataguard),
+		databasev4.DataguardProducerStandbyRedoSize(instance.Spec.Dataguard),
+	)
+	if err := shardingv1.ExecShellInPod(podName, command, instance, r.kubeConfig, r.Log); err != nil {
+		return err
+	}
+	desiredHash := shardingDataguardPrereqsDesiredHash(instance)
+	rerunToken := getShardingDataguardPrereqsRerunToken(instance)
+	return r.updateStatusWithRetry(instance, func(latest *databasev4.ShardingDatabase) {
+		if latest.Status.DataguardPrereqsHash == nil {
+			latest.Status.DataguardPrereqsHash = map[string]string{}
+		}
+		if latest.Status.DataguardPrereqsRerunToken == nil {
+			latest.Status.DataguardPrereqsRerunToken = map[string]string{}
+		}
+		name := strings.TrimSpace(shard.Name)
+		latest.Status.DataguardPrereqsHash[name] = desiredHash
+		latest.Status.DataguardPrereqsRerunToken[name] = rerunToken
+	})
 }
 
 // setupPrimaryRedoTransport handles setup primary redo transport for the sharding database controller.

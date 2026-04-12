@@ -559,8 +559,6 @@ spec:
                 type: object
             type: object
         type: object
-    deprecated: true
-    deprecationWarning: ShardingDatabase v1alpha1 is deprecated; use apiVersion database.oracle.com/v4. Existing v1alpha1 resources remain supported for migration only.
     served: true
     storage: false
     subresources:
@@ -929,6 +927,15 @@ spec:
                     - Preview
                     - Managed
                     type: string
+                  prereqs:
+                    properties:
+                      brokerConfigDir:
+                        type: string
+                      enabled:
+                        type: boolean
+                      standbyRedoSize:
+                        type: string
+                    type: object
                 type: object
               dbEdition:
                 type: string
@@ -3104,6 +3111,14 @@ spec:
                     type: string
                   topologyLocked:
                     type: boolean
+                type: object
+              dataguardPrereqsHash:
+                additionalProperties:
+                  type: string
+                type: object
+              dataguardPrereqsRerunToken:
+                additionalProperties:
+                  type: string
                 type: object
               dg:
                 properties:
