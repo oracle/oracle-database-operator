@@ -12321,7 +12321,7 @@ spec:
                 type: string
               image:
                 properties:
-                  imagePullPolicy:
+                  pullPolicy:
                     enum:
                     - Always
                     - IfNotPresent

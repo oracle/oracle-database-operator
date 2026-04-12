@@ -366,11 +366,11 @@ type SingleInstanceDatabaseInitParams struct {
 
 // SingleInstanceDatabaseImage defines the Image source and pullSecrets for POD
 type SingleInstanceDatabaseImage struct {
-	Version         string             `json:"version,omitempty"`
-	PullFrom        string             `json:"pullFrom"`
-	PullSecrets     string             `json:"pullSecrets,omitempty"`
-	ImagePullPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
-	PrebuiltDB      bool               `json:"prebuiltDB,omitempty"`
+	Version     string             `json:"version,omitempty"`
+	PullFrom    string             `json:"pullFrom"`
+	PullSecrets string             `json:"pullSecrets,omitempty"`
+	PullPolicy  *corev1.PullPolicy `json:"pullPolicy,omitempty"`
+	PrebuiltDB  bool               `json:"prebuiltDB,omitempty"`
 }
 
 // SingleInsatnceAdminPassword defines the secret containing Admin Password mapped to secretKey for Database

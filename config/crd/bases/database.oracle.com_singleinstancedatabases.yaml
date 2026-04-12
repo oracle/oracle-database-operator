@@ -103,7 +103,7 @@ spec:
                 type: boolean
               image:
                 properties:
-                  imagePullPolicy:
+                  pullPolicy:
                     enum:
                     - Always
                     - IfNotPresent
@@ -590,7 +590,7 @@ spec:
                 type: array
               image:
                 properties:
-                  imagePullPolicy:
+                  pullPolicy:
                     enum:
                     - Always
                     - IfNotPresent

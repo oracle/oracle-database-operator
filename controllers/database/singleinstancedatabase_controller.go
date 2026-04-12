@@ -494,10 +494,10 @@ func getDataguardClientWalletSourceDir(m *dbapi.SingleInstanceDatabase) string {
 }
 
 func getSIDBImagePullPolicy(m *dbapi.SingleInstanceDatabase) corev1.PullPolicy {
-	if m == nil || m.Spec.Image.ImagePullPolicy == nil {
+	if m == nil || m.Spec.Image.PullPolicy == nil {
 		return ""
 	}
-	return *m.Spec.Image.ImagePullPolicy
+	return *m.Spec.Image.PullPolicy
 }
 
 func buildSIDBPodSecurityContext(
