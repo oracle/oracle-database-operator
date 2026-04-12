@@ -4,6 +4,7 @@ package controllers
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -105,6 +107,9 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			Sid:      "STBY",
 			CreateAs: "standby",
+			AdminPassword: dbapi.SingleInstanceDatabaseAdminPassword{
+				SecretName: "standby-admin",
+			},
 			Image:    dbapi.SingleInstanceDatabaseImage{PullFrom: "oracle/db:19.3.0", PullSecrets: "pull-secret"},
 			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
 				DatabaseRef: "primary-db",
@@ -119,6 +124,9 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "primary-db", Namespace: "ns1"},
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			Sid: "PRIM",
+			AdminPassword: dbapi.SingleInstanceDatabaseAdminPassword{
+				SecretName: "primary-admin",
+			},
 		},
 	}
 
@@ -171,6 +179,90 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 	}
 	if !sidb.Status.Dataguard.RenderedBrokerSpec.Ready {
 		t.Fatalf("expected rendered broker spec to be marked ready")
+	}
+	gotMembers := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
+	if len(gotMembers) != 2 {
+		t.Fatalf("expected two rendered broker members, got %#v", gotMembers)
+	}
+	for _, member := range gotMembers {
+		if member.AdminSecretRef == nil {
+			t.Fatalf("expected adminSecretRef to be published for member %#v", member)
+		}
+		if member.AdminSecretRef.SecretKey != "oracle_pwd" {
+			t.Fatalf("expected default admin secret key oracle_pwd for member %#v", member)
+		}
+	}
+}
+
+func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryRequiresUserInput(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:      "STBY",
+			CreateAs: "standby",
+			AdminPassword: dbapi.SingleInstanceDatabaseAdminPassword{
+				SecretName: "standby-admin",
+			},
+			Image: dbapi.SingleInstanceDatabaseImage{PullFrom: "oracle/db:19.3.0"},
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				ConnectString: "external-primary:1521/PRIM",
+			},
+			Dataguard: &dbapi.DataguardProducerSpec{Mode: dbapi.DataguardProducerModePreview},
+		},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			CreatedAs: "standby",
+		},
+	}
+
+	syncSIDBDataguardPreviewStatus(sidb, nil)
+
+	if sidb.Status.Dataguard == nil {
+		t.Fatalf("expected dataguard preview status to be populated")
+	}
+	if sidb.Status.Dataguard.Phase != dataguardPreviewPhaseWaitingForUserInput {
+		t.Fatalf("expected phase %q, got %q", dataguardPreviewPhaseWaitingForUserInput, sidb.Status.Dataguard.Phase)
+	}
+	if sidb.Status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be false when external input is required")
+	}
+	if sidb.Status.Dataguard.RenderedBrokerSpec == nil || sidb.Status.Dataguard.RenderedBrokerSpec.Spec == nil || sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
+		t.Fatalf("expected rendered broker spec topology to be published")
+	}
+	if sidb.Status.Dataguard.RenderedBrokerSpec.Ready {
+		t.Fatalf("expected rendered broker spec to be marked not ready")
+	}
+	condition := meta.FindStatusCondition(sidb.Status.Dataguard.Conditions, "TopologyPreviewReady")
+	if condition == nil {
+		t.Fatalf("expected TopologyPreviewReady condition to be set")
+	}
+	if condition.Reason != "WaitingForUserInput" {
+		t.Fatalf("expected WaitingForUserInput condition reason, got %#v", condition)
+	}
+	if !strings.Contains(condition.Message, "adminSecretRef.secretName") {
+		t.Fatalf("expected condition message to explain adminSecretRef update, got %#v", condition)
+	}
+	members := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
+	if len(members) != 2 {
+		t.Fatalf("expected two topology members, got %#v", members)
+	}
+	var externalPrimary *dbapi.DataguardTopologyMember
+	for i := range members {
+		if members[i].Role == "PRIMARY" {
+			externalPrimary = &members[i]
+			break
+		}
+	}
+	if externalPrimary == nil {
+		t.Fatalf("expected primary member in rendered topology, got %#v", members)
+	}
+	if externalPrimary.AdminSecretRef == nil {
+		t.Fatalf("expected placeholder adminSecretRef for external primary member")
+	}
+	if externalPrimary.AdminSecretRef.SecretName != dataguardPreviewExternalSecretPlaceholder {
+		t.Fatalf("unexpected placeholder secret name: %#v", externalPrimary.AdminSecretRef)
+	}
+	if externalPrimary.AdminSecretRef.SecretKey != dataguardPreviewExternalSecretKey {
+		t.Fatalf("unexpected placeholder secret key: %#v", externalPrimary.AdminSecretRef)
 	}
 }
 

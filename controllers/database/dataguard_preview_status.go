@@ -21,8 +21,12 @@ const (
 	dataguardPreviewPhaseNotApplicable         = "NotApplicable"
 	dataguardPreviewPhaseWaitingForSource      = "WaitingForPrimarySource"
 	dataguardPreviewPhaseWaitingForTopology    = "WaitingForTopology"
+	dataguardPreviewPhaseWaitingForUserInput   = "WaitingForUserInput"
 	dataguardPreviewPhaseReady                 = "PreviewReady"
 	dataguardPreviewPhaseManagedNotImplemented = "ManagedNotImplemented"
+	dataguardPreviewDefaultSecretKey           = "oracle_pwd"
+	dataguardPreviewExternalSecretPlaceholder  = "replace-with-external-admin-secret"
+	dataguardPreviewExternalSecretKey          = "password"
 )
 
 func dataguardProducerMode(spec *dbapi.DataguardProducerSpec) dbapi.DataguardProducerMode {
@@ -64,7 +68,7 @@ func syncSIDBDataguardPreviewStatus(m *dbapi.SingleInstanceDatabase, rp *dbapi.S
 		return
 	}
 
-	topology, memberName, primaryMemberName := buildSIDBPreviewTopology(m, rp)
+	topology, memberName, primaryMemberName, previewMessage, previewReady := buildSIDBPreviewTopology(m, rp)
 	next.MemberName = memberName
 	next.PrimaryMemberName = primaryMemberName
 	next.Role = memberRole
@@ -81,19 +85,37 @@ func syncSIDBDataguardPreviewStatus(m *dbapi.SingleInstanceDatabase, rp *dbapi.S
 		next.TopologyHash = ""
 		next.PublishedTopologyHash = ""
 		next.LastPublishedTime = nil
-		setDataguardPreviewCondition(&next.Conditions, m.Generation, false, "WaitingForPrimarySource", "resolved Data Guard topology is not ready yet")
+		msg := "resolved Data Guard topology is not ready yet"
+		if strings.TrimSpace(previewMessage) != "" {
+			msg = previewMessage
+		}
+		setDataguardPreviewCondition(&next.Conditions, m.Generation, false, "WaitingForPrimarySource", msg)
 		m.Status.Dataguard = next
 		return
 	}
 
-	next.Phase = dataguardPreviewPhaseReady
-	next.ReadyForBroker = true
 	next.TopologyHash = dataguardTopologyHash(topology)
-	next.PublishedTopologyHash = next.TopologyHash
-	now := metav1.Now()
-	next.LastPublishedTime = &now
-	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(m.Name, m.Namespace, topology, next.Execution, next.TopologyHash, true)
-	setDataguardPreviewCondition(&next.Conditions, m.Generation, true, "PreviewReady", "resolved Data Guard topology is ready to be copied into DataguardBroker.spec.topology")
+	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(m.Name, m.Namespace, topology, next.Execution, next.TopologyHash, previewReady)
+	if previewReady {
+		next.Phase = dataguardPreviewPhaseReady
+		next.ReadyForBroker = true
+		next.PublishedTopologyHash = next.TopologyHash
+		now := metav1.Now()
+		next.LastPublishedTime = &now
+		setDataguardPreviewCondition(&next.Conditions, m.Generation, true, "PreviewReady", "resolved Data Guard topology is ready to be copied into DataguardBroker.spec.topology")
+		m.Status.Dataguard = next
+		return
+	}
+
+	next.Phase = dataguardPreviewPhaseWaitingForUserInput
+	next.ReadyForBroker = false
+	next.PublishedTopologyHash = ""
+	next.LastPublishedTime = nil
+	msg := "resolved Data Guard topology requires additional user input before it can be copied into DataguardBroker.spec.topology"
+	if strings.TrimSpace(previewMessage) != "" {
+		msg = previewMessage
+	}
+	setDataguardPreviewCondition(&next.Conditions, m.Generation, false, "WaitingForUserInput", msg)
 	m.Status.Dataguard = next
 }
 
@@ -128,14 +150,14 @@ func sidbPreviewTopologyLocked(m *dbapi.SingleInstanceDatabase) bool {
 	}
 }
 
-func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) (*dbapi.DataguardTopologySpec, string, string) {
+func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) (*dbapi.DataguardTopologySpec, string, string, string, bool) {
 	if m == nil {
-		return nil, "", ""
+		return nil, "", "", "", false
 	}
 
 	memberRole := sidbPreviewMemberRole(m)
 	if memberRole == "" {
-		return nil, "", ""
+		return nil, "", "", "", false
 	}
 
 	memberName := sanitizeDataguardMemberName(m.Name, "sidb-member")
@@ -152,11 +174,23 @@ func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleI
 		Endpoints: buildSIDBPreviewEndpoints(m, m.Name, strings.TrimSpace(m.Spec.Sid)),
 		TCPS:      buildSIDBPreviewTCPSConfig(m),
 	}
-
-	primaryMember, primaryMemberName := buildSIDBPreviewPrimaryMember(m, rp)
-	if primaryMember == nil || primaryMemberName == "" {
-		return nil, memberName, ""
+	previewReady := true
+	previewMessages := make([]string, 0, 2)
+	if adminSecretRef, msg, ok := buildSIDBPreviewLocalAdminSecretRef(m); ok {
+		member.AdminSecretRef = adminSecretRef
+	} else if strings.TrimSpace(msg) != "" {
+		previewReady = false
+		previewMessages = append(previewMessages, msg)
 	}
+
+	primaryMember, primaryMemberName, primaryMessage, primaryReady := buildSIDBPreviewPrimaryMember(m, rp)
+	if primaryMember == nil || primaryMemberName == "" {
+		return nil, memberName, "", primaryMessage, false
+	}
+	if strings.TrimSpace(primaryMessage) != "" {
+		previewMessages = append(previewMessages, primaryMessage)
+	}
+	previewReady = previewReady && primaryReady
 
 	topology := &dbapi.DataguardTopologySpec{
 		SourceKind: "SingleInstanceDatabase",
@@ -173,17 +207,17 @@ func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleI
 			Type:    "PHYSICAL",
 		}},
 	}
-	return topology, memberName, primaryMemberName
+	return topology, memberName, primaryMemberName, strings.Join(previewMessages, "; "), previewReady
 }
 
-func buildSIDBPreviewPrimaryMember(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) (*dbapi.DataguardTopologyMember, string) {
+func buildSIDBPreviewPrimaryMember(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) (*dbapi.DataguardTopologyMember, string, string, bool) {
 	if m == nil {
-		return nil, ""
+		return nil, "", "", false
 	}
 
 	source := resolvePrimaryDatabaseSource(m)
 	if !source.hasSource() {
-		return nil, ""
+		return nil, "", "", false
 	}
 
 	memberName := sanitizeDataguardMemberName(GetPrimaryDatabaseDisplayName(m, rp), "primary")
@@ -202,14 +236,19 @@ func buildSIDBPreviewPrimaryMember(m *dbapi.SingleInstanceDatabase, rp *dbapi.Si
 		}
 		member.Endpoints = buildSIDBPreviewEndpoints(rp, rp.Name, strings.TrimSpace(rp.Spec.Sid))
 		member.TCPS = buildSIDBPreviewTCPSConfig(rp)
-		return member, memberName
+		if adminSecretRef, msg, ok := buildSIDBPreviewLocalAdminSecretRef(rp); ok {
+			member.AdminSecretRef = adminSecretRef
+			return member, memberName, "", true
+		} else {
+			return member, memberName, msg, false
+		}
 	}
 
 	host := GetPrimaryDatabaseHost(m, rp)
 	port := GetPrimaryDatabasePort(m)
 	service := GetPrimaryDatabaseSid(m, rp)
 	if strings.TrimSpace(host) == "" || strings.TrimSpace(service) == "" {
-		return nil, ""
+		return nil, "", "", false
 	}
 
 	member.Endpoints = []dbapi.DataguardEndpointSpec{{
@@ -219,7 +258,29 @@ func buildSIDBPreviewPrimaryMember(m *dbapi.SingleInstanceDatabase, rp *dbapi.Si
 		Port:        int32(port),
 		ServiceName: strings.ToUpper(strings.TrimSpace(service)),
 	}}
-	return member, memberName
+	member.AdminSecretRef = &dbapi.DataguardSecretRef{
+		SecretName: dataguardPreviewExternalSecretPlaceholder,
+		SecretKey:  dataguardPreviewExternalSecretKey,
+	}
+	return member, memberName, fmt.Sprintf("topology member %q is external; update adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker", memberName), false
+}
+
+func buildSIDBPreviewLocalAdminSecretRef(m *dbapi.SingleInstanceDatabase) (*dbapi.DataguardSecretRef, string, bool) {
+	if m == nil {
+		return nil, "singleinstancedatabase is nil", false
+	}
+	secretName := strings.TrimSpace(m.Spec.AdminPassword.SecretName)
+	if secretName == "" {
+		return nil, fmt.Sprintf("singleinstancedatabase %q does not publish spec.adminPassword.secretName", m.Name), false
+	}
+	secretKey := strings.TrimSpace(m.Spec.AdminPassword.SecretKey)
+	if secretKey == "" {
+		secretKey = dataguardPreviewDefaultSecretKey
+	}
+	return &dbapi.DataguardSecretRef{
+		SecretName: secretName,
+		SecretKey:  secretKey,
+	}, "", true
 }
 
 func buildSIDBPreviewEndpoints(m *dbapi.SingleInstanceDatabase, hostHint, serviceHint string) []dbapi.DataguardEndpointSpec {
