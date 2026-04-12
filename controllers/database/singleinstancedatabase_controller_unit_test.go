@@ -267,6 +267,83 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryPublishesReadyPreview
 	if externalPrimary.AdminSecretRef.SecretKey != dataguardPreviewExternalSecretKey {
 		t.Fatalf("unexpected placeholder secret key: %#v", externalPrimary.AdminSecretRef)
 	}
+	if externalPrimary.TCPS != nil {
+		t.Fatalf("did not expect primary tcps block when standby tcps is disabled, got %#v", externalPrimary.TCPS)
+	}
+}
+
+func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryInfersTCPSPlaceholders(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:      "STBY",
+			CreateAs: "standby",
+			AdminPassword: dbapi.SingleInstanceDatabaseAdminPassword{
+				SecretName: "standby-admin",
+			},
+			Image: dbapi.SingleInstanceDatabaseImage{PullFrom: "oracle/db:19.3.0"},
+			TCPS: &dbapi.SingleInstanceDatabaseTCPS{
+				Enabled:      true,
+				ListenerPort: 2484,
+			},
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				ConnectString: "external-primary:1521/PRIM",
+			},
+			Dataguard: &dbapi.DataguardProducerSpec{Mode: dbapi.DataguardProducerModePreview},
+		},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			CreatedAs: "standby",
+		},
+	}
+
+	syncSIDBDataguardPreviewStatus(sidb, nil)
+
+	if sidb.Status.Dataguard == nil {
+		t.Fatalf("expected dataguard preview status to be populated")
+	}
+	if sidb.Status.Dataguard.Phase != dataguardPreviewPhaseReady {
+		t.Fatalf("expected phase %q, got %q", dataguardPreviewPhaseReady, sidb.Status.Dataguard.Phase)
+	}
+	if !sidb.Status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be true")
+	}
+	condition := meta.FindStatusCondition(sidb.Status.Dataguard.Conditions, "TopologyPreviewReady")
+	if condition == nil {
+		t.Fatalf("expected TopologyPreviewReady condition to be set")
+	}
+	if !strings.Contains(condition.Message, "tcps.clientWalletSecret") {
+		t.Fatalf("expected condition message to mention tcps placeholders, got %#v", condition)
+	}
+	members := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
+	var externalPrimary *dbapi.DataguardTopologyMember
+	for i := range members {
+		if members[i].Role == "PRIMARY" {
+			externalPrimary = &members[i]
+			break
+		}
+	}
+	if externalPrimary == nil {
+		t.Fatalf("expected primary member in rendered topology, got %#v", members)
+	}
+	if externalPrimary.TCPS == nil || !externalPrimary.TCPS.Enabled {
+		t.Fatalf("expected inferred primary tcps block, got %#v", externalPrimary.TCPS)
+	}
+	if externalPrimary.TCPS.ClientWalletSecret != dataguardPreviewExternalPrimaryWalletPH {
+		t.Fatalf("unexpected primary tcps wallet placeholder: %#v", externalPrimary.TCPS)
+	}
+	var tcpsEndpoint *dbapi.DataguardEndpointSpec
+	for i := range externalPrimary.Endpoints {
+		if externalPrimary.Endpoints[i].Protocol == "TCPS" {
+			tcpsEndpoint = &externalPrimary.Endpoints[i]
+			break
+		}
+	}
+	if tcpsEndpoint == nil {
+		t.Fatalf("expected primary tcps endpoint in rendered topology, got %#v", externalPrimary.Endpoints)
+	}
+	if tcpsEndpoint.Port != 2484 || tcpsEndpoint.ServiceName != "PRIM" {
+		t.Fatalf("unexpected inferred primary tcps endpoint: %#v", tcpsEndpoint)
+	}
 }
 
 func TestSIDBUnit_SyncDataguardPreviewStatusDisabledClearsStatus(t *testing.T) {
@@ -336,9 +413,6 @@ func TestSIDBUnit_BuildSIDBPreviewTCPSConfigUsesOverrideWalletSecret(t *testing.
 	tcps := buildSIDBPreviewTCPSConfig(sidb)
 	if tcps == nil {
 		t.Fatalf("expected TCPS config")
-	}
-	if tcps.ServerTLSSecret != "server-tls" {
-		t.Fatalf("expected server TLS secret, got %q", tcps.ServerTLSSecret)
 	}
 	if tcps.ClientWalletSecret != "custom-client-wallet" {
 		t.Fatalf("expected custom client wallet secret, got %q", tcps.ClientWalletSecret)

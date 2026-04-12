@@ -18530,13 +18530,17 @@ spec:
     - jsonPath: .status.tcpsConnectString
       name: TCPS Connect Str
       type: string
-    - jsonPath: .status.tcpsPdbConnectString
-      name: TCPS Pdb Connect Str
-      priority: 1
-      type: string
-    - jsonPath: .status.oemExpressUrl
-      name: Oem Express Url
-      type: string
+  - jsonPath: .status.tcpsPdbConnectString
+    name: TCPS Pdb Connect Str
+    priority: 1
+    type: string
+  - jsonPath: .status.clientWalletSecret
+    name: Wallet Secret
+    priority: 1
+    type: string
+  - jsonPath: .status.oemExpressUrl
+    name: Oem Express Url
+    type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -18700,6 +18704,8 @@ spec:
               charset:
                 type: string
               clientWalletLoc:
+                type: string
+              clientWalletSecret:
                 type: string
               clusterConnectString:
                 type: string
@@ -19644,6 +19650,8 @@ spec:
               charset:
                 type: string
               clientWalletLoc:
+                type: string
+              clientWalletSecret:
                 type: string
               clusterConnectString:
                 type: string

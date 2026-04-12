@@ -474,6 +474,7 @@ type SingleInstanceDatabaseStatus struct {
 	CertCreationTimestamp string `json:"certCreationTimestamp,omitempty"`
 	CertRenewInterval     string `json:"certRenewInterval,omitempty"`
 	ClientWalletLoc       string `json:"clientWalletLoc,omitempty"`
+	ClientWalletSecret    string `json:"clientWalletSecret,omitempty"`
 	PrimaryDatabase       string `json:"primaryDatabase,omitempty"`
 	// +kubebuilder:default:=""
 	TcpsTlsSecret string                   `json:"tcpsTlsSecret"`
@@ -508,6 +509,7 @@ type SingleInstanceDatabaseStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.pdbConnectString",name="Pdb Connect Str",type="string",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.tcpsConnectString",name="TCPS Connect Str",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.tcpsPdbConnectString",name="TCPS Pdb Connect Str",type="string", priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.clientWalletSecret",name="Wallet Secret",type="string",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.oemExpressUrl",name="Oem Express Url",type="string"
 
 // SingleInstanceDatabase is the Schema for the singleinstancedatabases API

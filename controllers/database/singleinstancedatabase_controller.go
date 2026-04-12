@@ -4512,6 +4512,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
 		m.Status.IsTcpsEnabled = true
 		m.Status.ClientWalletLoc = fmt.Sprintf(dbcommons.ClientWalletLocation, m.Spec.Sid)
+		m.Status.ClientWalletSecret = strings.TrimSpace(getDataguardClientWalletSecretName(m))
 		// tcpsTLSSecret can be empty or non-empty
 		// Store secret name in case of tls-secret addition or change, otherwise would be ""
 		if tcpsTLSSecret != "" {
@@ -4570,6 +4571,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		m.Status.CertCreationTimestamp = ""
 		m.Status.IsTcpsEnabled = false
 		m.Status.ClientWalletLoc = ""
+		m.Status.ClientWalletSecret = ""
 		m.Status.TcpsTlsSecret = ""
 
 		if err := r.Status().Update(ctx, m); err != nil {
@@ -4603,6 +4605,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			r.Log.Info("Cert Renewal Output : \n" + out)
 			// Updating the Status and publishing the event
 			m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
+			m.Status.ClientWalletSecret = strings.TrimSpace(getDataguardClientWalletSecretName(m))
 			if err := r.Status().Update(ctx, m); err != nil {
 				return requeueY, err
 			}
@@ -4621,6 +4624,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 
 			m.Status.CertRenewInterval = tcpsCertRenewInterval
 		}
+		m.Status.ClientWalletSecret = strings.TrimSpace(getDataguardClientWalletSecretName(m))
 		// update clientWallet
 		err := r.updateClientWallet(m, readyPod, ctx, req)
 		if err != nil {
@@ -4640,6 +4644,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			}
 		}
 	} else if tcpsEnabled && m.Status.IsTcpsEnabled && tcpsCertRenewInterval == "" {
+		m.Status.ClientWalletSecret = strings.TrimSpace(getDataguardClientWalletSecretName(m))
 		// update clientWallet
 		err := r.updateClientWallet(m, readyPod, ctx, req)
 		if err != nil {
