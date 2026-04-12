@@ -493,6 +493,13 @@ func getDataguardClientWalletSourceDir(m *dbapi.SingleInstanceDatabase) string {
 	return ""
 }
 
+func getSIDBImagePullPolicy(m *dbapi.SingleInstanceDatabase) corev1.PullPolicy {
+	if m == nil || m.Spec.Image.ImagePullPolicy == nil {
+		return ""
+	}
+	return *m.Spec.Image.ImagePullPolicy
+}
+
 func buildSIDBPodSecurityContext(
 	m *dbapi.SingleInstanceDatabase,
 	containerResources corev1.ResourceRequirements,
@@ -2129,9 +2136,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				initContainers := []corev1.Container{}
 				if hasOradataPersistence(m) && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
 					initContainers = append(initContainers, corev1.Container{
-						Name:    "init-permissions",
-						Image:   m.Spec.Image.PullFrom,
-						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata || true", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
+						Name:            "init-permissions",
+						Image:           m.Spec.Image.PullFrom,
+						ImagePullPolicy: getSIDBImagePullPolicy(m),
+						Command:         []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata || true", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
 						SecurityContext: &corev1.SecurityContext{
 							// User ID 0 means, root user
 							RunAsUser: func() *int64 { i := int64(0); return &i }(),
@@ -2144,9 +2152,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}
 				if m.Spec.Image.PrebuiltDB {
 					initContainers = append(initContainers, corev1.Container{
-						Name:    "init-prebuiltdb",
-						Image:   m.Spec.Image.PullFrom,
-						Command: []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
+						Name:            "init-prebuiltdb",
+						Image:           m.Spec.Image.PullFrom,
+						ImagePullPolicy: getSIDBImagePullPolicy(m),
+						Command:         []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
 						SecurityContext: &corev1.SecurityContext{
 							RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
 							RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
@@ -2168,8 +2177,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				// Standby TDE wallet import inputs are independent from DB credential wallet seeding.
 				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB && !GetAdminPasswordSkipInitWallet(m) {
 					initContainers = append(initContainers, corev1.Container{
-						Name:  "init-wallet",
-						Image: m.Spec.Image.PullFrom,
+						Name:            "init-wallet",
+						Image:           m.Spec.Image.PullFrom,
+						ImagePullPolicy: getSIDBImagePullPolicy(m),
 						Env: []corev1.EnvVar{
 							{
 								Name:  "ORACLE_SID",
@@ -2217,8 +2227,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				return initContainers
 			}(),
 			Containers: []corev1.Container{{
-				Name:  m.Name,
-				Image: m.Spec.Image.PullFrom,
+				Name:            m.Name,
+				Image:           m.Spec.Image.PullFrom,
+				ImagePullPolicy: getSIDBImagePullPolicy(m),
 				SecurityContext: &corev1.SecurityContext{
 					Capabilities: &corev1.Capabilities{
 						// Allow priority elevation for DB processes

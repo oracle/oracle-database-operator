@@ -12321,6 +12321,12 @@ spec:
                 type: string
               image:
                 properties:
+                  imagePullPolicy:
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
+                    type: string
                   pullFrom:
                     type: string
                   pullSecrets:
