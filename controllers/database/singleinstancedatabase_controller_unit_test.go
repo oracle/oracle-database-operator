@@ -560,6 +560,51 @@ func TestSIDBUnit_BuildManagedTNSAliasesAppliesOverridesAndAppendsExtras(t *test
 	}
 }
 
+func TestSIDBUnit_BuildPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtras(t *testing.T) {
+	primary := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			TNSAliases: []dbapi.SingleInstanceDatabaseTNSAlias{
+				{
+					Name:        "STBYDB",
+					Host:        "override-standby",
+					Port:        1525,
+					ServiceName: "stby_service",
+					Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
+					SSLServerDN: "CN=standby",
+				},
+				{
+					Name:        "EXTRA_ALIAS",
+					Host:        "extra-host",
+					ServiceName: "EXTRA_SERVICE",
+				},
+			},
+		},
+	}
+	standby := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "STBYDB",
+		},
+	}
+
+	aliases, names := buildPrimaryPeerTNSAliases(primary, standby)
+	expectedNames := []string{"STBYDB"}
+	if !reflect.DeepEqual(names, expectedNames) {
+		t.Fatalf("unexpected primary peer alias names: got %v want %v", names, expectedNames)
+	}
+	got := aliases["STBYDB"]
+	if got.Host != "override-standby" ||
+		got.Port != 1525 ||
+		got.ServiceName != "STBY_SERVICE" ||
+		got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS ||
+		got.SSLServerDN != "CN=standby" {
+		t.Fatalf("unexpected primary peer alias: %#v", got)
+	}
+	if _, exists := aliases["EXTRA_ALIAS"]; exists {
+		t.Fatalf("did not expect extra alias to be appended on primary peer path")
+	}
+}
+
 func TestSIDBUnit_ResolveExternalServiceConfigUsesNewLoadBalancerDefaults(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{

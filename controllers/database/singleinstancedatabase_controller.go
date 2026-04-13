@@ -5941,27 +5941,8 @@ func syncStandbySourceTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner
 }
 
 func buildManagedTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
-	desired, _ := buildAutomaticPrimaryTNSAliases(owner, primary)
-
-	for i := range owner.Spec.TNSAliases {
-		item := normalizeTNSAlias(owner.Spec.TNSAliases[i])
-		name := strings.TrimSpace(item.Name)
-		if name == "" {
-			continue
-		}
-		if generated, exists := desired[name]; exists {
-			desired[name] = mergeTNSAliasOverride(generated, item)
-			continue
-		}
-		desired[name] = item
-	}
-
-	desiredNames := make([]string, 0, len(desired))
-	for name := range desired {
-		desiredNames = append(desiredNames, name)
-	}
-	sort.Strings(desiredNames)
-	return desired, desiredNames
+	defaults, _ := buildAutomaticPrimaryTNSAliases(owner, primary)
+	return resolveDesiredTNSAliases(owner, defaults, true)
 }
 
 func buildAutomaticPrimaryTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
@@ -6058,46 +6039,63 @@ func mergeTNSAliasOverride(base dbapi.SingleInstanceDatabaseTNSAlias, override d
 	return merged
 }
 
-func resolveTNSAliasSettings(owner *dbapi.SingleInstanceDatabase, defaultAlias, defaultHost string, defaultPort int, defaultService string) (alias, host string, port int, serviceName, protocol, sslDN string) {
-	alias = strings.ToUpper(strings.TrimSpace(defaultAlias))
-	host = strings.TrimSpace(defaultHost)
-	port = defaultPort
-	serviceName = strings.ToUpper(strings.TrimSpace(defaultService))
-	protocol = string(dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP)
-	sslDN = ""
-
-	if owner == nil {
-		return
+func resolveDesiredTNSAliases(owner *dbapi.SingleInstanceDatabase, defaults map[string]dbapi.SingleInstanceDatabaseTNSAlias, appendExtras bool) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
+	desired := make(map[string]dbapi.SingleInstanceDatabaseTNSAlias, len(defaults))
+	for name, item := range defaults {
+		normalized := normalizeTNSAlias(item)
+		if strings.TrimSpace(normalized.Name) == "" {
+			normalized.Name = strings.ToUpper(strings.TrimSpace(name))
+		}
+		desired[normalized.Name] = normalized
 	}
+	if owner == nil {
+		return sortedDesiredTNSAliases(desired)
+	}
+
 	for i := range owner.Spec.TNSAliases {
-		item := owner.Spec.TNSAliases[i]
-		if !strings.EqualFold(strings.TrimSpace(item.Name), defaultAlias) {
+		item := normalizeTNSAlias(owner.Spec.TNSAliases[i])
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
 			continue
 		}
-		alias = strings.ToUpper(strings.TrimSpace(item.Name))
-		if v := strings.TrimSpace(item.Host); v != "" {
-			host = v
+		if generated, exists := desired[name]; exists {
+			desired[name] = mergeTNSAliasOverride(generated, item)
+			continue
 		}
-		if v := strings.TrimSpace(item.ServiceName); v != "" {
-			serviceName = strings.ToUpper(v)
+		if appendExtras {
+			desired[name] = item
 		}
-		protocol = normalizeTNSAliasProtocol(string(item.Protocol))
-		if item.Port > 0 {
-			port = item.Port
-		} else if port == 0 {
-			port = defaultPortForProtocol(protocol)
-		}
-		if v := strings.TrimSpace(item.SSLServerDN); v != "" {
-			sslDN = v
-		}
-		return
 	}
 
-	if port == 0 {
-		port = defaultPortForProtocol(protocol)
-	}
+	return sortedDesiredTNSAliases(desired)
+}
 
-	return
+func sortedDesiredTNSAliases(desired map[string]dbapi.SingleInstanceDatabaseTNSAlias) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
+	desiredNames := make([]string, 0, len(desired))
+	for name := range desired {
+		desiredNames = append(desiredNames, name)
+	}
+	sort.Strings(desiredNames)
+	return desired, desiredNames
+}
+
+func buildPrimaryPeerTNSAliases(primary *dbapi.SingleInstanceDatabase, standby *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
+	defaultAlias := strings.ToUpper(strings.TrimSpace(standby.Spec.Sid))
+	defaultHost := strings.TrimSpace(standby.Name)
+	defaultService := strings.ToUpper(strings.TrimSpace(standby.Spec.Sid))
+	if defaultAlias == "" || defaultHost == "" || defaultService == "" {
+		return map[string]dbapi.SingleInstanceDatabaseTNSAlias{}, nil
+	}
+	defaults := map[string]dbapi.SingleInstanceDatabaseTNSAlias{
+		defaultAlias: {
+			Name:        defaultAlias,
+			Host:        defaultHost,
+			Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
+			ServiceName: defaultService,
+			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
+		},
+	}
+	return resolveDesiredTNSAliases(primary, defaults, false)
 }
 
 // #############################################################################
@@ -6109,65 +6107,8 @@ func resolveTNSAliasSettings(owner *dbapi.SingleInstanceDatabase, defaultAlias, 
 func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
 	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	tnsFile := getTnsFilePathBySID(p.Spec.Sid)
-	alias, host, port, serviceName, protocol, sslDN := resolveTNSAliasSettings(p, s.Spec.Sid, s.Name, 1521, s.Spec.Sid)
-	desired := map[string]dbapi.SingleInstanceDatabaseTNSAlias{
-		alias: {
-			Name:        alias,
-			Host:        host,
-			Port:        port,
-			ServiceName: serviceName,
-			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocol(protocol),
-			SSLServerDN: sslDN,
-		},
-	}
-	return syncDesiredTNSAliasesInPod(r, primaryReadyPod, ctx, req, tnsFile, tnsFile+".operator_primary_peer_aliases", desired, []string{alias})
-}
-
-// #############################################################################
-//
-//	Restarting listners in database
-//
-// #############################################################################
-// RestartListenerInDatabase restarts the database listener inside the target pod.
-func RestartListenerInDatabase(r *SingleInstanceDatabaseReconciler, primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
-	r.Log.Info("Restarting listener in the database through pod", "primary database pod name", primaryReadyPod.Name)
-	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "",
-		ctx, req, false, "bash", "-c", "lsnrctl stop && lsnrctl start")
-	if err != nil {
-		return fmt.Errorf("unable to restart listener in the database through pod %v", primaryReadyPod.Name)
-	}
-	r.Log.Info("Listener restart output")
-	r.Log.Info(out)
-	return nil
-}
-
-// #############################################################################
-//
-//	Setup primary listener for dataguard configuration
-//
-// #############################################################################
-// SetupListenerPrimaryForDG updates primary listener configuration for Data Guard.
-func SetupListenerPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
-	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
-	out, err := runDataguardPrereqsActionInPod(r, primaryReadyPod, ctx, req, "configure")
-	if err != nil {
-		return fmt.Errorf("unable to configure Data Guard prerequisites in primary database %v: %w", p.Name, err)
-	}
-	if strings.TrimSpace(out) != "" {
-		r.Log.Info("Data Guard prerequisite output", "database", p.Name, "output", out)
-	}
-	return nil
-}
-
-// #############################################################################
-//
-//	Setup init parameters of primary database for dataguard configuration
-//
-// #############################################################################
-// SetupInitParamsPrimaryForDG sets primary init parameters required for Data Guard.
-func SetupInitParamsPrimaryForDG(r *SingleInstanceDatabaseReconciler, primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
-	r.Log.Info("Data Guard prerequisite SQL is handled by configDataguardPrereqs.sh")
-	return nil
+	desired, desiredNames := buildPrimaryPeerTNSAliases(p, s)
+	return syncDesiredTNSAliasesInPod(r, primaryReadyPod, ctx, req, tnsFile, tnsFile+".operator_primary_peer_aliases", desired, desiredNames)
 }
 
 // #############################################################################
@@ -6203,11 +6144,13 @@ func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 		},
 		RunPrimaryPrerequisites: func() error {
 			log.Info("Setting up listener.ora in primary database", "primaryDatabase", primary.Name)
-			return SetupListenerPrimaryForDG(r, primary, stdby, primaryDbReadyPod, ctx, req)
+			return SetupListenerForDGOnDatabase(r, primary, primaryDbReadyPod, ctx, req)
 		},
 		EnsureStandbyRedoLogs: func() error {
-			log.Info("Setting up some InitParams for DG in primary database", "primaryDatabase", primary.Name)
-			return SetupInitParamsPrimaryForDG(r, primaryDbReadyPod, ctx, req)
+			// Database-side standby redo log and broker prerequisites are now handled
+			// by the image helper invoked through configDataguardPrereqs.sh.
+			log.Info("Primary Data Guard prerequisite SQL is handled by configDataguardPrereqs.sh", "primaryDatabase", primary.Name)
+			return nil
 		},
 	})
 	if e := dataguardcommon.RunStandbyDGBrokerWorkflow(workflow); e != nil {
@@ -6257,30 +6200,6 @@ func GetAllPdbInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.
 
 // #############################################################################
 //
-//	Setup tnsnames.ora for all the pdb list in the singleinstancedatabase
-//
-// #############################################################################
-// SetupTnsNamesForPDBListInDatabase upserts TNS aliases for a list of PDBs.
-func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.SingleInstanceDatabase,
-	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request, pdbList []string) error {
-	desired, desiredNames := buildStandbyPDBTNSAliases(d, pdbList)
-	tnsFile := getTnsFilePathBySID(d.Spec.Sid)
-	return syncDesiredTNSAliasesInPod(r, dbReadyPod, ctx, req, tnsFile, tnsFile+".operator_pdb_aliases", desired, desiredNames)
-}
-
-// #############################################################################
-//
-//	Setup tnsnames.ora in standby database for primary singleinstancedatabase
-//
-// #############################################################################
-// SetupPrimaryDBTnsNamesInStandby configures primary DB aliases inside standby tnsnames.ora.
-func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
-	primary *dbapi.SingleInstanceDatabase, dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
-	return syncConfiguredTNSAliasesInPod(r, s, primary, dbReadyPod, ctx, req)
-}
-
-// #############################################################################
-//
 //	Enabling flashback in singleinstancedatabase
 //
 // #############################################################################
@@ -6315,7 +6234,6 @@ func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 // SetupStandbyDatabaseForLocalPrimary configures standby using an in-cluster primary reference.
 func SetupStandbyDatabaseForLocalPrimary(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
-
 	primaryReadyPod, err := GetDatabaseReadyPod(r, primary, ctx, req)
 	if err != nil {
 		return err
@@ -6326,45 +6244,30 @@ func SetupStandbyDatabaseForLocalPrimary(r *SingleInstanceDatabaseReconciler, st
 	if err != nil {
 		return err
 	}
-
-	r.Log.Info("Synchronizing standby primary-source aliases")
-	err = syncStandbySourceTNSAliasesInPod(r, stdby, primary, stdbyReadyPod, ctx, req)
-	if err != nil {
-		return err
-	}
-
-	r.Log.Info("Setting up listener in the standby database")
-	err = SetupListenerForDGOnDatabase(r, stdby, stdbyReadyPod, ctx, req)
-	if err != nil {
-		return err
-	}
-
-	flashBackStatus, _, _, result := dbcommons.CheckDBConfig(stdbyReadyPod, r, r.Config, ctx, req, stdby.Spec.Edition)
-	if result.Requeue {
-		return fmt.Errorf("error in obtaining the Database Config status")
-	}
-	if !flashBackStatus {
-		r.Log.Info("Setting up flashback mode in the standby database")
-		err = EnableFlashbackInDatabase(r, stdbyReadyPod, ctx, req)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return setupStandbyDatabaseCommon(r, stdby, primary, stdbyReadyPod, ctx, req)
 }
 
 // SetupStandbyDatabaseForExternalPrimary configures standby using external primary details.
 func SetupStandbyDatabaseForExternalPrimary(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	ctx context.Context, req ctrl.Request) error {
-
 	stdbyReadyPod, err := GetDatabaseReadyPod(r, stdby, ctx, req)
 	if err != nil {
 		return err
 	}
 
+	return setupStandbyDatabaseCommon(r, stdby, nil, stdbyReadyPod, ctx, req)
+}
+
+func setupStandbyDatabaseCommon(
+	r *SingleInstanceDatabaseReconciler,
+	stdby *dbapi.SingleInstanceDatabase,
+	primary *dbapi.SingleInstanceDatabase,
+	stdbyReadyPod corev1.Pod,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
 	r.Log.Info("Synchronizing standby primary-source aliases")
-	err = syncStandbySourceTNSAliasesInPod(r, stdby, nil, stdbyReadyPod, ctx, req)
+	err := syncStandbySourceTNSAliasesInPod(r, stdby, primary, stdbyReadyPod, ctx, req)
 	if err != nil {
 		return err
 	}
@@ -6381,7 +6284,7 @@ func SetupStandbyDatabaseForExternalPrimary(r *SingleInstanceDatabaseReconciler,
 	}
 	if !flashBackStatus {
 		r.Log.Info("Setting up flashback mode in the standby database")
-		err = EnableFlashbackInDatabase(r, stdbyReadyPod, ctx, req)
+		err := EnableFlashbackInDatabase(r, stdbyReadyPod, ctx, req)
 		if err != nil {
 			return err
 		}
@@ -6420,12 +6323,6 @@ func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPr
 			},
 		}
 	}
-}
-
-// SetupExternalPrimaryDBTnsNamesInStandby configures external primary aliases in standby tnsnames.ora.
-func SetupExternalPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
-	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
-	return syncConfiguredTNSAliasesInPod(r, s, nil, dbReadyPod, ctx, req)
 }
 
 // SetupListenerForDGOnDatabase updates listener entries needed for Data Guard on a database.
