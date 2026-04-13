@@ -65,7 +65,6 @@ func (r *OrdsSrvsReconciler) ComputeWorkloadStatus(ctx context.Context, ordssrvs
 	var readyWorkload int32
 	var desiredWorkload int32
 	switch ordssrvs.Spec.WorkloadType {
-	//nolint:goconst
 	case "StatefulSet":
 		workload := &appsv1.StatefulSet{}
 		if err := r.Get(ctx, types.NamespacedName{Name: ordssrvs.Name, Namespace: ordssrvs.Namespace}, workload); err != nil {
@@ -73,7 +72,6 @@ func (r *OrdsSrvsReconciler) ComputeWorkloadStatus(ctx context.Context, ordssrvs
 		}
 		readyWorkload = workload.Status.ReadyReplicas
 		desiredWorkload = workload.Status.Replicas
-	//nolint:goconst
 	case "DaemonSet":
 		workload := &appsv1.DaemonSet{}
 		if err := r.Get(ctx, types.NamespacedName{Name: ordssrvs.Name, Namespace: ordssrvs.Namespace}, workload); err != nil {
@@ -103,7 +101,6 @@ func (r *OrdsSrvsReconciler) ComputeWorkloadStatus(ctx context.Context, ordssrvs
 
 	return workloadStatus
 }
-
 
 // UpdateStatus updates the status of OrdsSrvs.
 func (r *OrdsSrvsReconciler) UpdateStatus(
