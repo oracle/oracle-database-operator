@@ -21046,7 +21046,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -21063,7 +21063,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: controller:latest
+        image: dbcs-dev-docker.dockerhub-phx.oci.oraclecorp.com/oracle/database-operator:02398c30
         imagePullPolicy: Always
         name: manager
         ports:

@@ -1153,36 +1153,21 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		}
 	}
 
-	databaseOpenMode, err := dbcommons.GetDatabaseOpenMode(readyPod, r, r.Config, ctx, req, sidb.Spec.Edition)
-	if err != nil {
-		r.Log.Error(err, err.Error())
-		return requeueY, err
+	result, err := r.configDataguardPrereqs(sidb, readyPod, ctx, req)
+	if result.Requeue || err != nil {
+		return result, err
 	}
-	r.Log.Info("DB openMode Output")
-	r.Log.Info(databaseOpenMode)
-
-	if databaseOpenMode == "READ_ONLY" || databaseOpenMode == "MOUNTED" {
-		out, cmdErr := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ModifyStdbyDBOpenMode, dbcommons.SQLPlusCLI))
-		if cmdErr != nil {
-			r.Log.Error(cmdErr, cmdErr.Error())
-			return requeueY, cmdErr
-		}
-		r.Log.Info("Standby DB open mode modified")
-		r.Log.Info(out)
-	}
-
 	if getTcpsEnabled(sidb) && (sidb.Spec.CreateAs == "standby" || sidb.Spec.CreateAs == "truecache") {
 		tcpsResult, err := r.configTcps(sidb, readyPod, ctx, req, phaseCtx)
 		if tcpsResult.Requeue || err != nil {
 			return tcpsResult, err
 		}
 	}
-	result, err := r.configDataguardPrereqs(sidb, readyPod, ctx, req)
-	if result.Requeue || err != nil {
-		return result, err
-	}
 
 	if err := syncStandbySourceTNSAliasesInPod(r, sidb, referredPrimaryDatabase, readyPod, ctx, req); err != nil {
+		return requeueY, err
+	}
+	if err := ensureStandbyManagedRecovery(r, readyPod, ctx, req, sidb.Spec.Edition); err != nil {
 		return requeueY, err
 	}
 
@@ -6266,15 +6251,13 @@ func setupStandbyDatabaseCommon(
 	ctx context.Context,
 	req ctrl.Request,
 ) error {
-	r.Log.Info("Synchronizing standby primary-source aliases")
-	err := syncStandbySourceTNSAliasesInPod(r, stdby, primary, stdbyReadyPod, ctx, req)
-	if err != nil {
+	r.Log.Info("Setting up listener in the standby database")
+	if err := SetupListenerForDGOnDatabase(r, stdby, stdbyReadyPod, ctx, req); err != nil {
 		return err
 	}
 
-	r.Log.Info("Setting up listener in the standby database")
-	err = SetupListenerForDGOnDatabase(r, stdby, stdbyReadyPod, ctx, req)
-	if err != nil {
+	r.Log.Info("Synchronizing standby primary-source aliases")
+	if err := syncStandbySourceTNSAliasesInPod(r, stdby, primary, stdbyReadyPod, ctx, req); err != nil {
 		return err
 	}
 
@@ -6290,6 +6273,53 @@ func setupStandbyDatabaseCommon(
 		}
 	}
 
+	return nil
+}
+
+func ensureStandbyManagedRecovery(
+	r *SingleInstanceDatabaseReconciler,
+	readyPod corev1.Pod,
+	ctx context.Context,
+	req ctrl.Request,
+	edition string,
+) error {
+	databaseOpenMode, err := dbcommons.GetDatabaseOpenMode(readyPod, r, r.Config, ctx, req, edition)
+	if err != nil {
+		r.Log.Error(err, err.Error())
+		return err
+	}
+	r.Log.Info("DB openMode Output")
+	r.Log.Info(databaseOpenMode)
+
+	if databaseOpenMode != "READ_ONLY" && databaseOpenMode != "MOUNTED" {
+		return nil
+	}
+
+	out, cmdErr := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ModifyStdbyDBOpenMode, dbcommons.SQLPlusCLI))
+	if cmdErr != nil {
+		r.Log.Error(cmdErr, cmdErr.Error())
+		return cmdErr
+	}
+	if strings.Contains(out, "ORA-") {
+		r.Log.Error(errors.New("managed standby recovery start failed"), "Standby managed recovery command returned Oracle error", "output", out)
+		return fmt.Errorf("failed to start managed standby recovery: %s", strings.TrimSpace(out))
+	}
+	r.Log.Info("Standby DB open mode modified")
+	r.Log.Info(out)
+
+	statusOut, statusErr := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		"echo -e  \"select process,status,thread#,sequence# from v\\$managed_standby order by process;\"  | sqlplus -s / as sysdba")
+	if statusErr != nil {
+		r.Log.Error(statusErr, "Unable to verify standby managed recovery status")
+		return statusErr
+	}
+	if strings.Contains(statusOut, "ORA-") {
+		r.Log.Error(errors.New("managed standby recovery verification failed"), "Standby managed recovery verification returned Oracle error", "output", statusOut)
+		return fmt.Errorf("failed to verify managed standby recovery: %s", strings.TrimSpace(statusOut))
+	}
+	r.Log.Info("Standby managed recovery status")
+	r.Log.Info(statusOut)
 	return nil
 }
 
