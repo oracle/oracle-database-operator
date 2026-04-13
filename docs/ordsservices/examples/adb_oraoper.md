@@ -1,10 +1,10 @@
 # OrdsSrvs Example: Autonomous Database using the OraOperator
 
-This example walks through using the **ORDS Controller** with a Containerised Oracle Database created by the **ADB Controller** in the same Kubernetes Cluster.
+This example walks through using the **OrdsSrvs controller** with an Autonomous Database managed through the OraOperator.
 
-When connecting to a mTLS enabled ADB while using the OraOperator to retreive the Wallet as is done in the example, it is currently not supported to have multiple, different databases supported by the single Ordssrvs resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-operator/issues/97)).
+When connecting to a mTLS enabled ADB while using the OraOperator to retrieve the Wallet as is done in the example, it is currently not supported to have multiple, different databases supported by the single OrdsSrvs resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-operator/issues/97)).
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 ### Setup Oracle Cloud Authorisation
 

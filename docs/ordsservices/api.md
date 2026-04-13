@@ -1,26 +1,8 @@
 # API Reference
 
-Packages:
-
-- [database.oracle.com/v1](#databaseoraclecomv1)
-
-# database.oracle.com/v1
-
-Resource Types:
-
-- [OrdsSrvs](#ordssrvs)
-
-
 
 
 ## OrdsSrvs
-<sup><sup>[↩ Parent](#databaseoraclecomv1 )</sup></sup>
-
-
-
-
-
-
 OrdsSrvs is the Schema for the ordssrvs API
 
 <table>
@@ -35,7 +17,7 @@ OrdsSrvs is the Schema for the ordssrvs API
     <tbody><tr>
       <td><b>apiVersion</b></td>
       <td>string</td>
-      <td>database.oracle.com/v1</td>
+      <td>database.oracle.com/v4</td>
       <td>true</td>
       </tr>
       <tr>
@@ -112,16 +94,27 @@ configurations change<br>
 <td> Specifies the ORDS container image pull policy<br>
 <br>
 <i>Enum</i>: IfNotPresent, Always, Never<br>
-<i>Default</i>: IfNotPresent<br>
-</td>
+<i>Default</i>: IfNotPresent</td>
 <td>false</td>
 </tr>
 <tr>
 <td><b>imagePullSecrets</b></td>
 <td>string</td>
-<td> Specifies the Secret Name for pulling the ORDS container
-image<br>
+<td> Specifies the Secret Name for pulling the ORDS container image
 </td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>jdkJavaOptions</b></td>
+<td>string</td>
+<td>Specifies JVM options passed to ORDS through the JDK_JAVA_OPTIONS environment variable</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>poolProbeIntervalSeconds</b></td>
+<td>int32</td>
+<td>Specifies the interval, in seconds, between automatic pool probes. Set to 0 to disable pool probing.
+Pool probing is also disabled when Central Configuration Server is enabled through spec.globalSettings."central.config.url".</td>
 <td>false</td>
 </tr>
 <tr>
@@ -145,6 +138,18 @@ Deployment or StatefulSet<br>
 <td>false</td>
 </tr>
 <tr>
+<td><b>resources</b></td>
+<td>corev1.ResourceRequirements</td>
+<td>Specifies Kubernetes compute resource requests and limits, such as CPU and memory, for the ORDS init and main containers.</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>serviceAccountName</b></td>
+<td>string</td>
+<td>Specifies the name of the Kubernetes ServiceAccount assigned to the OrdsSrvs pods.</td>
+<td>false</td>
+</tr>
+<tr>
 <td><b>workloadType</b></td>
 <td>enum</td>
 <td> Specifies the desired Kubernetes Workload<br>
@@ -161,16 +166,6 @@ Deployment or StatefulSet<br>
 </td>
 <td valign="top"><b>secretName</b>: string&nbsp; <b>passwordKey:
 </b>string Define the private key to decrypt passwords<br>
-</td>
-<td valign="top">false<br>
-</td>
-</tr>
-<tr>
-<td valign="top"><b>central.config.url</b><b><br>
-</b></td>
-<td valign="top">string<br>
-</td>
-<td valign="top">Central Configuration Server url (e.g. https://central-config.example.com:8585/central/v1/config)
 </td>
 <td valign="top">false<br>
 </td>
@@ -194,7 +189,14 @@ Contains settings that are configured across the entire ORDS instance.
             <th>Required</th>
         </tr>
     </thead>
-    <tbody><tr>
+    <tbody>
+    <tr>
+    <td valign="top"><b>central.config.url</b><b><br></b></td>
+    <td valign="top">string<br></td>
+    <td valign="top">Central Configuration Server url (e.g. https://central-config.example.com:8585/central/v1/config)</td>
+    <td valign="top">false<br></td>
+    </tr>
+    <tr>
         <td><b>cache.metadata.enabled</b></td>
         <td>boolean</td>
         <td>
@@ -203,16 +205,14 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.graphql.expireAfterAccess</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the duration after a GraphQL schema is not accessed from the cache that it expires.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.graphql.expireAfterWrite</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the duration after a GraphQL schema is cached that it expires and has to be loaded again.<br/>
           <br/>
@@ -228,20 +228,16 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.jwks.expireAfterAccess</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the duration after a JWK is not accessed from the cache that it expires. By default this is disabled.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.jwks.expireAfterWrite</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the duration after a JWK is cached, that is, it expires and has to be loaded again.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -264,11 +260,9 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.timeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the setting to determine for how long a metadata record remains in the cache. Longer duration means, it takes longer to view the applied changes. The formats accepted are based on the ISO-8601 duration format.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -294,11 +288,9 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>db.invalidPoolTimeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies how long to wait before retrying an invalid pool.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr>
@@ -311,18 +303,18 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr>
       <tr>
-        <td><b>downloadAPEX</b></td>
+        <td><b>apex.download</b></td>
         <td>boolean</td>
         <td>
-          Specifies whether to downloan APEX installation files.<br/>
+          Specifies whether to download APEX installation files.<br/>
         </td>
         <td>false</td>
       </tr>
       <tr>
-        <td><b>downloadUrlAPEX</b></td>
+        <td><b>apex.download.url</b></td>
         <td>string</td>
         <td>
-          Specifies the URL to downloan APEX installation files.<br/>
+          Specifies the URL to download APEX installation files.<br/>
         </td>
         <td>https://download.oracle.com/otn_software/apex/apex-latest.zip</td>
       </tr>
@@ -351,21 +343,30 @@ Contains settings that are configured across the entire ORDS instance.
           Specifies how the HTTP error responses must be formatted. html - Force all responses to be in HTML format json - Force all responses to be in JSON format auto - Automatically determines most appropriate format for the request (default).<br/>
         </td>
         <td>false</td>
-      </tr><tr>
-        <td><b>feature.grahpql.max.nesting.depth</b></td>
+      </tr>
+      <tr>
+        <td><b>DEPRECATED</b><BR>feature.grahpql.max.nesting.depth</td>
         <td>integer</td>
         <td>
-          Specifies the maximum join nesting depth limit for GraphQL queries.<br/>
-          <br/>
+          Specifies the maximum join nesting depth limit for GraphQL queries.<BR>
             <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
-      </tr><tr>
+      </tr>
+      <tr>
+        <td><b>feature.graphql.max.nesting.depth</b></td>
+        <td>integer</td>
+        <td>
+          Specifies the maximum join nesting depth limit for GraphQL queries.<br/>
+            <i>Format</i>: int32<br/>
+        </td>
+        <td>false</td>
+      </tr>
+      <tr>
         <td><b>icap.port</b></td>
         <td>integer</td>
         <td>
           Specifies the Internet Content Adaptation Protocol (ICAP) port to virus scan files. Either icap.port or icap.secure.port are required to have a value.<br/>
-          <br/>
             <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
@@ -404,7 +405,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the maximum idle time for a Mongo connection in milliseconds.<br/>
-          <br/>
             <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
@@ -413,7 +413,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the maximum time for a Mongo database operation in milliseconds.<br/>
-          <br/>
             <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
@@ -422,7 +421,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the API for MongoDB listen port.<br/>
-          <br/>
             <i>Format</i>: int32<br/>
             <i>Default</i>: 27017<br/>
         </td>
@@ -448,7 +446,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the period to lock the account that has exceeded maximum attempts.<br/>
-          <br/>
             <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
@@ -499,7 +496,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the maximum number of cached procedure validations. Set this value to 0 to force the validation procedure to be invoked on each request.<br/>
-          <br/>
             <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
@@ -515,7 +511,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>string</td>
         <td>
           Specifies the context path where ords is located.<br/>
-          <br/>
             <i>Default</i>: /ords<br/>
         </td>
         <td>false</td>
@@ -524,7 +519,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the HTTP listen port.<br/>
-          <br/>
             <i>Format</i>: int32<br/>
             <i>Default</i>: 8080<br/>
         </td>
@@ -541,7 +535,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the HTTPS listen port.<br/>
-          <br/>
             <i>Format</i>: int32<br/>
             <i>Default</i>: 8443<br/>
         </td>
@@ -551,7 +544,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the period for Standalone Mode to wait until it is gracefully shutdown.<br/>
-          <br/>
             <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
@@ -1320,14 +1312,16 @@ OrdsSrvsStatus defines the observed state of OrdsSrvs
             <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
-      </tr><tr>
+      </tr>
+      <tr>
         <td><b>ordsVersion</b></td>
         <td>string</td>
         <td>
           Indicates the ORDS version<br/>
         </td>
         <td>false</td>
-      </tr><tr>
+      </tr>
+      <tr>
         <td><b>status</b></td>
         <td>string</td>
         <td>

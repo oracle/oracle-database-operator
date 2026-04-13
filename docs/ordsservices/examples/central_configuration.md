@@ -1,10 +1,10 @@
 # OrdsSrvs Controller: Central Configuration via central.config.url
 
-This feature introduces support for configuring ORDS instances managed by the OrdsSrvs controller using a central configuration manager. By setting the `central.config.url` attribute, OrdsSrvs retrieves global and pool-specific settings from a central endpoint that implements the ORDS Central Config Manager OpenAPI.
+This feature introduces support for configuring ORDS instances managed by the OrdsSrvs controller using a Central Configuration Server. By setting the `central.config.url` attribute, OrdsSrvs retrieves global and pool-specific settings from a central endpoint that implements the ORDS Central Config Manager OpenAPI.
 
 This document shows:
 - A minimal OrdsSrvs example that uses `central.config.url`
-- A demo central config manager implemented with Apache HTTPD in Kubernetes
+- A demo Central Configiguration Server implemented with Apache HTTPD in Kubernetes
 - How to validate the setup and make REST calls against multiple pools
 
 See ORDS docs: [Configuring additional databases][ords-config-addl-dbs] (tested with 25.3):  
@@ -14,7 +14,7 @@ https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/25.3/ordig/
 
 ## Overview
 
-- Central configuration endpoint:
+- Central Configuration Server endpoints:
   - Global config: `GET /central/v1/config`
   - Pool config: `GET /central/v1/config/pool/{poolName}`
 - In this example, the pool is resolved from the URL path using `security.externalMappingPathPrefix = true`.
@@ -24,7 +24,7 @@ https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/25.3/ordig/
 
 ## Prerequisites
 
-See ORDSSRVS prerequisites: [ORDSSRVS prerequisites](../README.md#prerequisites)
+See OrdsSrvs prerequisites: [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 In addition to the above, you’ll need:
 - A reachable Oracle database for the pools
@@ -249,7 +249,8 @@ metadata:
   namespace: NAMESPACE
 spec:
   image: container-registry.oracle.com/database/ords:latest
-  central.config.url: http://central-config-svc/central/v1/config
+  globalSettings:
+    central.config.url: http://central-config-svc/central/v1/config
   serviceAccountName: ordssrvs-sa
 ```
 

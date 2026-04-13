@@ -1,10 +1,10 @@
-# OrdsSrvs Controller: Containerised Single Instance Database using the OraOperator
+# OrdsSrvs Controller: Containerized Single Instance Database using the OraOperator
 
-This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database created by the **SIDB Controller** in the same Kubernetes Cluster.
+This example walks through using the **OrdsSrvs Controller** with a Containerized Oracle Database created by the **SIDB Controller** in the same Kubernetes Cluster.
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
-### Deploy a Containerised Oracle Database
+### Deploy a Containerized Oracle Database
 
 Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/oracle-database-operator/blob/main/docs/sidb/README.md) for details.
 
@@ -14,7 +14,7 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
     DB_PWD=<specify password here>
     kubectl create secret generic sidb-db-auth --from-literal=oracle_pwd=${DB_PWD} --namespace ordsnamespace
     ```
-1. Create a manifest for the containerised Oracle Database.
+1. Create a manifest for the containerized Oracle Database.
 
     The POC uses an Oracle Free Image, but other versions may be subsituted; review the OraOperator Documentation for details on the manifests.
 
@@ -57,9 +57,9 @@ rm e_db-auth
 unset DBPWD
 ```
 
-### Create RestDataServices Resource
+### Create OrdsSrvs Resource
 
-1. Retrieve the Connection String from the containerised SIDB.
+1. Retrieve the Connection String from the containerized SIDB.
 
     ```bash
     CONN_STRING=$(kubectl get singleinstancedatabase oraoper-sidb \
@@ -145,4 +145,4 @@ This example has a single database pool, named `default`.  It is set to:
 * Automatically restart when the configuration changes: `forceRestart: true`
 * Automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
 * Use a basic connection string to connect to the database: `db.customURL: jdbc:oracle:thin:@//${CONN_STRING}`
-* The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
+* The `passwordKey` has been omitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)

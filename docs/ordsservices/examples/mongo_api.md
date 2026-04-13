@@ -1,17 +1,17 @@
 # OrdsSrvs Controller: Oracle API for MongoDB Support
 
-This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database to enable MongoDB API Support.
+This example walks through using the **OrdsSrvs controller** with a Containerized Oracle Database to enable MongoDB API Support.
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 ### Database Access
 
 This example assumes you have a running, accessible Oracle Database.  For demonstration purposes,
-the [Containerised Single Instance Database using the OraOperator](sidb_container.md) will be used.
+the [Containerized Single Instance Database using the OraOperator](sidb_container.md) will be used.
 
 ### Rest Enable a Schema
 
-In the database, create an ORDS-enabled user.  As this example uses the [Containerised Single Instance Database using the OraOperator](sidb_container.md), the following was performed:
+In the database, create an ORDS-enabled user.  As this example uses the [Containerized Single Instance Database using the OraOperator](sidb_container.md), the following was performed:
 
 
 1. Connect to the database: 
@@ -48,7 +48,7 @@ rm e_db-auth
 
 ### Create ordssrvs Resource
 
-1. Retrieve the Connection String from the containerised SIDB.
+1. Retrieve the Connection String from the containerized SIDB.
 
     ```bash
     CONN_STRING=$(kubectl get singleinstancedatabase oraoper-sidb \
@@ -103,7 +103,7 @@ rm e_db-auth
     <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
 
     
-1. Watch the restdataservices resource until the status is **Healthy**:
+1. Watch the OrdsSrvs resource until the status is **Healthy**:
     ```bash
     kubectl get ordssrvs ords-sidb -w
     ```
@@ -147,7 +147,7 @@ This example has a single database pool, named `default`.  It is set to:
 * Automatically restart when the configuration changes: `forceRestart: true`
 * Automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
 * Use a basic connection string to connect to the database: `db.customURL: jdbc:oracle:thin:@//${CONN_STRING}`
-* The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
+* The `passwordKey` has been omitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
 * The MongoAPI service has been enabled: `mongo.enabled: true`
 * The MongoAPI service will default to port: `27017` as the property: `mongo.port` has been left undefined
 * A number of JDBC parameters were set at the pool level for achieving high performance:

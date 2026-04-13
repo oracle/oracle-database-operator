@@ -2,15 +2,19 @@
 
 ## Description
 
-The OrdsSrvs controller extends the Kubernetes API with a Custom Resource (CR) and Controller for automating Oracle Rest Data
-Services (ORDS) lifecycle management.  Using the OrdsSrvs controller, you can easily migrate existing, or create new, ORDS implementations
-into an existing Kubernetes cluster.  
+The OrdsSrvs controller extends the Kubernetes API with a Custom Resource (CR) and controller for automating Oracle REST Data Services (ORDS) lifecycle management.
 
-This controller allows you to run what would otherwise be an On-Premises ORDS middle-tier, configured as you require, inside Kubernetes with the additional ability of the controller to perform automatic ORDS/APEX install/upgrades inside the database.
+Using the OrdsSrvs controller, you can deploy and manage ORDS in Kubernetes for any reachable Oracle Database, whether the database runs inside Kubernetes or outside the cluster, on-premises or in the cloud.
+
+This controller allows you to run the ORDS middle tier inside Kubernetes, including deployments that would otherwise run as on-premises ORDS application servers, while also supporting automatic ORDS/APEX install and upgrade operations in the target database.
+
+<p align="center">
+  <img src="./ordssrvs_overview.png" alt="OrdsSrvs architecture" width="700">
+</p>
 
 ## Features Summary
 
-The custom RestDataServices resource supports the following configurations as a Deployment, StatefulSet, or DaemonSet:
+The custom OrdsSrvs resource supports the following configurations as a Deployment, StatefulSet, or DaemonSet:
 
 * Single OrdsSrvs resource with one database pool
 * Single OrdsSrvs resource with multiple database pools<sup>*</sup>
@@ -36,7 +40,10 @@ Before installing the OrdsSrvs controller, ensure that the Oracle Database Opera
 There are different ways to provide database credentials and connect string for OrdsSrvs.
 For step-by-step instructions and field descriptions, refer to the [API](./api.md) reference and the Examples section for details on each configuration.
 
-Here is the updated documentation in a clean Markdown format, incorporating the specific security warning and the requested structure for the ORDS controller.
+<p align="center">
+  <img src="./ordssrvs_readme.png" alt="OrdsSrvs architecture" width="700">
+</p>
+
 
 # Database Credentials Management
 
@@ -60,7 +67,7 @@ Credentials for Oracle REST Data Services (ORDS) can be supplied by delegating m
  
 
 ### Database Connectivity Configuration
-The OrdsSrvs controller supports several connection methods to accommodate diverse deployment scenarios, ranging from local containerized instances to remote On-Premises clusters or Autonomous Databases (ADB).  
+The OrdsSrvs controller supports several connection methods to accommodate diverse deployment scenarios, including Oracle Databases running inside Kubernetes, external databases reachable from the cluster, on-premises environments, and cloud services such as Autonomous Database (ADB).
 Depending on your security and networking requirements, connectivity can be established using direct JDBC strings, tnsnames.ora aliases, or mTLS-secured Oracle Wallets.
 
 |Mode| Attributes| Format| Note|
@@ -77,7 +84,7 @@ A few common configuration examples can be used to quickly familiarise yourself 
 The "Conclusion" section of each example highlights specific settings to enable functionality that maybe of interest.
 
 * [Pre-existing Database](./examples/existing_db.md)
-* [Containerised Single Instance Database (SIDB)](./examples/sidb_container.md)
+* [Containerized Single Instance Database (SIDB)](./examples/sidb_container.md)
 * [Multidatabase using a TNS Names file](./examples/multi_pool.md)
 * [Autonomous Database using the OraOperator](./examples/adb_oraoper.md) <sup>*See [Limitations](#limitations)</sup>
 * [Autonomous Database without the OraOperator](./examples/adb.md)
@@ -86,6 +93,8 @@ The "Conclusion" section of each example highlights specific settings to enable 
 * [Custom tnsnames.ora](./examples/tnsnames.md)
 * [Deploying ORDS with Central Configuration Server](./examples/central_configuration.md)
 * [Central Configuration Server with shared zip Wallets](./examples/cc_zip_wallets.md)
+* [Instance API](./examples/instance_api.md)
+* [Metadata and Resources Example](./examples/metadata_resources.md)
 
 Running through all examples in the same Kubernetes cluster illustrates the ability to run multiple ORDS instances with a variety of different configurations.
 
@@ -158,6 +167,24 @@ spec:
 
 ### Development
 
+### Version 2.2
+
+* **Instance API and Admin Password**  
+Added support for enabling the ORDS Instance API and bootstrapping the administrator user/password from a Kubernetes Secret through `spec.globalSettings.instanceAPIAdminUser`. [Instance API Example](./examples/instance_api.md)
+
+* **Additional Labels and Annotations**  
+Added support for custom labels and annotations on generated resources through `spec.commonMetadata`. [Metadata and Resources Example](./examples/metadata_resources.md)
+
+* **Resource Specification**  
+Added support for configuring CPU and memory resource requests and limits for ORDS containers through `spec.resources`. [Metadata and Resources Example](./examples/metadata_resources.md)
+
+* **JDK_JAVA_OPTIONS**  
+Added support for passing JVM options to ORDS through the `JDK_JAVA_OPTIONS` environment variable with `spec.jdkJavaOptions`.
+[Metadata and Resources Example](./examples/metadata_resources.md)
+
+* **GraphQL Parameter Syntax Fix**  
+Fixed the GraphQL configuration parameter syntax by supporting the correct property name `spec.globalSettings."feature.graphql.max.nesting.depth"`.
+
 
 ### Version 2.1
 
@@ -167,8 +194,8 @@ The `encPrivKey` attribute is now optional; database passwords can be managed vi
 
 * **TNSAdminSecret**
 Added a dedicated documentation page for managing `tnsnames.ora` via Secrets. See [Custom tnsnames.ora Example](./examples/tnsnames.md).
-* **Central Configuration Manager**
-New attribute `spec.globalSettings."central.config.url"` supports deploying ORDS with a Central Configuration Manager for externalized settings.
+* **Central Configuration Server**
+New attribute `spec.globalSettings."central.config.url"` supports deploying ORDS with a Central Configuration Server for externalized settings.
 * **Shared Zip Wallets**
 New attributes `spec.globalSettings.zipWalletsSecretName` and `spec.poolSettings.zipWalletName` allow multiple mTLS Wallets (.zip) to be defined at the global level and referenced by individual database pools.
 
@@ -187,7 +214,7 @@ Secrets can be recreated either before or after the operator upgrade. Restarting
 
 ## Limitations
 
-When connecting to a mTLS enabled ADB and using the controller to retreive the Wallet, it is currently not supported to have multiple, different databases supported by the single RestDataServices resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-controller/issues/97)).
+When connecting to a mTLS enabled ADB and using the controller to retrieve the Wallet, it is currently not supported to have multiple, different databases supported by the single OrdsSrvs resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-controller/issues/97)).
 
 ## Troubleshooting 
 See [Troubleshooting](./TROUBLESHOOTING.md)
