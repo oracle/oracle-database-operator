@@ -20,6 +20,7 @@ type dataguardTopologyResolvedMember struct {
 	Role            string
 	DBUniqueName    string
 	Alias           string
+	StaticAlias     string
 	ResourceName    string
 	LocalRef        *dbapi.DataguardLocalRef
 	Endpoint        dbapi.DataguardEndpointSpec
@@ -119,12 +120,14 @@ func resolveDataguardTopologyMember(ctx context.Context, r *DataguardBrokerRecon
 	}
 	alias := sanitizeDataguardRunnerName(dbUniqueName, strings.TrimSpace(member.Name))
 	alias = strings.ToUpper(alias)
+	staticAlias := strings.ToUpper(dbUniqueName + "_DGMGRL")
 
 	resolved := &dataguardTopologyResolvedMember{
 		Name:          strings.TrimSpace(member.Name),
 		Role:          role,
 		DBUniqueName:  dbUniqueName,
 		Alias:         alias,
+		StaticAlias:   staticAlias,
 		LocalRef:      member.LocalRef,
 		Endpoint:      *endpoint,
 		ConnectString: formatDataguardEndpointConnectString(endpoint),
@@ -272,7 +275,7 @@ func ensureDataguardTopologyNetConfiguration(ctx context.Context, r *DataguardBr
 
 	var entries []string
 	for _, member := range state.Members {
-		entries = append(entries, buildDataguardTopologyTNSAlias(member))
+		entries = append(entries, buildDataguardTopologyTNSAliases(member)...)
 	}
 	sort.Strings(entries)
 	if err := writeDataguardRunnerFile(ctx, r, broker, req, tnsFile, strings.Join(entries, "\n")); err != nil {
@@ -281,7 +284,7 @@ func ensureDataguardTopologyNetConfiguration(ctx context.Context, r *DataguardBr
 	return writeDataguardRunnerFile(ctx, r, broker, req, sqlnetFile, buildDataguardTopologySQLNet(state))
 }
 
-func buildDataguardTopologyTNSAlias(member *dataguardTopologyResolvedMember) string {
+func buildDataguardTopologyTNSAliasEntry(alias string, member *dataguardTopologyResolvedMember, serviceName string) string {
 	if member == nil {
 		return ""
 	}
@@ -289,13 +292,17 @@ func buildDataguardTopologyTNSAlias(member *dataguardTopologyResolvedMember) str
 	if protocol == "" {
 		protocol = "TCP"
 	}
+	serviceName = strings.ToUpper(strings.TrimSpace(serviceName))
+	if serviceName == "" {
+		serviceName = member.DBUniqueName
+	}
 	entry := fmt.Sprintf(`%s =
 (DESCRIPTION =
   (ADDRESS = (PROTOCOL = %s)(HOST = %s)(PORT = %d))
   (CONNECT_DATA =
     (SERVER = DEDICATED)
     (SERVICE_NAME = %s)
-  )`, member.Alias, protocol, strings.TrimSpace(member.Endpoint.Host), member.Endpoint.Port, strings.ToUpper(strings.TrimSpace(member.Endpoint.ServiceName)))
+  )`, alias, protocol, strings.TrimSpace(member.Endpoint.Host), member.Endpoint.Port, serviceName)
 
 	if protocol == "TCPS" {
 		entry += `
@@ -317,6 +324,21 @@ func buildDataguardTopologyTNSAlias(member *dataguardTopologyResolvedMember) str
 )
 `
 	return entry
+}
+
+func buildDataguardTopologyTNSAliases(member *dataguardTopologyResolvedMember) []string {
+	if member == nil {
+		return nil
+	}
+	normalService := strings.ToUpper(strings.TrimSpace(member.Endpoint.ServiceName))
+	if normalService == "" {
+		normalService = member.DBUniqueName
+	}
+	staticService := strings.ToUpper(strings.TrimSpace(member.DBUniqueName)) + "_DGMGRL"
+	return []string{
+		buildDataguardTopologyTNSAliasEntry(member.Alias, member, normalService),
+		buildDataguardTopologyTNSAliasEntry(member.StaticAlias, member, staticService),
+	}
 }
 
 func buildDataguardTopologySQLNet(state *dataguardTopologyResolvedState) string {
@@ -554,28 +576,7 @@ func buildDataguardStaticConnectIdentifier(member *dataguardTopologyResolvedMemb
 	if member == nil {
 		return ""
 	}
-	protocol := strings.ToUpper(strings.TrimSpace(member.Endpoint.Protocol))
-	if protocol == "" {
-		protocol = "TCP"
-	}
-	serviceName := strings.ToUpper(strings.TrimSpace(member.Endpoint.ServiceName))
-	if serviceName == "" {
-		serviceName = member.DBUniqueName
-	}
-	descriptor := fmt.Sprintf("(DESCRIPTION=(ADDRESS=(PROTOCOL=%s)(HOST=%s)(PORT=%d))(CONNECT_DATA=(SERVICE_NAME=%s)(INSTANCE_NAME=%s)(SERVER=DEDICATED))",
-		protocol, strings.TrimSpace(member.Endpoint.Host), member.Endpoint.Port, serviceName, member.DBUniqueName)
-	if protocol == "TCPS" {
-		descriptor += "(SECURITY="
-		if strings.TrimSpace(member.SSLServerDN) != "" {
-			descriptor += fmt.Sprintf("(SSL_SERVER_DN_MATCH=YES)(SSL_SERVER_CERT_DN=%s)", strings.TrimSpace(member.SSLServerDN))
-		}
-		if strings.TrimSpace(member.WalletDirectory) != "" {
-			descriptor += fmt.Sprintf("(MY_WALLET_DIRECTORY=%s)", strings.TrimSpace(member.WalletDirectory))
-		}
-		descriptor += ")"
-	}
-	descriptor += "))"
-	return descriptor
+	return strings.ToUpper(strings.TrimSpace(member.StaticAlias))
 }
 
 func configureDataguardTopologyFSFO(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, req ctrl.Request, state *dataguardTopologyResolvedState) error {
@@ -917,7 +918,7 @@ func createDataguardTopologyObserverPod(ctx context.Context, r *DataguardBrokerR
 	observerName := broker.Name + "-observer"
 	tnsContent := []string{}
 	for _, member := range state.Members {
-		tnsContent = append(tnsContent, buildDataguardTopologyTNSAlias(member))
+		tnsContent = append(tnsContent, buildDataguardTopologyTNSAliases(member)...)
 	}
 	sort.Strings(tnsContent)
 	sqlnetContent := buildDataguardTopologySQLNet(state)
