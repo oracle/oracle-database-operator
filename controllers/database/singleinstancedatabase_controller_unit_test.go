@@ -141,9 +141,6 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 	if !sidb.Status.Dataguard.ReadyForBroker {
 		t.Fatalf("expected readyForBroker to be true")
 	}
-	if sidb.Status.Dataguard.Topology == nil || len(sidb.Status.Dataguard.Topology.Members) != 2 {
-		t.Fatalf("expected two topology members, got %#v", sidb.Status.Dataguard.Topology)
-	}
 	if sidb.Status.Dataguard.PrimaryMemberName != "primary-db" {
 		t.Fatalf("expected primary member name primary-db, got %q", sidb.Status.Dataguard.PrimaryMemberName)
 	}
@@ -162,9 +159,6 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 	if sidb.Status.Dataguard.LastPublishedTime == nil {
 		t.Fatalf("expected lastPublishedTime to be set")
 	}
-	if sidb.Status.Dataguard.Execution == nil || sidb.Status.Dataguard.Execution.Image == "" {
-		t.Fatalf("expected execution image to be published")
-	}
 	if sidb.Status.Dataguard.RenderedBrokerSpec == nil {
 		t.Fatalf("expected renderedBrokerSpec to be published")
 	}
@@ -176,6 +170,9 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 	}
 	if sidb.Status.Dataguard.RenderedBrokerSpec.Spec == nil || sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
 		t.Fatalf("expected rendered broker spec topology, got %#v", sidb.Status.Dataguard.RenderedBrokerSpec)
+	}
+	if sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Execution == nil || sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Execution.Image == "" {
+		t.Fatalf("expected rendered broker execution image to be published")
 	}
 	if !sidb.Status.Dataguard.RenderedBrokerSpec.Ready {
 		t.Fatalf("expected rendered broker spec to be marked ready")
@@ -405,9 +402,6 @@ func TestSIDBUnit_SyncDataguardPreviewStatusTrueCacheIsNotApplicable(t *testing.
 	}
 	if sidb.Status.Dataguard.ReadyForBroker {
 		t.Fatalf("expected readyForBroker to be false for truecache")
-	}
-	if sidb.Status.Dataguard.Topology != nil {
-		t.Fatalf("expected no dataguard topology for truecache, got %#v", sidb.Status.Dataguard.Topology)
 	}
 	if sidb.Status.Dataguard.RenderedBrokerSpec != nil {
 		t.Fatalf("expected no rendered broker spec for truecache, got %#v", sidb.Status.Dataguard.RenderedBrokerSpec)

@@ -185,9 +185,13 @@ func TestResolveDataguardBrokerExecutionRuntimeFromSIDBProducerStatus(t *testing
 	sidb.Namespace = "ns1"
 	sidb.Name = "sidb-standby"
 	sidb.Status.Dataguard = &dbapi.ProducerDataguardStatus{
-		Execution: &dbapi.DataguardExecutionStatus{
-			Image:            "oracle/db:19.3.0",
-			ImagePullSecrets: []string{"pull-secret"},
+		RenderedBrokerSpec: &dbapi.DataguardRenderedBrokerStatus{
+			Spec: &dbapi.DataguardRenderedBrokerSpec{
+				Execution: &dbapi.DataguardExecutionSpec{
+					Image:            "oracle/db:19.3.0",
+					ImagePullSecrets: []string{"pull-secret"},
+				},
+			},
 		},
 	}
 

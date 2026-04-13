@@ -193,6 +193,21 @@ spec:
                 type: array
               topology:
                 properties:
+                  defaults:
+                    properties:
+                      adminSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      tcps:
+                        properties:
+                          clientWalletSecret:
+                            type: string
+                        type: object
+                    type: object
                   members:
                     items:
                       properties:

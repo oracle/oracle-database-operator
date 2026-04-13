@@ -2776,15 +2776,6 @@ spec:
                       - type
                       type: object
                     type: array
-                  execution:
-                    properties:
-                      image:
-                        type: string
-                      imagePullSecrets:
-                        items:
-                          type: string
-                        type: array
-                    type: object
                   lastPublishedTime:
                     format: date-time
                     type: string
@@ -2887,6 +2878,21 @@ spec:
                             type: object
                           topology:
                             properties:
+                              defaults:
+                                properties:
+                                  adminSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  tcps:
+                                    properties:
+                                      clientWalletSecret:
+                                        type: string
+                                    type: object
+                                type: object
                               members:
                                 items:
                                   properties:
@@ -2997,115 +3003,6 @@ spec:
                         type: object
                       topologyHash:
                         type: string
-                    type: object
-                  topology:
-                    properties:
-                      members:
-                        items:
-                          properties:
-                            adminSecretRef:
-                              properties:
-                                secretKey:
-                                  type: string
-                                secretName:
-                                  type: string
-                              type: object
-                            dbUniqueName:
-                              type: string
-                            endpoints:
-                              items:
-                                properties:
-                                  host:
-                                    type: string
-                                  name:
-                                    type: string
-                                  port:
-                                    format: int32
-                                    type: integer
-                                  protocol:
-                                    type: string
-                                  serviceName:
-                                    type: string
-                                  sslServerDN:
-                                    type: string
-                                type: object
-                              type: array
-                            localRef:
-                              properties:
-                                apiVersion:
-                                  type: string
-                                kind:
-                                  type: string
-                                name:
-                                  type: string
-                                namespace:
-                                  type: string
-                              type: object
-                            name:
-                              type: string
-                            role:
-                              type: string
-                            tcps:
-                              properties:
-                                clientWalletSecret:
-                                  type: string
-                                enabled:
-                                  type: boolean
-                                serverTLSSecret:
-                                  type: string
-                                sslServerDN:
-                                  type: string
-                                walletKey:
-                                  type: string
-                              type: object
-                          type: object
-                        type: array
-                      observer:
-                        properties:
-                          enabled:
-                            type: boolean
-                          image:
-                            type: string
-                          name:
-                            type: string
-                          nodeSelector:
-                            additionalProperties:
-                              type: string
-                            type: object
-                        type: object
-                      pairs:
-                        items:
-                          properties:
-                            primary:
-                              type: string
-                            standby:
-                              type: string
-                            type:
-                              type: string
-                          type: object
-                        type: array
-                      policy:
-                        properties:
-                          fastStartFailover:
-                            type: boolean
-                          protectionMode:
-                            type: string
-                          transportMode:
-                            type: string
-                        type: object
-                      sourceKind:
-                        type: string
-                      sourceRef:
-                        properties:
-                          apiVersion:
-                            type: string
-                          kind:
-                            type: string
-                          name:
-                            type: string
-                          namespace:
-                            type: string
-                        type: object
                     type: object
                   topologyHash:
                     type: string

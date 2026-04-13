@@ -85,11 +85,10 @@ func syncSIDBDataguardPreviewStatus(m *dbapi.SingleInstanceDatabase, rp *dbapi.S
 	next.Role = memberRole
 	next.DBUniqueName = strings.ToUpper(strings.TrimSpace(m.Spec.Sid))
 	next.Endpoints = buildSIDBPreviewEndpoints(m, m.Name, strings.TrimSpace(m.Spec.Sid))
-	next.Execution = buildSIDBPreviewExecutionStatus(m)
 	next.TCPS = buildSIDBPreviewTCPSConfig(m)
 	next.TopologyLocked = sidbPreviewTopologyLocked(m)
-	next.Topology = topology
-	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(m.Name, m.Namespace, topology, next.Execution, "", false)
+	execution := buildSIDBPreviewExecutionStatus(m)
+	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(m.Name, m.Namespace, topology, execution, "", false)
 	if topology == nil {
 		next.Phase = dataguardPreviewPhaseWaitingForSource
 		next.ReadyForBroker = false
@@ -106,7 +105,7 @@ func syncSIDBDataguardPreviewStatus(m *dbapi.SingleInstanceDatabase, rp *dbapi.S
 	}
 
 	next.TopologyHash = dataguardTopologyHash(topology)
-	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(m.Name, m.Namespace, topology, next.Execution, next.TopologyHash, previewReady)
+	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(m.Name, m.Namespace, topology, execution, next.TopologyHash, previewReady)
 	if previewReady {
 		next.Phase = dataguardPreviewPhaseReady
 		next.ReadyForBroker = true
@@ -467,11 +466,10 @@ func (r *ShardingDatabaseReconciler) syncShardingDataguardPreviewStatus(instance
 	}
 
 	topology, members, pairs, previewMessage, previewReason, ready := r.buildShardingPreviewTopology(instance)
-	next.Topology = topology
-	next.Execution = buildShardingPreviewExecutionStatus(instance)
+	execution := buildShardingPreviewExecutionStatus(instance)
 	next.Members = members
 	next.Pairs = pairs
-	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(instance.Name, instance.Namespace, topology, next.Execution, "", false)
+	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(instance.Name, instance.Namespace, topology, execution, "", false)
 	if topology == nil {
 		next.Phase = dataguardPreviewPhaseWaitingForTopology
 		next.ReadyForBroker = false
@@ -487,7 +485,7 @@ func (r *ShardingDatabaseReconciler) syncShardingDataguardPreviewStatus(instance
 		return
 	}
 	next.TopologyHash = dataguardTopologyHash(topology)
-	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(instance.Name, instance.Namespace, topology, next.Execution, next.TopologyHash, ready)
+	next.RenderedBrokerSpec = buildRenderedBrokerPreviewStatus(instance.Name, instance.Namespace, topology, execution, next.TopologyHash, ready)
 	if ready {
 		next.Phase = dataguardPreviewPhaseReady
 		next.ReadyForBroker = true

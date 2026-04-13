@@ -256,8 +256,6 @@ type ProducerDataguardStatus struct {
 	Role                  string                         `json:"role,omitempty"`
 	DBUniqueName          string                         `json:"dbUniqueName,omitempty"`
 	PrimaryMemberName     string                         `json:"primaryMemberName,omitempty"`
-	Topology              *DataguardTopologySpec         `json:"topology,omitempty"`
-	Execution             *DataguardExecutionStatus      `json:"execution,omitempty"`
 	RenderedBrokerSpec    *DataguardRenderedBrokerStatus `json:"renderedBrokerSpec,omitempty"`
 	Endpoints             []DataguardEndpointSpec        `json:"endpoints,omitempty"`
 	TCPS                  *DataguardTCPSConfig           `json:"tcps,omitempty"`
@@ -295,8 +293,6 @@ type DataguardPairStatus struct {
 // ShardingDataguardStatus is the producer-side DG publication state for sharding.
 type ShardingDataguardStatus struct {
 	BrokerRef             *DataguardStatusRef             `json:"brokerRef,omitempty"`
-	Topology              *DataguardTopologySpec          `json:"topology,omitempty"`
-	Execution             *DataguardExecutionStatus       `json:"execution,omitempty"`
 	RenderedBrokerSpec    *DataguardRenderedBrokerStatus  `json:"renderedBrokerSpec,omitempty"`
 	Members               []ShardingDataguardMemberStatus `json:"members,omitempty"`
 	Pairs                 []DataguardPairStatus           `json:"pairs,omitempty"`

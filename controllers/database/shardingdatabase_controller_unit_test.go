@@ -255,9 +255,6 @@ func TestShardingUnit_SyncDataguardPreviewStatusUserDG(t *testing.T) {
 	if !status.Dataguard.ReadyForBroker {
 		t.Fatalf("expected readyForBroker to be true")
 	}
-	if status.Dataguard.Topology == nil || len(status.Dataguard.Topology.Pairs) != 1 {
-		t.Fatalf("expected one topology pair, got %#v", status.Dataguard.Topology)
-	}
 	if len(status.Dataguard.Members) != 2 {
 		t.Fatalf("expected two member statuses, got %#v", status.Dataguard.Members)
 	}
@@ -270,9 +267,6 @@ func TestShardingUnit_SyncDataguardPreviewStatusUserDG(t *testing.T) {
 	if status.Dataguard.LastPublishedTime == nil {
 		t.Fatalf("expected lastPublishedTime to be set")
 	}
-	if status.Dataguard.Execution == nil || status.Dataguard.Execution.Image != "oracle/sharding-db:23ai" {
-		t.Fatalf("expected sharding execution image to be published, got %#v", status.Dataguard.Execution)
-	}
 	if status.Dataguard.RenderedBrokerSpec == nil {
 		t.Fatalf("expected renderedBrokerSpec to be published")
 	}
@@ -284,6 +278,9 @@ func TestShardingUnit_SyncDataguardPreviewStatusUserDG(t *testing.T) {
 	}
 	if status.Dataguard.RenderedBrokerSpec.Spec == nil || status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
 		t.Fatalf("expected rendered broker spec topology, got %#v", status.Dataguard.RenderedBrokerSpec)
+	}
+	if status.Dataguard.RenderedBrokerSpec.Spec.Execution == nil || status.Dataguard.RenderedBrokerSpec.Spec.Execution.Image != "oracle/sharding-db:23ai" {
+		t.Fatalf("expected rendered broker execution image to be published, got %#v", status.Dataguard.RenderedBrokerSpec.Spec.Execution)
 	}
 	defaults := status.Dataguard.RenderedBrokerSpec.Spec.Topology.Defaults
 	if defaults == nil || defaults.AdminSecretRef == nil {

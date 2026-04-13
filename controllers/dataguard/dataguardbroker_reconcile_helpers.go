@@ -651,10 +651,10 @@ func fetchDataguardExecutionStatusFromRef(ctx context.Context, r *DataguardBroke
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: refName}, &sidb); err != nil {
 			return dataguardExecutionCandidate{}, false, clientIgnoreNotFound(err)
 		}
-		if sidb.Status.Dataguard == nil || sidb.Status.Dataguard.Execution == nil || strings.TrimSpace(sidb.Status.Dataguard.Execution.Image) == "" {
+		status, ok := dataguardExecutionStatusFromRenderedBrokerStatus(sidb.Status.Dataguard)
+		if !ok {
 			return dataguardExecutionCandidate{}, false, nil
 		}
-		status := *sidb.Status.Dataguard.Execution
 		status.ImagePullSecrets = uniqueSortedStrings(status.ImagePullSecrets)
 		return dataguardExecutionCandidate{Status: status, Source: fmt.Sprintf("SingleInstanceDatabase/%s/%s", ns, refName)}, true, nil
 	case "ShardingDatabase":
@@ -662,10 +662,10 @@ func fetchDataguardExecutionStatusFromRef(ctx context.Context, r *DataguardBroke
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: refName}, &sharding); err != nil {
 			return dataguardExecutionCandidate{}, false, clientIgnoreNotFound(err)
 		}
-		if sharding.Status.Dataguard == nil || sharding.Status.Dataguard.Execution == nil || strings.TrimSpace(sharding.Status.Dataguard.Execution.Image) == "" {
+		status, ok := shardingDataguardExecutionStatusFromRenderedBrokerStatus(sharding.Status.Dataguard)
+		if !ok {
 			return dataguardExecutionCandidate{}, false, nil
 		}
-		status := *sharding.Status.Dataguard.Execution
 		status.ImagePullSecrets = uniqueSortedStrings(status.ImagePullSecrets)
 		return dataguardExecutionCandidate{Status: status, Source: fmt.Sprintf("ShardingDatabase/%s/%s", ns, refName)}, true, nil
 	case "RacDatabase":
@@ -673,16 +673,44 @@ func fetchDataguardExecutionStatusFromRef(ctx context.Context, r *DataguardBroke
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ns, Name: refName}, &rac); err != nil {
 			return dataguardExecutionCandidate{}, false, clientIgnoreNotFound(err)
 		}
-		if rac.Status.Dataguard == nil || rac.Status.Dataguard.Execution == nil || strings.TrimSpace(rac.Status.Dataguard.Execution.Image) == "" {
+		status, ok := dataguardExecutionStatusFromRenderedBrokerStatus(rac.Status.Dataguard)
+		if !ok {
 			return dataguardExecutionCandidate{}, false, nil
 		}
-		status := *rac.Status.Dataguard.Execution
 		status.ImagePullSecrets = uniqueSortedStrings(status.ImagePullSecrets)
 		return dataguardExecutionCandidate{Status: status, Source: fmt.Sprintf("RacDatabase/%s/%s", ns, refName)}, true, nil
 	default:
 		_ = apiVersion
 		return dataguardExecutionCandidate{}, false, nil
 	}
+}
+
+func dataguardExecutionStatusFromRenderedBrokerStatus(status *dbapi.ProducerDataguardStatus) (dbapi.DataguardExecutionStatus, bool) {
+	if status == nil || status.RenderedBrokerSpec == nil || status.RenderedBrokerSpec.Spec == nil || status.RenderedBrokerSpec.Spec.Execution == nil {
+		return dbapi.DataguardExecutionStatus{}, false
+	}
+	execution := status.RenderedBrokerSpec.Spec.Execution
+	if strings.TrimSpace(execution.Image) == "" {
+		return dbapi.DataguardExecutionStatus{}, false
+	}
+	return dbapi.DataguardExecutionStatus{
+		Image:            strings.TrimSpace(execution.Image),
+		ImagePullSecrets: append([]string(nil), execution.ImagePullSecrets...),
+	}, true
+}
+
+func shardingDataguardExecutionStatusFromRenderedBrokerStatus(status *dbapi.ShardingDataguardStatus) (dbapi.DataguardExecutionStatus, bool) {
+	if status == nil || status.RenderedBrokerSpec == nil || status.RenderedBrokerSpec.Spec == nil || status.RenderedBrokerSpec.Spec.Execution == nil {
+		return dbapi.DataguardExecutionStatus{}, false
+	}
+	execution := status.RenderedBrokerSpec.Spec.Execution
+	if strings.TrimSpace(execution.Image) == "" {
+		return dbapi.DataguardExecutionStatus{}, false
+	}
+	return dbapi.DataguardExecutionStatus{
+		Image:            strings.TrimSpace(execution.Image),
+		ImagePullSecrets: append([]string(nil), execution.ImagePullSecrets...),
+	}, true
 }
 
 func clientIgnoreNotFound(err error) error {
