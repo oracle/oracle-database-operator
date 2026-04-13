@@ -71,6 +71,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
@@ -101,6 +102,8 @@ type phaseResult struct {
 	reason       string
 	message      string
 }
+
+type shardingPhaseFunc func(context.Context, *databasev4.ShardingDatabase, *databasev4.ShardingDatabaseStatus, *conditionSet) phaseResult
 
 type conditionSet struct {
 	observedGen int64
@@ -157,6 +160,7 @@ var (
 func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	//ctx := context.Background()
 	//_ = r.Log.WithValues("shardingdatabase", req.NamespacedName)
+	reqLogger := ctrllog.FromContext(ctx).WithValues("shardingdatabase", req.NamespacedName)
 	inst := &databasev4.ShardingDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, inst); err != nil {
 		if errors.IsNotFound(err) {
@@ -169,7 +173,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if locked, lockGen, lockMsg := isUpdateLockActive(inst); locked && inst.Generation > lockGen {
 			enforceLock := true
 			if lastSuccSpec, err := inst.GetLastSuccessfulSpec(); err != nil {
-				r.logLegacy("WARNING", "Unable to evaluate conditional update lock; enforcing lock. err="+err.Error(), err, inst, r.Log)
+				r.logLegacy("WARNING", "Unable to evaluate conditional update lock; enforcing lock. err="+err.Error(), err, inst, reqLogger)
 			} else if lastSuccSpec != nil {
 				enforceLock = shouldEnforceUpdateLock(lastSuccSpec, &inst.Spec)
 			}
@@ -177,7 +181,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			if enforceLock {
 				overrideEnabled, overrideMsg := isUpdateLockOverrideEnabled(inst)
 				if overrideEnabled {
-					r.logLegacy("WARNING", "Bypassing update lock due to break-glass override. "+overrideMsg, nil, inst, r.Log)
+					r.logLegacy("WARNING", "Bypassing update lock due to break-glass override. "+overrideMsg, nil, inst, reqLogger)
 				} else {
 					status := inst.Status.DeepCopy()
 					finalCond := newConditionSet(inst.Generation)
@@ -190,7 +194,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 					return ctrl.Result{RequeueAfter: updateLockRequeue}, nil
 				}
 			} else {
-				r.logLegacy("INFO", "Update lock not enforced for non-topology spec change", nil, inst, r.Log)
+				r.logLegacy("INFO", "Update lock not enforced for non-topology spec change", nil, inst, reqLogger)
 			}
 		}
 	}
@@ -200,7 +204,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	finalCond := newConditionSet(inst.Generation)
 
 	// Phase 3: Delete
-	pr := r.phaseDelete(ctx, inst, status, finalCond)
+	pr := r.runPhase(ctx, inst, "delete", r.phaseDelete, status, finalCond)
 	if pr.err != nil {
 		r.markDegraded(finalCond, pr.reason, pr.message)
 		_ = r.flushStatus(ctx, req.NamespacedName, status, finalCond)
@@ -213,18 +217,21 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	//Calling different pahses from following block
-	phases := []func(context.Context, *databasev4.ShardingDatabase, *databasev4.ShardingDatabaseStatus, *conditionSet) phaseResult{
-		r.phaseValidateAndPlan,
-		r.phaseEnsureCoreResources,
-		r.phaseValidateCoreReady,
-		r.phasePrimaryShardOps,
-		r.phaseStandbyShardOps,
-		r.phaseScaleOps,
-		r.phasePostSync,
+	phases := []struct {
+		name string
+		fn   shardingPhaseFunc
+	}{
+		{name: "validate_plan", fn: r.phaseValidateAndPlan},
+		{name: "ensure_core_resources", fn: r.phaseEnsureCoreResources},
+		{name: "validate_core", fn: r.phaseValidateCoreReady},
+		{name: "primary_shard_ops", fn: r.phasePrimaryShardOps},
+		{name: "standby_shard_ops", fn: r.phaseStandbyShardOps},
+		{name: "scale_ops", fn: r.phaseScaleOps},
+		{name: "post_sync", fn: r.phasePostSync},
 	}
 
 	for _, p := range phases {
-		pr = p(ctx, inst, status, finalCond)
+		pr = r.runPhase(ctx, inst, p.name, p.fn, status, finalCond)
 		if pr.err != nil {
 			r.markDegraded(finalCond, pr.reason, pr.message)
 			_ = r.flushStatus(ctx, req.NamespacedName, status, finalCond)
@@ -253,6 +260,29 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{RequeueAfter: credentialRetryAfter}, nil
 	}
 	return ctrl.Result{RequeueAfter: statusRefreshRequeue}, nil
+}
+
+func (r *ShardingDatabaseReconciler) runPhase(
+	ctx context.Context,
+	inst *databasev4.ShardingDatabase,
+	phase string,
+	fn shardingPhaseFunc,
+	st *databasev4.ShardingDatabaseStatus,
+	c *conditionSet,
+) phaseResult {
+	log := r.phaseLogger(ctx, inst, phase)
+	log.Info("Phase started")
+	pr := fn(ctx, inst, st, c)
+	if pr.err != nil {
+		log.Error(pr.err, "Phase failed", "reason", pr.reason, "message", pr.message)
+		return pr
+	}
+	if pr.wait {
+		log.Info("Phase requested requeue", "reason", pr.reason, "message", pr.message, "requeueAfter", pr.requeueAfter)
+		return pr
+	}
+	log.Info("Phase completed")
+	return pr
 }
 
 // Phase 2 :Condition + Status Writer (single-writer pattern)
@@ -317,7 +347,7 @@ func (r *ShardingDatabaseReconciler) phaseDelete(
 func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, _ *conditionSet,
 ) phaseResult {
-	plog := r.phaseLogger(inst, "validate_plan")
+	plog := r.phaseLogger(ctx, inst, "validate_plan")
 	if err := r.validateSpex(inst); err != nil {
 		return phaseResult{err: err, reason: "SpecInvalid", message: err.Error()}
 	}
@@ -390,7 +420,6 @@ func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
 func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
 
@@ -406,11 +435,11 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	if !externalCatalogMode {
 		for i = 0; i < int32(len(inst.Spec.Catalog)); i++ {
 			oraCatalogSpec := inst.Spec.Catalog[i]
-			if _, err := r.createService(inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "local")); err != nil {
+			if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "local")); err != nil {
 				return phaseResult{err: err, reason: "CatalogServiceCreateFailed", message: err.Error()}
 			}
 			if inst.Spec.IsExternalSvc {
-				if _, err := r.createService(inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "external")); err != nil {
+				if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "external")); err != nil {
 					return phaseResult{err: err, reason: "CatalogExternalServiceCreateFailed", message: err.Error()}
 				}
 			}
@@ -433,6 +462,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 				return phaseResult{err: err, reason: "CatalogMemoryValidationFailed", message: err.Error()}
 			}
 			if _, err := r.deployStatefulSet(
+				ctx,
 				inst,
 				catalogSts,
 				"CATALOG",
@@ -450,11 +480,11 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	// Service setup for GSM
 	for i = 0; i < int32(len(inst.Spec.Gsm)); i++ {
 		oraGsmSpec := inst.Spec.Gsm[i]
-		if _, err := r.createService(inst, shardingv1.BuildServiceDefForGsm(inst, 0, oraGsmSpec, "local")); err != nil {
+		if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForGsm(inst, 0, oraGsmSpec, "local")); err != nil {
 			return phaseResult{err: err, reason: "GsmServiceCreateFailed", message: err.Error()}
 		}
 		if inst.Spec.IsExternalSvc {
-			if _, err := r.createService(inst, shardingv1.BuildServiceDefForGsm(inst, 0, oraGsmSpec, "external")); err != nil {
+			if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForGsm(inst, 0, oraGsmSpec, "external")); err != nil {
 				return phaseResult{err: err, reason: "GsmExternalServiceCreateFailed", message: err.Error()}
 			}
 		}
@@ -464,6 +494,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	for i = 0; i < int32(len(inst.Spec.Gsm)); i++ {
 		oraGsmSpec := inst.Spec.Gsm[i]
 		if _, err := r.deployStatefulSet(
+			ctx,
 			inst,
 			shardingv1.BuildStatefulSetForGsm(inst, oraGsmSpec),
 			"GSM",
@@ -490,11 +521,11 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		if shardingv1.CheckIsDeleteFlag(oraShardSpec.IsDelete, inst, r.Log) {
 			continue
 		}
-		if _, err := r.createService(inst, shardingv1.BuildServiceDefForShard(inst, 0, oraShardSpec, "local")); err != nil {
+		if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForShard(inst, 0, oraShardSpec, "local")); err != nil {
 			return phaseResult{err: err, reason: "ShardServiceCreateFailed", message: err.Error()}
 		}
 		if inst.Spec.IsExternalSvc {
-			if _, err := r.createService(inst, shardingv1.BuildServiceDefForShard(inst, 0, oraShardSpec, "external")); err != nil {
+			if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForShard(inst, 0, oraShardSpec, "external")); err != nil {
 				return phaseResult{err: err, reason: "ShardExternalServiceCreateFailed", message: err.Error()}
 			}
 		}
@@ -511,6 +542,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 			return phaseResult{err: err, reason: "ShardMemoryValidationFailed", message: err.Error()}
 		}
 		if _, err := r.deployStatefulSet(
+			ctx,
 			inst,
 			shardSts,
 			"SHARD",
@@ -719,10 +751,9 @@ func (r *ShardingDatabaseReconciler) reconcilePVCExpansion(instance *databasev4.
 func (r *ShardingDatabaseReconciler) phaseValidateCoreReady(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
-	plog := r.phaseLogger(inst, "validate_core")
+	plog := r.phaseLogger(ctx, inst, "validate_core")
 
 	// Existing reconcile behavior: if GSM/Catalog are not ready, keep waiting/requeueing.
 	if err := r.validateGsmnCatalog(inst); err != nil {
@@ -743,10 +774,9 @@ func (r *ShardingDatabaseReconciler) phaseValidateCoreReady(
 func (r *ShardingDatabaseReconciler) phasePrimaryShardOps(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
-	plog := r.phaseLogger(inst, "primary_shard_ops")
+	plog := r.phaseLogger(ctx, inst, "primary_shard_ops")
 
 	// Existing behavior: check shard state first; if transitional/error states exist, requeue.
 	if err := r.checkShardState(inst); err != nil {
@@ -778,10 +808,9 @@ func (r *ShardingDatabaseReconciler) phasePrimaryShardOps(
 func (r *ShardingDatabaseReconciler) phaseStandbyShardOps(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
-	plog := r.phaseLogger(inst, "standby_shard_ops")
+	plog := r.phaseLogger(ctx, inst, "standby_shard_ops")
 
 	// Existing behavior: standby shard + DG broker enablement is retried until complete.
 	if err := r.addStandbyShards(ctx, inst); err != nil {
@@ -806,10 +835,9 @@ func (r *ShardingDatabaseReconciler) phaseStandbyShardOps(
 func (r *ShardingDatabaseReconciler) phaseScaleOps(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
-	plog := r.phaseLogger(inst, "scale_ops")
+	plog := r.phaseLogger(ctx, inst, "scale_ops")
 
 	if err := r.pruneImportedTDEShardsAnnotation(ctx, inst); err != nil {
 		plog.Info("failed to prune tde import annotation; requeue", "reason", "TDEImportAnnotationPruneRetry", "error", err.Error(), "requeueAfter", 10*time.Second)
@@ -841,7 +869,7 @@ func (r *ShardingDatabaseReconciler) phasePostSync(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
 	_ = c
-	plog := r.phaseLogger(inst, "post_sync")
+	plog := r.phaseLogger(ctx, inst, "post_sync")
 
 	if st != nil {
 		r.syncShardingDataguardPreviewStatus(inst, st)
@@ -898,8 +926,8 @@ func (r *ShardingDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // phaseLogger returns a logger pre-populated with phase and object identity fields.
-func (r *ShardingDatabaseReconciler) phaseLogger(inst *databasev4.ShardingDatabase, phase string) logr.Logger {
-	log := r.Log.WithValues("phase", phase)
+func (r *ShardingDatabaseReconciler) phaseLogger(ctx context.Context, inst *databasev4.ShardingDatabase, phase string) logr.Logger {
+	log := ctrllog.FromContext(ctx).WithValues("phase", phase)
 	if inst != nil {
 		log = log.WithValues("namespace", inst.Namespace, "name", inst.Name)
 	}
@@ -3352,14 +3380,14 @@ func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev4.Shard
 // ================================== CREATE FUNCTIONS =============================
 // This function create a service based isExtern parameter set in the yaml file
 // createService ensures a Service exists for the requested topology member.
-func (r *ShardingDatabaseReconciler) createService(instance *databasev4.ShardingDatabase,
+func (r *ShardingDatabaseReconciler) createService(ctx context.Context, instance *databasev4.ShardingDatabase,
 	dep *corev1.Service,
 ) (ctrl.Result, error) {
 	if dep == nil {
 		return ctrl.Result{}, fmt.Errorf("createService received nil Service")
 	}
 
-	reqLogger := r.Log.WithValues(
+	reqLogger := ctrllog.FromContext(ctx).WithValues(
 		"instanceNamespace", instance.Namespace,
 		"instanceName", instance.Name,
 		"serviceName", dep.GetName(),
@@ -3393,7 +3421,7 @@ func (r *ShardingDatabaseReconciler) createService(instance *databasev4.Sharding
 		reqLogger.Info("Service reconciled to desired state")
 		return ctrl.Result{Requeue: true}, nil
 	}
-	r.logLegacy("DEBUG", "Service "+shardingv1.GetFmtStr(dep.Name)+" already in desired state", nil, instance, r.Log)
+	r.logLegacy("DEBUG", "Service "+shardingv1.GetFmtStr(dep.Name)+" already in desired state", nil, instance, reqLogger)
 	return ctrl.Result{}, nil
 }
 
@@ -3401,6 +3429,7 @@ func (r *ShardingDatabaseReconciler) createService(instance *databasev4.Sharding
 
 // deployStatefulSet ensures a StatefulSet exists for the requested topology member.
 func (r *ShardingDatabaseReconciler) deployStatefulSet(
+	ctx context.Context,
 	instance *databasev4.ShardingDatabase,
 	dep *appsv1.StatefulSet,
 	resType string,
@@ -3411,7 +3440,7 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(
 		return ctrl.Result{}, fmt.Errorf("deployStatefulSet received nil StatefulSet for %s", strings.ToUpper(strings.TrimSpace(resType)))
 	}
 
-	reqLogger := r.Log.WithValues(
+	reqLogger := ctrllog.FromContext(ctx).WithValues(
 		"instanceNamespace", instance.Namespace,
 		"instanceName", instance.Name,
 		"resourceType", strings.ToUpper(strings.TrimSpace(resType)),

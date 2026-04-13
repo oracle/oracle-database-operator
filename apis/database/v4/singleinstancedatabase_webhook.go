@@ -151,10 +151,21 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 var _ admission.Validator[*SingleInstanceDatabase] = &SingleInstanceDatabase{}
 
 func sidbTcpsEnabled(sidb *SingleInstanceDatabase) bool {
+	if sidb == nil {
+		return false
+	}
 	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && sidb.Spec.Security.TCPS.Enabled {
 		return true
 	}
 	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.Enabled {
+		return true
+	}
+	// Preserve legacy compatibility for manifests that only set deprecated TCPS
+	// listenerPort fields without the explicit enabled flag.
+	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.ListenerPort != 0 {
+		return true
+	}
+	if sidb.Spec.TcpsListenerPort != 0 {
 		return true
 	}
 	return sidb.Spec.EnableTCPS

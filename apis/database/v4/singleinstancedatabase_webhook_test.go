@@ -143,6 +143,24 @@ func TestSIDBWebhookAllowsLegacyTcpsListenerPortOutsideNodePortRange(t *testing.
 	}
 }
 
+func TestSIDBWebhookAllowsExternalTCPSWhenLegacyListenerPortImpliesEnablement(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.TCPS = &SingleInstanceDatabaseTCPS{ListenerPort: 2484}
+	sidb.Spec.Services = &SingleInstanceDatabaseServices{
+		External: &SingleInstanceDatabaseExternalService{
+			Type: SingleInstanceDatabaseExternalServiceTypeLoadBalancer,
+			TCPS: &SingleInstanceDatabaseExternalServicePort{
+				Enabled: true,
+				Port:    2484,
+			},
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected legacy spec.tcps.listenerPort to satisfy tcps enablement, got: %v", errs)
+	}
+}
+
 func TestSIDBWebhookValidateUpdateRejectsSpecChangeWhenLockedWithoutOverride(t *testing.T) {
 	oldObj := &SingleInstanceDatabase{
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb1", Namespace: "ns1", Generation: 3},

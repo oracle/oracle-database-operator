@@ -678,6 +678,28 @@ func TestSIDBUnit_ResolveExternalServiceConfigTreatsLegacyNonNodePortAsServicePo
 	}
 }
 
+func TestSIDBUnit_GetTcpsEnabledTreatsLegacyListenerPortAsEnabled(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			TCPS: &dbapi.SingleInstanceDatabaseTCPS{ListenerPort: 2484},
+		},
+	}
+
+	if !getTcpsEnabled(sidb) {
+		t.Fatalf("expected deprecated spec.tcps.listenerPort to imply tcps enabled")
+	}
+
+	sidb = &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			TcpsListenerPort: 32002,
+		},
+	}
+
+	if !getTcpsEnabled(sidb) {
+		t.Fatalf("expected deprecated spec.tcpsListenerPort to imply tcps enabled")
+	}
+}
+
 func TestSIDBUnit_GetStandbyWalletDefaults(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{}
 

@@ -81,6 +81,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // SingleInstanceDatabaseReconciler reconciles a SingleInstanceDatabase object.
@@ -334,10 +335,21 @@ func mergeSIDBOracleSysctls(existing, calculated []corev1.Sysctl) []corev1.Sysct
 }
 
 func getTcpsEnabled(m *dbapi.SingleInstanceDatabase) bool {
+	if m == nil {
+		return false
+	}
 	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && m.Spec.Security.TCPS.Enabled {
 		return true
 	}
 	if m.Spec.TCPS != nil && m.Spec.TCPS.Enabled {
+		return true
+	}
+	// Preserve legacy behavior: old manifests commonly used tcps listenerPort as the
+	// only TCPS signal, so treat either deprecated port field as enabling TCPS.
+	if m.Spec.TCPS != nil && m.Spec.TCPS.ListenerPort != 0 {
+		return true
+	}
+	if m.Spec.TcpsListenerPort != 0 {
 		return true
 	}
 	return m.Spec.EnableTCPS
@@ -812,14 +824,14 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
-	result, err = r.runSIDBPhase(req, "initialize_status", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "initialize_status", func() (ctrl.Result, error) {
 		return requeueN, r.phaseInitializeStatus(ctx, phaseCtx.singleInstanceDatabase)
 	})
 	if err != nil {
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "manage_deletion", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "manage_deletion", func() (ctrl.Result, error) {
 		return r.manageSingleInstanceDatabaseDeletion(req, ctx, phaseCtx.singleInstanceDatabase)
 	})
 	if result.Requeue {
@@ -831,7 +843,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "validate", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "validate", func() (ctrl.Result, error) {
 		return r.validate(
 			phaseCtx.singleInstanceDatabase,
 			phaseCtx.cloneFromDatabase,
@@ -847,7 +859,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "mode_pre_ready", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "mode_pre_ready", func() (ctrl.Result, error) {
 		return r.phaseModePreReady(ctx, req, phaseCtx)
 	})
 	if result.Requeue {
@@ -857,7 +869,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "ensure_datafiles_pvc", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "ensure_datafiles_pvc", func() (ctrl.Result, error) {
 		return r.createOrReplacePVCforDatafilesVol(ctx, req, phaseCtx.singleInstanceDatabase)
 	})
 	if result.Requeue {
@@ -868,7 +880,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "ensure_fra_pvc", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "ensure_fra_pvc", func() (ctrl.Result, error) {
 		return r.createOrReplacePVCforFRAVol(ctx, req, phaseCtx.singleInstanceDatabase)
 	})
 	if result.Requeue {
@@ -879,7 +891,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "ensure_customscripts_pvc", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "ensure_customscripts_pvc", func() (ctrl.Result, error) {
 		return r.createOrReplacePVCforCustomScriptsVol(ctx, req, phaseCtx.singleInstanceDatabase)
 	})
 	if result.Requeue {
@@ -890,7 +902,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "validate_truecache", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "validate_truecache", func() (ctrl.Result, error) {
 		sidb := phaseCtx.singleInstanceDatabase
 		if sidb.Spec.CreateAs == "truecache" && sidb.Spec.Edition != "enterprise" {
 			err := fmt.Errorf("truecache is only supported in enterprise edition, current edition: %s", sidb.Spec.Edition)
@@ -921,7 +933,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "precheck_truecache_blob", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "precheck_truecache_blob", func() (ctrl.Result, error) {
 		return r.ensureTrueCacheBlobSourceReady(ctx, req, phaseCtx.singleInstanceDatabase, phaseCtx.referredPrimaryDatabase)
 	})
 	if result.Requeue {
@@ -932,7 +944,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "ensure_pods", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "ensure_pods", func() (ctrl.Result, error) {
 		return r.createOrReplacePods(phaseCtx.singleInstanceDatabase, phaseCtx.cloneFromDatabase, phaseCtx.referredPrimaryDatabase, ctx, req)
 	})
 	if result.Requeue {
@@ -943,7 +955,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "ensure_service", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "ensure_service", func() (ctrl.Result, error) {
 		return r.createOrReplaceSVC(ctx, req, phaseCtx.singleInstanceDatabase)
 	})
 	if result.Requeue {
@@ -954,7 +966,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "validate_readiness", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "validate_readiness", func() (ctrl.Result, error) {
 		res, readyPod, e := r.validateDBReadiness(phaseCtx.singleInstanceDatabase, ctx, req)
 		if e != nil {
 			return res, e
@@ -970,7 +982,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "mode_post_ready", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "mode_post_ready", func() (ctrl.Result, error) {
 		return r.phaseModePostReady(ctx, req, phaseCtx)
 	})
 	if result.Requeue {
@@ -982,7 +994,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// manage snapshot database creation
-	result, err = r.runSIDBPhase(req, "snapshot_conversion", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "snapshot_conversion", func() (ctrl.Result, error) {
 		if phaseCtx.singleInstanceDatabase.Spec.ConvertToSnapshotStandby != phaseCtx.singleInstanceDatabase.Status.ConvertToSnapshotStandby {
 			res, e := r.manageConvPhysicalToSnapshot(ctx, req)
 			if e != nil {
@@ -1002,7 +1014,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Run Datapatch
-	result, err = r.runSIDBPhase(req, "run_datapatch", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "run_datapatch", func() (ctrl.Result, error) {
 		if strings.ToUpper(phaseCtx.singleInstanceDatabase.Status.Role) == "PRIMARY" && phaseCtx.singleInstanceDatabase.Status.DatafilesPatched != "true" {
 			// add a blocking reconcile condition
 			e := errors.New("processing datapatch execution")
@@ -1020,7 +1032,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "mode_status_sync", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "mode_status_sync", func() (ctrl.Result, error) {
 		return r.phaseModeStatusSync(ctx, req, phaseCtx)
 	})
 	if result.Requeue {
@@ -1030,7 +1042,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	result, err = r.runSIDBPhase(req, "ensure_truecache_blob", func() (ctrl.Result, error) {
+	result, err = r.runSIDBPhase(ctx, req, "ensure_truecache_blob", func() (ctrl.Result, error) {
 		sidb := phaseCtx.singleInstanceDatabase
 		if sidb.Spec.CreateAs != "primary" || sidb.Spec.TrueCache == nil || !sidb.Spec.TrueCache.GenerateEnabled {
 			return requeueN, nil
@@ -1061,17 +1073,17 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	completed = true
 	r.Log.Info("Reconcile completed")
 
-	return r.runSIDBPhase(req, "schedule_future_requeue", func() (ctrl.Result, error) {
+	return r.runSIDBPhase(ctx, req, "schedule_future_requeue", func() (ctrl.Result, error) {
 		return r.phaseScheduleFutureRequeue(phaseCtx)
 	})
 }
 
-func (r *SingleInstanceDatabaseReconciler) phaseLogger(req ctrl.Request, phase string) logr.Logger {
-	return r.Log.WithValues("phase", phase, "singleinstancedatabase", req.NamespacedName)
+func (r *SingleInstanceDatabaseReconciler) phaseLogger(ctx context.Context, req ctrl.Request, phase string) logr.Logger {
+	return ctrllog.FromContext(ctx).WithValues("phase", phase, "singleinstancedatabase", req.NamespacedName)
 }
 
-func (r *SingleInstanceDatabaseReconciler) runSIDBPhase(req ctrl.Request, phase string, fn func() (ctrl.Result, error)) (ctrl.Result, error) {
-	log := r.phaseLogger(req, phase)
+func (r *SingleInstanceDatabaseReconciler) runSIDBPhase(ctx context.Context, req ctrl.Request, phase string, fn func() (ctrl.Result, error)) (ctrl.Result, error) {
+	log := r.phaseLogger(ctx, req, phase)
 	log.Info("Phase started")
 	result, err := fn()
 	if err != nil {
@@ -1191,11 +1203,11 @@ func (r *SingleInstanceDatabaseReconciler) phaseModePreReady(ctx context.Context
 	mode := strings.ToLower(strings.TrimSpace(phaseCtx.singleInstanceDatabase.Spec.CreateAs))
 	switch mode {
 	case "", "primary", "clone", "truecache", "standby":
-		r.phaseLogger(req, "mode_pre_ready").Info("Mode pre-ready hooks complete", "mode", mode)
+		r.phaseLogger(ctx, req, "mode_pre_ready").Info("Mode pre-ready hooks complete", "mode", mode)
 		return requeueN, nil
 	default:
 		// Keep existing behavior unchanged for unknown mode values validated elsewhere.
-		r.phaseLogger(req, "mode_pre_ready").Info("Mode pre-ready skipped for unknown mode", "mode", mode)
+		r.phaseLogger(ctx, req, "mode_pre_ready").Info("Mode pre-ready skipped for unknown mode", "mode", mode)
 		return requeueN, nil
 	}
 }
@@ -5729,6 +5741,33 @@ func upsertTnsAliasInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ct
 	if strings.TrimSpace(out) != "" {
 		r.Log.Info("TNS alias upsert output", "alias", alias, "tnsFile", tnsFile, "output", out)
 	}
+
+	verifyCmd := fmt.Sprintf("if grep -Eq '^[[:space:]]*%s[[:space:]]*=' %q; then echo PRESENT; else echo ABSENT; fi", alias, tnsFile)
+	verifyOut, verifyErr := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", verifyCmd)
+	if verifyErr != nil {
+		return fmt.Errorf("failed to verify TNS alias %s in %s: %w", alias, tnsFile, verifyErr)
+	}
+	if !strings.Contains(verifyOut, "PRESENT") {
+		r.Log.Info("TNS alias missing after helper upsert; applying legacy fallback", "alias", alias, "tnsFile", tnsFile)
+		fallbackOut, fallbackErr := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", legacyCmd)
+		if fallbackErr != nil {
+			return fmt.Errorf("failed legacy fallback upsert for TNS alias %s in %s: %w", alias, tnsFile, fallbackErr)
+		}
+		if strings.TrimSpace(fallbackOut) != "" {
+			r.Log.Info("TNS alias legacy fallback output", "alias", alias, "tnsFile", tnsFile, "output", fallbackOut)
+		}
+
+		verifyOut, verifyErr = dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", verifyCmd)
+		if verifyErr != nil {
+			return fmt.Errorf("failed to verify TNS alias %s after fallback in %s: %w", alias, tnsFile, verifyErr)
+		}
+		if !strings.Contains(verifyOut, "PRESENT") {
+			snippetCmd := fmt.Sprintf("if [ -f %q ]; then sed -n '1,240p' %q; fi", tnsFile, tnsFile)
+			snippetOut, _ := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", snippetCmd)
+			r.Log.Error(errors.New("tns alias verification failed"), "TNS alias still missing after fallback", "alias", alias, "tnsFile", tnsFile, "contents", snippetOut)
+			return fmt.Errorf("tns alias %s not present in %s after helper and fallback upsert", alias, tnsFile)
+		}
+	}
 	return nil
 }
 
@@ -6317,6 +6356,10 @@ func ensureStandbyManagedRecovery(
 	if strings.Contains(statusOut, "ORA-") {
 		r.Log.Error(errors.New("managed standby recovery verification failed"), "Standby managed recovery verification returned Oracle error", "output", statusOut)
 		return fmt.Errorf("failed to verify managed standby recovery: %s", strings.TrimSpace(statusOut))
+	}
+	if !strings.Contains(statusOut, "MRP") {
+		r.Log.Error(errors.New("managed standby recovery verification found no MRP process"), "Standby managed recovery verification returned no MRP process", "output", statusOut)
+		return fmt.Errorf("managed standby recovery not active: no MRP process found in v$managed_standby output: %s", strings.TrimSpace(statusOut))
 	}
 	r.Log.Info("Standby managed recovery status")
 	r.Log.Info(statusOut)
