@@ -111,13 +111,6 @@ configurations change<br>
 <td>false</td>
 </tr>
 <tr>
-<td><b>poolProbeIntervalSeconds</b></td>
-<td>int32</td>
-<td>Specifies the interval, in seconds, between automatic pool probes. Set to 0 to disable pool probing.
-Pool probing is also disabled when Central Configuration Server is enabled through spec.globalSettings."central.config.url".</td>
-<td>false</td>
-</tr>
-<tr>
 <td><b><a href="#ordssrvsspecpoolsettingsindex">poolSettings&lt;
 a&gt;</a></b></td>
 <td>[]object</td>

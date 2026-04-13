@@ -202,7 +202,7 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			Status:  metav1.ConditionUnknown,
 			Reason:  "Reconciling",
 			Message: "Starting reconciliation"}
-		if err := r.UpdateStatus(ctx, req, rState, condition, false); err != nil {
+		if err := r.UpdateStatus(ctx, req, rState, condition); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -292,7 +292,7 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			Status:  metav1.ConditionTrue,
 			Reason:  "Unsynced",
 			Message: "Configurations have changed"}
-		if err := r.UpdateStatus(ctx, req, rState, condition, false); err != nil {
+		if err := r.UpdateStatus(ctx, req, rState, condition); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -323,7 +323,7 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			Status:  metav1.ConditionTrue,
 			Reason:  "Available",
 			Message: "Workload in Sync"}
-		if err := r.UpdateStatus(ctx, req, rState, condition, true); err != nil {
+		if err := r.UpdateStatus(ctx, req, rState, condition); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -471,7 +471,7 @@ func (r *OrdsSrvsReconciler) WorkloadReconcile(ctx context.Context, req ctrl.Req
 					Reason:  "Reconciling",
 					Message: fmt.Sprintf("Failed to create %s for the custom resource (%s): (%s)", kind, ordssrvs.Name, err),
 				}
-				if statusErr := r.UpdateStatus(ctx, req, rState, condition, false); statusErr != nil {
+				if statusErr := r.UpdateStatus(ctx, req, rState, condition); statusErr != nil {
 					return statusErr
 				}
 				return err

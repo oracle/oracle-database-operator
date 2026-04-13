@@ -111,7 +111,6 @@ func (r *OrdsSrvsReconciler) UpdateStatus(
 	req ctrl.Request,
 	rState *OrdsSrvsReconcileState,
 	workloadStatusCondition metav1.Condition,
-	probePoolsEnabled bool,
 ) error {
 	// DEBUG update status during spec change, not during pool probing
 	rState.specDebug.V(1).Info("UpdateStatus", "condition", workloadStatusCondition.Reason, "message", workloadStatusCondition.Message)

@@ -334,7 +334,6 @@ curl -ik https://ordssrvs-cc:8443/ords/pool-b/ordssrvs_testcase/testcase_table/ 
 - For production:
   - Replace HTTP with HTTPS and configure trusted certificates
   - Move credentials to Secrets or wallet-based authentication
-  - Add health and readiness probes to both central-config and ORDS
   - Apply NetworkPolicies to limit ingress/egress
   - Implement caching/failover strategies for central config availability
 

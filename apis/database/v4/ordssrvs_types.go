@@ -84,11 +84,6 @@ type OrdsSrvsSpec struct {
 	// Contains settings for individual pools/databases
 	PoolSettings []*PoolSettings `json:"poolSettings,omitempty"`
 
-	// Pools Probing interval. Set poolProbeIntervalSeconds=0 to disable ppools probing
-	//+kubebuilder:default:=0
-	//+kubebuilder:validation:Minimum=0
-	PoolProbeIntervalSeconds int32 `json:"poolProbeIntervalSeconds,omitempty"`
-
 	// Global metadata for all generated resources
 	CommonMetadata *MetadataConfig `json:"commonMetadata,omitempty"`
 
