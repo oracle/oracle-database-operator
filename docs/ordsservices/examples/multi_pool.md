@@ -1,10 +1,10 @@
 # OrdsSrvs Controller: Multipool, Multidatabase using a TNS Names file
 
-This example walks through using the **ORDSSRVS Operator** with multiple databases using a TNS Names file.  
+This example walks through using the **OrdsSrvs Operator** with multiple databases using a TNS Names file.  
 Keep in mind that all pools are running in the same Pod, therefore, changing the configuration of one pool will require
 a recycle of all pools.
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 
 ### TNS_ADMIN Secret
@@ -199,4 +199,4 @@ This example has multiple pools, named `pdb1`, `pdb2`, `pdb3`, and `pdb4`.
 * They all share the same `tnsAdminSecret` to connect using thier individual `db.tnsAliasName`
 * They will all automatically restart when the configuration changes: `forceRestart: true`
 * Only the `pdb1` pool will automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
-* The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
+* The `passwordKey` has been omitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
