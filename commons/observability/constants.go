@@ -5,9 +5,9 @@ import (
 )
 
 const (
-	// UnknownValue is used when a status or derived value cannot be determined.
+	// UnknownValue represents an unknown value.
 	UnknownValue = "UNKNOWN"
-	// DefaultValue represents a fallback marker when the field keeps default behavior.
+	// DefaultValue represents the default value.
 	DefaultValue = "DEFAULT"
 )
 

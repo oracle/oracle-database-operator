@@ -36,7 +36,6 @@
 ** SOFTWARE.
  */
 
-//nolint:staticcheck // apply-patch path is retained while migration to new apply API is staged.
 package controllers
 
 import (
@@ -421,11 +420,14 @@ func (r *DatabaseObserverReconciler) checkResourceForUpdates(
 	// Apply desired state with a stable field owner
 	fieldOwner := "observability.oracle.com/databaseobserver-controller"
 	apply := func(force bool) error {
-		opts := []client.PatchOption{client.FieldOwner(fieldOwner)}
+		applyCfg := client.ApplyConfigurationFromUnstructured(desired)
+
+		opts := []client.ApplyOption{client.FieldOwner(fieldOwner)}
 		if force {
 			opts = append(opts, client.ForceOwnership)
 		}
-		return r.Patch(ctx, desired, client.Apply, opts...)
+
+		return r.Apply(ctx, applyCfg, opts...)
 	}
 
 	err = apply(false)

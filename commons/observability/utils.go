@@ -1,15 +1,16 @@
 package observability
 
 import (
+	"path/filepath"
+	"strings"
+
 	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"path/filepath"
-	"strings"
 )
 
-// AddSidecarContainers appends sidecar containers from spec into listing.
+// AddSidecarContainers adds sidecar containers to the list.
 func AddSidecarContainers(a *api.DatabaseObserver, listing *[]corev1.Container) {
 
 	if containers := a.Spec.Sidecar.Containers; len(containers) > 0 {
@@ -17,7 +18,7 @@ func AddSidecarContainers(a *api.DatabaseObserver, listing *[]corev1.Container) 
 	}
 }
 
-// AddSidecarVolumes appends sidecar volumes from spec into listing.
+// AddSidecarVolumes adds sidecar volumes to the list.
 func AddSidecarVolumes(a *api.DatabaseObserver, listing *[]corev1.Volume) {
 
 	if volumes := a.Spec.Sidecar.Volumes; len(volumes) > 0 {
@@ -145,7 +146,7 @@ func GetEndpoints(a *api.DatabaseObserver) []monitorv1.Endpoint {
 	return endpoints
 }
 
-// AddNamespaceSelector copies optional namespace selector into ServiceMonitor spec.
+// AddNamespaceSelector adds a namespace selector to the resource.
 func AddNamespaceSelector(a *api.DatabaseObserver, spec *monitorv1.ServiceMonitorSpec) {
 
 	if ns := a.Spec.ServiceMonitor.NamespaceSelector; ns != nil {
@@ -403,9 +404,11 @@ func GetLogVolumeSource(a *api.DatabaseObserver) corev1.VolumeSource {
 			ClaimName: rLogVolumeClaimName,
 		}
 		return vs
-	}
+	} 
+	
 	vs.EmptyDir = &corev1.EmptyDirVolumeSource{}
 	return vs
+	
 }
 
 // AddEnv is a helper method that appends an Env Var value
@@ -419,7 +422,7 @@ func AddEnv(env []corev1.EnvVar, existing map[string]string, name string, v stri
 	return env
 }
 
-// AddEnvFromConfigMap appends an env var reference sourced from a ConfigMap key.
+// AddEnvFromConfigMap adds environment variables from a ConfigMap.
 func AddEnvFromConfigMap(env []corev1.EnvVar, existing map[string]string, environmentName string, key string, configMap string) []corev1.EnvVar {
 	// Evaluate if env already exists
 	if _, f := existing[environmentName]; !f {
@@ -437,7 +440,7 @@ func AddEnvFromConfigMap(env []corev1.EnvVar, existing map[string]string, enviro
 	return env
 }
 
-// AddEnvFromSecret appends an env var reference sourced from a Secret key.
+// AddEnvFromSecret adds environment variables from a Secret.
 func AddEnvFromSecret(env []corev1.EnvVar, existing map[string]string, environmentName string, key string, secretName string) []corev1.EnvVar {
 	// Evaluate if env already exists
 	if _, f := existing[environmentName]; !f {
@@ -455,7 +458,7 @@ func AddEnvFromSecret(env []corev1.EnvVar, existing map[string]string, environme
 	return env
 }
 
-// AddSingleDatabaseEnvs resolves and appends env vars for single-database configuration.
+// AddSingleDatabaseEnvs adds environment variables for a single database configuration.
 func AddSingleDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source []corev1.EnvVar) []corev1.EnvVar {
 
 	u := a.Spec.Database.DBUser
@@ -528,7 +531,7 @@ func AddSingleDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source 
 	return source
 }
 
-// AddMultiDatabaseEnvs resolves and appends env vars for multi-database configuration.
+// AddMultiDatabaseEnvs adds environment variables for a multi-database configuration.
 func AddMultiDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source []corev1.EnvVar) []corev1.EnvVar {
 
 	for key, db := range a.Spec.Databases {
@@ -579,12 +582,12 @@ func AddMultiDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source [
 	return source
 }
 
-// IsUsingOCIVault reports whether OCI Vault inputs are fully configured.
+// IsUsingOCIVault reports whether OCI Vault is configured.
 func IsUsingOCIVault(f api.DBOCIVault) bool {
 	return f.VaultPasswordSecret != "" && f.VaultID != ""
 }
 
-// IsUsingAzureVault reports whether Azure Vault inputs are configured for the requested mode.
+// IsUsingAzureVault reports whether Azure Vault is configured.
 func IsUsingAzureVault(f api.DBAzureVault, v string) bool {
 
 	if v == VaultPasswordInUse {
@@ -601,7 +604,7 @@ func IsUsingAzureVault(f api.DBAzureVault, v string) bool {
 
 }
 
-// IsMultipleDatabasesDefined reports whether multi-database entries are configured.
+// IsMultipleDatabasesDefined reports whether multiple databases are defined.
 func IsMultipleDatabasesDefined(a *api.DatabaseObserver) bool {
 	return len(a.Spec.Databases) > 0
 }

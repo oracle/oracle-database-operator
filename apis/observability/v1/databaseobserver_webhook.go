@@ -70,7 +70,7 @@ const (
 	ErrorSpecExporterImageNotAllowed = "a different exporter image was found, only official database exporter container images are currently supported"
 )
 
-// SetupWebhookWithManager registers mutating and validating webhooks for DatabaseObserver.
+// SetupWebhookWithManager sets up the webhook with the manager.
 func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy[*DatabaseObserver](mgr, r).
 		WithDefaulter(r).
@@ -85,7 +85,9 @@ func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
 var _ admission.Defaulter[*DatabaseObserver] = &DatabaseObserver{}
 var _ admission.Validator[*DatabaseObserver] = &DatabaseObserver{}
 
-// Default sets default values for the DatabaseObserver resource.
+// 3. Update Default signature: change runtime.Object to *DatabaseObserver
+
+// Default sets default values for DatabaseObserver.
 func (r *DatabaseObserver) Default(_ context.Context, obj *DatabaseObserver) error {
 	obs := obj
 	databaseobserverlog.Info("default", "name", obs.Name)

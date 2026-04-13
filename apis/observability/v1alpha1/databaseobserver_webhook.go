@@ -70,7 +70,7 @@ const (
 	ErrorSpecExporterImageNotAllowed = "a different exporter image was found, only official database exporter container images are currently supported"
 )
 
-// SetupWebhookWithManager registers mutating and validating webhooks for DatabaseObserver.
+// SetupWebhookWithManager sets up the webhook with the manager.
 func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	// 1. Use the generic builder with [*DatabaseObserver]
 	// 2. Pass both 'mgr' and 'r' to the constructor
