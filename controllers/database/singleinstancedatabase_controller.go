@@ -1228,8 +1228,9 @@ func (r *SingleInstanceDatabaseReconciler) phaseModeStatusSync(ctx context.Conte
 }
 
 func (r *SingleInstanceDatabaseReconciler) phaseConnectStringGate(sidb *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
-	// Ensure LB-backed services expose a usable connect string before declaring reconcile success.
-	if sidb.Status.ConnectString == dbcommons.ValueUnavailable {
+	// Ensure externally reachable services expose a usable connect string before declaring reconcile success.
+	// TCPS-only databases may intentionally leave the legacy TCP connect string unavailable.
+	if sidb.Status.ConnectString == dbcommons.ValueUnavailable && sidb.Status.TcpsConnectString == dbcommons.ValueUnavailable {
 		r.Log.Info("Connect string not available for the database " + sidb.Name)
 		return requeueY, nil
 	}

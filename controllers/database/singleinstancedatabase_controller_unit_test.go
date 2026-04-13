@@ -1089,13 +1089,19 @@ func TestSIDBUnit_PhaseScheduleFutureRequeueIsPerContext(t *testing.T) {
 
 func TestSIDBUnit_PhaseConnectStringGate(t *testing.T) {
 	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard()}
-	pending := &dbapi.SingleInstanceDatabase{ObjectMeta: metav1.ObjectMeta{Name: "sidb1"}, Status: dbapi.SingleInstanceDatabaseStatus{ConnectString: dbcommons.ValueUnavailable}}
+	pending := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb1"},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			ConnectString:     dbcommons.ValueUnavailable,
+			TcpsConnectString: dbcommons.ValueUnavailable,
+		},
+	}
 	res, err := reconciler.phaseConnectStringGate(pending)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
 	if !res.Requeue {
-		t.Fatalf("expected requeue when connect string is unavailable")
+		t.Fatalf("expected requeue when both connect strings are unavailable")
 	}
 
 	ready := &dbapi.SingleInstanceDatabase{Status: dbapi.SingleInstanceDatabaseStatus{ConnectString: "host:1521/ORCLCDB"}}
@@ -1105,6 +1111,20 @@ func TestSIDBUnit_PhaseConnectStringGate(t *testing.T) {
 	}
 	if res != requeueN {
 		t.Fatalf("expected no requeue for available connect string, got %#v", res)
+	}
+
+	tcpsOnly := &dbapi.SingleInstanceDatabase{
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			ConnectString:     dbcommons.ValueUnavailable,
+			TcpsConnectString: "host:2484/ORCLCDB",
+		},
+	}
+	res, err = reconciler.phaseConnectStringGate(tcpsOnly)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if res != requeueN {
+		t.Fatalf("expected no requeue for available tcps connect string, got %#v", res)
 	}
 }
 
