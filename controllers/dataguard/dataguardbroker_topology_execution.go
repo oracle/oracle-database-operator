@@ -151,10 +151,7 @@ func resolveDataguardTopologyMember(ctx context.Context, r *DataguardBrokerRecon
 	resolved.AdminPassword = adminPassword
 
 	if strings.EqualFold(strings.TrimSpace(endpoint.Protocol), "TCPS") {
-		walletSecret := ""
-		if member.TCPS != nil {
-			walletSecret = strings.TrimSpace(member.TCPS.ClientWalletSecret)
-		}
+		walletSecret := dbapi.ResolveDataguardTopologyMemberClientWalletSecret(broker.Spec.Topology, member)
 		if walletSecret == "" {
 			return nil, fmt.Errorf("topology member %q uses TCPS but tcps.clientWalletSecret is not set", resolved.Name)
 		}
@@ -169,9 +166,7 @@ func resolveDataguardTopologyMemberAdminSecretRef(ctx context.Context, r *Datagu
 		return "", "", "", fmt.Errorf("broker or topology member is nil")
 	}
 
-	if member.AdminSecretRef != nil {
-		secretName := strings.TrimSpace(member.AdminSecretRef.SecretName)
-		secretKey := strings.TrimSpace(member.AdminSecretRef.SecretKey)
+	if secretName, secretKey, ok := dbapi.ResolveDataguardTopologyMemberExplicitAdminSecretRef(broker.Spec.Topology, member); ok {
 		if secretName == "" {
 			return "", "", "", fmt.Errorf("topology member %q adminSecretRef.secretName is empty", strings.TrimSpace(member.Name))
 		}
@@ -959,7 +954,7 @@ dgmgrl -echo sys@%s "START OBSERVER %s FILE IS /tmp/fsfo.dat LOGFILE IS /tmp/obs
 			if member.TCPS == nil || !member.TCPS.Enabled {
 				continue
 			}
-			secretName := strings.TrimSpace(member.TCPS.ClientWalletSecret)
+			secretName := dbapi.ResolveDataguardTopologyMemberClientWalletSecret(broker.Spec.Topology, &member)
 			if secretName == "" {
 				continue
 			}

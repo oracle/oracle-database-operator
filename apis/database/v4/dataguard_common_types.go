@@ -147,6 +147,17 @@ type DataguardTCPSConfig struct {
 	SSLServerDN        string `json:"sslServerDN,omitempty"`
 }
 
+// DataguardTopologyTCPSDefaults carries topology-wide TCPS defaults.
+type DataguardTopologyTCPSDefaults struct {
+	ClientWalletSecret string `json:"clientWalletSecret,omitempty"`
+}
+
+// DataguardTopologyDefaults carries reusable defaults for topology members.
+type DataguardTopologyDefaults struct {
+	AdminSecretRef *DataguardSecretRef            `json:"adminSecretRef,omitempty"`
+	TCPS           *DataguardTopologyTCPSDefaults `json:"tcps,omitempty"`
+}
+
 // DataguardTopologyMember defines one participant in a DG topology.
 type DataguardTopologyMember struct {
 	Name           string                  `json:"name,omitempty"`
@@ -175,12 +186,39 @@ type DataguardObserverSpec struct {
 
 // DataguardTopologySpec is the generic desired-state DG topology contract.
 type DataguardTopologySpec struct {
-	SourceKind string                    `json:"sourceKind,omitempty"`
-	SourceRef  *DataguardSourceRef       `json:"sourceRef,omitempty"`
-	Policy     *DataguardPolicySpec      `json:"policy,omitempty"`
-	Members    []DataguardTopologyMember `json:"members,omitempty"`
-	Pairs      []DataguardTopologyPair   `json:"pairs,omitempty"`
-	Observer   *DataguardObserverSpec    `json:"observer,omitempty"`
+	SourceKind string                     `json:"sourceKind,omitempty"`
+	SourceRef  *DataguardSourceRef        `json:"sourceRef,omitempty"`
+	Policy     *DataguardPolicySpec       `json:"policy,omitempty"`
+	Defaults   *DataguardTopologyDefaults `json:"defaults,omitempty"`
+	Members    []DataguardTopologyMember  `json:"members,omitempty"`
+	Pairs      []DataguardTopologyPair    `json:"pairs,omitempty"`
+	Observer   *DataguardObserverSpec     `json:"observer,omitempty"`
+}
+
+// ResolveDataguardTopologyMemberExplicitAdminSecretRef resolves an explicitly declared
+// admin secret reference, preferring the member-level value over topology defaults.
+func ResolveDataguardTopologyMemberExplicitAdminSecretRef(topology *DataguardTopologySpec, member *DataguardTopologyMember) (string, string, bool) {
+	if member != nil && member.AdminSecretRef != nil {
+		return strings.TrimSpace(member.AdminSecretRef.SecretName), strings.TrimSpace(member.AdminSecretRef.SecretKey), true
+	}
+	if topology != nil && topology.Defaults != nil && topology.Defaults.AdminSecretRef != nil {
+		return strings.TrimSpace(topology.Defaults.AdminSecretRef.SecretName), strings.TrimSpace(topology.Defaults.AdminSecretRef.SecretKey), true
+	}
+	return "", "", false
+}
+
+// ResolveDataguardTopologyMemberClientWalletSecret resolves the TCPS client wallet
+// secret name, preferring the member-level value over topology defaults.
+func ResolveDataguardTopologyMemberClientWalletSecret(topology *DataguardTopologySpec, member *DataguardTopologyMember) string {
+	if member != nil && member.TCPS != nil {
+		if secretName := strings.TrimSpace(member.TCPS.ClientWalletSecret); secretName != "" {
+			return secretName
+		}
+	}
+	if topology != nil && topology.Defaults != nil && topology.Defaults.TCPS != nil {
+		return strings.TrimSpace(topology.Defaults.TCPS.ClientWalletSecret)
+	}
+	return ""
 }
 
 // DataguardExecutionStatus publishes the producer's default DG runner image.

@@ -589,7 +589,7 @@ func validateDataguardTopologyWallets(topology *dbapi.DataguardTopologySpec) (bo
 	}
 	for i := range topology.Members {
 		member := topology.Members[i]
-		if member.TCPS != nil && member.TCPS.Enabled && strings.TrimSpace(member.TCPS.ClientWalletSecret) == "" {
+		if member.TCPS != nil && member.TCPS.Enabled && dbapi.ResolveDataguardTopologyMemberClientWalletSecret(topology, &member) == "" {
 			return false, fmt.Sprintf("member %s enables TCPS but does not publish tcps.clientWalletSecret", strings.TrimSpace(member.Name))
 		}
 	}
@@ -765,7 +765,7 @@ func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *datag
 			if member.TCPS == nil || !member.TCPS.Enabled {
 				continue
 			}
-			secretName := strings.TrimSpace(member.TCPS.ClientWalletSecret)
+			secretName := dbapi.ResolveDataguardTopologyMemberClientWalletSecret(broker.Spec.Topology, &member)
 			if secretName == "" {
 				continue
 			}

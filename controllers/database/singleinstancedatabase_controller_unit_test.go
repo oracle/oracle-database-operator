@@ -184,12 +184,23 @@ func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 	if len(gotMembers) != 2 {
 		t.Fatalf("expected two rendered broker members, got %#v", gotMembers)
 	}
+	defaults := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology.Defaults
+	if defaults == nil || defaults.AdminSecretRef == nil {
+		t.Fatalf("expected topology defaults adminSecretRef to be published")
+	}
+	if defaults.AdminSecretRef.SecretName != "standby-admin" || defaults.AdminSecretRef.SecretKey != "oracle_pwd" {
+		t.Fatalf("unexpected topology defaults adminSecretRef %#v", defaults.AdminSecretRef)
+	}
 	for _, member := range gotMembers {
-		if member.AdminSecretRef == nil {
-			t.Fatalf("expected adminSecretRef to be published for member %#v", member)
-		}
-		if member.AdminSecretRef.SecretKey != "oracle_pwd" {
-			t.Fatalf("expected default admin secret key oracle_pwd for member %#v", member)
+		switch member.Role {
+		case "PRIMARY":
+			if member.AdminSecretRef == nil || member.AdminSecretRef.SecretName != "primary-admin" || member.AdminSecretRef.SecretKey != "oracle_pwd" {
+				t.Fatalf("expected primary override adminSecretRef to be published for member %#v", member)
+			}
+		case "PHYSICAL_STANDBY":
+			if member.AdminSecretRef != nil {
+				t.Fatalf("expected standby member to inherit adminSecretRef from topology defaults, got %#v", member)
+			}
 		}
 	}
 }
@@ -241,8 +252,8 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryPublishesReadyPreview
 	if condition.Status != metav1.ConditionTrue {
 		t.Fatalf("expected TopologyPreviewReady condition status true, got %#v", condition)
 	}
-	if !strings.Contains(condition.Message, "placeholder adminSecretRef") {
-		t.Fatalf("expected condition message to explain placeholder replacement, got %#v", condition)
+	if !strings.Contains(condition.Message, "topology.defaults.adminSecretRef") {
+		t.Fatalf("expected condition message to explain topology default admin secret usage, got %#v", condition)
 	}
 	members := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
 	if len(members) != 2 {
@@ -258,14 +269,15 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryPublishesReadyPreview
 	if externalPrimary == nil {
 		t.Fatalf("expected primary member in rendered topology, got %#v", members)
 	}
-	if externalPrimary.AdminSecretRef == nil {
-		t.Fatalf("expected placeholder adminSecretRef for external primary member")
+	if externalPrimary.AdminSecretRef != nil {
+		t.Fatalf("expected external primary member to inherit adminSecretRef from topology defaults, got %#v", externalPrimary.AdminSecretRef)
 	}
-	if externalPrimary.AdminSecretRef.SecretName != dataguardPreviewExternalSecretPlaceholder {
-		t.Fatalf("unexpected placeholder secret name: %#v", externalPrimary.AdminSecretRef)
+	defaults := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology.Defaults
+	if defaults == nil || defaults.AdminSecretRef == nil {
+		t.Fatalf("expected topology defaults adminSecretRef to be published")
 	}
-	if externalPrimary.AdminSecretRef.SecretKey != dataguardPreviewExternalSecretKey {
-		t.Fatalf("unexpected placeholder secret key: %#v", externalPrimary.AdminSecretRef)
+	if defaults.AdminSecretRef.SecretName != "standby-admin" || defaults.AdminSecretRef.SecretKey != "oracle_pwd" {
+		t.Fatalf("unexpected topology defaults adminSecretRef %#v", defaults.AdminSecretRef)
 	}
 	if externalPrimary.TCPS != nil {
 		t.Fatalf("did not expect primary tcps block when standby tcps is disabled, got %#v", externalPrimary.TCPS)
@@ -311,8 +323,8 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryInfersTCPSPlaceholder
 	if condition == nil {
 		t.Fatalf("expected TopologyPreviewReady condition to be set")
 	}
-	if !strings.Contains(condition.Message, "tcps.clientWalletSecret") {
-		t.Fatalf("expected condition message to mention tcps placeholders, got %#v", condition)
+	if !strings.Contains(condition.Message, "topology.defaults.tcps.clientWalletSecret") {
+		t.Fatalf("expected condition message to mention topology tcps defaults, got %#v", condition)
 	}
 	members := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
 	var externalPrimary *dbapi.DataguardTopologyMember
@@ -328,8 +340,15 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryInfersTCPSPlaceholder
 	if externalPrimary.TCPS == nil || !externalPrimary.TCPS.Enabled {
 		t.Fatalf("expected inferred primary tcps block, got %#v", externalPrimary.TCPS)
 	}
-	if externalPrimary.TCPS.ClientWalletSecret != dataguardPreviewExternalPrimaryWalletPH {
-		t.Fatalf("unexpected primary tcps wallet placeholder: %#v", externalPrimary.TCPS)
+	if externalPrimary.TCPS.ClientWalletSecret != "" {
+		t.Fatalf("expected external primary to inherit tcps wallet secret from topology defaults, got %#v", externalPrimary.TCPS)
+	}
+	defaults := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Topology.Defaults
+	if defaults == nil || defaults.TCPS == nil {
+		t.Fatalf("expected topology tcps defaults to be published")
+	}
+	if defaults.TCPS.ClientWalletSecret != dataguardPreviewSharedWalletPlaceholder {
+		t.Fatalf("unexpected topology tcps wallet default %#v", defaults.TCPS)
 	}
 	var tcpsEndpoint *dbapi.DataguardEndpointSpec
 	for i := range externalPrimary.Endpoints {

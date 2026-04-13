@@ -28,6 +28,7 @@ const (
 	dataguardPreviewExternalSecretPlaceholder  = "replace-with-external-admin-secret"
 	dataguardPreviewExternalSecretKey          = "password"
 	dataguardPreviewExternalPrimaryWalletPH    = "replace-with-primary-client-wallet-secret"
+	dataguardPreviewSharedWalletPlaceholder    = "replace-with-shared-client-wallet-secret"
 )
 
 func dataguardPreviewReadyMessage(note string) string {
@@ -185,15 +186,20 @@ func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleI
 		TCPS:      buildSIDBPreviewTCPSConfig(m),
 	}
 	previewReady := true
-	previewMessages := make([]string, 0, 2)
-	if adminSecretRef, msg, ok := buildSIDBPreviewLocalAdminSecretRef(m); ok {
-		member.AdminSecretRef = adminSecretRef
-	} else if strings.TrimSpace(msg) != "" {
-		previewReady = false
-		previewMessages = append(previewMessages, msg)
+	previewMessages := make([]string, 0, 3)
+	defaults, defaultMessages, defaultsReady := buildSIDBPreviewTopologyDefaults(m)
+	if len(defaultMessages) > 0 {
+		previewMessages = append(previewMessages, defaultMessages...)
+	}
+	previewReady = previewReady && defaultsReady
+	if defaults != nil && defaults.AdminSecretRef != nil && dataguardSecretRefsEqual(defaults.AdminSecretRef, member.AdminSecretRef) {
+		member.AdminSecretRef = nil
+	}
+	if member.TCPS != nil && defaults != nil && defaults.TCPS != nil && strings.TrimSpace(member.TCPS.ClientWalletSecret) == strings.TrimSpace(defaults.TCPS.ClientWalletSecret) {
+		member.TCPS.ClientWalletSecret = ""
 	}
 
-	primaryMember, primaryMemberName, primaryMessage, primaryReady := buildSIDBPreviewPrimaryMember(m, rp)
+	primaryMember, primaryMemberName, primaryMessage, primaryReady := buildSIDBPreviewPrimaryMember(m, rp, defaults)
 	if primaryMember == nil || primaryMemberName == "" {
 		return nil, memberName, "", primaryMessage, false
 	}
@@ -210,7 +216,8 @@ func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleI
 			Namespace:  m.Namespace,
 			Name:       m.Name,
 		},
-		Members: []dbapi.DataguardTopologyMember{*primaryMember, member},
+		Defaults: defaults,
+		Members:  []dbapi.DataguardTopologyMember{*primaryMember, member},
 		Pairs: []dbapi.DataguardTopologyPair{{
 			Primary: primaryMemberName,
 			Standby: memberName,
@@ -220,7 +227,7 @@ func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleI
 	return topology, memberName, primaryMemberName, strings.Join(previewMessages, "; "), previewReady
 }
 
-func buildSIDBPreviewPrimaryMember(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) (*dbapi.DataguardTopologyMember, string, string, bool) {
+func buildSIDBPreviewPrimaryMember(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase, defaults *dbapi.DataguardTopologyDefaults) (*dbapi.DataguardTopologyMember, string, string, bool) {
 	if m == nil {
 		return nil, "", "", false
 	}
@@ -248,6 +255,12 @@ func buildSIDBPreviewPrimaryMember(m *dbapi.SingleInstanceDatabase, rp *dbapi.Si
 		member.TCPS = buildSIDBPreviewTCPSConfig(rp)
 		if adminSecretRef, msg, ok := buildSIDBPreviewLocalAdminSecretRef(rp); ok {
 			member.AdminSecretRef = adminSecretRef
+			if defaults != nil && defaults.AdminSecretRef != nil && dataguardSecretRefsEqual(defaults.AdminSecretRef, member.AdminSecretRef) {
+				member.AdminSecretRef = nil
+			}
+			if member.TCPS != nil && defaults != nil && defaults.TCPS != nil && strings.TrimSpace(member.TCPS.ClientWalletSecret) == strings.TrimSpace(defaults.TCPS.ClientWalletSecret) {
+				member.TCPS.ClientWalletSecret = ""
+			}
 			return member, memberName, "", true
 		} else {
 			return member, memberName, msg, false
@@ -268,17 +281,25 @@ func buildSIDBPreviewPrimaryMember(m *dbapi.SingleInstanceDatabase, rp *dbapi.Si
 		Port:        int32(port),
 		ServiceName: strings.ToUpper(strings.TrimSpace(service)),
 	}}
-	previewMessages := []string{
-		fmt.Sprintf("topology member %q is external; rendered DataguardBroker includes placeholder adminSecretRef values, so replace adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker", memberName),
+	previewMessages := []string{}
+	if defaults != nil && defaults.AdminSecretRef != nil && strings.TrimSpace(defaults.AdminSecretRef.SecretName) != "" {
+		previewMessages = append(previewMessages, fmt.Sprintf("topology member %q is external; rendered DataguardBroker uses topology.defaults.adminSecretRef from the standby database, so add a member-level adminSecretRef only if the external primary uses different admin credentials", memberName))
+	} else {
+		member.AdminSecretRef = &dbapi.DataguardSecretRef{
+			SecretName: dataguardPreviewExternalSecretPlaceholder,
+			SecretKey:  dataguardPreviewExternalSecretKey,
+		}
+		previewMessages = append(previewMessages, fmt.Sprintf("topology member %q is external; rendered DataguardBroker includes placeholder adminSecretRef values, so replace adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker", memberName))
 	}
 	if inferredEndpoint, inferredTCPS, ok := buildSIDBPreviewExternalPrimaryTCPSPlaceholders(m, host, service); ok {
 		member.Endpoints = append(member.Endpoints, *inferredEndpoint)
 		member.TCPS = inferredTCPS
-		previewMessages = append(previewMessages, fmt.Sprintf("topology member %q inferred TCPS preview settings from standby TCPS configuration; replace tcps.clientWalletSecret placeholder with the correct primary client wallet secret before applying DataguardBroker", memberName))
-	}
-	member.AdminSecretRef = &dbapi.DataguardSecretRef{
-		SecretName: dataguardPreviewExternalSecretPlaceholder,
-		SecretKey:  dataguardPreviewExternalSecretKey,
+		if defaults != nil && defaults.TCPS != nil && strings.TrimSpace(defaults.TCPS.ClientWalletSecret) != "" {
+			member.TCPS.ClientWalletSecret = ""
+			previewMessages = append(previewMessages, fmt.Sprintf("topology member %q inferred TCPS preview settings from standby TCPS configuration; rendered DataguardBroker uses topology.defaults.tcps.clientWalletSecret, so add a member-level tcps.clientWalletSecret only if the external primary requires a different client wallet", memberName))
+		} else {
+			previewMessages = append(previewMessages, fmt.Sprintf("topology member %q inferred TCPS preview settings from standby TCPS configuration; replace tcps.clientWalletSecret placeholder with the correct primary client wallet secret before applying DataguardBroker", memberName))
+		}
 	}
 	return member, memberName, strings.Join(previewMessages, "; "), true
 }
@@ -369,6 +390,39 @@ func buildSIDBPreviewTCPSConfig(m *dbapi.SingleInstanceDatabase) *dbapi.Dataguar
 		Enabled:            true,
 		ClientWalletSecret: clientWalletSecret,
 	}
+}
+
+func buildSIDBPreviewTopologyDefaults(m *dbapi.SingleInstanceDatabase) (*dbapi.DataguardTopologyDefaults, []string, bool) {
+	if m == nil {
+		return nil, nil, false
+	}
+
+	defaults := &dbapi.DataguardTopologyDefaults{}
+	messages := make([]string, 0, 2)
+	ready := true
+
+	if adminSecretRef, msg, ok := buildSIDBPreviewLocalAdminSecretRef(m); ok {
+		defaults.AdminSecretRef = cloneDataguardSecretRef(adminSecretRef)
+	} else if strings.TrimSpace(msg) != "" {
+		ready = false
+		messages = append(messages, msg)
+	}
+
+	if tcps := buildSIDBPreviewTCPSConfig(m); tcps != nil && tcps.Enabled {
+		walletSecret := strings.TrimSpace(tcps.ClientWalletSecret)
+		if walletSecret == "" {
+			walletSecret = dataguardPreviewSharedWalletPlaceholder
+			messages = append(messages, "rendered DataguardBroker publishes topology.defaults.tcps.clientWalletSecret as a shared placeholder; replace it with the correct client wallet secret before applying DataguardBroker if TCPS members do not share the generated standby wallet")
+		}
+		defaults.TCPS = &dbapi.DataguardTopologyTCPSDefaults{
+			ClientWalletSecret: walletSecret,
+		}
+	}
+
+	if defaults.AdminSecretRef == nil && defaults.TCPS == nil {
+		return nil, messages, ready
+	}
+	return defaults, messages, ready
 }
 
 func buildSIDBPreviewExecutionStatus(m *dbapi.SingleInstanceDatabase) *dbapi.DataguardExecutionStatus {
@@ -504,10 +558,24 @@ func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbap
 	ready := true
 	previewMessages := []string{}
 	previewReason := "PreviewReady"
+	defaults, defaultMessages, defaultsReady := buildShardingPreviewTopologyDefaults(instance)
+	if defaults != nil {
+		topology.Defaults = defaults
+	}
+	if len(defaultMessages) > 0 {
+		previewMessages = append(previewMessages, defaultMessages...)
+	}
+	ready = ready && defaultsReady
 
 	addMember := func(member dbapi.DataguardTopologyMember, shard dbapi.ShardSpec, primaryMemberName, phase, message string) string {
 		name := sanitizeDataguardMemberName(member.Name, "member")
 		member.Name = name
+		if topology.Defaults != nil && topology.Defaults.AdminSecretRef != nil && dataguardSecretRefsEqual(topology.Defaults.AdminSecretRef, member.AdminSecretRef) {
+			member.AdminSecretRef = nil
+		}
+		if member.TCPS != nil && topology.Defaults != nil && topology.Defaults.TCPS != nil && strings.TrimSpace(member.TCPS.ClientWalletSecret) == strings.TrimSpace(topology.Defaults.TCPS.ClientWalletSecret) {
+			member.TCPS.ClientWalletSecret = ""
+		}
 		if idx, ok := memberIndex[name]; ok {
 			if message != "" && idx < len(memberStatuses) && strings.TrimSpace(memberStatuses[idx].Message) == "" {
 				memberStatuses[idx].Message = message
@@ -658,11 +726,19 @@ func (r *ShardingDatabaseReconciler) buildShardingPrimaryPreviewMember(instance 
 			}
 		}
 		if primaryMember := buildShardingExternalPrimaryPreviewMember(pair); primaryMember != nil {
-			primaryMember.AdminSecretRef = &dbapi.DataguardSecretRef{
-				SecretName: dataguardPreviewExternalSecretPlaceholder,
-				SecretKey:  dataguardPreviewExternalSecretKey,
+			message := fmt.Sprintf("topology member %q is external", primaryMember.Name)
+			if _, _, ok := buildShardingPreviewAdminSecretRef(instance); ok {
+				message += "; rendered DataguardBroker uses topology.defaults.adminSecretRef from the local shardingdatabase, so add a member-level adminSecretRef only if the external primary uses different admin credentials"
+			} else {
+				primaryMember.AdminSecretRef = &dbapi.DataguardSecretRef{
+					SecretName: dataguardPreviewExternalSecretPlaceholder,
+					SecretKey:  dataguardPreviewExternalSecretKey,
+				}
+				message += "; rendered DataguardBroker includes placeholder adminSecretRef values, so replace adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker"
 			}
-			message := fmt.Sprintf("topology member %q is external; rendered DataguardBroker includes placeholder adminSecretRef values, so replace adminSecretRef.secretName with the correct admin password secret before applying DataguardBroker", primaryMember.Name)
+			if instance.Spec.EnableTCPS {
+				message += "; rendered DataguardBroker also publishes topology.defaults.tcps.clientWalletSecret as a shared placeholder, so replace it with the correct client wallet secret before applying DataguardBroker if TCPS is enabled"
+			}
 			return primaryMember, primaryMember.Name, message, true, true
 		}
 	}
@@ -702,6 +778,32 @@ func buildShardingPreviewAdminSecretRef(instance *dbapi.ShardingDatabase) (*dbap
 		SecretName: secretName,
 		SecretKey:  secretKey,
 	}, "", true
+}
+
+func buildShardingPreviewTopologyDefaults(instance *dbapi.ShardingDatabase) (*dbapi.DataguardTopologyDefaults, []string, bool) {
+	if instance == nil {
+		return nil, nil, false
+	}
+
+	defaults := &dbapi.DataguardTopologyDefaults{}
+	messages := make([]string, 0, 1)
+	ready := true
+	if adminSecretRef, msg, ok := buildShardingPreviewAdminSecretRef(instance); ok {
+		defaults.AdminSecretRef = cloneDataguardSecretRef(adminSecretRef)
+	} else if strings.TrimSpace(msg) != "" {
+		ready = false
+		messages = append(messages, msg)
+	}
+	if instance.Spec.EnableTCPS {
+		defaults.TCPS = &dbapi.DataguardTopologyTCPSDefaults{
+			ClientWalletSecret: dataguardPreviewSharedWalletPlaceholder,
+		}
+		messages = append(messages, "rendered DataguardBroker publishes topology.defaults.tcps.clientWalletSecret as a shared placeholder; replace it with the correct client wallet secret before applying DataguardBroker if TCPS is enabled")
+	}
+	if defaults.AdminSecretRef == nil && defaults.TCPS == nil {
+		return nil, messages, ready
+	}
+	return defaults, messages, ready
 }
 
 func findPreviewPairForStandby(pairs []dbapi.DgPairStatus, standbyName string) *dbapi.DgPairStatus {
@@ -841,6 +943,31 @@ func sanitizeDataguardMemberName(raw, fallback string) string {
 		name = "member"
 	}
 	return name
+}
+
+func dataguardSecretRefsEqual(left, right *dbapi.DataguardSecretRef) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return strings.TrimSpace(left.SecretName) == strings.TrimSpace(right.SecretName) &&
+		firstNonEmptyPreviewSecretKey(left.SecretKey) == firstNonEmptyPreviewSecretKey(right.SecretKey)
+}
+
+func firstNonEmptyPreviewSecretKey(value string) string {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		return trimmed
+	}
+	return dataguardPreviewDefaultSecretKey
+}
+
+func cloneDataguardSecretRef(in *dbapi.DataguardSecretRef) *dbapi.DataguardSecretRef {
+	if in == nil {
+		return nil
+	}
+	return &dbapi.DataguardSecretRef{
+		SecretName: strings.TrimSpace(in.SecretName),
+		SecretKey:  strings.TrimSpace(in.SecretKey),
+	}
 }
 
 func isPreviewStatusValuePopulated(value string) bool {

@@ -285,12 +285,16 @@ func TestShardingUnit_SyncDataguardPreviewStatusUserDG(t *testing.T) {
 	if status.Dataguard.RenderedBrokerSpec.Spec == nil || status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
 		t.Fatalf("expected rendered broker spec topology, got %#v", status.Dataguard.RenderedBrokerSpec)
 	}
+	defaults := status.Dataguard.RenderedBrokerSpec.Spec.Topology.Defaults
+	if defaults == nil || defaults.AdminSecretRef == nil {
+		t.Fatalf("expected topology defaults adminSecretRef to be published")
+	}
+	if defaults.AdminSecretRef.SecretName != "shard-db-secret" || defaults.AdminSecretRef.SecretKey != "oracle_pwd" {
+		t.Fatalf("unexpected topology defaults adminSecretRef %#v", defaults.AdminSecretRef)
+	}
 	for _, member := range status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members {
-		if member.AdminSecretRef == nil {
-			t.Fatalf("expected adminSecretRef for member %#v", member)
-		}
-		if member.AdminSecretRef.SecretName != "shard-db-secret" || member.AdminSecretRef.SecretKey != "oracle_pwd" {
-			t.Fatalf("unexpected adminSecretRef for member %#v", member)
+		if member.AdminSecretRef != nil {
+			t.Fatalf("expected members to inherit adminSecretRef from topology defaults, got %#v", member)
 		}
 	}
 }
@@ -357,8 +361,8 @@ func TestShardingUnit_SyncDataguardPreviewStatusExternalPrimaryRequiresUserInput
 	if condition.Status != metav1.ConditionTrue {
 		t.Fatalf("expected TopologyPreviewReady condition status true, got %#v", condition)
 	}
-	if !strings.Contains(condition.Message, "placeholder adminSecretRef") {
-		t.Fatalf("expected condition message to explain placeholder replacement, got %#v", condition)
+	if !strings.Contains(condition.Message, "topology.defaults.adminSecretRef") {
+		t.Fatalf("expected condition message to explain topology default admin secret usage, got %#v", condition)
 	}
 	members := status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
 	if len(members) != 2 {
@@ -377,17 +381,18 @@ func TestShardingUnit_SyncDataguardPreviewStatusExternalPrimaryRequiresUserInput
 	if primaryMember == nil || standbyMember == nil {
 		t.Fatalf("expected primary and standby members, got %#v", members)
 	}
-	if primaryMember.AdminSecretRef == nil {
-		t.Fatalf("expected placeholder adminSecretRef for external primary")
+	if primaryMember.AdminSecretRef != nil {
+		t.Fatalf("expected external primary to inherit adminSecretRef from topology defaults, got %#v", primaryMember.AdminSecretRef)
 	}
-	if primaryMember.AdminSecretRef.SecretName != dataguardPreviewExternalSecretPlaceholder || primaryMember.AdminSecretRef.SecretKey != dataguardPreviewExternalSecretKey {
-		t.Fatalf("unexpected placeholder adminSecretRef %#v", primaryMember.AdminSecretRef)
+	if standbyMember.AdminSecretRef != nil {
+		t.Fatalf("expected standby member to inherit adminSecretRef from topology defaults, got %#v", standbyMember.AdminSecretRef)
 	}
-	if standbyMember.AdminSecretRef == nil {
-		t.Fatalf("expected local standby adminSecretRef")
+	defaults := status.Dataguard.RenderedBrokerSpec.Spec.Topology.Defaults
+	if defaults == nil || defaults.AdminSecretRef == nil {
+		t.Fatalf("expected topology defaults adminSecretRef to be published")
 	}
-	if standbyMember.AdminSecretRef.SecretName != "shard-db-secret" || standbyMember.AdminSecretRef.SecretKey != "oracle_pwd" {
-		t.Fatalf("unexpected standby adminSecretRef %#v", standbyMember.AdminSecretRef)
+	if defaults.AdminSecretRef.SecretName != "shard-db-secret" || defaults.AdminSecretRef.SecretKey != "oracle_pwd" {
+		t.Fatalf("unexpected topology defaults adminSecretRef %#v", defaults.AdminSecretRef)
 	}
 }
 

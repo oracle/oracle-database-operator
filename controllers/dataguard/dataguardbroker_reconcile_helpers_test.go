@@ -301,3 +301,76 @@ func TestResolveDataguardTopologyMemberAdminSecretRefUsesGroupedSIDBSecret(t *te
 		t.Fatalf("unexpected resolved secret ref: %q/%q in %q", secretName, secretKey, secretNamespace)
 	}
 }
+
+func TestResolveDataguardTopologyMemberAdminSecretRefUsesTopologyDefault(t *testing.T) {
+	reconciler := &DataguardBrokerReconciler{}
+	broker := &dbapi.DataguardBroker{}
+	broker.Namespace = "ns1"
+	broker.Spec.Topology = &dbapi.DataguardTopologySpec{
+		Defaults: &dbapi.DataguardTopologyDefaults{
+			AdminSecretRef: &dbapi.DataguardSecretRef{
+				SecretName: "shared-admin",
+				SecretKey:  "oracle_pwd",
+			},
+		},
+	}
+	member := &dbapi.DataguardTopologyMember{Name: "primary-a"}
+
+	secretName, secretKey, secretNamespace, err := resolveDataguardTopologyMemberAdminSecretRef(context.Background(), reconciler, broker, member)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if secretName != "shared-admin" || secretKey != "oracle_pwd" || secretNamespace != "ns1" {
+		t.Fatalf("unexpected resolved default secret ref: %q/%q in %q", secretName, secretKey, secretNamespace)
+	}
+}
+
+func TestResolveDataguardBrokerExecutionRuntimeAllowsTopologyDefaultWallet(t *testing.T) {
+	reconciler := &DataguardBrokerReconciler{}
+	broker := &dbapi.DataguardBroker{
+		Spec: dbapi.DataguardBrokerSpec{
+			Execution: &dbapi.DataguardExecutionSpec{
+				Image: "oracle/db:19.3.0",
+			},
+			Topology: &dbapi.DataguardTopologySpec{
+				Defaults: &dbapi.DataguardTopologyDefaults{
+					TCPS: &dbapi.DataguardTopologyTCPSDefaults{
+						ClientWalletSecret: "shared-dg-wallet",
+					},
+				},
+				Members: []dbapi.DataguardTopologyMember{
+					{
+						Name: "primary-a",
+						Role: "PRIMARY",
+						Endpoints: []dbapi.DataguardEndpointSpec{{
+							Protocol:    "TCPS",
+							Host:        "primary-a",
+							Port:        2484,
+							ServiceName: "PRIM",
+						}},
+						TCPS: &dbapi.DataguardTCPSConfig{Enabled: true},
+					},
+					{
+						Name: "standby-a",
+						Role: "PHYSICAL_STANDBY",
+					},
+				},
+				Pairs: []dbapi.DataguardTopologyPair{{
+					Primary: "primary-a",
+					Standby: "standby-a",
+				}},
+			},
+		},
+	}
+
+	got, ready, message, err := resolveDataguardBrokerExecutionRuntime(context.Background(), reconciler, broker)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ready {
+		t.Fatalf("expected runtime to be ready when topology default wallet is set, message=%q", message)
+	}
+	if got == nil || got.Image != "oracle/db:19.3.0" {
+		t.Fatalf("unexpected runtime: %#v", got)
+	}
+}

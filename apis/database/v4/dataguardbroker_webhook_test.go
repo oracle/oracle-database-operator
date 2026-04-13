@@ -138,6 +138,54 @@ func TestDataguardBrokerWebhookValidateCreateAllowsExternalTopologyWithExecution
 	}
 }
 
+func TestDataguardBrokerWebhookValidateCreateAllowsTopologyDefaultsForExternalMember(t *testing.T) {
+	obj := validDataguardBrokerTopology()
+	obj.Spec.Topology.Defaults = &DataguardTopologyDefaults{
+		AdminSecretRef: &DataguardSecretRef{
+			SecretName: "shared-admin",
+			SecretKey:  "oracle_pwd",
+		},
+	}
+	obj.Spec.Topology.Members[1].LocalRef = nil
+	obj.Spec.Execution = &DataguardExecutionSpec{
+		Image: "container-registry.oracle.com/database/enterprise:19.3.0",
+	}
+
+	_, err := (&DataguardBroker{}).ValidateCreate(context.Background(), obj)
+	if err != nil {
+		t.Fatalf("expected topology defaults to satisfy external member secret validation, got: %v", err)
+	}
+}
+
+func TestDataguardBrokerWebhookValidateCreateAllowsTopologyDefaultWallet(t *testing.T) {
+	obj := validDataguardBrokerTopology()
+	obj.Spec.Topology.Defaults = &DataguardTopologyDefaults{
+		AdminSecretRef: &DataguardSecretRef{
+			SecretName: "shared-admin",
+			SecretKey:  "oracle_pwd",
+		},
+		TCPS: &DataguardTopologyTCPSDefaults{
+			ClientWalletSecret: "shared-dg-wallet",
+		},
+	}
+	obj.Spec.Topology.Members[0].TCPS = &DataguardTCPSConfig{Enabled: true}
+	obj.Spec.Topology.Members[0].Endpoints = []DataguardEndpointSpec{{
+		Protocol:    "TCPS",
+		Host:        "primary-a",
+		Port:        2484,
+		ServiceName: "PRIM",
+	}}
+	obj.Spec.Topology.Members[1].LocalRef = nil
+	obj.Spec.Execution = &DataguardExecutionSpec{
+		Image: "container-registry.oracle.com/database/enterprise:19.3.0",
+	}
+
+	_, err := (&DataguardBroker{}).ValidateCreate(context.Background(), obj)
+	if err != nil {
+		t.Fatalf("expected topology default wallet secret to satisfy TCPS validation, got: %v", err)
+	}
+}
+
 func TestDataguardBrokerWebhookValidateUpdateRejectsTopologyChangeWhenLocked(t *testing.T) {
 	oldObj := validDataguardBrokerTopology()
 	oldObj.Status.Status = "CREATING"

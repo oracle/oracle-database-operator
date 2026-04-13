@@ -262,7 +262,11 @@ func validateDataguardTopology(topology *DataguardTopologySpec) field.ErrorList 
 		if member.LocalRef == nil && len(member.Endpoints) == 0 {
 			allErrs = append(allErrs, field.Required(memberPath, "set at least one of localRef or endpoints"))
 		}
-		if member.LocalRef == nil && member.AdminSecretRef == nil {
+		adminSecretName, _, hasExplicitOrDefaultAdminSecret := ResolveDataguardTopologyMemberExplicitAdminSecretRef(topology, member)
+		if hasExplicitOrDefaultAdminSecret && adminSecretName == "" {
+			allErrs = append(allErrs, field.Required(memberPath.Child("adminSecretRef").Child("secretName"), "secretName is required"))
+		}
+		if member.LocalRef == nil && !hasExplicitOrDefaultAdminSecret {
 			allErrs = append(allErrs, field.Required(memberPath.Child("adminSecretRef"), "adminSecretRef is required for external topology members"))
 		}
 		if member.LocalRef != nil && strings.TrimSpace(member.LocalRef.Name) == "" {
@@ -270,7 +274,7 @@ func validateDataguardTopology(topology *DataguardTopologySpec) field.ErrorList 
 		}
 		if member.LocalRef != nil {
 			kind := strings.TrimSpace(member.LocalRef.Kind)
-			if kind != "" && !strings.EqualFold(kind, "SingleInstanceDatabase") && member.AdminSecretRef == nil {
+			if kind != "" && !strings.EqualFold(kind, "SingleInstanceDatabase") && !hasExplicitOrDefaultAdminSecret {
 				allErrs = append(allErrs, field.Required(memberPath.Child("adminSecretRef"), "adminSecretRef is required when localRef.kind is not SingleInstanceDatabase"))
 			}
 		}
@@ -302,6 +306,9 @@ func validateDataguardTopology(topology *DataguardTopologySpec) field.ErrorList 
 		}
 		if member.TCPS != nil && member.TCPS.Enabled && tcpsEndpointCount == 0 {
 			allErrs = append(allErrs, field.Required(memberPath.Child("endpoints"), "at least one TCPS endpoint is required when tcps.enabled=true"))
+		}
+		if member.TCPS != nil && member.TCPS.Enabled && ResolveDataguardTopologyMemberClientWalletSecret(topology, member) == "" {
+			allErrs = append(allErrs, field.Required(memberPath.Child("tcps").Child("clientWalletSecret"), "clientWalletSecret is required unless spec.topology.defaults.tcps.clientWalletSecret is set"))
 		}
 	}
 
@@ -360,6 +367,12 @@ func validateDataguardTopology(topology *DataguardTopologySpec) field.ErrorList 
 		}
 		if strings.TrimSpace(topology.Observer.Image) == "" {
 			allErrs = append(allErrs, field.Required(observerPath.Child("image"), "image is required when observer.enabled=true"))
+		}
+	}
+	if topology.Defaults != nil {
+		defaultsPath := topologyPath.Child("defaults")
+		if topology.Defaults.AdminSecretRef != nil && strings.TrimSpace(topology.Defaults.AdminSecretRef.SecretName) == "" {
+			allErrs = append(allErrs, field.Required(defaultsPath.Child("adminSecretRef").Child("secretName"), "secretName is required"))
 		}
 	}
 
