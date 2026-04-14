@@ -70,9 +70,9 @@ Deploy Oracle RAC Database YAML files using Kubernetes Cluster on your Oracle Cl
 [12. Provisioning an Oracle RAC Database with RU Patch and One Offs](./provisioning/provisioning_oracle_rac_db_rupatch_oneoff.md)  
 [13. Provisioning an Oracle RAC Database using a Response File](./provisioning/provisioning_oracle_rac_db_using_response_file.md)  
 [14. Provisioning an Oracle RAC Database with Huge Page allocation](./provisioning/provisioning_oracle_rac_db_hugepages.md) 
-[15. Provisioning an Oracle RAC Database with PVC-based Software](./provisioning/provisioning_oracle_rac_pvc.md)
+[15. Provisioning an Oracle RAC Database with PVC-based Software](./provisioning/provisioning_oracle_rac_pvc.md)    
 [16. Oracle RAC with Base64-encoded Secrets](./provisioning/provisioning_oracle_rac_encoded_secrets.md)  
-[17. Provisioning an Oracle RAC Database with Storage Class-backed ASM Storage and PVC-based Software](./provisioning/provisioning_oracle_rac_storageclass_pvc_softwares.md)
+[17. Provisioning an Oracle RAC Database with Storage Class-backed ASM Storage and PVC-based Software](./provisioning/provisioning_oracle_rac_storageclass_pvc_softwares.md)  
 
 
 ## Connecting to an Oracle RAC Database provisioned using Oracle RAC Database Controller
