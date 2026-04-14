@@ -4535,7 +4535,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 				return requeueY, nil
 			}
 
-			needsPodRecycleForSecret := tcpsTLSSecretChanged || !podHasDesiredTCPSTLSSecret(readyPod, tcpsTLSSecret) || !strings.Contains(out, tcpsCertsLocation)
+			needsPodRecycleForSecret := !podHasDesiredTCPSTLSSecret(readyPod, tcpsTLSSecret) || !strings.Contains(out, tcpsCertsLocation)
 			if needsPodRecycleForSecret {
 				r.Log.Info("Recreating pod so desired TCPS TLS secret is mounted before enabling TCPS",
 					"desiredSecret", tcpsTLSSecret,
