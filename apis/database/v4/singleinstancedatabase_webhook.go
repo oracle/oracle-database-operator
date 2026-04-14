@@ -157,14 +157,8 @@ func sidbTcpsEnabled(sidb *SingleInstanceDatabase) bool {
 	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && sidb.Spec.Security.TCPS.Enabled {
 		return true
 	}
-	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.Enabled {
-		return true
-	}
 	// Preserve legacy compatibility for manifests that only set deprecated TCPS
-	// listenerPort fields without the explicit enabled flag.
-	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.ListenerPort != 0 {
-		return true
-	}
+	// listenerPort field without the explicit enabled flag.
 	if sidb.Spec.TcpsListenerPort != 0 {
 		return true
 	}
@@ -172,18 +166,12 @@ func sidbTcpsEnabled(sidb *SingleInstanceDatabase) bool {
 }
 
 func sidbTcpsListenerPort(sidb *SingleInstanceDatabase) int {
-	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.ListenerPort != 0 {
-		return sidb.Spec.TCPS.ListenerPort
-	}
 	return sidb.Spec.TcpsListenerPort
 }
 
 func sidbTcpsTlsSecret(sidb *SingleInstanceDatabase) string {
 	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && strings.TrimSpace(sidb.Spec.Security.TCPS.TlsSecret) != "" {
 		return strings.TrimSpace(sidb.Spec.Security.TCPS.TlsSecret)
-	}
-	if sidb.Spec.TCPS != nil && strings.TrimSpace(sidb.Spec.TCPS.TlsSecret) != "" {
-		return strings.TrimSpace(sidb.Spec.TCPS.TlsSecret)
 	}
 	return strings.TrimSpace(sidb.Spec.TcpsTlsSecret)
 }
@@ -192,18 +180,12 @@ func sidbTcpsClientWalletSecret(sidb *SingleInstanceDatabase) string {
 	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && strings.TrimSpace(sidb.Spec.Security.TCPS.ClientWalletSecret) != "" {
 		return strings.TrimSpace(sidb.Spec.Security.TCPS.ClientWalletSecret)
 	}
-	if sidb.Spec.TCPS != nil && strings.TrimSpace(sidb.Spec.TCPS.ClientWalletSecret) != "" {
-		return strings.TrimSpace(sidb.Spec.TCPS.ClientWalletSecret)
-	}
 	return ""
 }
 
 func sidbTcpsCertRenewInterval(sidb *SingleInstanceDatabase) string {
 	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && strings.TrimSpace(sidb.Spec.Security.TCPS.CertRenewInterval) != "" {
 		return strings.TrimSpace(sidb.Spec.Security.TCPS.CertRenewInterval)
-	}
-	if sidb.Spec.TCPS != nil && strings.TrimSpace(sidb.Spec.TCPS.CertRenewInterval) != "" {
-		return strings.TrimSpace(sidb.Spec.TCPS.CertRenewInterval)
 	}
 	return strings.TrimSpace(sidb.Spec.TcpsCertRenewInterval)
 }
@@ -539,9 +521,6 @@ func sidbDeprecatedServiceConfigWarnings(sidb *SingleInstanceDatabase) admission
 	}
 	if sidb.Spec.TcpsListenerPort != 0 {
 		warnings = append(warnings, "spec.tcpsListenerPort is deprecated; use spec.services.external.tcps")
-	}
-	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.ListenerPort != 0 {
-		warnings = append(warnings, "spec.tcps.listenerPort is deprecated; use spec.services.external.tcps")
 	}
 	return warnings
 }

@@ -588,7 +588,7 @@ func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 			log.Info("Topology execution runtime not ready", "message", message)
 			return nil
 		}
-		state, resolveErr := resolveDataguardTopologyState(ctx, r, broker, runtime)
+		state, resolveErr := resolveDataguardTopologyState(ctx, r, broker, runtime, !runtime.usesAuthWallet())
 		if resolveErr != nil {
 			return resolveErr
 		}

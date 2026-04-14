@@ -77,10 +77,6 @@ type SingleInstanceDatabaseSpec struct {
 	ArchiveLog   *bool `json:"archiveLog,omitempty"`
 	ForceLogging *bool `json:"forceLog,omitempty"`
 
-	// Deprecated: use spec.security.tcps.
-	// TCPS groups TCPS-related settings. All fields are optional.
-	TCPS *SingleInstanceDatabaseTCPS `json:"tcps,omitempty"`
-
 	// Security groups security-related settings (secrets and TCPS).
 	Security *SingleInstanceDatabaseSecurity `json:"security,omitempty"`
 	// Services configures Kubernetes Service exposure for the database.
@@ -89,11 +85,11 @@ type SingleInstanceDatabaseSpec struct {
 	// TNSAliases configures explicit tnsnames.ora aliases managed by the operator.
 	TNSAliases []SingleInstanceDatabaseTNSAlias `json:"tnsAliases,omitempty"`
 
-	// Deprecated: use spec.tcps.enabled.
+	// Deprecated: use spec.security.tcps.enabled.
 	EnableTCPS bool `json:"enableTCPS,omitempty"`
-	// Deprecated: use spec.tcps.certRenewInterval.
+	// Deprecated: use spec.security.tcps.certRenewInterval.
 	TcpsCertRenewInterval string `json:"tcpsCertRenewInterval,omitempty"`
-	// Deprecated: use spec.tcps.tlsSecret.
+	// Deprecated: use spec.security.tcps.tlsSecret.
 	TcpsTlsSecret string `json:"tcpsTlsSecret,omitempty"`
 
 	// Deprecated: use spec.primarySource.databaseRef.
@@ -197,26 +193,6 @@ type SingleInstanceDatabaseRestoreOptionsSpec struct {
 	RunCrosscheck     *bool  `json:"runCrosscheck,omitempty"`
 	RunValidateOnly   *bool  `json:"runValidateOnly,omitempty"`
 	ForceOpcReinstall *bool  `json:"forceOpcReinstall,omitempty"`
-}
-
-// SingleInstanceDatabaseTCPS defines the compatibility TCPS configuration surface.
-// Deprecated exposure-related fields remain here for the legacy spec.tcps path.
-type SingleInstanceDatabaseTCPS struct {
-	Enabled bool `json:"enabled,omitempty"`
-	// Deprecated: use spec.services.external.tcps.
-	// ListenerPort is the external NodePort/LoadBalancer port for TCPS.
-	ListenerPort int `json:"listenerPort,omitempty"`
-	// TlsSecret references the Kubernetes TLS secret containing tls.crt and tls.key.
-	TlsSecret string `json:"tlsSecret,omitempty"`
-	// ClientWalletSecret optionally overrides the Secret used by DataguardBroker
-	// for TCPS client connectivity. When unset, the SIDB controller publishes an
-	// operator-generated wallet secret for Data Guard consumers.
-	ClientWalletSecret string `json:"clientWalletSecret,omitempty"`
-	// CertRenewInterval is used only when self-signed certificates are used.
-	CertRenewInterval string `json:"certRenewInterval,omitempty"`
-	// CertMountLocation is the in-pod mount path for the TCPS TLS secret.
-	// Defaults to /run/secrets/tls_secret when not set.
-	CertMountLocation string `json:"certMountLocation,omitempty"`
 }
 
 // SingleInstanceDatabaseSecurityTCPS defines the grouped security.tcps settings.

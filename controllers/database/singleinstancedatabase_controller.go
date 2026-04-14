@@ -341,14 +341,8 @@ func getTcpsEnabled(m *dbapi.SingleInstanceDatabase) bool {
 	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && m.Spec.Security.TCPS.Enabled {
 		return true
 	}
-	if m.Spec.TCPS != nil && m.Spec.TCPS.Enabled {
-		return true
-	}
 	// Preserve legacy behavior: old manifests commonly used tcps listenerPort as the
-	// only TCPS signal, so treat either deprecated port field as enabling TCPS.
-	if m.Spec.TCPS != nil && m.Spec.TCPS.ListenerPort != 0 {
-		return true
-	}
+	// only TCPS signal, so treat the deprecated flat port field as enabling TCPS.
 	if m.Spec.TcpsListenerPort != 0 {
 		return true
 	}
@@ -356,18 +350,12 @@ func getTcpsEnabled(m *dbapi.SingleInstanceDatabase) bool {
 }
 
 func getTcpsListenerPort(m *dbapi.SingleInstanceDatabase) int {
-	if m.Spec.TCPS != nil && m.Spec.TCPS.ListenerPort != 0 {
-		return m.Spec.TCPS.ListenerPort
-	}
 	return m.Spec.TcpsListenerPort
 }
 
 func getTcpsTLSSecret(m *dbapi.SingleInstanceDatabase) string {
 	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && strings.TrimSpace(m.Spec.Security.TCPS.TlsSecret) != "" {
 		return strings.TrimSpace(m.Spec.Security.TCPS.TlsSecret)
-	}
-	if m.Spec.TCPS != nil && strings.TrimSpace(m.Spec.TCPS.TlsSecret) != "" {
-		return strings.TrimSpace(m.Spec.TCPS.TlsSecret)
 	}
 	return strings.TrimSpace(m.Spec.TcpsTlsSecret)
 }
@@ -557,9 +545,6 @@ func getTcpsClientWalletSecretOverride(m *dbapi.SingleInstanceDatabase) string {
 	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && strings.TrimSpace(m.Spec.Security.TCPS.ClientWalletSecret) != "" {
 		return strings.TrimSpace(m.Spec.Security.TCPS.ClientWalletSecret)
 	}
-	if m.Spec.TCPS != nil && strings.TrimSpace(m.Spec.TCPS.ClientWalletSecret) != "" {
-		return strings.TrimSpace(m.Spec.TCPS.ClientWalletSecret)
-	}
 	return ""
 }
 
@@ -588,21 +573,12 @@ func getTcpsCertRenewInterval(m *dbapi.SingleInstanceDatabase) string {
 	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil && strings.TrimSpace(m.Spec.Security.TCPS.CertRenewInterval) != "" {
 		return strings.TrimSpace(m.Spec.Security.TCPS.CertRenewInterval)
 	}
-	if m.Spec.TCPS != nil && strings.TrimSpace(m.Spec.TCPS.CertRenewInterval) != "" {
-		return strings.TrimSpace(m.Spec.TCPS.CertRenewInterval)
-	}
 	return strings.TrimSpace(m.Spec.TcpsCertRenewInterval)
 }
 
 func getTcpsCertsLocation(m *dbapi.SingleInstanceDatabase) string {
 	if m.Spec.Security != nil && m.Spec.Security.TCPS != nil {
 		custom := strings.TrimSpace(m.Spec.Security.TCPS.CertMountLocation)
-		if custom != "" {
-			return custom
-		}
-	}
-	if m.Spec.TCPS != nil {
-		custom := strings.TrimSpace(m.Spec.TCPS.CertMountLocation)
 		if custom != "" {
 			return custom
 		}

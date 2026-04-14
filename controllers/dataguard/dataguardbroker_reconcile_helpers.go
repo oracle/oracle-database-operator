@@ -53,6 +53,7 @@ const (
 const (
 	dataguardBrokerDefaultExecutionWalletMountPath = "/opt/oracle/dg-wallet"
 	dataguardBrokerDefaultExecutionTNSAdminPath    = "/opt/oracle/dg-net"
+	dataguardBrokerDefaultAuthWalletMountPath      = "/opt/oracle/dg-auth-wallet"
 )
 
 type dataguardBrokerDesiredSpec struct {
@@ -71,16 +72,27 @@ type dataguardBrokerDesiredSpec struct {
 }
 
 type dataguardBrokerExecutionRuntime struct {
-	Image            string
-	ImagePullSecrets []string
-	WalletMountPath  string
-	TNSAdminPath     string
-	Source           string
+	Image                string
+	ImagePullSecrets     []string
+	WalletMountPath      string
+	TNSAdminPath         string
+	AuthWallet           *dbapi.DataguardAuthWalletSpec
+	AuthWalletSecretName string
+	AuthWalletMountPath  string
+	Source               string
 }
 
 type dataguardExecutionCandidate struct {
 	Status dbapi.DataguardExecutionStatus
 	Source string
+}
+
+func (r *dataguardBrokerExecutionRuntime) authWalletEnabled() bool {
+	return r != nil && r.AuthWallet != nil && r.AuthWallet.Enabled
+}
+
+func (r *dataguardBrokerExecutionRuntime) usesAuthWallet() bool {
+	return r.authWalletEnabled() && strings.TrimSpace(r.AuthWalletSecretName) != ""
 }
 
 func (d dataguardBrokerDesiredSpec) databaseRefs() []string {
@@ -484,6 +496,9 @@ func cloneDataguardBrokerStatus(in dbapi.DataguardBrokerStatus) dbapi.DataguardB
 	out.ResolvedMembers = append([]dbapi.DataguardResolvedMemberStatus(nil), in.ResolvedMembers...)
 	out.ObservedPairs = append([]dbapi.DataguardPairStatus(nil), in.ObservedPairs...)
 	out.Conditions = append([]metav1.Condition(nil), in.Conditions...)
+	if in.AuthWallet != nil {
+		out.AuthWallet = in.AuthWallet.DeepCopy()
+	}
 	return out
 }
 
@@ -543,8 +558,9 @@ func resolveDataguardBrokerExecutionRuntime(ctx context.Context, r *DataguardBro
 	}
 
 	execution := &dataguardBrokerExecutionRuntime{
-		WalletMountPath: dataguardBrokerDefaultExecutionWalletMountPath,
-		TNSAdminPath:    dataguardBrokerDefaultExecutionTNSAdminPath,
+		WalletMountPath:     dataguardBrokerDefaultExecutionWalletMountPath,
+		TNSAdminPath:        dataguardBrokerDefaultExecutionTNSAdminPath,
+		AuthWalletMountPath: dataguardBrokerDefaultAuthWalletMountPath,
 	}
 	if broker.Spec.Execution != nil {
 		if mount := strings.TrimSpace(broker.Spec.Execution.WalletMountPath); mount != "" {
@@ -553,7 +569,11 @@ func resolveDataguardBrokerExecutionRuntime(ctx context.Context, r *DataguardBro
 		if path := strings.TrimSpace(broker.Spec.Execution.TNSAdminPath); path != "" {
 			execution.TNSAdminPath = path
 		}
+		execution.AuthWallet = broker.Spec.Execution.AuthWallet.DeepCopy()
 		if image := strings.TrimSpace(broker.Spec.Execution.Image); image != "" {
+			if execution.AuthWallet != nil && execution.AuthWallet.Enabled && broker.Status.AuthWallet != nil {
+				execution.AuthWalletSecretName = strings.TrimSpace(broker.Status.AuthWallet.WalletSecretName)
+			}
 			execution.Image = image
 			execution.ImagePullSecrets = uniqueSortedStrings(broker.Spec.Execution.ImagePullSecrets)
 			execution.Source = "spec.execution"
@@ -579,6 +599,10 @@ func resolveDataguardBrokerExecutionRuntime(ctx context.Context, r *DataguardBro
 
 	execution.Image = candidates[0].Status.Image
 	execution.ImagePullSecrets = uniqueSortedStrings(candidates[0].Status.ImagePullSecrets)
+	execution.AuthWallet = candidates[0].Status.AuthWallet.DeepCopy()
+	if execution.AuthWallet != nil && execution.AuthWallet.Enabled && broker.Status.AuthWallet != nil {
+		execution.AuthWalletSecretName = strings.TrimSpace(broker.Status.AuthWallet.WalletSecretName)
+	}
 	execution.Source = candidates[0].Source
 	return execution, true, fmt.Sprintf("resolved execution runtime from %s", execution.Source), nil
 }
@@ -696,6 +720,7 @@ func dataguardExecutionStatusFromRenderedBrokerStatus(status *dbapi.ProducerData
 	return dbapi.DataguardExecutionStatus{
 		Image:            strings.TrimSpace(execution.Image),
 		ImagePullSecrets: append([]string(nil), execution.ImagePullSecrets...),
+		AuthWallet:       execution.AuthWallet.DeepCopy(),
 	}, true
 }
 
@@ -710,6 +735,7 @@ func shardingDataguardExecutionStatusFromRenderedBrokerStatus(status *dbapi.Shar
 	return dbapi.DataguardExecutionStatus{
 		Image:            strings.TrimSpace(execution.Image),
 		ImagePullSecrets: append([]string(nil), execution.ImagePullSecrets...),
+		AuthWallet:       execution.AuthWallet.DeepCopy(),
 	}, true
 }
 
@@ -724,7 +750,21 @@ func clientIgnoreNotFound(err error) error {
 }
 
 func executionCandidateKey(candidate dbapi.DataguardExecutionStatus) string {
-	return strings.TrimSpace(candidate.Image) + "|" + strings.Join(uniqueSortedStrings(candidate.ImagePullSecrets), ",")
+	authWalletKey := ""
+	if candidate.AuthWallet != nil {
+		secretName := ""
+		secretKey := ""
+		if candidate.AuthWallet.PasswordSecretRef != nil {
+			secretName = strings.TrimSpace(candidate.AuthWallet.PasswordSecretRef.SecretName)
+			secretKey = strings.TrimSpace(candidate.AuthWallet.PasswordSecretRef.SecretKey)
+		}
+		authWalletKey = fmt.Sprintf("%t|%s|%s|%s",
+			candidate.AuthWallet.Enabled,
+			strings.TrimSpace(candidate.AuthWallet.RebuildToken),
+			secretName,
+			secretKey)
+	}
+	return strings.TrimSpace(candidate.Image) + "|" + strings.Join(uniqueSortedStrings(candidate.ImagePullSecrets), ",") + "|" + authWalletKey
 }
 
 func ensureDataguardBrokerRunnerPod(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime) (bool, string, error) {
@@ -775,6 +815,9 @@ func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *datag
 	if broker.Status.ObservedTopologyHash != "" {
 		annotations["database.oracle.com/topology-hash"] = broker.Status.ObservedTopologyHash
 	}
+	if strings.TrimSpace(runtime.AuthWalletSecretName) != "" {
+		annotations["database.oracle.com/auth-wallet-secret"] = strings.TrimSpace(runtime.AuthWalletSecretName)
+	}
 
 	volumes := []corev1.Volume{{
 		Name: "tns-admin",
@@ -786,6 +829,19 @@ func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *datag
 		Name:      "tns-admin",
 		MountPath: runtime.TNSAdminPath,
 	}}
+	if strings.TrimSpace(runtime.AuthWalletSecretName) != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: "auth-wallet",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{SecretName: strings.TrimSpace(runtime.AuthWalletSecretName)},
+			},
+		})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "auth-wallet",
+			MountPath: runtime.AuthWalletMountPath,
+			ReadOnly:  true,
+		})
+	}
 	seenWallets := map[string]struct{}{}
 	if broker.Spec.Topology != nil {
 		for i := range broker.Spec.Topology.Members {
@@ -870,6 +926,9 @@ func runnerPodNeedsRefresh(pod *corev1.Pod, broker *dbapi.DataguardBroker, runti
 		return true
 	}
 	if strings.TrimSpace(pod.Annotations["database.oracle.com/topology-hash"]) != strings.TrimSpace(broker.Status.ObservedTopologyHash) {
+		return true
+	}
+	if strings.TrimSpace(pod.Annotations["database.oracle.com/auth-wallet-secret"]) != strings.TrimSpace(runtime.AuthWalletSecretName) {
 		return true
 	}
 	currentSecrets := make([]string, 0, len(pod.Spec.ImagePullSecrets))

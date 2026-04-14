@@ -62,12 +62,24 @@ type DataguardPrereqsSpec struct {
 	StandbyRedoSize string `json:"standbyRedoSize,omitempty"`
 }
 
+// DataguardAuthWalletSpec controls optional broker-side auth wallet lifecycle.
+type DataguardAuthWalletSpec struct {
+	Enabled bool `json:"enabled,omitempty"`
+	// PasswordSecretRef optionally points to a user-managed wallet password secret.
+	// When omitted, the operator generates and stores a password secret for the broker.
+	PasswordSecretRef *DataguardSecretRef `json:"passwordSecretRef,omitempty"`
+	// RebuildToken triggers an explicit wallet rebuild when the value changes.
+	RebuildToken string `json:"rebuildToken,omitempty"`
+}
+
 // DataguardProducerSpec configures how a producer exposes or manages DG topology.
 type DataguardProducerSpec struct {
 	// +kubebuilder:validation:Enum=Disabled;Preview;Managed
 	Mode DataguardProducerMode `json:"mode,omitempty"`
 	// Prereqs optionally enables local database prerequisite configuration for Data Guard broker usage.
 	Prereqs *DataguardPrereqsSpec `json:"prereqs,omitempty"`
+	// AuthWallet optionally publishes default broker auth wallet settings for generated DataguardBroker specs.
+	AuthWallet *DataguardAuthWalletSpec `json:"authWallet,omitempty"`
 }
 
 func normalizeDataguardProducerMode(spec *DataguardProducerSpec) DataguardProducerMode {
@@ -223,8 +235,9 @@ func ResolveDataguardTopologyMemberClientWalletSecret(topology *DataguardTopolog
 
 // DataguardExecutionStatus publishes the producer's default DG runner image.
 type DataguardExecutionStatus struct {
-	Image            string   `json:"image,omitempty"`
-	ImagePullSecrets []string `json:"imagePullSecrets,omitempty"`
+	Image            string                   `json:"image,omitempty"`
+	ImagePullSecrets []string                 `json:"imagePullSecrets,omitempty"`
+	AuthWallet       *DataguardAuthWalletSpec `json:"authWallet,omitempty"`
 }
 
 // DataguardStatusRef points back to the DataguardBroker resource a producer is bound to.
@@ -313,4 +326,14 @@ type DataguardResolvedMemberStatus struct {
 	ConnectString string `json:"connectString,omitempty"`
 	Phase         string `json:"phase,omitempty"`
 	Message       string `json:"message,omitempty"`
+}
+
+// DataguardAuthWalletStatus captures the broker-managed auth wallet lifecycle state.
+type DataguardAuthWalletStatus struct {
+	Initialized                 bool   `json:"initialized,omitempty"`
+	Phase                       string `json:"phase,omitempty"`
+	WalletSecretName            string `json:"walletSecretName,omitempty"`
+	GeneratedPasswordSecretName string `json:"generatedPasswordSecretName,omitempty"`
+	ObservedRebuildToken        string `json:"observedRebuildToken,omitempty"`
+	Message                     string `json:"message,omitempty"`
 }

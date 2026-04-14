@@ -75,6 +75,8 @@ type DataguardExecutionSpec struct {
 	WalletMountPath string `json:"walletMountPath,omitempty"`
 	// TNSAdminPath is the generated Oracle Net admin path used by the runner pod.
 	TNSAdminPath string `json:"tnsAdminPath,omitempty"`
+	// AuthWallet optionally enables explicit broker auth wallet bootstrap/rebuild workflow.
+	AuthWallet *DataguardAuthWalletSpec `json:"authWallet,omitempty"`
 }
 
 // DataguardBrokerStatus defines the observed state of DataguardBroker
@@ -95,6 +97,7 @@ type DataguardBrokerStatus struct {
 	ObservedTopologyHash       string                          `json:"observedTopologyHash,omitempty"`
 	ResolvedMembers            []DataguardResolvedMemberStatus `json:"resolvedMembers,omitempty"`
 	ObservedPairs              []DataguardPairStatus           `json:"observedPairs,omitempty"`
+	AuthWallet                 *DataguardAuthWalletStatus      `json:"authWallet,omitempty"`
 	Conditions                 []metav1.Condition              `json:"conditions,omitempty"`
 }
 

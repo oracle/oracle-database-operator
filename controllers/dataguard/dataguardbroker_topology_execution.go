@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 type dataguardTopologyResolvedMember struct {
@@ -30,6 +32,7 @@ type dataguardTopologyResolvedMember struct {
 	AdminPassword   string
 	WalletDirectory string
 	SSLServerDN     string
+	UseAuthWallet   bool
 }
 
 type dataguardTopologyResolvedState struct {
@@ -42,7 +45,7 @@ type dataguardTopologyResolvedState struct {
 	DesiredPhysicalMembers []*dataguardTopologyResolvedMember
 }
 
-func resolveDataguardTopologyState(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime) (*dataguardTopologyResolvedState, error) {
+func resolveDataguardTopologyState(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime, requireAdminPasswords bool) (*dataguardTopologyResolvedState, error) {
 	if broker == nil || broker.Spec.Topology == nil {
 		return nil, fmt.Errorf("spec.topology is not set")
 	}
@@ -58,7 +61,7 @@ func resolveDataguardTopologyState(ctx context.Context, r *DataguardBrokerReconc
 
 	for i := range broker.Spec.Topology.Members {
 		member := broker.Spec.Topology.Members[i]
-		resolved, err := resolveDataguardTopologyMember(ctx, r, broker, runtime, &member)
+		resolved, err := resolveDataguardTopologyMember(ctx, r, broker, runtime, &member, requireAdminPasswords)
 		if err != nil {
 			return nil, err
 		}
@@ -99,7 +102,7 @@ func resolveDataguardTopologyState(ctx context.Context, r *DataguardBrokerReconc
 	return state, nil
 }
 
-func resolveDataguardTopologyMember(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime, member *dbapi.DataguardTopologyMember) (*dataguardTopologyResolvedMember, error) {
+func resolveDataguardTopologyMember(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime, member *dbapi.DataguardTopologyMember, requireAdminPasswords bool) (*dataguardTopologyResolvedMember, error) {
 	if member == nil {
 		return nil, fmt.Errorf("topology member is nil")
 	}
@@ -132,6 +135,7 @@ func resolveDataguardTopologyMember(ctx context.Context, r *DataguardBrokerRecon
 		Endpoint:      *endpoint,
 		ConnectString: formatDataguardEndpointConnectString(endpoint),
 		SSLServerDN:   firstNonEmptyString(strings.TrimSpace(endpoint.SSLServerDN), tcpsServerDN(member.TCPS)),
+		UseAuthWallet: runtime != nil && runtime.usesAuthWallet(),
 	}
 
 	if member.LocalRef != nil {
@@ -140,18 +144,20 @@ func resolveDataguardTopologyMember(ctx context.Context, r *DataguardBrokerRecon
 		resolved.ResourceName = resolved.Name
 	}
 
-	secretName, secretKey, secretNamespace, err := resolveDataguardTopologyMemberAdminSecretRef(ctx, r, broker, member)
-	if err != nil {
-		return nil, err
-	}
-	resolved.AdminSecretName = secretName
-	resolved.AdminSecretKey = secretKey
+	if requireAdminPasswords {
+		secretName, secretKey, secretNamespace, err := resolveDataguardTopologyMemberAdminSecretRef(ctx, r, broker, member)
+		if err != nil {
+			return nil, err
+		}
+		resolved.AdminSecretName = secretName
+		resolved.AdminSecretKey = secretKey
 
-	adminPassword, err := readDataguardTopologyMemberAdminPassword(ctx, r, secretNamespace, secretName, secretKey)
-	if err != nil {
-		return nil, err
+		adminPassword, err := readDataguardTopologyMemberAdminPassword(ctx, r, secretNamespace, secretName, secretKey)
+		if err != nil {
+			return nil, err
+		}
+		resolved.AdminPassword = adminPassword
 	}
-	resolved.AdminPassword = adminPassword
 
 	if strings.EqualFold(strings.TrimSpace(endpoint.Protocol), "TCPS") {
 		walletSecret := dbapi.ResolveDataguardTopologyMemberClientWalletSecret(broker.Spec.Topology, member)
@@ -217,6 +223,91 @@ func readDataguardTopologyMemberAdminPassword(ctx context.Context, r *DataguardB
 		return "", fmt.Errorf("secret %s/%s does not contain key %q", namespace, secretName, secretKey)
 	}
 	return string(value), nil
+}
+
+func (r *DataguardBrokerReconciler) rebuildDataguardBrokerAuthWalletSecret(ctx context.Context, broker *dbapi.DataguardBroker, req ctrl.Request, runtime *dataguardBrokerExecutionRuntime, state *dataguardTopologyResolvedState, walletPassword string) error {
+	if broker == nil || runtime == nil || state == nil {
+		return fmt.Errorf("auth wallet runtime state is incomplete")
+	}
+	walletDir := "/tmp/dataguard-auth-wallet"
+	command := buildDataguardBrokerAuthWalletBuildCommand(state, walletDir, walletPassword)
+	if _, err := execDataguardBrokerRunnerShell(ctx, r, broker, req, true, command); err != nil {
+		return fmt.Errorf("failed to build broker auth wallet: %w", err)
+	}
+
+	data := map[string][]byte{}
+	for _, name := range []string{"cwallet.sso", "ewallet.p12"} {
+		content, err := readBase64RunnerFile(ctx, r, broker, req, walletDir+"/"+name)
+		if err != nil {
+			return err
+		}
+		if len(content) == 0 {
+			return fmt.Errorf("required auth wallet file %q was not created", name)
+		}
+		data[name] = content
+	}
+
+	secretName := dataguardBrokerAuthWalletSecretName(broker)
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: broker.Namespace}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
+		secret.Type = corev1.SecretTypeOpaque
+		secret.Data = data
+		if secret.Labels == nil {
+			secret.Labels = map[string]string{}
+		}
+		secret.Labels["database.oracle.com/managed-by"] = "dataguardbroker-controller"
+		secret.Labels["database.oracle.com/auth-wallet"] = broker.Name
+		return ctrl.SetControllerReference(broker, secret, r.Scheme)
+	})
+	return err
+}
+
+func buildDataguardBrokerAuthWalletBuildCommand(state *dataguardTopologyResolvedState, walletDir, walletPassword string) string {
+	members := append([]*dataguardTopologyResolvedMember(nil), state.Members...)
+	sort.Slice(members, func(i, j int) bool {
+		return strings.ToUpper(strings.TrimSpace(members[i].DBUniqueName)) < strings.ToUpper(strings.TrimSpace(members[j].DBUniqueName))
+	})
+
+	lines := []string{
+		"set -euo pipefail",
+		fmt.Sprintf("WALLET_DIR=%s", shellQuote(walletDir)),
+		"rm -rf \"$WALLET_DIR\"",
+		"mkdir -p \"$WALLET_DIR\"",
+		fmt.Sprintf("orapki wallet create -wallet \"$WALLET_DIR\" -pwd %s -auto_login", shellQuote(walletPassword)),
+		"cat > \"$WALLET_DIR/.wallet.passwd\" <<'__DG_AUTH_WALLET_PWD__'",
+		walletPassword,
+		"__DG_AUTH_WALLET_PWD__",
+	}
+	for _, member := range members {
+		if member == nil {
+			continue
+		}
+		for _, alias := range []string{member.Alias, member.StaticAlias} {
+			if strings.TrimSpace(alias) == "" {
+				continue
+			}
+			lines = append(lines, fmt.Sprintf(
+				"mkstore -wrl \"$WALLET_DIR\" -createCredential %s %s %s < \"$WALLET_DIR/.wallet.passwd\" >/dev/null",
+				shellQuote(strings.TrimSpace(alias)),
+				shellQuote("sys"),
+				shellQuote(member.AdminPassword),
+			))
+		}
+	}
+	lines = append(lines, "rm -f \"$WALLET_DIR/.wallet.passwd\"")
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func readBase64RunnerFile(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, req ctrl.Request, path string) ([]byte, error) {
+	out, err := execDataguardBrokerRunnerShell(ctx, r, broker, req, true, fmt.Sprintf("if [ -f %s ]; then base64 -w0 %s; fi", shellQuote(path), shellQuote(path)))
+	if err != nil {
+		return nil, err
+	}
+	encoded := strings.TrimSpace(out)
+	if encoded == "" {
+		return nil, nil
+	}
+	return base64.StdEncoding.DecodeString(encoded)
 }
 
 func ensureDataguardTopologyLocalDatabasePrereqs(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, state *dataguardTopologyResolvedState, req ctrl.Request) error {
@@ -346,6 +437,12 @@ func buildDataguardTopologySQLNet(state *dataguardTopologyResolvedState) string 
 		"NAMES.DIRECTORY_PATH=(TNSNAMES,EZCONNECT)",
 		"DIAG_ADR_ENABLED=OFF",
 	}
+	if state != nil && state.Runtime != nil && state.Runtime.usesAuthWallet() {
+		lines = append(lines,
+			fmt.Sprintf("WALLET_LOCATION=(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY=%s)))", strings.TrimSpace(state.Runtime.AuthWalletMountPath)),
+			"SQLNET.WALLET_OVERRIDE=TRUE",
+		)
+	}
 	if topologyUsesTCPS(state) {
 		lines = append(lines, "SSL_SERVER_DN_MATCH=YES")
 	}
@@ -385,7 +482,7 @@ func runDataguardBrokerRunnerDGMGRLScript(ctx context.Context, r *DataguardBroke
 	if err := writeDataguardRunnerFile(ctx, r, broker, req, scriptPath, script); err != nil {
 		return "", err
 	}
-	connectArg := oracleConnectDescriptor("sys", connectMember.AdminPassword, connectMember.Alias, false)
+	connectArg := oracleConnectDescriptor("sys", connectMember.AdminPassword, connectMember.Alias, false, connectMember.UseAuthWallet)
 	command := fmt.Sprintf("dgmgrl -silent %s @%s; rc=$?; rm -f %s; exit $rc", shellQuote(connectArg), shellQuote(scriptPath), shellQuote(scriptPath))
 	return execDataguardBrokerRunnerShell(ctx, r, broker, req, true, command)
 }
@@ -407,7 +504,7 @@ exit
 	if err := writeDataguardRunnerFile(ctx, r, broker, req, scriptPath, script); err != nil {
 		return nil, err
 	}
-	connectArg := oracleConnectDescriptor("sys", connectMember.AdminPassword, connectMember.Alias, true)
+	connectArg := oracleConnectDescriptor("sys", connectMember.AdminPassword, connectMember.Alias, true, connectMember.UseAuthWallet)
 	command := fmt.Sprintf("sqlplus -s %s @%s; rc=$?; rm -f %s; exit $rc", shellQuote(connectArg), shellQuote(scriptPath), shellQuote(scriptPath))
 	out, err := execDataguardBrokerRunnerShell(ctx, r, broker, req, true, command)
 	if err != nil {
@@ -460,7 +557,6 @@ func ensureDataguardTopologyBrokerConfiguration(ctx context.Context, r *Dataguar
 		if _, err := runDataguardBrokerRunnerDGMGRLScript(ctx, r, broker, req, state.Primary, script); err != nil {
 			return err
 		}
-		return nil
 	}
 
 	currentMembers, err := queryDataguardConfigurationMembers(ctx, r, broker, req, state.Primary)
@@ -472,7 +568,13 @@ func ensureDataguardTopologyBrokerConfiguration(ctx context.Context, r *Dataguar
 		if _, err := runDataguardBrokerRunnerDGMGRLScript(ctx, r, broker, req, state.Primary, script); err != nil {
 			return err
 		}
-		return nil
+		currentMembers, err = queryDataguardConfigurationMembers(ctx, r, broker, req, state.Primary)
+		if err != nil {
+			return err
+		}
+		if len(currentMembers) == 0 {
+			return nil
+		}
 	}
 
 	currentPrimary := resolveCurrentDataguardTopologyPrimary(state, currentMembers)
@@ -491,12 +593,26 @@ func ensureDataguardTopologyBrokerConfiguration(ctx context.Context, r *Dataguar
 		missing = append(missing, member)
 	}
 	if len(missing) == 0 {
-		return nil
+		return reconcileDataguardTopologyConnectIdentifiers(ctx, r, broker, req, currentPrimary, state, currentMembers)
 	}
 
 	script := buildDataguardTopologyAddDatabaseScript(desired, currentPrimary, missing)
-	_, err = runDataguardBrokerRunnerDGMGRLScript(ctx, r, broker, req, currentPrimary, script)
-	return err
+	if _, err = runDataguardBrokerRunnerDGMGRLScript(ctx, r, broker, req, currentPrimary, script); err != nil {
+		return err
+	}
+
+	currentMembers, err = queryDataguardConfigurationMembers(ctx, r, broker, req, currentPrimary)
+	if err != nil {
+		return err
+	}
+	if len(currentMembers) == 0 {
+		return nil
+	}
+	currentPrimary = resolveCurrentDataguardTopologyPrimary(state, currentMembers)
+	if currentPrimary == nil {
+		currentPrimary = state.Primary
+	}
+	return reconcileDataguardTopologyConnectIdentifiers(ctx, r, broker, req, currentPrimary, state, currentMembers)
 }
 
 func buildDataguardTopologyCreateConfigurationScript(desired *dataguardBrokerDesiredSpec, state *dataguardTopologyResolvedState) string {
@@ -577,6 +693,45 @@ func buildDataguardStaticConnectIdentifier(member *dataguardTopologyResolvedMemb
 		return ""
 	}
 	return strings.ToUpper(strings.TrimSpace(member.StaticAlias))
+}
+
+func buildDataguardTopologyRefreshConnectIdentifiersScript(state *dataguardTopologyResolvedState, currentMembers map[string]string) string {
+	if state == nil || len(currentMembers) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(currentMembers))
+	for dbUniqueName := range currentMembers {
+		keys = append(keys, strings.ToUpper(strings.TrimSpace(dbUniqueName)))
+	}
+	sort.Strings(keys)
+
+	var lines []string
+	for _, dbUniqueName := range keys {
+		member := state.MembersByDBUniqueName[dbUniqueName]
+		if member == nil {
+			continue
+		}
+		if alias := strings.ToUpper(strings.TrimSpace(member.Alias)); alias != "" {
+			lines = append(lines, fmt.Sprintf("EDIT DATABASE %s SET PROPERTY DGConnectIdentifier='%s';", member.DBUniqueName, alias))
+		}
+		if staticID := buildDataguardStaticConnectIdentifier(member); staticID != "" {
+			lines = append(lines, fmt.Sprintf("EDIT DATABASE %s SET PROPERTY STATICCONNECTIDENTIFIER='%s';", member.DBUniqueName, staticID))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func reconcileDataguardTopologyConnectIdentifiers(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, req ctrl.Request, currentPrimary *dataguardTopologyResolvedMember, state *dataguardTopologyResolvedState, currentMembers map[string]string) error {
+	script := buildDataguardTopologyRefreshConnectIdentifiersScript(state, currentMembers)
+	if strings.TrimSpace(script) == "" {
+		return nil
+	}
+	_, err := runDataguardBrokerRunnerDGMGRLScript(ctx, r, broker, req, currentPrimary, script)
+	return err
 }
 
 func configureDataguardTopologyFSFO(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, req ctrl.Request, state *dataguardTopologyResolvedState) error {
@@ -756,7 +911,7 @@ func cleanupDataguardTopologyBroker(ctx context.Context, r *DataguardBrokerRecon
 	if !ready {
 		return nil
 	}
-	state, err := resolveDataguardTopologyState(ctx, r, broker, runtime)
+	state, err := resolveDataguardTopologyState(ctx, r, broker, runtime, !runtime.usesAuthWallet())
 	if err != nil {
 		return err
 	}
@@ -812,7 +967,7 @@ func performDataguardTopologyManualSwitchover(ctx context.Context, r *DataguardB
 	if !ready {
 		return fmt.Errorf("topology execution runtime is not ready")
 	}
-	state, err := resolveDataguardTopologyState(ctx, r, broker, runtime)
+	state, err := resolveDataguardTopologyState(ctx, r, broker, runtime, !runtime.usesAuthWallet())
 	if err != nil {
 		return err
 	}
@@ -832,9 +987,14 @@ func performDataguardTopologyManualSwitchover(ctx context.Context, r *DataguardB
 	return err
 }
 
-func oracleConnectDescriptor(user, password, alias string, asSysdba bool) string {
-	passwordLiteral := strings.ReplaceAll(password, `"`, `\"`)
-	connect := fmt.Sprintf(`%s/"%s"@%s`, user, passwordLiteral, alias)
+func oracleConnectDescriptor(user, password, alias string, asSysdba bool, useAuthWallet bool) string {
+	connect := ""
+	if useAuthWallet {
+		connect = fmt.Sprintf(`/@%s`, alias)
+	} else {
+		passwordLiteral := strings.ReplaceAll(password, `"`, `\"`)
+		connect = fmt.Sprintf(`%s/"%s"@%s`, user, passwordLiteral, alias)
+	}
 	if asSysdba {
 		connect += " as sysdba"
 	}
@@ -894,7 +1054,7 @@ func createDataguardTopologyObserverPod(ctx context.Context, r *DataguardBrokerR
 	if !ready {
 		return fmt.Errorf("topology execution runtime is not ready")
 	}
-	state, err := resolveDataguardTopologyState(ctx, r, broker, runtime)
+	state, err := resolveDataguardTopologyState(ctx, r, broker, runtime, !runtime.usesAuthWallet())
 	if err != nil {
 		return err
 	}

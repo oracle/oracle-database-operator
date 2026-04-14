@@ -204,7 +204,17 @@ func TestDataguardBrokerWebhookValidateUpdateRejectsTopologyChangeWhenLocked(t *
 
 func TestDataguardBrokerWebhookValidateUpdateRejectsExecutionChangeWhenLocked(t *testing.T) {
 	oldObj := validDataguardBrokerTopology()
-	oldObj.Spec.Execution = &DataguardExecutionSpec{Image: "oracle-db:19.3.0"}
+	oldObj.Spec.Execution = &DataguardExecutionSpec{
+		Image: "oracle-db:19.3.0",
+		AuthWallet: &DataguardAuthWalletSpec{
+			Enabled:      true,
+			RebuildToken: "token-1",
+		},
+	}
+	oldObj.Spec.Topology.Members[1].AdminSecretRef = &DataguardSecretRef{
+		SecretName: "standby-admin",
+		SecretKey:  "password",
+	}
 	oldObj.Status.ObservedTopologyHash = "abc123"
 
 	newObj := oldObj.DeepCopy()
@@ -216,5 +226,29 @@ func TestDataguardBrokerWebhookValidateUpdateRejectsExecutionChangeWhenLocked(t 
 	}
 	if !strings.Contains(err.Error(), "spec.execution cannot be changed") {
 		t.Fatalf("expected execution immutability error, got: %v", err)
+	}
+}
+
+func TestDataguardBrokerWebhookValidateUpdateAllowsAuthWalletRebuildTokenChangeWhenLocked(t *testing.T) {
+	oldObj := validDataguardBrokerTopology()
+	oldObj.Spec.Execution = &DataguardExecutionSpec{
+		Image: "oracle-db:19.3.0",
+		AuthWallet: &DataguardAuthWalletSpec{
+			Enabled:      true,
+			RebuildToken: "token-1",
+		},
+	}
+	oldObj.Spec.Topology.Members[1].AdminSecretRef = &DataguardSecretRef{
+		SecretName: "standby-admin",
+		SecretKey:  "password",
+	}
+	oldObj.Status.ObservedTopologyHash = "abc123"
+
+	newObj := oldObj.DeepCopy()
+	newObj.Spec.Execution.AuthWallet.RebuildToken = "token-2"
+
+	_, err := (&DataguardBroker{}).ValidateUpdate(context.Background(), oldObj, newObj)
+	if err != nil {
+		t.Fatalf("expected auth wallet rebuild token update to validate, got: %v", err)
 	}
 }

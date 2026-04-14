@@ -185,6 +185,12 @@ func validateDataguardExecution(obj *DataguardBroker) field.ErrorList {
 			allErrs = append(allErrs, field.Required(execPath.Child("imagePullSecrets").Index(i), "image pull secret name cannot be empty"))
 		}
 	}
+	if execution.AuthWallet != nil {
+		authWalletPath := execPath.Child("authWallet")
+		if execution.AuthWallet.PasswordSecretRef != nil && strings.TrimSpace(execution.AuthWallet.PasswordSecretRef.SecretName) == "" {
+			allErrs = append(allErrs, field.Required(authWalletPath.Child("passwordSecretRef").Child("secretName"), "secretName is required when passwordSecretRef is set"))
+		}
+	}
 	return allErrs
 }
 
@@ -390,10 +396,21 @@ func validateDataguardTopologyUpdate(oldObj, newObj *DataguardBroker) field.Erro
 	if !reflect.DeepEqual(oldObj.Spec.Topology, newObj.Spec.Topology) {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("topology"), "spec.topology cannot be changed after DataguardBroker reconciliation has started"))
 	}
-	if !reflect.DeepEqual(oldObj.Spec.Execution, newObj.Spec.Execution) {
+	if !reflect.DeepEqual(normalizeMutableDataguardExecutionSpec(oldObj.Spec.Execution), normalizeMutableDataguardExecutionSpec(newObj.Spec.Execution)) {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("execution"), "spec.execution cannot be changed after DataguardBroker reconciliation has started"))
 	}
 	return allErrs
+}
+
+func normalizeMutableDataguardExecutionSpec(spec *DataguardExecutionSpec) *DataguardExecutionSpec {
+	if spec == nil {
+		return nil
+	}
+	clone := spec.DeepCopy()
+	if clone.AuthWallet != nil {
+		clone.AuthWallet.RebuildToken = ""
+	}
+	return clone
 }
 
 func isDataguardBrokerTopologyLocked(broker *DataguardBroker) bool {

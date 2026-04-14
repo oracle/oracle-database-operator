@@ -122,20 +122,21 @@ func TestSIDBWebhookValidateCreateReturnsDeprecatedServiceWarnings(t *testing.T)
 	sidb.Spec.LoadBalancer = true
 	sidb.Spec.ListenerPort = 32001
 	sidb.Spec.TcpsListenerPort = 32002
-	sidb.Spec.TCPS = &SingleInstanceDatabaseTCPS{ListenerPort: 32003}
 
 	warnings, err := (&SingleInstanceDatabase{}).ValidateCreate(context.Background(), sidb)
 	if err != nil {
 		t.Fatalf("expected validate create to succeed, got: %v", err)
 	}
-	if len(warnings) != 4 {
-		t.Fatalf("expected 4 deprecation warnings, got %#v", warnings)
+	if len(warnings) != 3 {
+		t.Fatalf("expected 3 deprecation warnings, got %#v", warnings)
 	}
 }
 
 func TestSIDBWebhookAllowsLegacyTcpsListenerPortOutsideNodePortRange(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
-	sidb.Spec.TCPS = &SingleInstanceDatabaseTCPS{Enabled: true}
+	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{
+		TCPS: &SingleInstanceDatabaseSecurityTCPS{Enabled: true},
+	}
 	sidb.Spec.TcpsListenerPort = 2484
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
@@ -145,7 +146,7 @@ func TestSIDBWebhookAllowsLegacyTcpsListenerPortOutsideNodePortRange(t *testing.
 
 func TestSIDBWebhookAllowsExternalTCPSWhenLegacyListenerPortImpliesEnablement(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
-	sidb.Spec.TCPS = &SingleInstanceDatabaseTCPS{ListenerPort: 2484}
+	sidb.Spec.TcpsListenerPort = 2484
 	sidb.Spec.Services = &SingleInstanceDatabaseServices{
 		External: &SingleInstanceDatabaseExternalService{
 			Type: SingleInstanceDatabaseExternalServiceTypeLoadBalancer,
@@ -157,7 +158,7 @@ func TestSIDBWebhookAllowsExternalTCPSWhenLegacyListenerPortImpliesEnablement(t 
 	}
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
-		t.Fatalf("expected legacy spec.tcps.listenerPort to satisfy tcps enablement, got: %v", errs)
+		t.Fatalf("expected legacy spec.tcpsListenerPort to satisfy tcps enablement, got: %v", errs)
 	}
 }
 

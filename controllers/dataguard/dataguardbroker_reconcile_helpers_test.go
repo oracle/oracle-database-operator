@@ -190,6 +190,10 @@ func TestResolveDataguardBrokerExecutionRuntimeFromSIDBProducerStatus(t *testing
 				Execution: &dbapi.DataguardExecutionSpec{
 					Image:            "oracle/db:19.3.0",
 					ImagePullSecrets: []string{"pull-secret"},
+					AuthWallet: &dbapi.DataguardAuthWalletSpec{
+						Enabled:      true,
+						RebuildToken: "token-1",
+					},
 				},
 			},
 		},
@@ -227,6 +231,9 @@ func TestResolveDataguardBrokerExecutionRuntimeFromSIDBProducerStatus(t *testing
 	}
 	if got == nil || got.Image != "oracle/db:19.3.0" {
 		t.Fatalf("expected execution image from producer status, got %#v", got)
+	}
+	if got.AuthWallet == nil || !got.AuthWallet.Enabled || got.AuthWallet.RebuildToken != "token-1" {
+		t.Fatalf("expected auth wallet settings from producer status, got %#v", got)
 	}
 	if got.Source == "" {
 		t.Fatalf("expected runtime source to be recorded")

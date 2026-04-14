@@ -291,10 +291,12 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryInfersTCPSPlaceholder
 				SecretName: "standby-admin",
 			},
 			Image: dbapi.SingleInstanceDatabaseImage{PullFrom: "oracle/db:19.3.0"},
-			TCPS: &dbapi.SingleInstanceDatabaseTCPS{
-				Enabled:      true,
-				ListenerPort: 2484,
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{
+					Enabled: true,
+				},
 			},
+			TcpsListenerPort: 2484,
 			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
 				ConnectString: "external-primary:1521/PRIM",
 			},
@@ -641,7 +643,9 @@ func TestSIDBUnit_ResolveExternalServiceConfigRetainsLegacyCompatibility(t *test
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			ListenerPort:     32001,
 			TcpsListenerPort: 32002,
-			TCPS:             &dbapi.SingleInstanceDatabaseTCPS{Enabled: true},
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{Enabled: true},
+			},
 		},
 	}
 
@@ -662,7 +666,9 @@ func TestSIDBUnit_ResolveExternalServiceConfigTreatsLegacyNonNodePortAsServicePo
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			ListenerPort:     1522,
 			TcpsListenerPort: 2484,
-			TCPS:             &dbapi.SingleInstanceDatabaseTCPS{Enabled: true},
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{Enabled: true},
+			},
 		},
 	}
 
@@ -681,12 +687,12 @@ func TestSIDBUnit_ResolveExternalServiceConfigTreatsLegacyNonNodePortAsServicePo
 func TestSIDBUnit_GetTcpsEnabledTreatsLegacyListenerPortAsEnabled(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{
-			TCPS: &dbapi.SingleInstanceDatabaseTCPS{ListenerPort: 2484},
+			TcpsListenerPort: 2484,
 		},
 	}
 
 	if !getTcpsEnabled(sidb) {
-		t.Fatalf("expected deprecated spec.tcps.listenerPort to imply tcps enabled")
+		t.Fatalf("expected deprecated spec.tcpsListenerPort to imply tcps enabled")
 	}
 
 	sidb = &dbapi.SingleInstanceDatabase{

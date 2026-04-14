@@ -40,6 +40,8 @@ package controllers
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
@@ -74,7 +76,7 @@ const dataguardBrokerFinalizer = "database.oracle.com/dataguardbrokerfinalizer"
 //+kubebuilder:rbac:groups=database.oracle.com,resources=dataguardbrokers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=dataguardbrokers/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=dataguardbrokers/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services;secrets,verbs=create;delete;get;list;patch;update;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -230,7 +232,156 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerTopologyRuntime(ctx 
 		return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
 	}
 	scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionTrue, "RunnerReady", runnerMessage)
+	if result, err := r.reconcileDataguardBrokerTopologyAuthWallet(ctx, scope, runtime); err != nil || result.Requeue {
+		return result, err
+	}
 	return ctrl.Result{}, nil
+}
+
+func (r *DataguardBrokerReconciler) reconcileDataguardBrokerTopologyAuthWallet(ctx context.Context, scope *dataguardBrokerReconcileScope, runtime *dataguardBrokerExecutionRuntime) (ctrl.Result, error) {
+	if runtime == nil || !runtime.authWalletEnabled() {
+		return ctrl.Result{}, nil
+	}
+	if scope.broker.Status.AuthWallet == nil {
+		scope.broker.Status.AuthWallet = &dbapi.DataguardAuthWalletStatus{}
+	}
+	status := scope.broker.Status.AuthWallet
+	status.WalletSecretName = dataguardBrokerAuthWalletSecretName(scope.broker)
+
+	desiredToken := ""
+	if runtime.AuthWallet != nil {
+		desiredToken = strings.TrimSpace(runtime.AuthWallet.RebuildToken)
+	}
+	needsBootstrap := !status.Initialized || strings.TrimSpace(status.WalletSecretName) == ""
+	needsRebuild := desiredToken != "" && desiredToken != strings.TrimSpace(status.ObservedRebuildToken)
+	if !needsBootstrap && !needsRebuild {
+		status.Phase = "Ready"
+		if strings.TrimSpace(status.Message) == "" {
+			status.Message = "broker auth wallet is initialized"
+		}
+		return ctrl.Result{}, nil
+	}
+
+	status.Phase = "Building"
+	status.Message = "building broker auth wallet"
+	state, err := resolveDataguardTopologyState(ctx, r, scope.broker, runtime, true)
+	if err != nil {
+		status.Phase = "PrecheckFailed"
+		status.Message = err.Error()
+		scope.markWaiting(dataguardBrokerPhaseRuntime, "AuthWalletPrecheckPending", err.Error())
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+	}
+
+	password, generatedSecretName, err := r.resolveDataguardBrokerAuthWalletPassword(ctx, scope.broker, runtime)
+	if err != nil {
+		status.Phase = "PasswordPending"
+		status.Message = err.Error()
+		scope.markWaiting(dataguardBrokerPhaseRuntime, "AuthWalletPasswordPending", err.Error())
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+	}
+	if err := r.rebuildDataguardBrokerAuthWalletSecret(ctx, scope.broker, scope.req, runtime, state, password); err != nil {
+		status.Phase = "BuildFailed"
+		status.Message = err.Error()
+		return ctrl.Result{}, err
+	}
+
+	status.Initialized = true
+	status.Phase = "Ready"
+	status.Message = "broker auth wallet is initialized"
+	status.GeneratedPasswordSecretName = generatedSecretName
+	status.ObservedRebuildToken = desiredToken
+	if !runtime.usesAuthWallet() {
+		scope.markWaiting(dataguardBrokerPhaseRuntime, "AuthWalletCreated", "auth wallet created; refreshing runner pod to mount credentials")
+		return ctrl.Result{Requeue: true, RequeueAfter: 5 * time.Second}, nil
+	}
+	return ctrl.Result{}, nil
+}
+
+func dataguardBrokerAuthWalletSecretName(broker *dbapi.DataguardBroker) string {
+	if broker == nil {
+		return "dataguard-auth-wallet"
+	}
+	return broker.Name + "-auth-wallet"
+}
+
+func dataguardBrokerGeneratedAuthWalletPasswordSecretName(broker *dbapi.DataguardBroker) string {
+	if broker == nil {
+		return "dataguard-auth-wallet-password"
+	}
+	return broker.Name + "-auth-wallet-password"
+}
+
+func (r *DataguardBrokerReconciler) resolveDataguardBrokerAuthWalletPassword(ctx context.Context, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime) (string, string, error) {
+	if broker == nil || runtime == nil || runtime.AuthWallet == nil {
+		return "", "", fmt.Errorf("auth wallet runtime is not initialized")
+	}
+	if ref := runtime.AuthWallet.PasswordSecretRef; ref != nil && strings.TrimSpace(ref.SecretName) != "" {
+		secretKey := strings.TrimSpace(ref.SecretKey)
+		if secretKey == "" {
+			secretKey = "password"
+		}
+		password, err := r.readSecretValue(ctx, broker.Namespace, strings.TrimSpace(ref.SecretName), secretKey)
+		return password, "", err
+	}
+
+	secretName := dataguardBrokerGeneratedAuthWalletPasswordSecretName(broker)
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: broker.Namespace}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, secret, func() error {
+		if secret.Type == "" {
+			secret.Type = corev1.SecretTypeOpaque
+		}
+		if secret.Data == nil {
+			secret.Data = map[string][]byte{}
+		}
+		if len(secret.Data["password"]) == 0 {
+			generated, genErr := generateDataguardBrokerAuthWalletPassword()
+			if genErr != nil {
+				return genErr
+			}
+			secret.Data["password"] = []byte(generated)
+		}
+		if secret.Labels == nil {
+			secret.Labels = map[string]string{}
+		}
+		secret.Labels["database.oracle.com/managed-by"] = "dataguardbroker-controller"
+		secret.Labels["database.oracle.com/auth-wallet-password"] = broker.Name
+		return ctrl.SetControllerReference(broker, secret, r.Scheme)
+	})
+	if err != nil {
+		return "", "", err
+	}
+	password := strings.TrimSpace(string(secret.Data["password"]))
+	if password == "" {
+		return "", "", fmt.Errorf("generated auth wallet password secret %s/%s is empty", broker.Namespace, secretName)
+	}
+	return password, secretName, nil
+}
+
+func (r *DataguardBrokerReconciler) readSecretValue(ctx context.Context, namespace, name, key string) (string, error) {
+	var secret corev1.Secret
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", fmt.Errorf("secret %s/%s not found", namespace, name)
+		}
+		return "", err
+	}
+	value, ok := secret.Data[key]
+	if !ok {
+		return "", fmt.Errorf("secret %s/%s does not contain key %q", namespace, name, key)
+	}
+	trimmed := strings.TrimSpace(string(value))
+	if trimmed == "" {
+		return "", fmt.Errorf("secret %s/%s key %q is empty", namespace, name, key)
+	}
+	return trimmed, nil
+}
+
+func generateDataguardBrokerAuthWalletPassword() (string, error) {
+	buf := make([]byte, 18)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawStdEncoding.EncodeToString(buf) + "Aa1", nil
 }
 
 func (r *DataguardBrokerReconciler) reconcileDataguardBrokerFinalizer(ctx context.Context, scope *dataguardBrokerReconcileScope) error {
@@ -344,7 +495,7 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerValidation(ctx conte
 			scope.markWaiting(dataguardBrokerPhaseValidating, "TopologyRuntimePending", message)
 			return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
 		}
-		if _, err := resolveDataguardTopologyState(ctx, r, broker, runtime); err != nil {
+		if _, err := resolveDataguardTopologyState(ctx, r, broker, runtime, !runtime.usesAuthWallet()); err != nil {
 			scope.markWaiting(dataguardBrokerPhaseValidating, "TopologyValidationPending", err.Error())
 			return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
 		}
@@ -426,7 +577,7 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerProvision(ctx contex
 		if !ready {
 			return fmt.Errorf("%s", message)
 		}
-		state, err := resolveDataguardTopologyState(ctx, r, scope.broker, runtime)
+		state, err := resolveDataguardTopologyState(ctx, r, scope.broker, runtime, !runtime.usesAuthWallet())
 		if err != nil {
 			return err
 		}
@@ -463,7 +614,7 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerFSFO(ctx context.Con
 			scope.markWaiting(dataguardBrokerPhaseFSFO, "TopologyRuntimePending", message)
 			return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
 		}
-		state, err := resolveDataguardTopologyState(ctx, r, scope.broker, runtime)
+		state, err := resolveDataguardTopologyState(ctx, r, scope.broker, runtime, !runtime.usesAuthWallet())
 		if err != nil {
 			return ctrl.Result{Requeue: false}, err
 		}

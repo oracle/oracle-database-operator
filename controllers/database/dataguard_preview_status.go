@@ -436,6 +436,7 @@ func buildSIDBPreviewExecutionStatus(m *dbapi.SingleInstanceDatabase) *dbapi.Dat
 	if secret := strings.TrimSpace(m.Spec.Image.PullSecrets); secret != "" {
 		status.ImagePullSecrets = []string{secret}
 	}
+	status.AuthWallet = cloneDataguardAuthWalletSpec(m.Spec.Dataguard)
 	return status
 }
 
@@ -532,6 +533,7 @@ func buildShardingPreviewExecutionStatus(instance *dbapi.ShardingDatabase) *dbap
 	if secret := strings.TrimSpace(instance.Spec.DbImagePullSecret); secret != "" {
 		status.ImagePullSecrets = []string{secret}
 	}
+	status.AuthWallet = cloneDataguardAuthWalletSpec(instance.Spec.Dataguard)
 	return status
 }
 
@@ -1011,6 +1013,7 @@ func buildRenderedBrokerPreviewStatus(resourceName, namespace string, topology *
 		spec.Execution = &dbapi.DataguardExecutionSpec{
 			Image:            strings.TrimSpace(execution.Image),
 			ImagePullSecrets: append([]string(nil), execution.ImagePullSecrets...),
+			AuthWallet:       execution.AuthWallet.DeepCopy(),
 		}
 	}
 	now := metav1.Now()
@@ -1022,6 +1025,13 @@ func buildRenderedBrokerPreviewStatus(resourceName, namespace string, topology *
 		GeneratedAt:  &now,
 		Ready:        ready,
 	}
+}
+
+func cloneDataguardAuthWalletSpec(spec *dbapi.DataguardProducerSpec) *dbapi.DataguardAuthWalletSpec {
+	if spec == nil || spec.AuthWallet == nil {
+		return nil
+	}
+	return spec.AuthWallet.DeepCopy()
 }
 
 func buildRenderedBrokerName(resourceName string) string {
