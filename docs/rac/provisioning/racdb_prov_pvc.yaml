@@ -1,0 +1,84 @@
+---
+# Sample scenario:
+# PVC-based software locations
+# Reference guide:
+# ./provisioning_oracle_rac_pvc.md
+#
+# This sample uses:
+# - existing ASM device paths from asmDiskGroupDetails[].disks
+# - software homes created from the worker-node base path via instanceDetails.racHostSwLocation
+# - encoded DB secret files referenced by dbSecret.keyFileName/pwdFileName
+# - a staged software PVC mounted from configParams.swStagePvc
+#
+apiVersion: database.oracle.com/v4
+kind: RacDatabase
+metadata:
+  name: racdbprov-sample                                                   # Name of the RAC database custom resource
+  namespace: rac                                                           # Namespace where the RAC database will be created
+spec:
+  instanceDetails:
+    nodeCount: 1                                                           # One RAC node in this sample
+    racHostSwLocation: /scratch/rac/cluster01                              # Base directory for Oracle GI HOME and Oracle RDBMS HOME on the Worker Nodes. Under this Base directory, the paths for RAC Nodes are created as: <racHostSwLocation>/<racNodeName><node-number>. Example: /scratch/rac/cluster01/racnode1
+    racNodeName: racnode                                                   # Prefix used for RAC node hostnames
+    privateIPDetails:
+      - name: macvlan-conf1
+        interface: ens1
+      - name: macvlan-conf2
+        interface: ens2
+    workerNodeSelector:
+      raccluster: raccluster01                                             # Schedule the pod on nodes labeled for this RAC cluster
+  asmDiskGroupDetails:
+    - name: DATA                                                           # ASM disk group name
+      redundancy: EXTERNAL                                                 # ASM redundancy level
+      type: CRSDG                                                          # Disk group type used during provisioning
+      disks:
+        - /dev/disk/by-partlabel/ocne_asm_disk_01                          # Existing ASM disk path on the worker node
+        - /dev/disk/by-partlabel/ocne_asm_disk_02                          # Existing ASM disk path on the worker node
+  sshKeySecret:
+    name: ssh-key-secret                                                   # Secret containing SSH key pair used during node setup
+    privKeySecretName: ssh-privkey                                         # Private key entry inside the SSH secret
+    pubKeySecretName: ssh-pubkey                                           # Public key entry inside the SSH secret
+  dbSecret:
+    name: db-user-pass-pkutl                                               # Secret containing encoded database password material
+    keyFileName: key.pem                                                   # Key file stored inside the secret
+    pwdFileName: pwdfile.enc                                               # Base64-encoded password file stored inside the secret
+  image: phx.ocir.io/intsanjaysingh/oracle/database-rac:19.3.0-slim        # RAC slim image used for provisioning
+  imagePullPolicy: Always
+  scanSvcName: racnode-scan                                                # SCAN service name created for RAC connectivity
+  scanSvcTargetPort: 31521
+  serviceDetails:
+    name: soepdb                                                           # Database service name exposed after provisioning
+  resources:
+    requests:
+      cpu: "2"                                                             # Minimum CPU requested by the RAC pod
+      memory: "16Gi"                                                       # Minimum memory requested by the RAC pod
+      # hugepages-2Mi: "14Gi"
+    limits:
+      cpu: "2"                                                             # CPU limit for the RAC pod
+      memory: "16Gi"                                                       # Memory limit for the RAC pod
+      # hugepages-2Mi: "14Gi"
+  securityContext:
+    sysctls:
+      - name: kernel.shmall
+        value: "2097152"
+      - name: kernel.sem
+        value: "250 32000 100 128"
+      - name: kernel.shmmax
+        value: "8589934592"
+      - name: kernel.shmmni
+        value: "4096"
+  configParams:
+    sgaSize: "3Gi"                                                         # SGA size configured for the database
+    pgaSize: "1Gi"                                                         # PGA size configured for the database
+    processes: 2000                                                        # Oracle process limit
+    cpuCount: 4                                                            # Number of CPUs exposed to Oracle
+    gridHome: "/u01/app/19c/grid"                                          # Grid Infrastructure home inside the pod
+    gridBase: "/u01/app/grid"                                              # Grid Infrastructure base inside the pod
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"                         # Database home inside the pod
+    dbBase: "/u01/app/oracle"                                              # Oracle base inside the pod
+    inventory: "/u01/app/oraInventory"                                     # Oracle inventory location
+    gridSwZipFile: "grid_home.zip"                                         # Grid Infrastructure ZIP staged in swStagePvc
+    dbSwZipFile: "db_home.zip"                                             # Database ZIP staged in swStagePvc
+    dbName: "PORCLCDB"                                                     # Database name created by the controller
+    swStagePvc: pv-stage-vol-claim                                         # Existing PVC containing staged Grid and DB software ZIPs
+    swStagePvcMountLocation: "/stage/software/19c/1930-new"           # Mount point inside the pod for the staged software PVC

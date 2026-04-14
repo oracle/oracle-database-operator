@@ -1,0 +1,60 @@
+---
+# Sample scenario:
+# Host-based software locations + Base64-encoded DB secret files
+# Reference guide:
+# ./provisioning_oracle_rac_encoded_secrets.md
+#
+# This sample uses:
+# - host locations for software homes via instanceDetails.racHostSwLocation
+# - a host staging directory via configParams.hostSwStageLocation
+# - encoded DB secret files referenced by dbSecret.keyFileName
+# - dbSecret.pwdFileName is optional in this flow
+# - existing ASM device paths from asmDiskGroupDetails[].disks
+#
+apiVersion: database.oracle.com/v4
+kind: RacDatabase
+metadata:
+  name: racdbprov-sample                                                   # Name of the RAC database custom resource
+  namespace: rac                                                           # Namespace where the RAC database will be created
+spec:
+  instanceDetails:
+    nodeCount: 1                                                           # One RAC node in this sample
+    racHostSwLocation: /scratch/rac/cluster01                              # Host base path used for the GI and DB homes
+    racNodeName: racnode                                                   # Prefix used for RAC node hostnames
+    privateIPDetails:
+      - name: macvlan-conf1
+        interface: ens1
+      - name: macvlan-conf2
+        interface: ens2
+    workerNodeSelector:
+      raccluster: raccluster01                                             # Schedule the pod on nodes labeled for this RAC cluster
+  asmDiskGroupDetails:
+    - name: DATA                                                           # ASM disk group name
+      redundancy: EXTERNAL                                                 # ASM redundancy level
+      type: CRSDG                                                          # Disk group type used during provisioning
+      disks:
+        - /dev/disk/by-partlabel/ocne_asm_disk_01                          # Existing ASM disk path on the worker node
+        - /dev/disk/by-partlabel/ocne_asm_disk_02                          # Existing ASM disk path on the worker node
+  sshKeySecret:
+    name: ssh-key-secret                                                   # Secret containing SSH key pair used during node setup
+    privKeySecretName: ssh-privkey                                         # Private key entry inside the SSH secret
+    pubKeySecretName: ssh-pubkey                                           # Public key entry inside the SSH secret
+  dbSecret:
+    name: db-user-pass                                                     # Secret containing encoded database password material
+    keyFileName: key.pem                                                   # Key file stored inside the secret
+  image: phx.ocir.io/intsanjaysingh/oracle/database-rac:19.3.0-slim        # RAC slim image used for provisioning
+  imagePullPolicy: Always
+  scanSvcName: racnode-scan                                                # SCAN service name created for RAC connectivity
+  scanSvcTargetPort: 31521
+  serviceDetails:
+    name: soepdb                                                           # Database service name exposed after provisioning
+  configParams:
+    gridHome: "/u01/app/19c/grid"                                          # Grid Infrastructure home inside the pod
+    gridBase: "/u01/app/grid"                                              # Grid Infrastructure base inside the pod
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"                         # Database home inside the pod
+    dbBase: "/u01/app/oracle"                                              # Oracle base inside the pod
+    dbName: "PORCLCDB"                                                     # Database name created by the controller
+    inventory: "/u01/app/oraInventory"                                     # Oracle inventory location
+    gridSwZipFile: "grid_home.zip"                                         # Grid Infrastructure ZIP expected in hostSwStageLocation
+    dbSwZipFile: "db_home.zip"                                             # Database ZIP expected in hostSwStageLocation
+    hostSwStageLocation: /mnt/software/19c/1930-new/                       # Host directory containing the staged Grid and DB software ZIPs

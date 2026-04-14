@@ -26,11 +26,15 @@ The Oracle RAC Database Controller provides end-to-end automation of Oracle RAC 
 
 To create a Oracle database, complete the steps in the following sections:
 
-* [Prerequisites for running Oracle RAC Database Controller](#prerequisites-for-using-oracle-rac-database-controller)  
-* [Provisioning RAC database in a Oracle Cloud Native Enviornment (OCNE)](#provisioning-oracle-rac-database-using-kubernetes-cluster-in-an-oracle-cloud-native-environment-ocne)  
-* [Connecting to Oracle RAC Database](#connecting-to-an-oracle-rac-database-provisioned-using-oracle-rac-database-controller)  
-* [Known Issues](#known-issues)  
-* [Debugging and Troubleshooting](#debugging-and-troubleshooting)  
+- [Using Oracle Real Application Cluster with Oracle Database Operator for Kubernetes](#using-oracle-real-application-cluster-with-oracle-database-operator-for-kubernetes)
+  - [Using Oracle RAC Database Controller](#using-oracle-rac-database-controller)
+  - [Prerequisites for using Oracle RAC Database Controller](#prerequisites-for-using-oracle-rac-database-controller)
+  - [QuickStart](#quickstart)
+  - [Provisioning Oracle RAC Database using Kubernetes Cluster in an Oracle Cloud Native Environment (OCNE)](#provisioning-oracle-rac-database-using-kubernetes-cluster-in-an-oracle-cloud-native-environment-ocne)
+  - [Connecting to an Oracle RAC Database provisioned using Oracle RAC Database Controller](#connecting-to-an-oracle-rac-database-provisioned-using-oracle-rac-database-controller)
+  - [Environment Variables Explained](#environment-variables-explained)
+  - [Known Issues](#known-issues)
+  - [Debugging and Troubleshooting](#debugging-and-troubleshooting)
 
 **Note** Before proceeding to the next section, you must complete the instructions given in each section based on your enviornment.
 
@@ -65,7 +69,11 @@ Deploy Oracle RAC Database YAML files using Kubernetes Cluster on your Oracle Cl
 [11. Provisioning an Oracle RAC Database with RU Patch](./provisioning/provisioning_oracle_rac_db_rupatch.md)  
 [12. Provisioning an Oracle RAC Database with RU Patch and One Offs](./provisioning/provisioning_oracle_rac_db_rupatch_oneoff.md)  
 [13. Provisioning an Oracle RAC Database using a Response File](./provisioning/provisioning_oracle_rac_db_using_response_file.md)  
-[14. Provisioning an Oracle RAC Database with Huge Page allocation](./provisioning/provisioning_oracle_rac_db_hugepages.md)   
+[14. Provisioning an Oracle RAC Database with Huge Page allocation](./provisioning/provisioning_oracle_rac_db_hugepages.md) 
+[15. Provisioning an Oracle RAC Database with PVC-based Software](./provisioning/provisioning_oracle_rac_pvc.md)
+[16. Oracle RAC with Base64-encoded Secrets](./provisioning/provisioning_oracle_rac_encoded_secrets.md)  
+[17. Provisioning an Oracle RAC Database with Storage Class-backed ASM Storage and PVC-based Software](./provisioning/provisioning_oracle_rac_storageclass_pvc_softwares.md)
+
 
 ## Connecting to an Oracle RAC Database provisioned using Oracle RAC Database Controller
 

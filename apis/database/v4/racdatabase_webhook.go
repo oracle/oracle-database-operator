@@ -755,11 +755,6 @@ func (r *RacDatabase) validateDbSecret() field.ErrorList {
 				"KeyFileName cannot be set to empty"))
 		}
 
-		if r.Spec.DbSecret.PwdFileName == "" {
-			validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("DbSecret").Child("PwdFileName"), r.Spec.DbSecret.PwdFileName,
-				"PwdFileName cannot be set to empty"))
-		}
-
 		if len(validationErrs) > 0 {
 			return validationErrs
 		}
@@ -770,7 +765,7 @@ func (r *RacDatabase) validateDbSecret() field.ErrorList {
 	validationErrs = append(validationErrs, field.Invalid(
 		field.NewPath("spec").Child("DbSecret"),
 		r.Spec.DbSecret,
-		"either 'key' OR ('keyFileName' and 'pwdFileName') must be specified",
+		"either 'key' OR 'keyFileName' must be specified; 'pwdFileName' is optional",
 	))
 	return validationErrs
 }
