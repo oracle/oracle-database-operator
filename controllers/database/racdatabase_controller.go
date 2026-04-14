@@ -133,6 +133,7 @@ const racDiskCheckReadyTimeout = 15 * time.Minute
 const racConfigMapHashAnnotation = "database.oracle.com/rac-configmap-hash"
 
 var errRACDiskDiscoveryPending = errors.New("ASM disk discovery results not available yet")
+var errRACDeletionInProgress = errors.New("RacDatabase deletion is in progress")
 
 type racReconcilePhase string
 
@@ -203,6 +204,10 @@ func hasAnyRawAsmDiskGroup(spec *racdb.RacDatabaseSpec) bool {
 		return false
 	}
 	for i := range spec.AsmStorageDetails {
+		if len(spec.AsmStorageDetails[i].Disks) == 0 {
+			// Defaulted alias groups without disks should not trigger raw disk discovery.
+			continue
+		}
 		if isRawAsmDiskGroup(spec.AsmStorageDetails[i], spec.StorageClass) {
 			return true
 		}
@@ -649,6 +654,11 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 
 		ready, err := checkRacDaemonSetStatusforRAC(ctx, r, racDatabase)
 		if err != nil {
+			if errors.Is(err, errRACDeletionInProgress) {
+				r.Log.Info("RacDatabase delete requested while waiting for disk-check daemonset; handing off to finalizer cleanup")
+				return ctrl.Result{}, completed, nil
+			}
+
 			r.Log.Error(err, "ASM disk-check daemonset status error, cleaning up")
 
 			_ = r.cleanupDaemonSet(racDatabase, ctx)
@@ -2385,6 +2395,11 @@ func flattenAsmDisksForRAC(racDbSpec *racdb.RacDatabaseSpec) []string {
 // expected spec. It creates or updates the workload so ASM disk metadata
 // stays current across reconcile iterations.
 func (r *RacDatabaseReconciler) createDaemonSet(racDatabase *racdb.RacDatabase, ctx context.Context) error {
+	if racDatabase == nil || !hasAnyRawAsmDiskGroup(&racDatabase.Spec) {
+		r.Log.Info("Skipping DaemonSet creation because ASM disk groups use storageClass-backed volumes")
+		return nil
+	}
+
 	r.Log.Info("Validate New ASM Disks")
 
 	// Build the desired DaemonSet (disk-check)
@@ -2431,6 +2446,28 @@ func (r *RacDatabaseReconciler) createDaemonSet(racDatabase *racdb.RacDatabase, 
 
 func diskCheckLabelSelectorForRAC(racDatabase *racdb.RacDatabase) string {
 	return shareddiskcheck.LabelSelectorForDaemonSet(racDatabase, "disk-check")
+}
+
+func isRacDatabaseDeleting(ctx context.Context, r *RacDatabaseReconciler, racDatabase *racdb.RacDatabase) (bool, error) {
+	if racDatabase == nil {
+		return false, nil
+	}
+	if racDatabase.GetDeletionTimestamp() != nil {
+		return true, nil
+	}
+
+	latest := &racdb.RacDatabase{}
+	err := r.Client.Get(ctx, types.NamespacedName{
+		Name:      racDatabase.Name,
+		Namespace: racDatabase.Namespace,
+	}, latest)
+	if apierrors.IsNotFound(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return latest.GetDeletionTimestamp() != nil, nil
 }
 
 func (r *RacDatabaseReconciler) collectDiskCheckResults(
@@ -4327,6 +4364,14 @@ func checkRacDaemonSetStatusforRAC(ctx context.Context, r *RacDatabaseReconciler
 	defer tick.Stop()
 
 	checkOnce := func() (bool, error) {
+		deleting, err := isRacDatabaseDeleting(ctx, r, racDatabase)
+		if err != nil {
+			return false, err
+		}
+		if deleting {
+			return false, errRACDeletionInProgress
+		}
+
 		ready, invalidDevice, err := shareddiskcheck.CheckDaemonSetReadyAndDiskValidation(
 			ctx,
 			r.Client,

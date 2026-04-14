@@ -279,7 +279,7 @@ func VolumePVForASM(
 			Labels:    labels,
 		},
 		Spec: corev1.PersistentVolumeSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			VolumeMode:  &volumeBlock,
 			Capacity: corev1.ResourceList{
 				corev1.ResourceStorage: resource.MustParse(size),
@@ -312,7 +312,7 @@ func VolumePVCForASM(
 			Labels:    buildLabelsForAsmPv(instance, diskName),
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			VolumeMode:  &volumeBlock,
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{

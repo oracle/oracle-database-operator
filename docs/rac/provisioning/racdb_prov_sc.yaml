@@ -1,0 +1,131 @@
+---
+# Sample scenario:
+# StorageClass-backed ASM disks + PVC-based software locations
+# Reference guide:
+# ./provisioning_oracle_rac_storageclass_pvc_softwares.md
+#
+# This sample uses:
+# - dynamic ASM PVC creation via asmDiskGroupDetails[].storageClass
+# - a software home PVC sized by swLocStorageSizeInGb
+# - a staged software PVC mounted from configParams.swStagePvc
+#
+# API version of the RacDatabase Custom Resource
+apiVersion: database.oracle.com/v4
+
+# Resource type being created
+kind: RacDatabase
+
+# Metadata section to define the resource's name and namespace
+metadata:
+  name: racdbprov-sample                                                   # Name assigned to this RAC database resource
+  namespace: rac                                                           # Namespace where the resource will be created
+
+# Specification of the RAC Database custom resource
+spec:
+  # RAC instance placement and network configuration
+  instanceDetails:
+    nodeCount: 1                                                           # Number of RAC nodes to provision in this sample
+    racNodeName: racnode                                                   # Prefix for RAC node hostnames
+
+    # Private network interface configuration
+    privateIPDetails:
+      - name: macvlan-conf1
+        interface: ens1
+      - name: macvlan-conf2
+        interface: ens2
+
+    # Worker node label used to place the RAC pod
+    workerNodeSelector:
+      raccluster: raccluster01
+
+  # Optional environment variables to bypass GI/DB prerequisite checks
+  envVars:
+    - name: IGNORE_CRS_PREREQS
+      value: "true"
+    - name: IGNORE_DB_PREREQS
+      value: "true"
+
+  # Size of the PVC used for the software home mounted inside the RAC pod
+  swLocStorageSizeInGb: 300
+
+  # ASM disk group definition. The storage class dynamically provisions the backing volumes.
+  asmDiskGroupDetails:
+    - name: DATA                                                           # Name of the ASM disk group
+      redundancy: EXTERNAL                                                 # ASM redundancy level
+      type: CRSDG                                                          # Disk group type used during provisioning
+      disks:
+        - /dev/asm-disk1
+        - /dev/asm-disk2
+      asmStorageSizeInGb: 50                                               # Size of each ASM-backed persistent volume
+      storageClass: "oci-bv"                                               # StorageClass used to create the ASM-backed persistent volumes
+
+  # Secret containing the SSH key pair used during node configuration
+  sshKeySecret:
+    name: ssh-key-secret                                                   # Secret name
+    privKeySecretName: ssh-privkey                                         # Private key entry in the secret
+    pubKeySecretName: ssh-pubkey                                           # Public key entry in the secret
+
+  # Secret containing the SYS/SYSTEM password
+  dbSecret:
+    name: db-user-pass                                                     # Secret name
+    key: dbpwd                                                            # Key inside the secret that stores the database password
+
+  # Secret containing the TDE wallet password
+  tdeWalletSecret:
+    name: tde-user-pass                                                    # Secret name
+    key: tdepwd                                                           # Key inside the secret that stores the TDE password
+
+  # Container image used for the RAC pod
+  image: phx.ocir.io/intsanjaysingh/oracle/database-rac:19.3.0-slim
+  imagePullPolicy: Always
+
+  # Optional service account required in some Kubernetes environments
+  serviceAccountName: rac-prov-sa
+
+  # SCAN service configuration
+  scanSvcName: racnode-scan
+  scanSvcTargetPort: 31521
+
+  # Database service exposed after provisioning
+  serviceDetails:
+    name: soepdb                                                           # Name of the database service (PDB service)
+
+  # Resource requests and limits for the RAC pod
+  resources:
+    requests:
+      cpu: "2"                                                             # Minimum CPU required
+      memory: "16Gi"                                                       # Minimum memory required
+      # hugepages-2Mi: "14Gi"
+    limits:
+      cpu: "2"                                                             # Maximum CPU allowed
+      memory: "16Gi"                                                       # Maximum memory allowed
+      # hugepages-2Mi: "14Gi"
+
+  # Kernel parameters required by the RAC pod
+  securityContext:
+    sysctls:
+      - name: kernel.shmall
+        value: "2097152"
+      - name: kernel.sem
+        value: "250 32000 100 128"
+      - name: kernel.shmmax
+        value: "8589934592"
+      - name: kernel.shmmni
+        value: "4096"
+
+  # Oracle Grid Infrastructure and Oracle Database configuration
+  configParams:
+    sgaSize: "3Gi"                                                         # SGA size configured for the database
+    pgaSize: "1Gi"                                                         # PGA size configured for the database
+    processes: 2000                                                        # Oracle process limit
+    cpuCount: 4                                                            # Number of CPUs exposed to Oracle
+    gridHome: "/u01/app/19c/grid"                                          # Oracle Grid home inside the pod
+    gridBase: "/u01/app/grid"                                              # Oracle Grid base inside the pod
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"                         # Oracle Database home inside the pod
+    dbBase: "/u01/app/oracle"                                              # Oracle base inside the pod
+    inventory: "/u01/app/oraInventory"                                     # Oracle inventory location
+    gridSwZipFile: "grid_home.zip"                                         # Grid Infrastructure software zip present in the staged software location
+    dbSwZipFile: "db_home.zip"                                             # Database software zip present in the staged software location
+    dbName: "PORCLCDB"                                                     # Database name to create
+    swStagePvc: pv-stage-vol-claim                                         # Existing PVC that contains the staged Grid and DB software zip files
+    swStagePvcMountLocation: "/stage/software/19c/1928GoldImage"           # Mount path inside the pod for the staged software PVC

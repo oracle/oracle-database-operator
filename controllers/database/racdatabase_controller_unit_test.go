@@ -4,12 +4,15 @@ package controllers
 import (
 	"context"
 	"testing"
+	"time"
 
 	racdb "github.com/oracle/oracle-database-operator/apis/database/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -110,6 +113,147 @@ func TestHasPendingRacPods(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Fatalf("hasPendingRacPods = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCreateDaemonSet_SkipsWhenAsmUsesStorageClass(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add appsv1 scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	if err := racdb.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add racdb scheme: %v", err)
+	}
+
+	rac := &racdb.RacDatabase{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "testrac",
+			Namespace: "rac",
+		},
+		Spec: racdb.RacDatabaseSpec{
+			Image: "example.com/rac:19c",
+			AsmStorageDetails: []racdb.AsmDiskGroupDetails{
+				{
+					Name:               "DATA",
+					Type:               racdb.DbDataDiskDg,
+					Disks:              []string{"data1", "data2"},
+					StorageClass:       "oci-bv",
+					AsmStorageSizeInGb: 50,
+				},
+			},
+		},
+	}
+
+	reconciler := &RacDatabaseReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(rac).Build(),
+		Scheme: scheme,
+	}
+
+	if err := reconciler.createDaemonSet(rac, context.Background()); err != nil {
+		t.Fatalf("createDaemonSet returned error: %v", err)
+	}
+
+	daemonSet := &appsv1.DaemonSet{}
+	err := reconciler.Client.Get(context.Background(), types.NamespacedName{
+		Name:      "disk-check-daemonset",
+		Namespace: rac.Namespace,
+	}, daemonSet)
+	if !apierrors.IsNotFound(err) {
+		t.Fatalf("expected no daemonset to be created for storageClass-backed ASM, got err=%v", err)
+	}
+}
+
+func TestIsRacDatabaseDeleting(t *testing.T) {
+	t.Parallel()
+
+	now := metav1.NewTime(time.Now())
+
+	tests := []struct {
+		name   string
+		input  *racdb.RacDatabase
+		stored *racdb.RacDatabase
+		want   bool
+	}{
+		{
+			name: "input already marked for deletion",
+			input: &racdb.RacDatabase{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "testrac",
+					Namespace:         "rac",
+					DeletionTimestamp: &now,
+				},
+			},
+			stored: &racdb.RacDatabase{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "testrac",
+					Namespace:  "rac",
+					Finalizers: []string{racDatabaseFinalizer},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "live object marked for deletion",
+			input: &racdb.RacDatabase{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testrac",
+					Namespace: "rac",
+				},
+			},
+			stored: &racdb.RacDatabase{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "testrac",
+					Namespace:         "rac",
+					DeletionTimestamp: &now,
+					Finalizers:        []string{racDatabaseFinalizer},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "object not deleting",
+			input: &racdb.RacDatabase{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testrac",
+					Namespace: "rac",
+				},
+			},
+			stored: &racdb.RacDatabase{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testrac",
+					Namespace: "rac",
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			scheme := runtime.NewScheme()
+			if err := racdb.AddToScheme(scheme); err != nil {
+				t.Fatalf("failed to add racdb scheme: %v", err)
+			}
+
+			reconciler := &RacDatabaseReconciler{
+				Client: fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(tt.stored).Build(),
+			}
+
+			got, err := isRacDatabaseDeleting(context.Background(), reconciler, tt.input)
+			if err != nil {
+				t.Fatalf("isRacDatabaseDeleting returned error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("isRacDatabaseDeleting = %v, want %v", got, tt.want)
 			}
 		})
 	}

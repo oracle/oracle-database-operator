@@ -93,3 +93,61 @@ func TestPodListValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestVolumePVCForASMUsesReadWriteOnceForStorageClass(t *testing.T) {
+	t.Parallel()
+
+	instance := &racdb.RacDatabase{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "racdb",
+			Namespace: "rac",
+		},
+		Spec: racdb.RacDatabaseSpec{
+			AsmStorageDetails: []racdb.AsmDiskGroupDetails{
+				{
+					Name:               "DATA",
+					Type:               racdb.CrsAsmDiskDg,
+					Disks:              []string{"/dev/asm-disk1"},
+					StorageClass:       "oci-bv",
+					AsmStorageSizeInGb: 50,
+				},
+			},
+		},
+	}
+
+	pvc := VolumePVCForASM(instance, 0, 0, "/dev/asm-disk1", "DATA", "50Gi")
+	if len(pvc.Spec.AccessModes) != 1 || pvc.Spec.AccessModes[0] != corev1.ReadWriteOnce {
+		t.Fatalf("expected storageClass-backed ASM PVC accessModes=[ReadWriteOnce], got %v", pvc.Spec.AccessModes)
+	}
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != "oci-bv" {
+		t.Fatalf("expected storageClassName=oci-bv, got %v", pvc.Spec.StorageClassName)
+	}
+}
+
+func TestVolumePVCForASMUsesReadWriteOnceForRawDisks(t *testing.T) {
+	t.Parallel()
+
+	instance := &racdb.RacDatabase{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "racdb",
+			Namespace: "rac",
+		},
+		Spec: racdb.RacDatabaseSpec{
+			AsmStorageDetails: []racdb.AsmDiskGroupDetails{
+				{
+					Name:  "DATA",
+					Type:  racdb.CrsAsmDiskDg,
+					Disks: []string{"/dev/asm-disk1"},
+				},
+			},
+		},
+	}
+
+	pvc := VolumePVCForASM(instance, 0, 0, "/dev/asm-disk1", "DATA", "50Gi")
+	if len(pvc.Spec.AccessModes) != 1 || pvc.Spec.AccessModes[0] != corev1.ReadWriteOnce {
+		t.Fatalf("expected raw ASM PVC accessModes=[ReadWriteOnce], got %v", pvc.Spec.AccessModes)
+	}
+	if pvc.Spec.Selector == nil {
+		t.Fatalf("expected selector for raw ASM PVC")
+	}
+}

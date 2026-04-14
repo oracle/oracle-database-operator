@@ -1,0 +1,87 @@
+---
+# Sample scenario:
+# PVC-based software locations + Base64-encoded DB secret files
+# Reference guide:
+# ./provisioning_oracle_rac_storageclass_pvc_softwares.md
+#
+# This sample uses:
+# - storage-class-backed ASM disks using asmDiskGroupDetails[].storageClass
+# - a PVC-backed software home sized by swLocStorageSizeInGb
+# - encoded DB secret files referenced by dbSecret.keyFileName/pwdFileName
+# - a staged software PVC mounted from configParams.swStagePvc
+#
+---
+apiVersion: database.oracle.com/v4
+kind: RacDatabase
+metadata:
+  name: racdbprov-sample
+  namespace: rac
+spec:
+  instanceDetails:
+    nodeCount: 1
+    racNodeName: racnode
+    privateIPDetails:
+      - name: macvlan-conf1
+        interface: ens1
+      - name: macvlan-conf2
+        interface: ens2
+    workerNodeSelector:
+      raccluster: raccluster01
+  swLocStorageSizeInGb: 300
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/asm-disk1
+        - /dev/asm-disk2
+      asmStorageSizeInGb: 50
+      storageClass: "oci-bv"
+  sshKeySecret:
+    name: ssh-key-secret
+    privKeySecretName: ssh-privkey
+    pubKeySecretName: ssh-pubkey
+  dbSecret:
+    name: db-user-pass-pkutl
+    keyFileName: key.pem
+    pwdFileName: pwdfile.enc
+  image: phx.ocir.io/intsanjaysingh/oracle/database-rac:19.3.0-slim
+  imagePullPolicy: Always
+  scanSvcName: racnode-scan
+  scanSvcTargetPort: 31521
+  serviceDetails:
+    name: soepdb
+  resources:
+    requests:
+      cpu: "2"
+      memory: "16Gi"
+      # hugepages-2Mi: "14Gi"
+    limits:
+      cpu: "2"
+      memory: "16Gi"
+      # hugepages-2Mi: "14Gi"
+  securityContext:
+    sysctls:
+      - name: kernel.shmall
+        value: "2097152"
+      - name: kernel.sem
+        value: "250 32000 100 128"
+      - name: kernel.shmmax
+        value: "8589934592"
+      - name: kernel.shmmni
+        value: "4096"
+  configParams:
+    sgaSize: "3Gi"
+    pgaSize: "1Gi"
+    processes: 2000
+    cpuCount: 4
+    gridHome: "/u01/app/19c/grid"
+    gridBase: "/u01/app/grid"
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"
+    dbBase: "/u01/app/oracle"
+    inventory: "/u01/app/oraInventory"
+    gridSwZipFile: "grid_home.zip"
+    dbSwZipFile: "db_home.zip"
+    dbName: "PORCLCDB"
+    swStagePvc: pv-stage-vol-claim
+    swStagePvcMountLocation: "/stage/software/19c/1930-new"

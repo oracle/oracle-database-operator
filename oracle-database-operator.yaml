@@ -12535,6 +12535,17 @@ spec:
             type: object
           spec:
             properties:
+              commonMetadata:
+                properties:
+                  additionalAnnotations:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  additionalLabels:
+                    additionalProperties:
+                      type: string
+                    type: object
+                type: object
               encPrivKey:
                 properties:
                   passwordKey:
@@ -12626,6 +12637,9 @@ spec:
                   feature.grahpql.max.nesting.depth:
                     format: int32
                     type: integer
+                  feature.graphql.max.nesting.depth:
+                    format: int32
+                    type: integer
                   icap.port:
                     format: int32
                     type: integer
@@ -12636,9 +12650,23 @@ spec:
                     type: string
                   instance.api.enabled:
                     type: boolean
+                  instanceAPIAdminSecret:
+                    properties:
+                      passwordKey:
+                        default: password
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - secretName
+                    type: object
+                  instanceAPIAdminUser:
+                    default: instance_api_admin
+                    type: string
                   log.procedure:
                     type: boolean
                   mongo.enabled:
+                    default: false
                     type: boolean
                   mongo.idle.timeout:
                     type: string
@@ -12691,6 +12719,7 @@ spec:
                     type: string
                 type: object
               image:
+                default: container-registry.oracle.com/database/ords:latest
                 type: string
               imagePullPolicy:
                 default: IfNotPresent
@@ -12701,6 +12730,22 @@ spec:
                 type: string
               imagePullSecrets:
                 type: string
+              jdkJavaOptions:
+                type: string
+              podTemplate:
+                properties:
+                  metadata:
+                    properties:
+                      additionalAnnotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      additionalLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
               poolSettings:
                 items:
                   properties:
@@ -12847,6 +12892,7 @@ spec:
                       - proxied
                       type: string
                     poolName:
+                      pattern: ^[a-z0-9._-]+$
                       type: string
                     procedure.preProcess:
                       type: string
@@ -12903,8 +12949,69 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              resources:
+                properties:
+                  claims:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        request:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                type: object
+              service:
+                properties:
+                  metadata:
+                    properties:
+                      additionalAnnotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      additionalLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
               serviceAccountName:
                 type: string
+              workload:
+                properties:
+                  metadata:
+                    properties:
+                      additionalAnnotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      additionalLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
               workloadType:
                 default: Deployment
                 enum:
@@ -12962,6 +13069,9 @@ spec:
               mongoPort:
                 format: int32
                 type: integer
+              observedGeneration:
+                format: int64
+                type: integer
               ordsInstalled:
                 type: boolean
               ordsVersion:
@@ -12972,8 +13082,6 @@ spec:
                 type: string
               workloadType:
                 type: string
-            required:
-            - restartRequired
             type: object
         type: object
     served: true
@@ -20047,7 +20155,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -20063,8 +20171,8 @@ spec:
         - /manager
         env:
         - name: WATCH_NAMESPACE
-          value: "oracle-database-operator-system,default"
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sidb-operator-sa
+          value: ""
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
         imagePullPolicy: Always
         name: manager
         ports:

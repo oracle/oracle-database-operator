@@ -52,3 +52,31 @@ func TestHasAnyRawAsmDiskGroup(t *testing.T) {
 		t.Fatalf("expected mixed spec to report raw disk groups present")
 	}
 }
+
+func TestHasAnyRawAsmDiskGroup_IgnoresDefaultedAliasGroupsWithoutDisks(t *testing.T) {
+	t.Parallel()
+
+	spec := &racdb.RacDatabaseSpec{
+		AsmStorageDetails: []racdb.AsmDiskGroupDetails{
+			{
+				Name:               "DATA",
+				Type:               racdb.CrsAsmDiskDg,
+				Disks:              []string{"asm-disk1", "asm-disk2"},
+				StorageClass:       "oci-bv",
+				AsmStorageSizeInGb: 50,
+			},
+			{
+				Name: "+DATA",
+				Type: racdb.DbDataDiskDg,
+			},
+			{
+				Name: "+DATA",
+				Type: racdb.DbRecoveryDiskDg,
+			},
+		},
+	}
+
+	if hasAnyRawAsmDiskGroup(spec) {
+		t.Fatalf("expected empty defaulted alias groups to be ignored for raw disk detection")
+	}
+}
