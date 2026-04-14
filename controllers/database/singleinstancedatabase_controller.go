@@ -4322,6 +4322,28 @@ func (r *SingleInstanceDatabaseReconciler) publishDataguardClientWalletSecret(
 	return err
 }
 
+func (r *SingleInstanceDatabaseReconciler) reconcileDataguardClientWalletSecret(
+	m *dbapi.SingleInstanceDatabase,
+	readyPod corev1.Pod,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+	updateErr := r.updateClientWallet(m, readyPod, ctx, req)
+	if updateErr != nil {
+		r.Log.Error(updateErr, "Error in updating tnsnames.ora in clientWallet...")
+	}
+	if getTcpsClientWalletSecretOverride(m) != "" {
+		if err := r.deleteGeneratedDataguardClientWalletSecret(m, ctx); err != nil {
+			return err
+		}
+		return updateErr
+	}
+	if err := r.publishDataguardClientWalletSecret(m, readyPod, ctx, req); err != nil {
+		return err
+	}
+	return updateErr
+}
+
 func (r *SingleInstanceDatabaseReconciler) deleteGeneratedDataguardClientWalletSecret(m *dbapi.SingleInstanceDatabase, ctx context.Context) error {
 	if m == nil {
 		return nil
@@ -4432,6 +4454,28 @@ func hasTCPSListenerEndpointInPod(r *SingleInstanceDatabaseReconciler, pod corev
 	return strings.Contains(out, "PRESENT"), out, nil
 }
 
+func podHasDesiredTCPSTLSSecret(pod corev1.Pod, desiredSecret string) bool {
+	if strings.TrimSpace(desiredSecret) == "" {
+		return true
+	}
+	for _, volume := range pod.Spec.Volumes {
+		if volume.Name != "tls-secret-vol" || volume.Secret == nil {
+			continue
+		}
+		return strings.TrimSpace(volume.Secret.SecretName) == strings.TrimSpace(desiredSecret)
+	}
+	return false
+}
+
+func isIgnorableTCPSHelperWarning(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "awk: warning: escape sequence `\\(' treated as plain `('") &&
+		strings.Contains(msg, "awk: warning: escape sequence `\\)' treated as plain `)'")
+}
+
 // #############################################################################
 //
 //	Configuring TCPS
@@ -4443,6 +4487,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 	tcpsEnabled := getTcpsEnabled(m)
 	tcpsTLSSecret := getTcpsTLSSecret(m)
 	tcpsCertRenewInterval := getTcpsCertRenewInterval(m)
+	tcpsTLSSecretChanged := tcpsTLSSecret != m.Status.TcpsTlsSecret
 	listenerHasTCPS := false
 	listenerProbeOutput := ""
 	if tcpsEnabled && m.Status.IsTcpsEnabled {
@@ -4462,7 +4507,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			(m.Status.IsTcpsEnabled && !listenerHasTCPS) || // listener drifted after DG/listener rewrites
 			(tcpsTLSSecret != "" && m.Status.TcpsTlsSecret == "") || // TCPS Secret is added in spec
 			(tcpsTLSSecret == "" && m.Status.TcpsTlsSecret != "") || // TCPS Secret is removed in spec
-			(tcpsTLSSecret != "" && m.Status.TcpsTlsSecret != "" && tcpsTLSSecret != m.Status.TcpsTlsSecret)) { //TCPS secret is changed
+			(tcpsTLSSecret != "" && m.Status.TcpsTlsSecret != "" && tcpsTLSSecretChanged)) { //TCPS secret is changed
 
 		// Set status to Updating, except when an error has been thrown from configTCPS script
 		if m.Status.Status != dbcommons.StatusError {
@@ -4490,14 +4535,19 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 				return requeueY, nil
 			}
 
-			if (m.Status.TcpsTlsSecret != "") || // case when TCPS Secret is changed
-				(!strings.Contains(out, tcpsCertsLocation)) { // if mount is not there in pod
+			needsPodRecycleForSecret := tcpsTLSSecretChanged || !podHasDesiredTCPSTLSSecret(readyPod, tcpsTLSSecret) || !strings.Contains(out, tcpsCertsLocation)
+			if needsPodRecycleForSecret {
+				r.Log.Info("Recreating pod so desired TCPS TLS secret is mounted before enabling TCPS",
+					"desiredSecret", tcpsTLSSecret,
+					"statusSecret", m.Status.TcpsTlsSecret,
+					"podHasDesiredSecret", podHasDesiredTCPSTLSSecret(readyPod, tcpsTLSSecret),
+					"mountPresent", strings.Contains(out, tcpsCertsLocation))
 				// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
 				result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
 				if result.Requeue {
 					return result, err
 				}
-				m.Status.TcpsTlsSecret = "" // to avoid reconciled pod deletions, in case of TCPS secret change and it fails
+				return requeueY, err
 			}
 		}
 
@@ -4505,16 +4555,31 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 			ctx, req, false, "bash", "-c", TcpsCommand)
 		if err != nil {
-			r.Log.Error(err, err.Error())
-			eventMsg = "Error encountered in enabling TCPS!"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			m.Status.Status = dbcommons.StatusError
-			if updateErr := r.Status().Update(ctx, m); updateErr != nil {
-				r.Log.Error(updateErr, "failed to update status after TCPS enable error")
+			if isIgnorableTCPSHelperWarning(err) {
+				r.Log.Info("Ignoring known TCPS helper awk warning emitted on stderr", "warning", err.Error())
+			} else {
+				r.Log.Error(err, err.Error())
+				eventMsg = "Error encountered in enabling TCPS!"
+				r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+				m.Status.Status = dbcommons.StatusError
+				if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+					r.Log.Error(updateErr, "failed to update status after TCPS enable error")
+				}
+				return requeueY, nil
 			}
-			return requeueY, nil
 		}
 		r.Log.Info("enableTcps Output : \n" + out)
+
+		listenerHasTCPS, listenerProbeOutput, err = hasTCPSListenerEndpointInPod(r, readyPod, ctx, req)
+		if err != nil {
+			r.Log.Error(err, "Failed to verify TCPS listener endpoint after enabling TCPS")
+			return requeueY, nil
+		}
+		if !listenerHasTCPS {
+			r.Log.Info("TCPS enable completed but listener endpoint is not yet visible; retrying on next reconcile", "probeOutput", listenerProbeOutput)
+			return requeueY, nil
+		}
+
 		// Updating the Status and publishing the event
 		m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
 		m.Status.IsTcpsEnabled = true
@@ -4539,23 +4604,10 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
 		phaseCtx.futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 
-		// update clientWallet
-		err = r.updateClientWallet(m, readyPod, ctx, req)
+		err = r.reconcileDataguardClientWalletSecret(m, readyPod, ctx, req)
 		if err != nil {
-			r.Log.Error(err, "Error in updating tnsnames.ora in clientWallet...")
+			r.Log.Error(err, "Error reconciling Dataguard client wallet secret")
 			return requeueY, nil
-		}
-		if getTcpsClientWalletSecretOverride(m) != "" {
-			if err := r.deleteGeneratedDataguardClientWalletSecret(m, ctx); err != nil {
-				r.Log.Error(err, "Error deleting generated Dataguard client wallet secret")
-				return requeueY, nil
-			}
-		} else {
-			err = r.publishDataguardClientWalletSecret(m, readyPod, ctx, req)
-			if err != nil {
-				r.Log.Error(err, "Error publishing Dataguard client wallet secret")
-				return requeueY, nil
-			}
 		}
 	} else if !tcpsEnabled && m.Status.IsTcpsEnabled {
 		// Disable TCPS
@@ -4570,8 +4622,12 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 			ctx, req, false, "bash", "-c", dbcommons.DisableTcpsCMD)
 		if err != nil {
-			r.Log.Error(err, err.Error())
-			return requeueY, nil
+			if isIgnorableTCPSHelperWarning(err) {
+				r.Log.Info("Ignoring known TCPS helper awk warning emitted on stderr during disable", "warning", err.Error())
+			} else {
+				r.Log.Error(err, err.Error())
+				return requeueY, nil
+			}
 		}
 		r.Log.Info("disable TCPS Output : \n" + out)
 		// Updating the Status and publishing the event
@@ -4606,8 +4662,12 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 				ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.EnableTcpsCMD))
 			if err != nil {
-				r.Log.Error(err, err.Error())
-				return requeueY, nil
+				if isIgnorableTCPSHelperWarning(err) {
+					r.Log.Info("Ignoring known TCPS helper awk warning emitted on stderr during cert renewal", "warning", err.Error())
+				} else {
+					r.Log.Error(err, err.Error())
+					return requeueY, nil
+				}
 			}
 			r.Log.Info("Cert Renewal Output : \n" + out)
 			// Updating the Status and publishing the event
@@ -4632,43 +4692,17 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			m.Status.CertRenewInterval = tcpsCertRenewInterval
 		}
 		m.Status.ClientWalletSecret = strings.TrimSpace(getDataguardClientWalletSecretName(m))
-		// update clientWallet
-		err := r.updateClientWallet(m, readyPod, ctx, req)
+		err := r.reconcileDataguardClientWalletSecret(m, readyPod, ctx, req)
 		if err != nil {
-			r.Log.Error(err, "Error in updating tnsnames.ora clientWallet...")
+			r.Log.Error(err, "Error reconciling Dataguard client wallet secret")
 			return requeueY, nil
-		}
-		if getTcpsClientWalletSecretOverride(m) != "" {
-			if err := r.deleteGeneratedDataguardClientWalletSecret(m, ctx); err != nil {
-				r.Log.Error(err, "Error deleting generated Dataguard client wallet secret")
-				return requeueY, nil
-			}
-		} else {
-			err = r.publishDataguardClientWalletSecret(m, readyPod, ctx, req)
-			if err != nil {
-				r.Log.Error(err, "Error publishing Dataguard client wallet secret")
-				return requeueY, nil
-			}
 		}
 	} else if tcpsEnabled && m.Status.IsTcpsEnabled && tcpsCertRenewInterval == "" {
 		m.Status.ClientWalletSecret = strings.TrimSpace(getDataguardClientWalletSecretName(m))
-		// update clientWallet
-		err := r.updateClientWallet(m, readyPod, ctx, req)
+		err := r.reconcileDataguardClientWalletSecret(m, readyPod, ctx, req)
 		if err != nil {
-			r.Log.Error(err, "Error in updating tnsnames.ora clientWallet...")
+			r.Log.Error(err, "Error reconciling Dataguard client wallet secret")
 			return requeueY, nil
-		}
-		if getTcpsClientWalletSecretOverride(m) != "" {
-			if err := r.deleteGeneratedDataguardClientWalletSecret(m, ctx); err != nil {
-				r.Log.Error(err, "Error deleting generated Dataguard client wallet secret")
-				return requeueY, nil
-			}
-		} else {
-			err = r.publishDataguardClientWalletSecret(m, readyPod, ctx, req)
-			if err != nil {
-				r.Log.Error(err, "Error publishing Dataguard client wallet secret")
-				return requeueY, nil
-			}
 		}
 	}
 	return requeueN, nil
