@@ -68,9 +68,9 @@ Deploy Oracle RAC Database YAML files using Kubernetes Cluster on your Oracle Cl
 [10. Deleting ASM Disks - Delete ASM Disks from an existing Oracle RAC Database](./provisioning/delete_asm_disks_from_an_existing_rac_database.md)  
 [11. Provisioning an Oracle RAC Database with RU Patch](./provisioning/provisioning_oracle_rac_db_rupatch.md)  
 [12. Provisioning an Oracle RAC Database with RU Patch and One Offs](./provisioning/provisioning_oracle_rac_db_rupatch_oneoff.md)  
-[13. Provisioning an Oracle RAC Database using a Response File](./provisioning/provisioning_oracle_rac_db_using_response_file.md)  
-[14. Provisioning an Oracle RAC Database with Huge Page allocation](./provisioning/provisioning_oracle_rac_db_hugepages.md) 
-[15. Provisioning an Oracle RAC Database with PVC-based Software](./provisioning/provisioning_oracle_rac_pvc.md)    
+[13. Provisioning an Oracle RAC Database using a Response File](./provisioning/provisioning_oracle_rac_db_using_response_file.md)    
+[14. Provisioning an Oracle RAC Database with Huge Page allocation](./provisioning/provisioning_oracle_rac_db_hugepages.md)  
+[15. Provisioning an Oracle RAC Database with PVC-based Software](./provisioning/provisioning_oracle_rac_pvc.md)  
 [16. Oracle RAC with Base64-encoded Secrets](./provisioning/provisioning_oracle_rac_encoded_secrets.md)  
 [17. Provisioning an Oracle RAC Database with Storage Class-backed ASM Storage and PVC-based Software](./provisioning/provisioning_oracle_rac_storageclass_pvc_softwares.md)  
 
