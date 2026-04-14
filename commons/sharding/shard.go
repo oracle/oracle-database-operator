@@ -377,7 +377,7 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Volume {
 	var result []corev1.Volume
 	dshmSizeLimit := resource.MustParse("4Gi")
-	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.DisableDefaultLogVolumeClaims, OraShardSpex.AdditionalPVCs)
+	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.AdditionalPVCs)
 	result = []corev1.Volume{
 		{
 			Name: OraShardSpex.Name + "secretmap-vol3",
@@ -633,7 +633,7 @@ func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraSh
 // buildVolumeMountSpecForShard returns volume mounts for shard containers.
 func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.VolumeMount {
 	result := make([]corev1.VolumeMount, 0, 8)
-	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.DisableDefaultLogVolumeClaims, OraShardSpex.AdditionalPVCs)
+	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.AdditionalPVCs)
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: getDbSecretMountPath(instance), ReadOnly: true})
 	for _, pvcMount := range pvcMounts {
 		result = append(result, corev1.VolumeMount{Name: pvcMount.volumeName, MountPath: pvcMount.mountPath})
@@ -780,7 +780,7 @@ func matchShardInfoByLongestPrefix(instance *databasev4.ShardingDatabase, shardN
 
 // volumeClaimTemplatesForShard returns PVC templates when an existing PVC is not provided.
 func volumeClaimTemplatesForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.PersistentVolumeClaim {
-	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.DisableDefaultLogVolumeClaims, OraShardSpex.AdditionalPVCs)
+	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.AdditionalPVCs)
 	claims := make([]corev1.PersistentVolumeClaim, 0, len(pvcMounts))
 
 	for _, pvcMount := range pvcMounts {

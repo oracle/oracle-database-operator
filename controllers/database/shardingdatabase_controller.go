@@ -471,7 +471,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 			); err != nil {
 				return phaseResult{err: err, reason: "CatalogStatefulSetFailed", message: err.Error()}
 			}
-			if err := r.reconcilePVCExpansion(inst, oraCatalogSpec.Name, normalizedPVCResizeSpecs(oraCatalogSpec.Name, oraCatalogSpec.StorageSizeInGb, oraCatalogSpec.DisableDefaultLogVolumeClaims, oraCatalogSpec.AdditionalPVCs)); err != nil {
+			if err := r.reconcilePVCExpansion(inst, oraCatalogSpec.Name, normalizedPVCResizeSpecs(oraCatalogSpec.Name, oraCatalogSpec.StorageSizeInGb, oraCatalogSpec.AdditionalPVCs)); err != nil {
 				return phaseResult{err: err, reason: "CatalogPVCExpandFailed", message: err.Error()}
 			}
 		}
@@ -503,7 +503,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		); err != nil {
 			return phaseResult{err: err, reason: "GsmStatefulSetFailed", message: err.Error()}
 		}
-		if err := r.reconcilePVCExpansion(inst, oraGsmSpec.Name, normalizedGsmPVCResizeSpecs(oraGsmSpec.Name, oraGsmSpec.StorageSizeInGb, oraGsmSpec.DisableDefaultLogVolumeClaims, oraGsmSpec.AdditionalPVCs)); err != nil {
+		if err := r.reconcilePVCExpansion(inst, oraGsmSpec.Name, normalizedGsmPVCResizeSpecs(oraGsmSpec.Name, oraGsmSpec.StorageSizeInGb, oraGsmSpec.AdditionalPVCs)); err != nil {
 			return phaseResult{err: err, reason: "GsmPVCExpandFailed", message: err.Error()}
 		}
 	}
@@ -551,7 +551,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		); err != nil {
 			return phaseResult{err: err, reason: "ShardStatefulSetFailed", message: err.Error()}
 		}
-		if err := r.reconcilePVCExpansion(inst, oraShardSpec.Name, normalizedPVCResizeSpecs(oraShardSpec.Name, oraShardSpec.StorageSizeInGb, oraShardSpec.DisableDefaultLogVolumeClaims, oraShardSpec.AdditionalPVCs)); err != nil {
+		if err := r.reconcilePVCExpansion(inst, oraShardSpec.Name, normalizedPVCResizeSpecs(oraShardSpec.Name, oraShardSpec.StorageSizeInGb, oraShardSpec.AdditionalPVCs)); err != nil {
 			return phaseResult{err: err, reason: "ShardPVCExpandFailed", message: err.Error()}
 		}
 	}
@@ -588,31 +588,21 @@ type pvcResizeSpec struct {
 	storageSizeInGb int32
 }
 
-func normalizedPVCResizeSpecs(ownerName string, baseStorageSize int32, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
-	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, disableDefaultLogPVCs, databasev4.DefaultOraDataMountPath, databasev4.DefaultDiagMountPath, additionalPVCs)
+func normalizedPVCResizeSpecs(ownerName string, baseStorageSize int32, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
+	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, databasev4.DefaultOraDataMountPath, additionalPVCs)
 }
 
-func normalizedGsmPVCResizeSpecs(ownerName string, baseStorageSize int32, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
-	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, disableDefaultLogPVCs, databasev4.DefaultGsmDataMountPath, databasev4.DefaultGsmDiagMountPath, additionalPVCs)
+func normalizedGsmPVCResizeSpecs(ownerName string, baseStorageSize int32, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
+	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, databasev4.DefaultGsmDataMountPath, additionalPVCs)
 }
 
-func normalizedPVCResizeSpecsWithDefaults(ownerName string, baseStorageSize int32, disableDefaultLogPVCs bool, baseMountPath, diagMountPath string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
+func normalizedPVCResizeSpecsWithDefaults(ownerName string, baseStorageSize int32, baseMountPath string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
 	trimmedOwner := strings.TrimSpace(ownerName)
 	specByPath := map[string]pvcResizeSpec{
 		baseMountPath: {
 			volumeName:      trimmedOwner + "-oradata-vol4",
 			storageSizeInGb: baseStorageSize,
 		},
-	}
-	if !disableDefaultLogPVCs {
-		specByPath[diagMountPath] = pvcResizeSpec{
-			volumeName:      trimmedOwner + "-diag-vol10",
-			storageSizeInGb: databasev4.DefaultDiagSizeInGb,
-		}
-		specByPath[databasev4.DefaultGddLogMountPath] = pvcResizeSpec{
-			volumeName:      trimmedOwner + "-gdd-vol11",
-			storageSizeInGb: databasev4.DefaultGddLogSizeInGb,
-		}
 	}
 
 	for i := range additionalPVCs {
@@ -640,14 +630,6 @@ func normalizedPVCResizeSpecsWithDefaults(ownerName string, baseStorageSize int3
 	result := make([]pvcResizeSpec, 0, len(specByPath))
 	result = append(result, specByPath[baseMountPath])
 	delete(specByPath, baseMountPath)
-	if cfg, ok := specByPath[diagMountPath]; ok {
-		result = append(result, cfg)
-		delete(specByPath, diagMountPath)
-	}
-	if cfg, ok := specByPath[databasev4.DefaultGddLogMountPath]; ok {
-		result = append(result, cfg)
-		delete(specByPath, databasev4.DefaultGddLogMountPath)
-	}
 	extraPaths := make([]string, 0, len(specByPath))
 	for mountPath := range specByPath {
 		extraPaths = append(extraPaths, mountPath)

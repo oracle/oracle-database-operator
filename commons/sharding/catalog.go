@@ -211,7 +211,7 @@ func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpe
 func buildVolumeSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.Volume {
 	var result []corev1.Volume
 	dshmSizeLimit := resource.MustParse("4Gi")
-	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.DisableDefaultLogVolumeClaims, OraCatalogSpex.AdditionalPVCs)
+	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.AdditionalPVCs)
 	result = []corev1.Volume{
 		{
 			Name: OraCatalogSpex.Name + "secretmap-vol3",
@@ -376,7 +376,7 @@ func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, Ora
 
 func buildVolumeMountSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.VolumeMount {
 	result := make([]corev1.VolumeMount, 0, 8)
-	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.DisableDefaultLogVolumeClaims, OraCatalogSpex.AdditionalPVCs)
+	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.AdditionalPVCs)
 	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "secretmap-vol3", MountPath: getDbSecretMountPath(instance), ReadOnly: true})
 	for _, pvcMount := range pvcMounts {
 		result = append(result, corev1.VolumeMount{Name: pvcMount.volumeName, MountPath: pvcMount.mountPath})
@@ -406,7 +406,7 @@ func buildVolumeMountSpecForCatalog(instance *databasev4.ShardingDatabase, OraCa
 }
 
 func volumeClaimTemplatesForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.PersistentVolumeClaim {
-	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.DisableDefaultLogVolumeClaims, OraCatalogSpex.AdditionalPVCs)
+	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.AdditionalPVCs)
 	claims := make([]corev1.PersistentVolumeClaim, 0, len(pvcMounts)+1)
 	for _, pvcMount := range pvcMounts {
 		if strings.TrimSpace(pvcMount.pvcName) != "" {

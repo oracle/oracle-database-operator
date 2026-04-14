@@ -96,8 +96,6 @@ const (
 	TmpLoc                    = "/var/tmp"
 	connectFailureMaxTries    = 5
 	errorDialingBackendEOF    = "error dialing backend: EOF"
-	diagVolumeSuffix          = "-diag-vol10"
-	gddVolumeSuffix           = "-gdd-vol11"
 )
 
 var nonDigitRegex = regexp.MustCompile("[^0-9]+")
@@ -124,15 +122,15 @@ func extraVolumeName(ownerName, mountPath string) string {
 	return strings.TrimSpace(ownerName) + "-extra-vol-" + hashStr[:8]
 }
 
-func normalizePVCMountConfigs(ownerName string, baseStorageSize int32, baseStorageClass string, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcMountConfig {
-	return normalizePVCMountConfigsWithDefaults(ownerName, baseStorageSize, baseStorageClass, disableDefaultLogPVCs, databasev4.DefaultOraDataMountPath, databasev4.DefaultDiagMountPath, additionalPVCs)
+func normalizePVCMountConfigs(ownerName string, baseStorageSize int32, baseStorageClass string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcMountConfig {
+	return normalizePVCMountConfigsWithDefaults(ownerName, baseStorageSize, baseStorageClass, databasev4.DefaultOraDataMountPath, additionalPVCs)
 }
 
-func normalizeGsmPVCMountConfigs(ownerName string, baseStorageSize int32, baseStorageClass string, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcMountConfig {
-	return normalizePVCMountConfigsWithDefaults(ownerName, baseStorageSize, baseStorageClass, disableDefaultLogPVCs, databasev4.DefaultGsmDataMountPath, databasev4.DefaultGsmDiagMountPath, additionalPVCs)
+func normalizeGsmPVCMountConfigs(ownerName string, baseStorageSize int32, baseStorageClass string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcMountConfig {
+	return normalizePVCMountConfigsWithDefaults(ownerName, baseStorageSize, baseStorageClass, databasev4.DefaultGsmDataMountPath, additionalPVCs)
 }
 
-func normalizePVCMountConfigsWithDefaults(ownerName string, baseStorageSize int32, baseStorageClass string, disableDefaultLogPVCs bool, baseMountPath, diagMountPath string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcMountConfig {
+func normalizePVCMountConfigsWithDefaults(ownerName string, baseStorageSize int32, baseStorageClass string, baseMountPath string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcMountConfig {
 	trimmedOwner := strings.TrimSpace(ownerName)
 	configByPath := map[string]pvcMountConfig{
 		baseMountPath: {
@@ -141,20 +139,6 @@ func normalizePVCMountConfigsWithDefaults(ownerName string, baseStorageSize int3
 			storageClass:    strings.TrimSpace(baseStorageClass),
 			volumeName:      trimmedOwner + "-oradata-vol4",
 		},
-	}
-	if !disableDefaultLogPVCs {
-		configByPath[diagMountPath] = pvcMountConfig{
-			mountPath:       diagMountPath,
-			storageSizeInGb: databasev4.DefaultDiagSizeInGb,
-			storageClass:    strings.TrimSpace(baseStorageClass),
-			volumeName:      trimmedOwner + diagVolumeSuffix,
-		}
-		configByPath[databasev4.DefaultGddLogMountPath] = pvcMountConfig{
-			mountPath:       databasev4.DefaultGddLogMountPath,
-			storageSizeInGb: databasev4.DefaultGddLogSizeInGb,
-			storageClass:    strings.TrimSpace(baseStorageClass),
-			volumeName:      trimmedOwner + gddVolumeSuffix,
-		}
 	}
 
 	for i := range additionalPVCs {
@@ -185,16 +169,10 @@ func normalizePVCMountConfigsWithDefaults(ownerName string, baseStorageSize int3
 
 	result := make([]pvcMountConfig, 0, len(configByPath))
 	result = append(result, configByPath[baseMountPath])
-	if cfg, ok := configByPath[diagMountPath]; ok {
-		result = append(result, cfg)
-	}
-	if cfg, ok := configByPath[databasev4.DefaultGddLogMountPath]; ok {
-		result = append(result, cfg)
-	}
 
 	extraPaths := make([]string, 0, len(configByPath))
 	for mountPath := range configByPath {
-		if mountPath == baseMountPath || mountPath == diagMountPath || mountPath == databasev4.DefaultGddLogMountPath {
+		if mountPath == baseMountPath {
 			continue
 		}
 		extraPaths = append(extraPaths, mountPath)

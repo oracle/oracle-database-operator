@@ -327,7 +327,7 @@ func isInlineGsmDefaultsEntry(g GsmSpec) bool {
 		strings.TrimSpace(g.Endpoint) != "" || strings.TrimSpace(g.RemoteEndpoint) != "" ||
 		strings.TrimSpace(g.TraceLevel) != "" || strings.TrimSpace(g.Encryption) != "" ||
 		strings.TrimSpace(g.Catalog) != "" || strings.TrimSpace(g.Pwd) != "" || strings.TrimSpace(g.WalletPassword) != "" ||
-		len(g.AdditionalPVCs) > 0 || g.DisableDefaultLogVolumeClaims || g.SecurityContext != nil || g.Capabilities != nil {
+		len(g.AdditionalPVCs) > 0 || g.SecurityContext != nil || g.Capabilities != nil {
 		return false
 	}
 	// allow only defaults-carrier fields on unnamed gsm item
@@ -399,16 +399,12 @@ type effectivePVCSpec struct {
 	StorageSizeInGb int32
 }
 
-func mergeAdditionalPVCs(primarySize int32, baseMountPath, diagMountPath string, disableDefaultLogPVCs bool, extras []AdditionalPVCSpec) map[string]effectivePVCSpec {
+func mergeAdditionalPVCs(primarySize int32, baseMountPath string, extras []AdditionalPVCSpec) map[string]effectivePVCSpec {
 	result := map[string]effectivePVCSpec{
 		baseMountPath: {
 			MountPath:       baseMountPath,
 			StorageSizeInGb: primarySize,
 		},
-	}
-	if !disableDefaultLogPVCs {
-		result[diagMountPath] = effectivePVCSpec{MountPath: diagMountPath, StorageSizeInGb: DefaultDiagSizeInGb}
-		result[DefaultGddLogMountPath] = effectivePVCSpec{MountPath: DefaultGddLogMountPath, StorageSizeInGb: DefaultGddLogSizeInGb}
 	}
 
 	for i := range extras {
@@ -430,7 +426,7 @@ func mergeAdditionalPVCs(primarySize int32, baseMountPath, diagMountPath string,
 	return result
 }
 
-func validateAdditionalPVCEntries(entries []AdditionalPVCSpec, baseMountPath, diagMountPath string, disableDefaultLogPVCs bool, path *field.Path) field.ErrorList {
+func validateAdditionalPVCEntries(entries []AdditionalPVCSpec, baseMountPath, diagMountPath string, path *field.Path) field.ErrorList {
 	var errs field.ErrorList
 	seenPaths := map[string]int{}
 
@@ -456,8 +452,8 @@ func validateAdditionalPVCEntries(entries []AdditionalPVCSpec, baseMountPath, di
 		if pvcName == "" && entries[i].StorageSizeInGb <= 0 && !isDefaultPath {
 			errs = append(errs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when pvcName is not provided"))
 		}
-		if disableDefaultLogPVCs && mountPath != baseMountPath && pvcName == "" && entries[i].StorageSizeInGb <= 0 && isDefaultPath {
-			errs = append(errs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when disableDefaultLogVolumeClaims is true"))
+		if mountPath != baseMountPath && pvcName == "" && entries[i].StorageSizeInGb <= 0 && isDefaultPath {
+			errs = append(errs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when pvcName is not provided"))
 		}
 	}
 	return errs
@@ -1145,17 +1141,17 @@ func (r *ShardingDatabase) validateAdditionalPVCConfig() field.ErrorList {
 
 	for i := range r.Spec.Shard {
 		basePath := field.NewPath("spec").Child("shard").Index(i).Child("additionalPVCs")
-		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Shard[i].AdditionalPVCs, DefaultOraDataMountPath, DefaultDiagMountPath, r.Spec.Shard[i].DisableDefaultLogVolumeClaims, basePath)...)
+		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Shard[i].AdditionalPVCs, DefaultOraDataMountPath, DefaultDiagMountPath, basePath)...)
 	}
 
 	for i := range r.Spec.Catalog {
 		basePath := field.NewPath("spec").Child("catalog").Index(i).Child("additionalPVCs")
-		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Catalog[i].AdditionalPVCs, DefaultOraDataMountPath, DefaultDiagMountPath, r.Spec.Catalog[i].DisableDefaultLogVolumeClaims, basePath)...)
+		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Catalog[i].AdditionalPVCs, DefaultOraDataMountPath, DefaultDiagMountPath, basePath)...)
 	}
 
 	for i := range r.Spec.Gsm {
 		basePath := field.NewPath("spec").Child("gsm").Index(i).Child("additionalPVCs")
-		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Gsm[i].AdditionalPVCs, DefaultGsmDataMountPath, DefaultGsmDiagMountPath, r.Spec.Gsm[i].DisableDefaultLogVolumeClaims, basePath)...)
+		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Gsm[i].AdditionalPVCs, DefaultGsmDataMountPath, DefaultGsmDiagMountPath, basePath)...)
 	}
 
 	if len(validationErrs) > 0 {
@@ -1180,8 +1176,8 @@ func (r *ShardingDatabase) validateAdditionalPVCUpdate(oldCR *ShardingDatabase) 
 		if !found {
 			continue
 		}
-		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultOraDataMountPath, DefaultDiagMountPath, oldSpec.DisableDefaultLogVolumeClaims, oldSpec.AdditionalPVCs)
-		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultOraDataMountPath, DefaultDiagMountPath, newSpec.DisableDefaultLogVolumeClaims, newSpec.AdditionalPVCs)
+		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultOraDataMountPath, oldSpec.AdditionalPVCs)
+		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultOraDataMountPath, newSpec.AdditionalPVCs)
 		basePath := field.NewPath("spec").Child("shard").Index(i).Child("additionalPVCs")
 		validationErrs = append(validationErrs, validateAdditionalPVCUpdate(oldMap, newMap, basePath)...)
 	}
@@ -1196,8 +1192,8 @@ func (r *ShardingDatabase) validateAdditionalPVCUpdate(oldCR *ShardingDatabase) 
 		if !found {
 			continue
 		}
-		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultOraDataMountPath, DefaultDiagMountPath, oldSpec.DisableDefaultLogVolumeClaims, oldSpec.AdditionalPVCs)
-		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultOraDataMountPath, DefaultDiagMountPath, newSpec.DisableDefaultLogVolumeClaims, newSpec.AdditionalPVCs)
+		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultOraDataMountPath, oldSpec.AdditionalPVCs)
+		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultOraDataMountPath, newSpec.AdditionalPVCs)
 		basePath := field.NewPath("spec").Child("catalog").Index(i).Child("additionalPVCs")
 		validationErrs = append(validationErrs, validateAdditionalPVCUpdate(oldMap, newMap, basePath)...)
 	}
@@ -1212,8 +1208,8 @@ func (r *ShardingDatabase) validateAdditionalPVCUpdate(oldCR *ShardingDatabase) 
 		if !found {
 			continue
 		}
-		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultGsmDataMountPath, DefaultGsmDiagMountPath, oldSpec.DisableDefaultLogVolumeClaims, oldSpec.AdditionalPVCs)
-		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultGsmDataMountPath, DefaultGsmDiagMountPath, newSpec.DisableDefaultLogVolumeClaims, newSpec.AdditionalPVCs)
+		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultGsmDataMountPath, oldSpec.AdditionalPVCs)
+		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultGsmDataMountPath, newSpec.AdditionalPVCs)
 		basePath := field.NewPath("spec").Child("gsm").Index(i).Child("additionalPVCs")
 		validationErrs = append(validationErrs, validateAdditionalPVCUpdate(oldMap, newMap, basePath)...)
 	}
@@ -2368,7 +2364,6 @@ func (r *ShardingDatabase) initShardsSpec() error {
 			if r.Spec.ShardInfo[pindex].Resources != nil {
 				r.Spec.Shard[shardIndex].Resources = r.Spec.ShardInfo[pindex].Resources
 			}
-			r.Spec.Shard[shardIndex].DisableDefaultLogVolumeClaims = r.Spec.ShardInfo[pindex].DisableDefaultLogVolumeClaims
 			if len(r.Spec.ShardInfo[pindex].AdditionalPVCs) > 0 {
 				r.Spec.Shard[shardIndex].AdditionalPVCs = append([]AdditionalPVCSpec(nil), r.Spec.ShardInfo[pindex].AdditionalPVCs...)
 			}
@@ -2429,7 +2424,6 @@ func mergeDesiredAndExistingShards(existing []ShardSpec, desired []ShardSpec) []
 			merged.EnvVars = d.EnvVars
 			merged.Resources = d.Resources
 			merged.AdditionalPVCs = d.AdditionalPVCs
-			merged.DisableDefaultLogVolumeClaims = d.DisableDefaultLogVolumeClaims
 			merged.ServiceAnnotations = d.ServiceAnnotations
 			merged.ExternalServiceAnnotations = d.ExternalServiceAnnotations
 			merged.SecurityContext = d.SecurityContext

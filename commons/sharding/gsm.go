@@ -200,7 +200,7 @@ func buildPodSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databa
 // Function to build Volume Spec
 func buildVolumeSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.Volume {
 	var result []corev1.Volume
-	pvcMounts := normalizeGsmPVCMountConfigs(OraGsmSpex.Name, OraGsmSpex.StorageSizeInGb, instance.Spec.StorageClass, OraGsmSpex.DisableDefaultLogVolumeClaims, OraGsmSpex.AdditionalPVCs)
+	pvcMounts := normalizeGsmPVCMountConfigs(OraGsmSpex.Name, OraGsmSpex.StorageSizeInGb, instance.Spec.StorageClass, OraGsmSpex.AdditionalPVCs)
 	result = []corev1.Volume{
 		{
 			Name: OraGsmSpex.Name + "secretmap-vol3",
@@ -352,7 +352,7 @@ func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmS
 
 func buildVolumeMountSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.VolumeMount {
 	result := make([]corev1.VolumeMount, 0, 8)
-	pvcMounts := normalizeGsmPVCMountConfigs(OraGsmSpex.Name, OraGsmSpex.StorageSizeInGb, instance.Spec.StorageClass, OraGsmSpex.DisableDefaultLogVolumeClaims, OraGsmSpex.AdditionalPVCs)
+	pvcMounts := normalizeGsmPVCMountConfigs(OraGsmSpex.Name, OraGsmSpex.StorageSizeInGb, instance.Spec.StorageClass, OraGsmSpex.AdditionalPVCs)
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "secretmap-vol3", MountPath: getDbSecretMountPath(instance), ReadOnly: true})
 	for _, pvcMount := range pvcMounts {
 		result = append(result, corev1.VolumeMount{Name: pvcMount.volumeName, MountPath: pvcMount.mountPath})
@@ -374,7 +374,7 @@ func buildVolumeMountSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpe
 }
 
 func volumeClaimTemplatesForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.PersistentVolumeClaim {
-	pvcMounts := normalizeGsmPVCMountConfigs(OraGsmSpex.Name, OraGsmSpex.StorageSizeInGb, instance.Spec.StorageClass, OraGsmSpex.DisableDefaultLogVolumeClaims, OraGsmSpex.AdditionalPVCs)
+	pvcMounts := normalizeGsmPVCMountConfigs(OraGsmSpex.Name, OraGsmSpex.StorageSizeInGb, instance.Spec.StorageClass, OraGsmSpex.AdditionalPVCs)
 	claims := make([]corev1.PersistentVolumeClaim, 0, len(pvcMounts))
 	for _, pvcMount := range pvcMounts {
 		if strings.TrimSpace(pvcMount.pvcName) != "" {

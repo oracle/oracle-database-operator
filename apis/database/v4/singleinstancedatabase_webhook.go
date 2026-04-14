@@ -861,9 +861,6 @@ func defaultSIDBAdditionalPVCs(pvcs *[]AdditionalPVCSpec) {
 		(*pvcs)[i].MountPath = strings.TrimSpace((*pvcs)[i].MountPath)
 		(*pvcs)[i].PvcName = strings.TrimSpace((*pvcs)[i].PvcName)
 		(*pvcs)[i].StorageClass = strings.TrimSpace((*pvcs)[i].StorageClass)
-		if (*pvcs)[i].MountPath == DefaultDiagMountPath && (*pvcs)[i].PvcName == "" && (*pvcs)[i].StorageSizeInGb <= 0 {
-			(*pvcs)[i].StorageSizeInGb = DefaultDiagSizeInGb
-		}
 	}
 }
 
@@ -889,7 +886,7 @@ func validateSingleInstanceDatabaseAdditionalPVCs(sidb *SingleInstanceDatabase) 
 			seenMountPaths[mountPath] = struct{}{}
 		}
 
-		if pvcName == "" && sidb.Spec.Persistence.AdditionalPVCs[i].StorageSizeInGb <= 0 && mountPath != DefaultDiagMountPath {
+		if pvcName == "" && sidb.Spec.Persistence.AdditionalPVCs[i].StorageSizeInGb <= 0 {
 			allErrs = append(allErrs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when pvcName is not provided"))
 		}
 	}
