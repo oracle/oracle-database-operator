@@ -1144,11 +1144,11 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		if result.Requeue || err != nil {
 			return result, err
 		}
-		result, err = r.configTcps(sidb, readyPod, ctx, req, phaseCtx)
+		result, err = r.configDataguardPrereqs(sidb, readyPod, ctx, req)
 		if result.Requeue || err != nil {
 			return result, err
 		}
-		result, err = r.configDataguardPrereqs(sidb, readyPod, ctx, req)
+		result, err = r.configTcps(sidb, readyPod, ctx, req, phaseCtx)
 		if result.Requeue || err != nil {
 			return result, err
 		}
@@ -4447,6 +4447,15 @@ func runDataguardPrereqsActionInPod(r *SingleInstanceDatabaseReconciler, pod cor
 	return out, nil
 }
 
+func hasTCPSListenerEndpointInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request) (bool, string, error) {
+	cmd := "if lsnrctl status 2>/dev/null | grep -Eiq 'PROTOCOL *= *TCPS|PROTOCOL=TCPS'; then echo PRESENT; else echo ABSENT; fi"
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		return false, out, err
+	}
+	return strings.Contains(out, "PRESENT"), out, nil
+}
+
 // #############################################################################
 //
 //	Configuring TCPS
@@ -4458,9 +4467,23 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 	tcpsEnabled := getTcpsEnabled(m)
 	tcpsTLSSecret := getTcpsTLSSecret(m)
 	tcpsCertRenewInterval := getTcpsCertRenewInterval(m)
+	listenerHasTCPS := false
+	listenerProbeOutput := ""
+	if tcpsEnabled && m.Status.IsTcpsEnabled {
+		var probeErr error
+		listenerHasTCPS, listenerProbeOutput, probeErr = hasTCPSListenerEndpointInPod(r, readyPod, ctx, req)
+		if probeErr != nil {
+			r.Log.Error(probeErr, "Failed to verify TCPS listener endpoint state")
+			return requeueY, nil
+		}
+		if !listenerHasTCPS {
+			r.Log.Info("TCPS listener endpoint missing despite status enabled; reapplying TCPS configuration", "probeOutput", listenerProbeOutput)
+		}
+	}
 
 	if (tcpsEnabled) &&
 		((!m.Status.IsTcpsEnabled) || // TCPS Enabled from a TCP state
+			(m.Status.IsTcpsEnabled && !listenerHasTCPS) || // listener drifted after DG/listener rewrites
 			(tcpsTLSSecret != "" && m.Status.TcpsTlsSecret == "") || // TCPS Secret is added in spec
 			(tcpsTLSSecret == "" && m.Status.TcpsTlsSecret != "") || // TCPS Secret is removed in spec
 			(tcpsTLSSecret != "" && m.Status.TcpsTlsSecret != "" && tcpsTLSSecret != m.Status.TcpsTlsSecret)) { //TCPS secret is changed
@@ -5831,6 +5854,11 @@ func writeManagedTNSAliasesStateInPod(r *SingleInstanceDatabaseReconciler, pod c
 	return nil
 }
 
+func readTNSFileSnapshotInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, tnsFile string) (string, error) {
+	cmd := fmt.Sprintf("if [ -f %q ]; then sed -n '1,260p' %q; fi", tnsFile, tnsFile)
+	return dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+}
+
 func syncDesiredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, tnsFile, stateFile string, desired map[string]dbapi.SingleInstanceDatabaseTNSAlias, desiredNames []string) error {
 	for _, alias := range desiredNames {
 		item := desired[alias]
@@ -5872,7 +5900,27 @@ func syncDesiredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, pod corev1.
 		}
 	}
 
-	return writeManagedTNSAliasesStateInPod(r, pod, ctx, req, stateFile, desiredNames)
+	if err := writeManagedTNSAliasesStateInPod(r, pod, ctx, req, stateFile, desiredNames); err != nil {
+		return err
+	}
+
+	snapshot, snapshotErr := readTNSFileSnapshotInPod(r, pod, ctx, req, tnsFile)
+	if snapshotErr != nil {
+		return fmt.Errorf("failed to read TNS file snapshot %s: %w", tnsFile, snapshotErr)
+	}
+	r.Log.Info("TNS file snapshot after alias sync", "tnsFile", tnsFile, "desiredAliases", desiredNames, "contents", snapshot)
+
+	missing := make([]string, 0)
+	for _, alias := range desiredNames {
+		if !strings.Contains(snapshot, alias) {
+			missing = append(missing, alias)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("tns file %s missing aliases after sync: %s", tnsFile, strings.Join(missing, ","))
+	}
+
+	return nil
 }
 
 func syncConfiguredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase, pod corev1.Pod, ctx context.Context, req ctrl.Request) error {
@@ -6340,11 +6388,16 @@ func ensureStandbyManagedRecovery(
 		r.Log.Error(cmdErr, cmdErr.Error())
 		return cmdErr
 	}
-	if strings.Contains(out, "ORA-") {
+	alreadyActive := strings.Contains(out, "ORA-01153")
+	if strings.Contains(out, "ORA-") && !alreadyActive {
 		r.Log.Error(errors.New("managed standby recovery start failed"), "Standby managed recovery command returned Oracle error", "output", out)
 		return fmt.Errorf("failed to start managed standby recovery: %s", strings.TrimSpace(out))
 	}
-	r.Log.Info("Standby DB open mode modified")
+	if alreadyActive {
+		r.Log.Info("Managed standby recovery already active; verifying current recovery status", "output", out)
+	} else {
+		r.Log.Info("Standby DB open mode modified")
+	}
 	r.Log.Info(out)
 
 	statusOut, statusErr := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
