@@ -345,6 +345,29 @@ func TestEnsureDataguardBrokerRunnerPodDeletesStaleRunnerAfterDesiredReady(t *te
 	}
 }
 
+func TestBuildDataguardBrokerRunnerPodStoresShortLabelAndFullRuntimeHashAnnotation(t *testing.T) {
+	broker := &dbapi.DataguardBroker{
+		ObjectMeta: metav1.ObjectMeta{Name: "dg", Namespace: "ns1"},
+	}
+	runtimeSpec := &dataguardBrokerExecutionRuntime{
+		Image:           "runner:19c",
+		WalletMountPath: "/wallets",
+		TNSAdminPath:    "/tns",
+	}
+	fullHash := "7e5f19a7838b553ca1b419e59e303aff3e22f252ae0014197f7f760a1bce6195"
+
+	pod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, fullHash)
+	if got := pod.Labels["database.oracle.com/runtime-hash"]; len(got) > 63 {
+		t.Fatalf("expected runtime hash label to satisfy kubernetes length rules, got len=%d value=%q", len(got), got)
+	}
+	if got := pod.Annotations["database.oracle.com/runtime-hash"]; got != fullHash {
+		t.Fatalf("expected full runtime hash annotation %q, got %q", fullHash, got)
+	}
+	if got := dataguardBrokerRunnerPodRuntimeHash(pod); got != fullHash {
+		t.Fatalf("expected runtime hash reader to prefer full annotation %q, got %q", fullHash, got)
+	}
+}
+
 func TestResolveDataguardBrokerExecutionRuntimeRequiresTCPSWalletSecret(t *testing.T) {
 	reconciler := &DataguardBrokerReconciler{}
 	broker := &dbapi.DataguardBroker{

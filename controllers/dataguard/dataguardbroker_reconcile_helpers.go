@@ -549,6 +549,24 @@ func clearDataguardBrokerCondition(conditions *[]metav1.Condition, conditionType
 	*conditions = filtered
 }
 
+func dataguardBrokerRunnerRuntimeHashLabelValue(runtimeHash string) string {
+	trimmed := strings.TrimSpace(runtimeHash)
+	if len(trimmed) <= 63 {
+		return trimmed
+	}
+	return trimmed[:63]
+}
+
+func dataguardBrokerRunnerPodRuntimeHash(pod *corev1.Pod) string {
+	if pod == nil {
+		return ""
+	}
+	if fullHash := strings.TrimSpace(pod.Annotations["database.oracle.com/runtime-hash"]); fullHash != "" {
+		return fullHash
+	}
+	return strings.TrimSpace(pod.Labels["database.oracle.com/runtime-hash"])
+}
+
 func resolveDataguardBrokerExecutionRuntime(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker) (*dataguardBrokerExecutionRuntime, bool, string, error) {
 	if broker == nil || broker.Spec.Topology == nil {
 		return nil, true, "", nil
@@ -829,7 +847,7 @@ func dataguardBrokerRunnerRecreateReasons(pod *corev1.Pod, broker *dbapi.Datagua
 	if pod == nil || runtime == nil {
 		return []string{"runner runtime is incomplete"}
 	}
-	currentHash := strings.TrimSpace(pod.Labels["database.oracle.com/runtime-hash"])
+	currentHash := dataguardBrokerRunnerPodRuntimeHash(pod)
 	if currentHash != strings.TrimSpace(desiredHash) {
 		reasons = append(reasons, fmt.Sprintf("runtime hash changed (%s -> %s)", firstNonEmptyString(currentHash, "<none>"), firstNonEmptyString(strings.TrimSpace(desiredHash), "<none>")))
 	}
@@ -904,7 +922,7 @@ func logDataguardBrokerRunnerCreation(ctx context.Context, r *DataguardBrokerRec
 		if !pod.DeletionTimestamp.IsZero() {
 			continue
 		}
-		if strings.TrimSpace(pod.Labels["database.oracle.com/runtime-hash"]) == strings.TrimSpace(desiredHash) {
+		if dataguardBrokerRunnerPodRuntimeHash(pod) == strings.TrimSpace(desiredHash) {
 			continue
 		}
 		staleSummaries = append(staleSummaries, map[string]interface{}{
@@ -1015,7 +1033,7 @@ func cleanupStaleDataguardBrokerRunnerPods(ctx context.Context, r *DataguardBrok
 		if !pod.DeletionTimestamp.IsZero() {
 			continue
 		}
-		if strings.TrimSpace(pod.Labels["database.oracle.com/runtime-hash"]) == strings.TrimSpace(desiredHash) {
+		if dataguardBrokerRunnerPodRuntimeHash(pod) == strings.TrimSpace(desiredHash) {
 			continue
 		}
 		reasons := []string{"stale runner pod cleanup"}
@@ -1075,10 +1093,11 @@ func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *datag
 	labels := map[string]string{
 		"database.oracle.com/dataguard-broker": broker.Name,
 		"database.oracle.com/component":        "execution-runner",
-		"database.oracle.com/runtime-hash":     runtimeHash,
+		"database.oracle.com/runtime-hash":     dataguardBrokerRunnerRuntimeHashLabelValue(runtimeHash),
 	}
 	annotations := map[string]string{
 		"database.oracle.com/runtime-image": strings.TrimSpace(runtime.Image),
+		"database.oracle.com/runtime-hash":  strings.TrimSpace(runtimeHash),
 	}
 	if broker.Status.ObservedTopologyHash != "" {
 		annotations["database.oracle.com/topology-hash"] = broker.Status.ObservedTopologyHash
