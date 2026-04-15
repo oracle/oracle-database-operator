@@ -6318,7 +6318,8 @@ func buildPrimaryPeerTNSAliases(primary *dbapi.SingleInstanceDatabase, standby *
 	}
 
 	includeTCPS := getTcpsEnabled(primary) || getTcpsEnabled(standby)
-	includeDGMGRL := !strings.EqualFold(strings.TrimSpace(primary.Spec.CreateAs), "truecache") &&
+	includeDGMGRL := getDataguardPrereqsEnabled(primary) &&
+		!strings.EqualFold(strings.TrimSpace(primary.Spec.CreateAs), "truecache") &&
 		!strings.EqualFold(strings.TrimSpace(standby.Spec.CreateAs), "truecache")
 	addAutomaticDataguardNetAliases(defaults, primary.Spec.Sid, primary.Name, includeTCPS, includeDGMGRL)
 	addAutomaticDataguardNetAliases(defaults, standby.Spec.Sid, standby.Name, includeTCPS, includeDGMGRL)

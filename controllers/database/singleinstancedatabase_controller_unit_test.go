@@ -581,6 +581,11 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtr
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb-primary"},
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			Sid: "PRIMDB",
+			Dataguard: &dbapi.DataguardProducerSpec{
+				Prereqs: &dbapi.DataguardPrereqsSpec{
+					Enabled: true,
+				},
+			},
 			TNSAliases: []dbapi.SingleInstanceDatabaseTNSAlias{
 				{
 					Name:        "STBYDB",
@@ -641,6 +646,33 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtr
 	}
 	if _, exists := aliases["EXTRA_ALIAS"]; exists {
 		t.Fatalf("did not expect extra alias to be appended on primary peer path")
+	}
+}
+
+func TestSIDBUnit_BuildPrimaryPeerTNSAliasesSkipsDGMGRLWhenPrimaryPrereqsDisabled(t *testing.T) {
+	primary := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-primary"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "PRIMDB",
+		},
+	}
+	standby := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "STBYDB",
+		},
+	}
+
+	aliases, names := buildPrimaryPeerTNSAliases(primary, standby)
+	expectedNames := []string{"PRIMDB", "STBYDB"}
+	if !reflect.DeepEqual(names, expectedNames) {
+		t.Fatalf("unexpected primary peer alias names when prereqs disabled: got %v want %v", names, expectedNames)
+	}
+	if _, exists := aliases["PRIMDB_DGMGRL"]; exists {
+		t.Fatalf("did not expect PRIMDB_DGMGRL alias when primary dataguard prereqs are disabled")
+	}
+	if _, exists := aliases["STBYDB_DGMGRL"]; exists {
+		t.Fatalf("did not expect STBYDB_DGMGRL alias when primary dataguard prereqs are disabled")
 	}
 }
 
