@@ -769,6 +769,31 @@ func TestSIDBUnit_ResolveExternalServiceConfigTreatsLegacyNonNodePortAsServicePo
 	}
 }
 
+func TestSIDBUnit_HasExpectedTCPSListenerEndpointRequiresContainerTCPSPort(t *testing.T) {
+	listenerStatus := `
+Listening Endpoints Summary...
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=ipc)(KEY=EXTPROC1)))
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=0.0.0.0)(PORT=1521)))
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=0.0.0.0)(PORT=2484)))
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=sidb-standby)(PORT=5500))(Security=(my_wallet_directory=/opt/oracle/admin/STBYDB/xdb_wallet))(Presentation=HTTP)(Session=RAW))
+`
+	if !hasExpectedTCPSListenerEndpoint(listenerStatus, dbcommons.CONTAINER_TCPS_PORT) {
+		t.Fatalf("expected tcps listener endpoint on port %d to be detected", dbcommons.CONTAINER_TCPS_PORT)
+	}
+}
+
+func TestSIDBUnit_HasExpectedTCPSListenerEndpointIgnoresXDBTCPSOnly(t *testing.T) {
+	listenerStatus := `
+Listening Endpoints Summary...
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=ipc)(KEY=EXTPROC1)))
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=0.0.0.0)(PORT=1521)))
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=sidb-standby)(PORT=5500))(Security=(my_wallet_directory=/opt/oracle/admin/STBYDB/xdb_wallet))(Presentation=HTTP)(Session=RAW))
+`
+	if hasExpectedTCPSListenerEndpoint(listenerStatus, dbcommons.CONTAINER_TCPS_PORT) {
+		t.Fatalf("did not expect xdb-only tcps endpoint to satisfy listener validation")
+	}
+}
+
 func TestSIDBUnit_GetTcpsEnabledTreatsLegacyListenerPortAsEnabled(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{

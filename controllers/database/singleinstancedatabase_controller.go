@@ -4487,13 +4487,24 @@ func runDataguardPrereqsActionInPod(r *SingleInstanceDatabaseReconciler, pod cor
 	return out, nil
 }
 
+func hasExpectedTCPSListenerEndpoint(listenerStatus string, expectedPort int32) bool {
+	normalizedPort := fmt.Sprintf("PORT=%d", expectedPort)
+	for _, line := range strings.Split(listenerStatus, "\n") {
+		normalizedLine := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(line), " ", ""))
+		if strings.Contains(normalizedLine, "PROTOCOL=TCPS") && strings.Contains(normalizedLine, normalizedPort) {
+			return true
+		}
+	}
+	return false
+}
+
 func hasTCPSListenerEndpointInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request) (bool, string, error) {
-	cmd := "if lsnrctl status 2>/dev/null | grep -Eiq 'PROTOCOL *= *TCPS|PROTOCOL=TCPS'; then echo PRESENT; else echo ABSENT; fi"
+	cmd := "lsnrctl status 2>/dev/null"
 	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
 	if err != nil {
 		return false, out, err
 	}
-	return strings.Contains(out, "PRESENT"), out, nil
+	return hasExpectedTCPSListenerEndpoint(out, dbcommons.CONTAINER_TCPS_PORT), out, nil
 }
 
 func podHasDesiredTCPSTLSSecret(pod corev1.Pod, desiredSecret string) bool {
