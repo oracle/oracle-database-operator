@@ -19389,6 +19389,10 @@ spec:
                 properties:
                   external:
                     properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
                       tcp:
                         properties:
                           enabled:
