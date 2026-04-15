@@ -68,7 +68,7 @@ import (
 	"github.com/go-logr/logr"
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	k8s "github.com/oracle/oracle-database-operator/commons/k8sutil"
 )
 
 // Definitions of Standards
