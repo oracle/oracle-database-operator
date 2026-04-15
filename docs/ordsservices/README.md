@@ -9,7 +9,7 @@ Using the OrdsSrvs controller, you can deploy and manage ORDS in Kubernetes for 
 This controller allows you to run the ORDS middle tier inside Kubernetes, including deployments that would otherwise run as on-premises ORDS application servers, while also supporting automatic ORDS/APEX install and upgrade operations in the target database.
 
 <p align="center">
-  <img src="./ordssrvs_overview.png" alt="OrdsSrvs architecture" width="700">
+  <img src="./ordssrvs_overview.png" alt="OrdsSrvs Overview" width="700">
 </p>
 
 ## Features Summary
@@ -41,7 +41,7 @@ There are different ways to provide database credentials and connect string for 
 For step-by-step instructions and field descriptions, refer to the [API](./api.md) reference and the Examples section for details on each configuration.
 
 <p align="center">
-  <img src="./ordssrvs_readme.png" alt="OrdsSrvs architecture" width="700">
+  <img src="./ordssrvs_readme.png" alt="OrdsSrvs readme" width="700">
 </p>
 
 
