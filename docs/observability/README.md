@@ -1,14 +1,30 @@
 # Managing Observability on Kubernetes for Oracle Databases
 
 Oracle Database Operator for Kubernetes (`OraOperator`) includes the
-Observability controller for Oracle Databases and adds the `DatabaseObserver` CRD, which enables users to observe 
-Oracle Databases by scraping database metrics using SQL queries and observe logs in the Database _alert.log_. 
-The controller automates the deployment and maintenance of the [database observability exporter](https://github.com/oracle/oracle-db-appdev-monitoring),
-metrics exporter service and Prometheus ServiceMonitor.
+Observability controller for Oracle Databases and adds the `DatabaseObserver` CRD, which enables users to observe Oracle Databases by scraping database metrics using SQL queries and observe logs in the Database _alert.log_.
+The controller automates the deployment and maintenance of the [Oracle AI Database Metrics Exporter](https://github.com/oracle/oracle-db-appdev-monitoring) (referred to in this document as the exporter), the exporter Service, and the Prometheus ServiceMonitor.
 
 The following sections explains the configuration and functionality
 of the controller.
 
+![Observability Overview](./observability_overview.png)
+
+At a high level, users create a `DatabaseObserver` resource and the
+Observability controller deploys the required Kubernetes resources, connects to
+target databases, and exposes telemetry that can be consumed by Prometheus,
+Grafana, and other observability backends.
+
+
+See also the [Quick Start](./quickstart.md) for a short end-to-end setup.  
+For OpenShift-specific guidance, see the [OpenShift example](./openshift.md).
+
+> Terminology:  
+> `DatabaseObserver` is the Kubernetes custom resource that you create.  
+> The `Oracle AI Database Metrics Exporter` is the deployed metrics and logs component managed by the controller.  
+> The term `exporter` is used in the rest of this document as shorthand for the Oracle AI Database Metrics Exporter.
+
+* [Architecture](#architecture)
+* [Quick Start](./quickstart.md)
 * [Prerequisites](#prerequisites)
 * [The DatabaseObserver Custom Resource Definition](#the-databaseobserver-custom-resource)
   * [Configuring Database Credentials](#configuration-fields-related-to-managing-database-credentials)
@@ -58,6 +74,22 @@ of the controller.
 * [Known Issues](#known-issues)
 * [Resources](#resources)
 
+## Architecture
+
+The following diagram shows the detailed observability flow managed by the
+controller:
+
+![Observability Architecture](./observability_architecture.png)
+
+In this model:
+
+1. A `DatabaseObserver` custom resource defines how the exporter connects to
+   one or more target databases.
+2. The Observability controller creates and manages the Kubernetes resources
+   required by the exporter, including the Service and ServiceMonitor.
+3. Prometheus scrapes the metrics endpoint exposed by the exporter.
+4. Grafana visualizes the collected metrics using an Oracle dashboard.
+
 ## Prerequisites
 The `DatabaseObserver` custom resource has the following prerequisites:
 
@@ -72,20 +104,36 @@ The `DatabaseObserver` custom resource has the following prerequisites:
        helm repo update
        helm upgrade --install prometheus prometheus/kube-prometheus-stack -n prometheus --create-namespace
        ```
+     - Note: Some Prometheus installations require `spec.maximumStartupDurationSeconds`
+       to be set to a value greater than or equal to `60`. If you see an error such as
+       `spec.maximumStartupDurationSeconds: Invalid value: 0`, install the chart with:
+       ```bash
+       helm upgrade --install prometheus prometheus/kube-prometheus-stack \
+         -n prometheus --create-namespace \
+         --set prometheus.prometheusSpec.maximumStartupDurationSeconds=300
+       ```
      - You can check if the ServiceMonitor API exists in your cluster by running the following command:
      ```bash
      kubectl api-resources | grep smon
      ```
+     - OpenShift note: OpenShift monitoring uses a different setup. The quick
+       start in this document does not apply unchanged on OpenShift. See the
+       [OpenShift example](./openshift.md) for a tested example that you can
+       adapt to your own monitoring and RBAC conventions.
 
 2. A preexisting Oracle Database, and the proper database grants and privileges.
 
     - The controller exports metrics through SQL queries that the user can control 
        and specify through the _toml_ files. The necessary access privileges to the tables used in the queries
        are not provided and applied automatically.
+    - Note: Bug `38699234` reports that `V_$DIAG_ALERT_EXT` is not granted
+      through `SELECT_CATALOG_ROLE`, even though `SELECT_CATALOG_ROLE` should
+      include this view. If your monitoring setup needs this view, explicitly
+      grant `SELECT` on `SYS.V_$DIAG_ALERT_EXT` to the monitoring user.
 
 ## The DatabaseObserver Custom Resource
 Oracle Database Operator (__v1.0.0__ or later) includes the Oracle Database Observability controller, which automates
-the deployment and configuration of the Oracle Database exporter and the related resources to make Oracle Databases observable.
+the deployment and configuration of the exporter and the related resources to make Oracle Databases observable.
 The Observability Controller introduces the `databaseobserver` APIs.
 
 To list the available APIs included in the
@@ -97,7 +145,7 @@ kubectl api-resources | grep oracle
 
 Learn about the different and configurable fields available in this release of the DatabaseObserver APIs in the following sections.
 
-> In this release, the controller deploys the Database Observability Exporter ([v2.0.2](https://github.com/oracle/oracle-db-appdev-monitoring/releases/tag/2.0.2)).
+> In this release, the controller deploys the Oracle AI Database Metrics Exporter ([v2.0.2](https://github.com/oracle/oracle-db-appdev-monitoring/releases/tag/2.0.2)).
 
 
 
@@ -405,7 +453,7 @@ kubectl delete databaseobserver obs-sample
 
 
 ### Default Database Configuration
-To configure the observability exporter to export from a single Oracle Database, use the field `spec.database`
+To configure the exporter to export from a single Oracle Database, use the field `spec.database`
 to define the details of the database. If the wallet is applicable, `spec.wallet` allows you to define a secret containing the wallet
 and where the wallet is to be mounted as a volume. 
 
@@ -478,7 +526,7 @@ kubectl create cm config-file --from-file=config.yaml
 ```
 
 ### Multiple Database Configuration
-To configure the observability exporter to export metrics and logs from multiple Oracle Databases, __instead__ of `spec.database`, you must use an exporter config file, 
+To configure the exporter to export metrics and logs from multiple Oracle Databases, __instead__ of `spec.database`, you must use an exporter config file,
 configure the _databaseobserver_ YAML file with a combined wallet (if applicable), and then use the
 `spec.databases` field . The field `spec.databases` is a map with keys used for naming environment variables
 and identifying groups of credentials.
@@ -548,7 +596,7 @@ To create the configMap, run the following command:
 kubectl create cm config-file --from-file=config.yaml
 ```
 
-To learn more about the config file, you can consult the [official documentations of the exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#standalone-binary).
+To learn more about the config file, you can consult the [official documentation for Oracle AI Database Metrics Exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#standalone-binary).
 
 #### Configuring Wallets for Multiple Databases
 In configuring multiple databases where each connection requires a database wallet, a combined wallet is required and can be configured through the databaseobserver YAML file. To
@@ -595,7 +643,7 @@ specific database wallet files (.sso, .p12, .pem) under `.spec.wallet.additional
 
 > Note: When setting the name under `spec.wallets.additional[].name`, you must provide a unique name other than `creds`,  because this is the default volume name.
 
-To learn more about this requirement, you can consult the [official documentation of the exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#configuring-connections-for-multiple-databases-using-oracle-database-wallets).
+To learn more about this requirement, you can consult the [official documentation for Oracle AI Database Metrics Exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#configuring-connections-for-multiple-databases-using-oracle-database-wallets).
 
 
 ## Database Authentication with Vaults in the Cloud
@@ -614,7 +662,7 @@ When you configure the Vault, you must provide the following:
   - Kubernetes Secret containing the [OCI CLI Config file](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliconfigure.htm)
   - Kubernetes Secret containing the user's OCI CLI Private Key
 
-The observability exporter needs to authenticate requests to retrieve the database password from the OCI Vault. When configuring API Key authentication, 
+The exporter needs to authenticate requests to retrieve the database password from the OCI Vault. When configuring API Key authentication,
 the OCI CLI config file and the __DEFAULT profile is used__. 
 > Note: The exporter uses the DEFAULT profile.
 
@@ -717,7 +765,7 @@ Create the _exporter-config-file_ configMap. For example, using the following ex
 ```yaml
 # exporter-config.yaml
 
-# Example Oracle Database Metrics Exporter Configuration file.
+# Example databaseObserver configuration file.
 # Environment variables of the form ${VAR_NAME} will be expanded.
 databases:
   default:
@@ -759,8 +807,11 @@ spec:
 ```
 
 ## Scraping Metrics
-The `databaseObserver` resource deploys the Observability exporter container. This container connects to an Oracle Database and
-scrapes metrics using SQL queries. By default, the exporter provides standard metrics, which are listed in the [official GitHub page of the Observability Exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#standard-metrics).
+The `databaseObserver` resource defines the desired configuration for the
+exporter container deployed by the controller. This container
+connects to an Oracle Database and scrapes metrics using SQL queries. By
+default, the exporter provides standard metrics, which are listed in the
+[official GitHub page for Oracle AI Database Metrics Exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#standard-metrics).
 
 To define custom metrics in Oracle Database for scraping, a TOML file that lists your custom queries and properties is required.
 For example, the code snippet that follows shows how you can define custom metrics:
@@ -825,7 +876,7 @@ must match the `spec.serviceMonitorSelector` field in your Prometheus configurat
 ```
 
 ## Scraping Logs
-Currently, the observability exporter provides the `alert.log` from Oracle Database, which provides important information about errors and exceptions during database operations. 
+Currently, the exporter provides the `alert.log` from Oracle Database, which provides important information about errors and exceptions during database operations.
 
 By default, the logs are stored in the pod filesystem, inside `/log/alert.log`. Note that the log can also be placed in a custom path with a custom filename, You can also place a volume available to multiple pods with the use of `PersistentVolumes` by specifying a `persistentVolumeClaim`. 
 Because the logs are stored in a file, scraping the logs must be pushed to a log aggregation system, such as _Loki_. 
@@ -873,7 +924,7 @@ If `spec.log.volume.persistentVolumeClaim.claimName` is not specified, then an `
 
 ### Working with Sidecars to deploy Promtail
 The fields `spec.sidecars` and `spec.sidecarVolumes` provide the ability to deploy container images as a sidecar container
-alongside the `observability-exporter` container.
+alongside the exporter container.
 
 You can specify container images to deploy inside `spec.sidecars` as you would normally define a container in a deployment. The field
 `spec.sidecars` is of an array of containers (`[]corev1.Container`).
@@ -1046,7 +1097,7 @@ spec:
 ```
 
 ### Custom Exporter Image or Version
-The field `spec.deployment.image` is provided to enable you to make use of a newer or older version of the [observability-exporter](https://github.com/oracle/oracle-db-appdev-monitoring)
+The field `spec.deployment.image` is provided to enable you to make use of a newer or older version of the [Oracle AI Database Metrics Exporter](https://github.com/oracle/oracle-db-appdev-monitoring)
 container image.
 
 ```yaml
@@ -1106,7 +1157,10 @@ spec:
 ```
 
 ### Custom ServiceMonitor Endpoints
-The field `spec.serviceMonitor.endpoints` is provided for providing custom endpoints for the ServiceMonitor resource created by the `databaseObserver`:
+
+The field `spec.serviceMonitor.endpoints` lets you fully customize the endpoints used in the `ServiceMonitor` created by the `databaseObserver`.
+
+When `spec.serviceMonitor.endpoints` is provided, the operator uses exactly the endpoints in this list and does not add the default `metrics` endpoint automatically.
 
 ```yaml
 spec:
@@ -1122,6 +1176,15 @@ spec:
               - __meta_kubernetes_endpoints_label_app
             targetLabel: instance
 ```
+
+> Note: When you define custom endpoints, you are responsible for specifying the full scrape configuration, including the correct `port`.
+
+If `spec.serviceMonitor.endpoints` is omitted, the operator creates a default endpoint equivalent to:
+```yaml
+endpoints:
+  - port: metrics
+    interval: 20s
+```    
 
 ## Mandatory roles and privileges requirements for Observability Controller
 
@@ -1194,5 +1257,3 @@ When a new version of the exporter is released with the fix, set the field `depl
 For further information about the Oracle Databases logs and metrics Exporter container image, 
 consult the official repository documentations:
 - [GitHub - Unified Observability for Oracle Database Project](https://github.com/oracle/oracle-db-appdev-monitoring)
-
-

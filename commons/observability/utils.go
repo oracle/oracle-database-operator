@@ -130,18 +130,16 @@ func GetExporterServicePort(a *api.DatabaseObserver) []corev1.ServicePort {
 // GetEndpoints function
 func GetEndpoints(a *api.DatabaseObserver) []monitorv1.Endpoint {
 
-	endpoints := make([]monitorv1.Endpoint, 0)
-
 	// get endpoints
 	if es := a.Spec.ServiceMonitor.Endpoints; len(es) > 0 {
-		endpoints = append(endpoints, es...)
+		return es
 	}
 
 	// if not, provide default endpoint
-	endpoints = append(endpoints, monitorv1.Endpoint{
+	endpoints := []monitorv1.Endpoint{{
 		Port:     DefaultPrometheusPort,
 		Interval: "20s",
-	})
+	}}
 
 	return endpoints
 }
@@ -404,11 +402,11 @@ func GetLogVolumeSource(a *api.DatabaseObserver) corev1.VolumeSource {
 			ClaimName: rLogVolumeClaimName,
 		}
 		return vs
-	} 
-	
+	}
+
 	vs.EmptyDir = &corev1.EmptyDirVolumeSource{}
 	return vs
-	
+
 }
 
 // AddEnv is a helper method that appends an Env Var value
