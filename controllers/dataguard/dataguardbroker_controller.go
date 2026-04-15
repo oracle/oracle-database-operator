@@ -185,8 +185,8 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerNormal(ctx context.C
 	if result, err := r.reconcileDataguardBrokerValidation(ctx, scope); err != nil || result.Requeue {
 		return result, err
 	}
-	if err := r.reconcileDataguardBrokerProvision(ctx, scope); err != nil {
-		return ctrl.Result{Requeue: false}, err
+	if result, err := r.reconcileDataguardBrokerProvision(ctx, scope); err != nil || result.Requeue {
+		return result, err
 	}
 	if result, err := r.reconcileDataguardBrokerFSFO(ctx, scope); err != nil || result.Requeue {
 		return result, err
@@ -280,6 +280,13 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerTopologyAuthWallet(c
 		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
 	}
 	if err := r.rebuildDataguardBrokerAuthWalletSecret(ctx, scope.broker, scope.req, runtime, state, password); err != nil {
+		if isDataguardBrokerRunnerUnavailable(err) {
+			status.Phase = "RunnerPending"
+			status.Message = err.Error()
+			scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionFalse, "RunnerPending", err.Error())
+			scope.markWaiting(dataguardBrokerPhaseRunner, "RunnerPending", err.Error())
+			return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
+		}
 		status.Phase = "BuildFailed"
 		status.Message = err.Error()
 		return ctrl.Result{}, err
@@ -566,39 +573,45 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerValidation(ctx conte
 	return ctrl.Result{Requeue: false}, nil
 }
 
-func (r *DataguardBrokerReconciler) reconcileDataguardBrokerProvision(ctx context.Context, scope *dataguardBrokerReconcileScope) error {
+func (r *DataguardBrokerReconciler) reconcileDataguardBrokerProvision(ctx context.Context, scope *dataguardBrokerReconcileScope) (ctrl.Result, error) {
 	scope.markReconciling(dataguardBrokerPhaseProvision, "ProvisionDataguard", "reconciling broker configuration")
 	scope.setCondition(dataguardBrokerConditionBrokerConfigured, metav1.ConditionFalse, "Provisioning", "broker configuration is being reconciled")
 	if scope.desired != nil && scope.desired.Path == dataguardBrokerPathTopology {
 		runtime, ready, message, err := resolveDataguardBrokerExecutionRuntime(ctx, r, scope.broker)
 		if err != nil {
-			return err
+			return ctrl.Result{Requeue: false}, err
 		}
 		if !ready {
-			return fmt.Errorf("%s", message)
+			scope.markWaiting(dataguardBrokerPhaseProvision, "TopologyRuntimePending", message)
+			return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
 		}
 		state, err := resolveDataguardTopologyState(ctx, r, scope.broker, runtime, !runtime.usesAuthWallet())
 		if err != nil {
-			return err
+			return ctrl.Result{Requeue: false}, err
 		}
 		if err := ensureDataguardTopologyBrokerConfiguration(ctx, r, scope.broker, scope.desired, scope.req, state); err != nil {
-			return err
+			if isDataguardBrokerRunnerUnavailable(err) {
+				scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionFalse, "RunnerPending", err.Error())
+				scope.markWaiting(dataguardBrokerPhaseProvision, "RunnerPending", err.Error())
+				return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
+			}
+			return ctrl.Result{Requeue: false}, err
 		}
 		scope.setCondition(dataguardBrokerConditionBrokerConfigured, metav1.ConditionTrue, "BrokerConfigured", "broker configuration is up to date")
-		return nil
+		return ctrl.Result{}, nil
 	}
 	var sidb dbapi.SingleInstanceDatabase
 	if err := r.Get(ctx, types.NamespacedName{
 		Namespace: scope.broker.Namespace,
 		Name:      scope.desired.currentPrimaryDatabaseRef(scope.broker),
 	}, &sidb); err != nil {
-		return err
+		return ctrl.Result{Requeue: false}, err
 	}
 	if err := setupDataguardBrokerConfiguration(r, scope.broker, scope.desired, &sidb, ctx, scope.req); err != nil {
-		return err
+		return ctrl.Result{Requeue: false}, err
 	}
 	scope.setCondition(dataguardBrokerConditionBrokerConfigured, metav1.ConditionTrue, "BrokerConfigured", "broker configuration is up to date")
-	return nil
+	return ctrl.Result{}, nil
 }
 
 func (r *DataguardBrokerReconciler) reconcileDataguardBrokerFSFO(ctx context.Context, scope *dataguardBrokerReconcileScope) (ctrl.Result, error) {
@@ -627,6 +640,11 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerFSFO(ctx context.Con
 				}
 			}
 			if err := configureDataguardTopologyFSFO(ctx, r, scope.broker, scope.desired, scope.req, state); err != nil {
+				if isDataguardBrokerRunnerUnavailable(err) {
+					scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionFalse, "RunnerPending", err.Error())
+					scope.markWaiting(dataguardBrokerPhaseFSFO, "RunnerPending", err.Error())
+					return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
+				}
 				return ctrl.Result{Requeue: false}, err
 			}
 			if err := createObserverPods(r, scope.broker, ctx, scope.req); err != nil {
@@ -636,6 +654,11 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerFSFO(ctx context.Con
 			return ctrl.Result{}, nil
 		}
 		if err := disableDataguardTopologyFSFO(ctx, r, scope.broker, scope.req, state); err != nil {
+			if isDataguardBrokerRunnerUnavailable(err) {
+				scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionFalse, "RunnerPending", err.Error())
+				scope.markWaiting(dataguardBrokerPhaseFSFO, "RunnerPending", err.Error())
+				return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
+			}
 			return ctrl.Result{Requeue: false}, err
 		}
 		observerReadyPod, _, _, _, err := dbcommons.FindPods(r, "", "", scope.broker.Name, scope.broker.Namespace, ctx, scope.req)
@@ -716,6 +739,11 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerManualSwitchover(ctx
 	scope.markReconciling(dataguardBrokerPhaseSwitchover, "ManualSwitchover", "manual switchover in progress")
 	if scope.desired != nil && scope.desired.Path == dataguardBrokerPathTopology {
 		if err := performDataguardTopologyManualSwitchover(ctx, r, scope.broker, scope.desired, scope.req, targetSidbSid); err != nil {
+			if isDataguardBrokerRunnerUnavailable(err) {
+				scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionFalse, "RunnerPending", err.Error())
+				scope.markWaiting(dataguardBrokerPhaseSwitchover, "RunnerPending", err.Error())
+				return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
+			}
 			return ctrl.Result{Requeue: false}, err
 		}
 		return ctrl.Result{}, nil

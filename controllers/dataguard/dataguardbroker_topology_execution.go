@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -16,6 +17,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
+
+var errDataguardBrokerRunnerUnavailable = errors.New("dataguard broker runner pod is unavailable")
 
 type dataguardTopologyResolvedMember struct {
 	Name            string
@@ -524,8 +527,56 @@ func writeDataguardRunnerFile(ctx context.Context, r *DataguardBrokerReconciler,
 	return nil
 }
 
+func resolveDataguardBrokerActiveRunnerPod(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker) (*corev1.Pod, error) {
+	if broker == nil {
+		return nil, fmt.Errorf("%w: broker is nil", errDataguardBrokerRunnerUnavailable)
+	}
+	runtime, ready, message, err := resolveDataguardBrokerExecutionRuntime(ctx, r, broker)
+	if err != nil {
+		return nil, err
+	}
+	if !ready {
+		return nil, fmt.Errorf("%w: %s", errDataguardBrokerRunnerUnavailable, message)
+	}
+	runtimeHash := computeDataguardBrokerRunnerRuntimeHash(broker, runtime)
+	podName := dataguardBrokerRunnerPodNameForHash(broker, runtimeHash)
+
+	var pod corev1.Pod
+	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: broker.Namespace}, &pod); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("%w: pod %s/%s not found", errDataguardBrokerRunnerUnavailable, broker.Namespace, podName)
+		}
+		return nil, err
+	}
+	if !pod.DeletionTimestamp.IsZero() {
+		return nil, fmt.Errorf("%w: pod %s/%s is being deleted", errDataguardBrokerRunnerUnavailable, broker.Namespace, podName)
+	}
+	if pod.Status.Phase != corev1.PodRunning {
+		return nil, fmt.Errorf("%w: pod %s/%s is in phase %s", errDataguardBrokerRunnerUnavailable, broker.Namespace, podName, pod.Status.Phase)
+	}
+	return &pod, nil
+}
+
 func execDataguardBrokerRunnerShell(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, req ctrl.Request, nolog bool, command string) (string, error) {
-	return dbcommons.ExecCommand(r, r.Config, dataguardBrokerRunnerPodName(broker), broker.Namespace, "runner", ctx, req, nolog, "bash", "-c", command)
+	if broker == nil {
+		return "", fmt.Errorf("%w: broker is nil", errDataguardBrokerRunnerUnavailable)
+	}
+	pod, err := resolveDataguardBrokerActiveRunnerPod(ctx, r, broker)
+	if err != nil {
+		return "", err
+	}
+	podName := pod.Name
+	out, err := dbcommons.ExecCommand(r, r.Config, podName, broker.Namespace, "runner", ctx, req, nolog, "bash", "-c", command)
+	if err != nil {
+		if apierrors.IsNotFound(err) || strings.Contains(err.Error(), fmt.Sprintf("pods %q not found", podName)) {
+			return out, fmt.Errorf("%w: pod %s/%s not found", errDataguardBrokerRunnerUnavailable, broker.Namespace, podName)
+		}
+	}
+	return out, err
+}
+
+func isDataguardBrokerRunnerUnavailable(err error) bool {
+	return errors.Is(err, errDataguardBrokerRunnerUnavailable)
 }
 
 func runDataguardBrokerRunnerDGMGRLScript(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, req ctrl.Request, connectMember *dataguardTopologyResolvedMember, script string) (string, error) {

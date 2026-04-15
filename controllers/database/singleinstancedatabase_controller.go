@@ -113,6 +113,29 @@ type sidbResolvedExternalServiceConfig struct {
 	TCPSNodePort    int32
 }
 
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func stringMapEqual(a map[string]string, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		if b[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
 // To requeue after 15 secs allowing graceful state changes.
 var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
@@ -539,6 +562,23 @@ func servicePortByName(ports []corev1.ServicePort, name string) *corev1.ServiceP
 		}
 	}
 	return nil
+}
+
+func desiredSIDBServiceAnnotations(m *dbapi.SingleInstanceDatabase, external bool) map[string]string {
+	annotations := copyStringMap(m.Spec.ServiceAnnotations)
+	if !external || m == nil || m.Spec.Services == nil || m.Spec.Services.External == nil {
+		return annotations
+	}
+	if len(m.Spec.Services.External.Annotations) == 0 {
+		return annotations
+	}
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	for key, value := range m.Spec.Services.External.Annotations {
+		annotations[key] = value
+	}
+	return annotations
 }
 
 func getTcpsClientWalletSecretOverride(m *dbapi.SingleInstanceDatabase) string {
@@ -2985,7 +3025,7 @@ func applyPrimarySeparationPreference(pod *corev1.Pod, sidb *dbapi.SingleInstanc
 //
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleInstanceDatabase,
-	svcName string, ports []corev1.ServicePort, svcType corev1.ServiceType, publishNotReadyAddress bool) *corev1.Service {
+	svcName string, ports []corev1.ServicePort, svcType corev1.ServiceType, publishNotReadyAddress bool, annotations map[string]string) *corev1.Service {
 	svc := dbcommons.NewRealServiceBuilder().
 		SetName(svcName).
 		SetNamespace(m.Namespace).
@@ -2994,15 +3034,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 				"app": m.Name,
 			}
 		}()).
-		SetAnnotation(func() map[string]string {
-			annotations := make(map[string]string)
-			if len(m.Spec.ServiceAnnotations) != 0 {
-				for key, value := range m.Spec.ServiceAnnotations {
-					annotations[key] = value
-				}
-			}
-			return annotations
-		}()).
+		SetAnnotation(copyStringMap(annotations)).
 		SetPorts(ports).
 		SetSelector(func() map[string]string {
 			return map[string]string{
@@ -3462,15 +3494,17 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			log.Error(err, "Error encountered in obtaining the service", clusterSvcName)
 			return requeueY, err
 		}
-		desiredClusterSvc := r.instantiateSVCSpec(m, clusterSvcName, desiredSIDBClusterServicePorts(tcpsEnabled), corev1.ServiceTypeClusterIP, true)
+		desiredClusterSvc := r.instantiateSVCSpec(m, clusterSvcName, desiredSIDBClusterServicePorts(tcpsEnabled), corev1.ServiceTypeClusterIP, true, desiredSIDBServiceAnnotations(m, false))
 		log.Info("Creating a new service", "Service.Namespace", desiredClusterSvc.Namespace, "Service.Name", desiredClusterSvc.Name)
 		if err = r.Create(ctx, desiredClusterSvc); err != nil {
 			log.Error(err, "Failed to create new service", "Service.Namespace", desiredClusterSvc.Namespace, "Service.Name", desiredClusterSvc.Name)
 			return requeueY, err
 		}
 		clusterSvc = desiredClusterSvc
-	} else if !servicePortsMatchDesired(clusterSvc.Spec.Ports, desiredSIDBClusterServicePorts(tcpsEnabled), corev1.ServiceTypeClusterIP) {
+	} else if !servicePortsMatchDesired(clusterSvc.Spec.Ports, desiredSIDBClusterServicePorts(tcpsEnabled), corev1.ServiceTypeClusterIP) ||
+		!stringMapEqual(clusterSvc.Annotations, desiredSIDBServiceAnnotations(m, false)) {
 		clusterSvc.Spec.Ports = desiredSIDBClusterServicePorts(tcpsEnabled)
+		clusterSvc.Annotations = copyStringMap(desiredSIDBServiceAnnotations(m, false))
 		if err := r.Update(ctx, clusterSvc); err != nil {
 			log.Error(err, "Failed to update cluster service", "Service.Namespace", clusterSvc.Namespace, "Service.Name", clusterSvc.Name)
 			return requeueY, err
@@ -3508,7 +3542,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 			m.Status.TcpsConnectString = dbcommons.ValueUnavailable
 			m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
-			svc := r.instantiateSVCSpec(m, extSvcName, desiredExtPorts, externalCfg.Type, false)
+			svc := r.instantiateSVCSpec(m, extSvcName, desiredExtPorts, externalCfg.Type, false, desiredSIDBServiceAnnotations(m, true))
 			log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 			if err := r.Create(ctx, svc); err != nil {
 				log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
@@ -3529,6 +3563,14 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
 			if err := r.Delete(ctx, extSvc); err != nil {
 				log.Error(err, "Failed to recreate external service", "Service.Namespace", extSvc.Namespace, "Service.Name", extSvc.Name)
+				return requeueY, err
+			}
+			return requeueY, nil
+		case !stringMapEqual(extSvc.Annotations, desiredSIDBServiceAnnotations(m, true)):
+			m.Status.Status = dbcommons.StatusUpdating
+			extSvc.Annotations = copyStringMap(desiredSIDBServiceAnnotations(m, true))
+			if err := r.Update(ctx, extSvc); err != nil {
+				log.Error(err, "Failed to update external service annotations", "Service.Namespace", extSvc.Namespace, "Service.Name", extSvc.Name)
 				return requeueY, err
 			}
 			return requeueY, nil

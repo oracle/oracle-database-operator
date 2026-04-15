@@ -163,6 +163,18 @@ spec:
   ## Service Annotations (Cloud provider specific), for configuring the service (e.g. private LoadBalancer service)
   #serviceAnnotations:
   #  service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+  ##
+  ## Preferred external service configuration
+  ## services:
+  ##   external:
+  ##     type: LoadBalancer
+  ##     annotations:
+  ##       service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+  ##     tcp:
+  ##       enabled: true
+  ##       port: 1521
+  ##     tcps:
+  ##       enabled: false
 
   ## Deploy only on nodes having required labels. Format label_name: label_value
   ## For instance if the pods need to be restricted to a particular AD

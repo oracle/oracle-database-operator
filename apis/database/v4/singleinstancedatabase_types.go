@@ -70,7 +70,8 @@ type SingleInstanceDatabaseSpec struct {
 	// Deprecated: use spec.services.external.tcp.
 	ListenerPort int `json:"listenerPort,omitempty"`
 	// Deprecated: use spec.services.external.tcps.
-	TcpsListenerPort   int               `json:"tcpsListenerPort,omitempty"`
+	TcpsListenerPort int `json:"tcpsListenerPort,omitempty"`
+	// Deprecated: use spec.services.external.annotations.
 	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
 
 	FlashBack    *bool `json:"flashBack,omitempty"`
@@ -226,9 +227,11 @@ const (
 
 type SingleInstanceDatabaseExternalService struct {
 	// +kubebuilder:validation:Enum=Disabled;NodePort;LoadBalancer
-	Type SingleInstanceDatabaseExternalServiceType  `json:"type,omitempty"`
-	TCP  *SingleInstanceDatabaseExternalServicePort `json:"tcp,omitempty"`
-	TCPS *SingleInstanceDatabaseExternalServicePort `json:"tcps,omitempty"`
+	Type SingleInstanceDatabaseExternalServiceType `json:"type,omitempty"`
+	// Annotations are applied to the external Service regardless of whether it is rendered as NodePort or LoadBalancer.
+	Annotations map[string]string                          `json:"annotations,omitempty"`
+	TCP         *SingleInstanceDatabaseExternalServicePort `json:"tcp,omitempty"`
+	TCPS        *SingleInstanceDatabaseExternalServicePort `json:"tcps,omitempty"`
 }
 
 type SingleInstanceDatabaseExternalServicePort struct {

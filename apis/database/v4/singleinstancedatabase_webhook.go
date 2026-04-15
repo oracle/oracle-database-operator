@@ -522,6 +522,9 @@ func sidbDeprecatedServiceConfigWarnings(sidb *SingleInstanceDatabase) admission
 	if sidb.Spec.TcpsListenerPort != 0 {
 		warnings = append(warnings, "spec.tcpsListenerPort is deprecated; use spec.services.external.tcps")
 	}
+	if len(sidb.Spec.ServiceAnnotations) != 0 {
+		warnings = append(warnings, "spec.serviceAnnotations is deprecated; use spec.services.external.annotations")
+	}
 	return warnings
 }
 

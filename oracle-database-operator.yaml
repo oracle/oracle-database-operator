@@ -8999,6 +8999,20 @@ spec:
             properties:
               execution:
                 properties:
+                  authWallet:
+                    properties:
+                      enabled:
+                        type: boolean
+                      passwordSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      rebuildToken:
+                        type: string
+                    type: object
                   image:
                     type: string
                   imagePullSecrets:
@@ -9162,6 +9176,21 @@ spec:
             type: object
           status:
             properties:
+              authWallet:
+                properties:
+                  generatedPasswordSecretName:
+                    type: string
+                  initialized:
+                    type: boolean
+                  message:
+                    type: string
+                  observedRebuildToken:
+                    type: string
+                  phase:
+                    type: string
+                  walletSecretName:
+                    type: string
+                type: object
               clusterConnectString:
                 type: string
               conditions:
@@ -14549,6 +14578,20 @@ spec:
                         properties:
                           execution:
                             properties:
+                              authWallet:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  passwordSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  rebuildToken:
+                                    type: string
+                                type: object
                               image:
                                 type: string
                               imagePullSecrets:
@@ -15873,8 +15916,6 @@ spec:
                       type: string
                     createAs:
                       type: string
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     encryption:
                       type: string
                     envVars:
@@ -16105,6 +16146,20 @@ spec:
                 type: array
               dataguard:
                 properties:
+                  authWallet:
+                    properties:
+                      enabled:
+                        type: boolean
+                      passwordSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      rebuildToken:
+                        type: string
+                    type: object
                   mode:
                     enum:
                     - Disabled
@@ -16224,8 +16279,6 @@ spec:
                       type: string
                     directorName:
                       type: string
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     encryption:
                       type: string
                     endpoint:
@@ -16496,8 +16549,6 @@ spec:
                           type: string
                         directorName:
                           type: string
-                        disableDefaultLogVolumeClaims:
-                          type: boolean
                         encryption:
                           type: string
                         endpoint:
@@ -17132,8 +17183,6 @@ spec:
                       - STANDBY
                       - ACTIVE_STANDBY
                       type: string
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     diskThreshold:
                       format: int32
                       minimum: 1
@@ -17486,8 +17535,6 @@ spec:
                           type: array
                           x-kubernetes-list-type: atomic
                       type: object
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     envVars:
                       items:
                         properties:
@@ -18049,6 +18096,20 @@ spec:
                         properties:
                           execution:
                             properties:
+                              authWallet:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  passwordSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  rebuildToken:
+                                    type: string
+                                type: object
                               image:
                                 type: string
                               imagePullSecrets:
@@ -18747,6 +18808,20 @@ spec:
                 type: string
               dataguard:
                 properties:
+                  authWallet:
+                    properties:
+                      enabled:
+                        type: boolean
+                      passwordSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      rebuildToken:
+                        type: string
+                    type: object
                   mode:
                     enum:
                     - Disabled
@@ -19344,21 +19419,6 @@ spec:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
-              tcps:
-                properties:
-                  certMountLocation:
-                    type: string
-                  certRenewInterval:
-                    type: string
-                  clientWalletSecret:
-                    type: string
-                  enabled:
-                    type: boolean
-                  listenerPort:
-                    type: integer
-                  tlsSecret:
-                    type: string
-                type: object
               tcpsCertRenewInterval:
                 type: string
               tcpsListenerPort:
@@ -19570,6 +19630,20 @@ spec:
                         properties:
                           execution:
                             properties:
+                              authWallet:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  passwordSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  rebuildToken:
+                                    type: string
+                                type: object
                               image:
                                 type: string
                               imagePullSecrets:
@@ -21046,7 +21120,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -21063,7 +21137,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: dbcs-dev-docker.dockerhub-phx.oci.oraclecorp.com/oracle/database-operator:02398c30
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-mltp1
         imagePullPolicy: Always
         name: manager
         ports:

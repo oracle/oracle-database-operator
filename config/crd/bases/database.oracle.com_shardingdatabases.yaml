@@ -689,8 +689,6 @@ spec:
                       type: string
                     createAs:
                       type: string
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     encryption:
                       type: string
                     envVars:
@@ -921,6 +919,20 @@ spec:
                 type: array
               dataguard:
                 properties:
+                  authWallet:
+                    properties:
+                      enabled:
+                        type: boolean
+                      passwordSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      rebuildToken:
+                        type: string
+                    type: object
                   mode:
                     enum:
                     - Disabled
@@ -1040,8 +1052,6 @@ spec:
                       type: string
                     directorName:
                       type: string
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     encryption:
                       type: string
                     endpoint:
@@ -1312,8 +1322,6 @@ spec:
                           type: string
                         directorName:
                           type: string
-                        disableDefaultLogVolumeClaims:
-                          type: boolean
                         encryption:
                           type: string
                         endpoint:
@@ -1948,8 +1956,6 @@ spec:
                       - STANDBY
                       - ACTIVE_STANDBY
                       type: string
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     diskThreshold:
                       format: int32
                       minimum: 1
@@ -2302,8 +2308,6 @@ spec:
                           type: array
                           x-kubernetes-list-type: atomic
                       type: object
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     envVars:
                       items:
                         properties:
@@ -2865,6 +2869,20 @@ spec:
                         properties:
                           execution:
                             properties:
+                              authWallet:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  passwordSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  rebuildToken:
+                                    type: string
+                                type: object
                               image:
                                 type: string
                               imagePullSecrets:

@@ -5,7 +5,10 @@ import (
 	"testing"
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -237,6 +240,108 @@ func TestResolveDataguardBrokerExecutionRuntimeFromSIDBProducerStatus(t *testing
 	}
 	if got.Source == "" {
 		t.Fatalf("expected runtime source to be recorded")
+	}
+}
+
+func TestEnsureDataguardBrokerRunnerPodCreatesDesiredRunnerBeforeDeletingStaleRunner(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	broker := &dbapi.DataguardBroker{
+		ObjectMeta: metav1.ObjectMeta{Name: "dg", Namespace: "ns1"},
+		Status: dbapi.DataguardBrokerStatus{
+			ObservedTopologyHash: "topology-hash-1",
+		},
+	}
+	runtimeSpec := &dataguardBrokerExecutionRuntime{
+		Image:            "runner:19c",
+		ImagePullSecrets: []string{"pull-secret"},
+		WalletMountPath:  "/wallets",
+		TNSAdminPath:     "/tns",
+	}
+	staleHash := "oldhashvalue"
+	stalePod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, staleHash)
+	stalePod.Status.Phase = corev1.PodRunning
+
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(stalePod).Build(),
+		Scheme: scheme,
+	}
+
+	ready, message, err := ensureDataguardBrokerRunnerPod(context.Background(), reconciler, broker, runtimeSpec)
+	if err != nil {
+		t.Fatalf("ensureDataguardBrokerRunnerPod returned error: %v", err)
+	}
+	if ready {
+		t.Fatalf("expected desired runner creation to return not-ready")
+	}
+	if message == "" {
+		t.Fatalf("expected creation message")
+	}
+
+	desiredHash := computeDataguardBrokerRunnerRuntimeHash(broker, runtimeSpec)
+	desiredName := dataguardBrokerRunnerPodNameForHash(broker, desiredHash)
+
+	var desiredPod corev1.Pod
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: desiredName, Namespace: broker.Namespace}, &desiredPod); err != nil {
+		t.Fatalf("expected desired runner pod %q to exist: %v", desiredName, err)
+	}
+	var stillThere corev1.Pod
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: stalePod.Name, Namespace: broker.Namespace}, &stillThere); err != nil {
+		t.Fatalf("expected stale runner pod to remain until desired pod is ready: %v", err)
+	}
+}
+
+func TestEnsureDataguardBrokerRunnerPodDeletesStaleRunnerAfterDesiredReady(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	broker := &dbapi.DataguardBroker{
+		ObjectMeta: metav1.ObjectMeta{Name: "dg", Namespace: "ns1"},
+		Status: dbapi.DataguardBrokerStatus{
+			ObservedTopologyHash: "topology-hash-2",
+		},
+	}
+	runtimeSpec := &dataguardBrokerExecutionRuntime{
+		Image:            "runner:19c",
+		ImagePullSecrets: []string{"pull-secret"},
+		WalletMountPath:  "/wallets",
+		TNSAdminPath:     "/tns",
+	}
+
+	desiredHash := computeDataguardBrokerRunnerRuntimeHash(broker, runtimeSpec)
+	desiredPod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, desiredHash)
+	desiredPod.Status.Phase = corev1.PodRunning
+
+	stalePod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, "stalehash00")
+	stalePod.Status.Phase = corev1.PodRunning
+
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(desiredPod, stalePod).Build(),
+		Scheme: scheme,
+	}
+
+	ready, _, err := ensureDataguardBrokerRunnerPod(context.Background(), reconciler, broker, runtimeSpec)
+	if err != nil {
+		t.Fatalf("ensureDataguardBrokerRunnerPod returned error: %v", err)
+	}
+	if !ready {
+		t.Fatalf("expected desired runner pod to be ready")
+	}
+
+	var deletedCheck corev1.Pod
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: stalePod.Name, Namespace: broker.Namespace}, &deletedCheck); err == nil {
+		t.Fatalf("expected stale runner pod %q to be deleted", stalePod.Name)
 	}
 }
 

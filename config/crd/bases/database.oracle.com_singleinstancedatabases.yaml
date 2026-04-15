@@ -458,6 +458,20 @@ spec:
                 type: string
               dataguard:
                 properties:
+                  authWallet:
+                    properties:
+                      enabled:
+                        type: boolean
+                      passwordSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      rebuildToken:
+                        type: string
+                    type: object
                   mode:
                     enum:
                     - Disabled
@@ -1055,21 +1069,6 @@ spec:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
-              tcps:
-                properties:
-                  certMountLocation:
-                    type: string
-                  certRenewInterval:
-                    type: string
-                  clientWalletSecret:
-                    type: string
-                  enabled:
-                    type: boolean
-                  listenerPort:
-                    type: integer
-                  tlsSecret:
-                    type: string
-                type: object
               tcpsCertRenewInterval:
                 type: string
               tcpsListenerPort:
@@ -1281,6 +1280,20 @@ spec:
                         properties:
                           execution:
                             properties:
+                              authWallet:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  passwordSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  rebuildToken:
+                                    type: string
+                                type: object
                               image:
                                 type: string
                               imagePullSecrets:

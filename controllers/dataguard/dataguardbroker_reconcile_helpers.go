@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type dataguardBrokerReconcilePath string
@@ -767,47 +768,314 @@ func executionCandidateKey(candidate dbapi.DataguardExecutionStatus) string {
 	return strings.TrimSpace(candidate.Image) + "|" + strings.Join(uniqueSortedStrings(candidate.ImagePullSecrets), ",") + "|" + authWalletKey
 }
 
+func listDataguardBrokerRunnerWalletSecrets(broker *dbapi.DataguardBroker) []string {
+	if broker == nil || broker.Spec.Topology == nil {
+		return nil
+	}
+	secrets := make([]string, 0, len(broker.Spec.Topology.Members))
+	seen := map[string]struct{}{}
+	for i := range broker.Spec.Topology.Members {
+		member := broker.Spec.Topology.Members[i]
+		if member.TCPS == nil || !member.TCPS.Enabled {
+			continue
+		}
+		secretName := strings.TrimSpace(dbapi.ResolveDataguardTopologyMemberClientWalletSecret(broker.Spec.Topology, &member))
+		if secretName == "" {
+			continue
+		}
+		if _, ok := seen[secretName]; ok {
+			continue
+		}
+		seen[secretName] = struct{}{}
+		secrets = append(secrets, secretName)
+	}
+	sort.Strings(secrets)
+	return secrets
+}
+
+func dataguardBrokerRunnerPodSecretNamesByPrefix(pod *corev1.Pod, prefix string) []string {
+	if pod == nil {
+		return nil
+	}
+	names := make([]string, 0, len(pod.Spec.Volumes))
+	for _, volume := range pod.Spec.Volumes {
+		if !strings.HasPrefix(volume.Name, prefix) {
+			continue
+		}
+		if volume.Secret == nil {
+			continue
+		}
+		if trimmed := strings.TrimSpace(volume.Secret.SecretName); trimmed != "" {
+			names = append(names, trimmed)
+		}
+	}
+	return uniqueSortedStrings(names)
+}
+
+func dataguardBrokerRunnerContainerMountPath(pod *corev1.Pod, volumeName string) string {
+	if pod == nil || len(pod.Spec.Containers) == 0 {
+		return ""
+	}
+	for _, mount := range pod.Spec.Containers[0].VolumeMounts {
+		if mount.Name == volumeName {
+			return strings.TrimSpace(mount.MountPath)
+		}
+	}
+	return ""
+}
+
+func dataguardBrokerRunnerRecreateReasons(pod *corev1.Pod, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime, desiredHash string) []string {
+	reasons := make([]string, 0, 8)
+	if pod == nil || runtime == nil {
+		return []string{"runner runtime is incomplete"}
+	}
+	currentHash := strings.TrimSpace(pod.Labels["database.oracle.com/runtime-hash"])
+	if currentHash != strings.TrimSpace(desiredHash) {
+		reasons = append(reasons, fmt.Sprintf("runtime hash changed (%s -> %s)", firstNonEmptyString(currentHash, "<none>"), firstNonEmptyString(strings.TrimSpace(desiredHash), "<none>")))
+	}
+	currentImage := ""
+	if len(pod.Spec.Containers) > 0 {
+		currentImage = strings.TrimSpace(pod.Spec.Containers[0].Image)
+	}
+	if currentImage != strings.TrimSpace(runtime.Image) {
+		reasons = append(reasons, fmt.Sprintf("execution image changed (%s -> %s)", firstNonEmptyString(currentImage, "<none>"), firstNonEmptyString(strings.TrimSpace(runtime.Image), "<none>")))
+	}
+	currentTopologyHash := strings.TrimSpace(pod.Annotations["database.oracle.com/topology-hash"])
+	desiredTopologyHash := ""
+	if broker != nil {
+		desiredTopologyHash = strings.TrimSpace(broker.Status.ObservedTopologyHash)
+	}
+	if currentTopologyHash != desiredTopologyHash {
+		reasons = append(reasons, fmt.Sprintf("topology hash changed (%s -> %s)", firstNonEmptyString(currentTopologyHash, "<none>"), firstNonEmptyString(desiredTopologyHash, "<none>")))
+	}
+	currentAuthWallet := strings.TrimSpace(pod.Annotations["database.oracle.com/auth-wallet-secret"])
+	desiredAuthWallet := strings.TrimSpace(runtime.AuthWalletSecretName)
+	if currentAuthWallet != desiredAuthWallet {
+		reasons = append(reasons, fmt.Sprintf("auth wallet secret changed (%s -> %s)", firstNonEmptyString(currentAuthWallet, "<none>"), firstNonEmptyString(desiredAuthWallet, "<none>")))
+	}
+	currentImagePullSecrets := make([]string, 0, len(pod.Spec.ImagePullSecrets))
+	for _, secret := range pod.Spec.ImagePullSecrets {
+		currentImagePullSecrets = append(currentImagePullSecrets, strings.TrimSpace(secret.Name))
+	}
+	desiredImagePullSecrets := uniqueSortedStrings(runtime.ImagePullSecrets)
+	if !reflect.DeepEqual(uniqueSortedStrings(currentImagePullSecrets), desiredImagePullSecrets) {
+		reasons = append(reasons, fmt.Sprintf("imagePullSecrets changed (%v -> %v)", uniqueSortedStrings(currentImagePullSecrets), desiredImagePullSecrets))
+	}
+	currentWalletMountPath := dataguardBrokerRunnerContainerMountPath(pod, "auth-wallet")
+	desiredWalletMountPath := strings.TrimSpace(runtime.AuthWalletMountPath)
+	if currentWalletMountPath != desiredWalletMountPath && (currentWalletMountPath != "" || desiredWalletMountPath != "") {
+		reasons = append(reasons, fmt.Sprintf("auth wallet mount path changed (%s -> %s)", firstNonEmptyString(currentWalletMountPath, "<none>"), firstNonEmptyString(desiredWalletMountPath, "<none>")))
+	}
+	currentTNSAdminPath := dataguardBrokerRunnerContainerMountPath(pod, "tns-admin")
+	desiredTNSAdminPath := strings.TrimSpace(runtime.TNSAdminPath)
+	if currentTNSAdminPath != desiredTNSAdminPath {
+		reasons = append(reasons, fmt.Sprintf("TNS admin path changed (%s -> %s)", firstNonEmptyString(currentTNSAdminPath, "<none>"), firstNonEmptyString(desiredTNSAdminPath, "<none>")))
+	}
+	currentTopologyWallets := dataguardBrokerRunnerPodSecretNamesByPrefix(pod, "wallet-")
+	desiredTopologyWallets := listDataguardBrokerRunnerWalletSecrets(broker)
+	if !reflect.DeepEqual(currentTopologyWallets, desiredTopologyWallets) {
+		reasons = append(reasons, fmt.Sprintf("TCPS wallet secrets changed (%v -> %v)", currentTopologyWallets, desiredTopologyWallets))
+	}
+	if len(reasons) == 0 {
+		reasons = append(reasons, "runner spec no longer matches desired runtime")
+	}
+	return reasons
+}
+
+func logDataguardBrokerRunnerCreation(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime, desiredPodName, desiredHash string) {
+	if r == nil || broker == nil || runtime == nil {
+		return
+	}
+	pods, err := listDataguardBrokerRunnerPods(ctx, r.Client, broker)
+	if err != nil {
+		r.Log.WithValues("desiredRunnerPod", desiredPodName, "desiredRuntimeHash", desiredHash).
+			Info("creating topology execution runner pod", "reason", "unable to list existing runner pods", "listError", err.Error())
+		return
+	}
+	if len(pods) == 0 {
+		r.Log.WithValues("desiredRunnerPod", desiredPodName, "desiredRuntimeHash", desiredHash).
+			Info("creating topology execution runner pod", "reason", "initial runner bootstrap")
+		return
+	}
+
+	staleSummaries := make([]map[string]interface{}, 0, len(pods))
+	for i := range pods {
+		pod := &pods[i]
+		if !pod.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if strings.TrimSpace(pod.Labels["database.oracle.com/runtime-hash"]) == strings.TrimSpace(desiredHash) {
+			continue
+		}
+		staleSummaries = append(staleSummaries, map[string]interface{}{
+			"runnerPod": pod.Name,
+			"reasons":   dataguardBrokerRunnerRecreateReasons(pod, broker, runtime, desiredHash),
+		})
+	}
+	if len(staleSummaries) == 0 {
+		r.Log.WithValues("desiredRunnerPod", desiredPodName, "desiredRuntimeHash", desiredHash).
+			Info("creating topology execution runner pod", "reason", "desired runner pod does not exist yet")
+		return
+	}
+
+	r.Log.WithValues("desiredRunnerPod", desiredPodName, "desiredRuntimeHash", desiredHash).
+		Info("creating topology execution runner pod", "replaces", staleSummaries)
+}
+
+func computeDataguardBrokerRunnerRuntimeHash(broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime) string {
+	if runtime == nil {
+		return ""
+	}
+	topologyHash := ""
+	if broker != nil {
+		topologyHash = strings.TrimSpace(broker.Status.ObservedTopologyHash)
+	}
+	candidate := dbapi.DataguardExecutionStatus{
+		Image:            strings.TrimSpace(runtime.Image),
+		ImagePullSecrets: append([]string(nil), runtime.ImagePullSecrets...),
+	}
+	if runtime.AuthWallet != nil {
+		candidate.AuthWallet = runtime.AuthWallet.DeepCopy()
+	}
+	payload := map[string]interface{}{
+		"executionKey":     executionCandidateKey(candidate),
+		"topologyHash":     topologyHash,
+		"authWalletSecret": strings.TrimSpace(runtime.AuthWalletSecretName),
+		"walletMountPath":  strings.TrimSpace(runtime.WalletMountPath),
+		"tnsAdminPath":     strings.TrimSpace(runtime.TNSAdminPath),
+		"authWalletMount":  strings.TrimSpace(runtime.AuthWalletMountPath),
+		"topologyWallets":  listDataguardBrokerRunnerWalletSecrets(broker),
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		sum := sha256.Sum256([]byte(fmt.Sprintf("%v", payload)))
+		return hex.EncodeToString(sum[:])
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
+}
+
+func dataguardBrokerRunnerPodBaseName(broker *dbapi.DataguardBroker) string {
+	if broker == nil {
+		return "dataguard-runner"
+	}
+	return sanitizeDataguardRunnerName(broker.Name, "dataguard") + "-runner"
+}
+
+func dataguardBrokerRunnerPodNameForHash(broker *dbapi.DataguardBroker, runtimeHash string) string {
+	base := dataguardBrokerRunnerPodBaseName(broker)
+	if runtimeHash == "" {
+		return base
+	}
+	suffix := sanitizeDataguardRunnerName(runtimeHash, "runtime")
+	if len(suffix) > 10 {
+		suffix = suffix[:10]
+	}
+	maxBaseLen := 63 - len(suffix) - 1
+	if maxBaseLen < 1 {
+		maxBaseLen = 1
+	}
+	if len(base) > maxBaseLen {
+		base = strings.TrimRight(base[:maxBaseLen], "-")
+		if base == "" {
+			base = "runner"
+		}
+	}
+	return base + "-" + suffix
+}
+
+func listDataguardBrokerRunnerPods(ctx context.Context, r client.Client, broker *dbapi.DataguardBroker) ([]corev1.Pod, error) {
+	if broker == nil {
+		return nil, nil
+	}
+	var pods corev1.PodList
+	if err := r.List(ctx, &pods,
+		client.InNamespace(broker.Namespace),
+		client.MatchingLabels{
+			"database.oracle.com/dataguard-broker": broker.Name,
+			"database.oracle.com/component":        "execution-runner",
+		},
+	); err != nil {
+		return nil, err
+	}
+	return pods.Items, nil
+}
+
+func cleanupStaleDataguardBrokerRunnerPods(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desiredPodName, desiredHash string) error {
+	pods, err := listDataguardBrokerRunnerPods(ctx, r.Client, broker)
+	if err != nil {
+		return err
+	}
+	runtime, _, _, runtimeErr := resolveDataguardBrokerExecutionRuntime(ctx, r, broker)
+	for i := range pods {
+		pod := &pods[i]
+		if pod.Name == desiredPodName {
+			continue
+		}
+		if !pod.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if strings.TrimSpace(pod.Labels["database.oracle.com/runtime-hash"]) == strings.TrimSpace(desiredHash) {
+			continue
+		}
+		reasons := []string{"stale runner pod cleanup"}
+		if runtimeErr == nil {
+			reasons = dataguardBrokerRunnerRecreateReasons(pod, broker, runtime, desiredHash)
+		}
+		r.Log.WithValues("runnerPod", pod.Name, "desiredRunnerPod", desiredPodName, "desiredRuntimeHash", desiredHash).
+			Info("deleting stale topology execution runner pod", "reasons", reasons)
+		if err := clientIgnoreNotFound(r.Delete(ctx, pod)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ensureDataguardBrokerRunnerPod(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime) (bool, string, error) {
 	if broker == nil || runtime == nil || strings.TrimSpace(runtime.Image) == "" {
 		return false, "execution image is not resolved", nil
 	}
-	podName := dataguardBrokerRunnerPodName(broker)
+	runtimeHash := computeDataguardBrokerRunnerRuntimeHash(broker, runtime)
+	podName := dataguardBrokerRunnerPodNameForHash(broker, runtimeHash)
 	var existing corev1.Pod
 	if err := r.Get(ctx, types.NamespacedName{Namespace: broker.Namespace, Name: podName}, &existing); err != nil {
 		if !isNotFound(err) {
 			return false, "", err
 		}
-		pod := buildDataguardBrokerRunnerPod(broker, runtime)
+		logDataguardBrokerRunnerCreation(ctx, r, broker, runtime, podName, runtimeHash)
+		pod := buildDataguardBrokerRunnerPod(broker, runtime, runtimeHash)
 		if err := ctrl.SetControllerReference(broker, pod, r.Scheme); err != nil {
 			return false, "", err
 		}
 		if err := r.Create(ctx, pod); err != nil {
 			return false, "", err
 		}
-		return false, "created topology execution runner pod", nil
-	}
-	if runnerPodNeedsRefresh(&existing, broker, runtime) {
-		if err := r.Delete(ctx, &existing); err != nil {
-			return false, "", err
-		}
-		return false, "refreshed topology execution runner pod", nil
+		return false, fmt.Sprintf("created topology execution runner pod %s", podName), nil
 	}
 	switch existing.Status.Phase {
 	case corev1.PodRunning:
-		return true, "topology execution runner pod is ready", nil
+		if err := cleanupStaleDataguardBrokerRunnerPods(ctx, r, broker, podName, runtimeHash); err != nil {
+			return false, "", err
+		}
+		return true, fmt.Sprintf("topology execution runner pod %s is ready", podName), nil
 	case corev1.PodPending:
-		return false, "topology execution runner pod is pending", nil
+		return false, fmt.Sprintf("topology execution runner pod %s is pending", podName), nil
 	case corev1.PodFailed:
-		return false, "topology execution runner pod failed; deleting for recreation", r.Delete(ctx, &existing)
+		if err := clientIgnoreNotFound(r.Delete(ctx, &existing)); err != nil {
+			return false, "", err
+		}
+		return false, fmt.Sprintf("topology execution runner pod %s failed; deleting for recreation", podName), nil
 	default:
-		return false, fmt.Sprintf("topology execution runner pod is in phase %s", existing.Status.Phase), nil
+		return false, fmt.Sprintf("topology execution runner pod %s is in phase %s", podName, existing.Status.Phase), nil
 	}
 }
 
-func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime) *corev1.Pod {
+func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime, runtimeHash string) *corev1.Pod {
+	podName := dataguardBrokerRunnerPodNameForHash(broker, runtimeHash)
 	labels := map[string]string{
 		"database.oracle.com/dataguard-broker": broker.Name,
 		"database.oracle.com/component":        "execution-runner",
+		"database.oracle.com/runtime-hash":     runtimeHash,
 	}
 	annotations := map[string]string{
 		"database.oracle.com/runtime-image": strings.TrimSpace(runtime.Image),
@@ -881,7 +1149,7 @@ func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *datag
 
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        dataguardBrokerRunnerPodName(broker),
+			Name:        podName,
 			Namespace:   broker.Namespace,
 			Labels:      labels,
 			Annotations: annotations,
@@ -909,33 +1177,6 @@ func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *datag
 			}},
 		},
 	}
-}
-
-func dataguardBrokerRunnerPodName(broker *dbapi.DataguardBroker) string {
-	if broker == nil {
-		return "dataguard-runner"
-	}
-	return broker.Name + "-runner"
-}
-
-func runnerPodNeedsRefresh(pod *corev1.Pod, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime) bool {
-	if pod == nil || broker == nil || runtime == nil {
-		return false
-	}
-	if len(pod.Spec.Containers) == 0 || strings.TrimSpace(pod.Spec.Containers[0].Image) != strings.TrimSpace(runtime.Image) {
-		return true
-	}
-	if strings.TrimSpace(pod.Annotations["database.oracle.com/topology-hash"]) != strings.TrimSpace(broker.Status.ObservedTopologyHash) {
-		return true
-	}
-	if strings.TrimSpace(pod.Annotations["database.oracle.com/auth-wallet-secret"]) != strings.TrimSpace(runtime.AuthWalletSecretName) {
-		return true
-	}
-	currentSecrets := make([]string, 0, len(pod.Spec.ImagePullSecrets))
-	for _, secret := range pod.Spec.ImagePullSecrets {
-		currentSecrets = append(currentSecrets, strings.TrimSpace(secret.Name))
-	}
-	return !reflect.DeepEqual(uniqueSortedStrings(currentSecrets), uniqueSortedStrings(runtime.ImagePullSecrets))
 }
 
 func isNotFound(err error) bool {

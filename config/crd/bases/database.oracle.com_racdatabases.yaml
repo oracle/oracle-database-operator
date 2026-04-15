@@ -904,6 +904,20 @@ spec:
                         properties:
                           execution:
                             properties:
+                              authWallet:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  passwordSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  rebuildToken:
+                                    type: string
+                                type: object
                               image:
                                 type: string
                               imagePullSecrets:

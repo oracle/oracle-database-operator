@@ -675,6 +675,54 @@ func TestSIDBUnit_ResolveExternalServiceConfigUsesNewLoadBalancerDefaults(t *tes
 	}
 }
 
+func TestSIDBUnit_DesiredSIDBServiceAnnotationsUsesExternalOverrides(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			ServiceAnnotations: map[string]string{
+				"legacy": "value",
+				"shared": "legacy",
+			},
+			Services: &dbapi.SingleInstanceDatabaseServices{
+				External: &dbapi.SingleInstanceDatabaseExternalService{
+					Annotations: map[string]string{
+						"shared": "external",
+						"new":    "value",
+					},
+				},
+			},
+		},
+	}
+
+	got := desiredSIDBServiceAnnotations(sidb, true)
+	want := map[string]string{
+		"legacy": "value",
+		"shared": "external",
+		"new":    "value",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected external annotations: got %#v want %#v", got, want)
+	}
+}
+
+func TestSIDBUnit_DesiredSIDBServiceAnnotationsKeepsLegacyFallbackForExternalService(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			ServiceAnnotations: map[string]string{
+				"legacy": "value",
+			},
+			Services: &dbapi.SingleInstanceDatabaseServices{
+				External: &dbapi.SingleInstanceDatabaseExternalService{},
+			},
+		},
+	}
+
+	got := desiredSIDBServiceAnnotations(sidb, true)
+	want := map[string]string{"legacy": "value"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected legacy fallback annotations: got %#v want %#v", got, want)
+	}
+}
+
 func TestSIDBUnit_ResolveExternalServiceConfigRetainsLegacyCompatibility(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{

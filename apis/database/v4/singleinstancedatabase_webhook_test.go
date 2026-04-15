@@ -91,7 +91,10 @@ func TestSIDBWebhookAllowsNewExternalNodePortConfig(t *testing.T) {
 	sidb.Spec.Services = &SingleInstanceDatabaseServices{
 		External: &SingleInstanceDatabaseExternalService{
 			Type: SingleInstanceDatabaseExternalServiceTypeNodePort,
-			TCP:  &SingleInstanceDatabaseExternalServicePort{Enabled: true},
+			Annotations: map[string]string{
+				"service.beta.kubernetes.io/oci-load-balancer-internal": "true",
+			},
+			TCP: &SingleInstanceDatabaseExternalServicePort{Enabled: true},
 		},
 	}
 
@@ -122,13 +125,16 @@ func TestSIDBWebhookValidateCreateReturnsDeprecatedServiceWarnings(t *testing.T)
 	sidb.Spec.LoadBalancer = true
 	sidb.Spec.ListenerPort = 32001
 	sidb.Spec.TcpsListenerPort = 32002
+	sidb.Spec.ServiceAnnotations = map[string]string{
+		"service.beta.kubernetes.io/oci-load-balancer-internal": "true",
+	}
 
 	warnings, err := (&SingleInstanceDatabase{}).ValidateCreate(context.Background(), sidb)
 	if err != nil {
 		t.Fatalf("expected validate create to succeed, got: %v", err)
 	}
-	if len(warnings) != 3 {
-		t.Fatalf("expected 3 deprecation warnings, got %#v", warnings)
+	if len(warnings) != 4 {
+		t.Fatalf("expected 4 deprecation warnings, got %#v", warnings)
 	}
 }
 

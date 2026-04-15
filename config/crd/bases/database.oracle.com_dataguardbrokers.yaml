@@ -155,6 +155,20 @@ spec:
             properties:
               execution:
                 properties:
+                  authWallet:
+                    properties:
+                      enabled:
+                        type: boolean
+                      passwordSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      rebuildToken:
+                        type: string
+                    type: object
                   image:
                     type: string
                   imagePullSecrets:
@@ -318,6 +332,21 @@ spec:
             type: object
           status:
             properties:
+              authWallet:
+                properties:
+                  generatedPasswordSecretName:
+                    type: string
+                  initialized:
+                    type: boolean
+                  message:
+                    type: string
+                  observedRebuildToken:
+                    type: string
+                  phase:
+                    type: string
+                  walletSecretName:
+                    type: string
+                type: object
               clusterConnectString:
                 type: string
               conditions:
