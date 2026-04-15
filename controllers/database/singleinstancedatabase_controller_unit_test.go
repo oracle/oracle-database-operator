@@ -644,6 +644,47 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtr
 	}
 }
 
+func TestSIDBUnit_ComputeTNSAliasesHashChangesWhenAliasSetChanges(t *testing.T) {
+	baseAliases := map[string]dbapi.SingleInstanceDatabaseTNSAlias{
+		"PRIMDB": {
+			Name:        "PRIMDB",
+			Host:        "sidb-primary",
+			Port:        1521,
+			ServiceName: "PRIMDB",
+			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
+		},
+		"STBYDB": {
+			Name:        "STBYDB",
+			Host:        "sidb-standby",
+			Port:        1521,
+			ServiceName: "STBYDB",
+			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
+		},
+	}
+	baseNames := []string{"PRIMDB", "STBYDB"}
+
+	hash1 := computeTNSAliasesHash(baseAliases, baseNames)
+	hash2 := computeTNSAliasesHash(baseAliases, baseNames)
+	if hash1 == "" || hash1 != hash2 {
+		t.Fatalf("expected stable non-empty alias hash, got %q and %q", hash1, hash2)
+	}
+
+	changedAliases := map[string]dbapi.SingleInstanceDatabaseTNSAlias{
+		"PRIMDB": baseAliases["PRIMDB"],
+		"STBYDB": {
+			Name:        "STBYDB",
+			Host:        "sidb-standby.shns.svc.cluster.local",
+			Port:        2484,
+			ServiceName: "STBYDB",
+			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
+		},
+	}
+	hash3 := computeTNSAliasesHash(changedAliases, baseNames)
+	if hash1 == hash3 {
+		t.Fatalf("expected alias hash to change when desired primary peer aliases change")
+	}
+}
+
 func TestSIDBUnit_ResolveExternalServiceConfigUsesNewLoadBalancerDefaults(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{

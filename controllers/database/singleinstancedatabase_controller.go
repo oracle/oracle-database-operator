@@ -5996,6 +5996,52 @@ func syncConfiguredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner *d
 	return syncDesiredTNSAliasesInPod(r, pod, ctx, req, tnsFile, stateFile, desired, desiredNames)
 }
 
+func computeTNSAliasesHash(desired map[string]dbapi.SingleInstanceDatabaseTNSAlias, desiredNames []string) string {
+	var builder strings.Builder
+	for _, name := range desiredNames {
+		item := normalizeTNSAlias(desired[name])
+		port := item.Port
+		if port == 0 {
+			port = defaultPortForProtocol(string(item.Protocol))
+		}
+		builder.WriteString(strings.ToUpper(strings.TrimSpace(name)))
+		builder.WriteString("|")
+		builder.WriteString(item.Host)
+		builder.WriteString("|")
+		builder.WriteString(strconv.Itoa(port))
+		builder.WriteString("|")
+		builder.WriteString(item.ServiceName)
+		builder.WriteString("|")
+		builder.WriteString(normalizeTNSAliasProtocol(string(item.Protocol)))
+		builder.WriteString("|")
+		builder.WriteString(item.SSLServerDN)
+		builder.WriteString("\n")
+	}
+	sum := sha256.Sum256([]byte(builder.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+func readManagedTNSAliasesHashInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, stateFile string) (string, error) {
+	cmd := fmt.Sprintf("if [ -f %q ]; then cat %q; fi", stateFile, stateFile)
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func writeManagedTNSAliasesHashInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, stateFile, hash string) error {
+	cmd := fmt.Sprintf("cat > %q <<'EOF'\n%s\nEOF", stateFile, strings.TrimSpace(hash))
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		return fmt.Errorf("failed to write managed tns aliases hash state file %s: %w", stateFile, err)
+	}
+	if strings.TrimSpace(out) != "" {
+		r.Log.Info("Managed TNS aliases hash state updated", "stateFile", stateFile, "output", out)
+	}
+	return nil
+}
+
 func buildStandbyPDBTNSAliases(owner *dbapi.SingleInstanceDatabase, pdbNames []string) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
 	desired := map[string]dbapi.SingleInstanceDatabaseTNSAlias{}
 	if owner == nil {
@@ -6280,6 +6326,14 @@ func buildPrimaryPeerTNSAliases(primary *dbapi.SingleInstanceDatabase, standby *
 	return resolveProtectedDesiredTNSAliases(primary, defaults, false)
 }
 
+func primaryPeerTNSAliasesStateFileBySID(sid string) string {
+	return getTnsFilePathBySID(sid) + ".operator_primary_peer_aliases"
+}
+
+func primaryPeerTNSAliasesHashStateFileBySID(sid string) string {
+	return primaryPeerTNSAliasesStateFileBySID(sid) + ".hash"
+}
+
 // #############################################################################
 //
 //	Set tns names for primary database for dataguard configuraion
@@ -6290,7 +6344,11 @@ func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.Sin
 	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	tnsFile := getTnsFilePathBySID(p.Spec.Sid)
 	desired, desiredNames := buildPrimaryPeerTNSAliases(p, s)
-	return syncDesiredTNSAliasesInPod(r, primaryReadyPod, ctx, req, tnsFile, tnsFile+".operator_primary_peer_aliases", desired, desiredNames)
+	stateFile := primaryPeerTNSAliasesStateFileBySID(p.Spec.Sid)
+	if err := syncDesiredTNSAliasesInPod(r, primaryReadyPod, ctx, req, tnsFile, stateFile, desired, desiredNames); err != nil {
+		return err
+	}
+	return writeManagedTNSAliasesHashInPod(r, primaryReadyPod, ctx, req, primaryPeerTNSAliasesHashStateFileBySID(p.Spec.Sid), computeTNSAliasesHash(desired, desiredNames))
 }
 
 // #############################################################################
@@ -6308,14 +6366,28 @@ func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 	if err != nil {
 		return err
 	}
-	// NO need to setup primary database if standby database pods are initialized
-	if totalStandbyPods > 0 {
-		return nil
-	}
 
 	primaryDbReadyPod, err := GetDatabaseReadyPod(r, primary, ctx, req)
 	if err != nil {
 		return err
+	}
+
+	desiredPrimaryPeerAliases, desiredPrimaryPeerAliasNames := buildPrimaryPeerTNSAliases(primary, stdby)
+	desiredPrimaryPeerAliasesHash := computeTNSAliasesHash(desiredPrimaryPeerAliases, desiredPrimaryPeerAliasNames)
+	appliedPrimaryPeerAliasesHash, err := readManagedTNSAliasesHashInPod(r, primaryDbReadyPod, ctx, req, primaryPeerTNSAliasesHashStateFileBySID(primary.Spec.Sid))
+	if err != nil {
+		return err
+	}
+	// Preserve quiet steady-state behavior after standby bootstrap, but refresh if the
+	// desired primary peer alias set actually changed.
+	if totalStandbyPods > 0 && appliedPrimaryPeerAliasesHash == desiredPrimaryPeerAliasesHash {
+		return nil
+	}
+	if totalStandbyPods > 0 && appliedPrimaryPeerAliasesHash != desiredPrimaryPeerAliasesHash {
+		log.Info("Refreshing primary peer TNS aliases because desired alias set changed",
+			"primaryDatabase", primary.Name,
+			"appliedHash", appliedPrimaryPeerAliasesHash,
+			"desiredHash", desiredPrimaryPeerAliasesHash)
 	}
 
 	log.Info("Setting up tnsnames.ora in primary database", "primaryDatabase", primary.Name)
