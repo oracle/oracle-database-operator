@@ -4069,7 +4069,33 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 	if shardingType == "COMPOSITE" && replType == "NATIVE" {
 		groupRegionBySpace := map[string]map[string]string{}
 		groupByRegionBySpace := map[string]map[string]string{}
-		readWriteShardCountByGroup := map[string]int{}
+		groupsBySpace := map[string]map[string]bool{}
+
+		for i := range instance.Spec.ShardInfo {
+			info := instance.Spec.ShardInfo[i]
+			if info.ShardGroupDetails == nil || info.ShardSpaceDetails == nil {
+				continue
+			}
+			if shardingv1.CheckIsDeleteFlag(info.ShardGroupDetails.IsDelete, instance, r.Log) {
+				continue
+			}
+			spaceKey := normalizeShardSpaceKey(info.ShardSpaceDetails.Name)
+			groupKey := normalizeShardGroupKey(info.ShardGroupDetails.Name)
+			if spaceKey == "" || groupKey == "" {
+				continue
+			}
+			if _, ok := groupsBySpace[spaceKey]; !ok {
+				groupsBySpace[spaceKey] = map[string]bool{}
+			}
+			groupsBySpace[spaceKey][groupKey] = true
+			ruMode := normalizeShardGroupRuModeKey(info.ShardGroupDetails.RuMode)
+			if ruMode == "" {
+				return fmt.Errorf("composite sharding with NATIVE replication requires ru_mode for shardGroup %s in shardSpace %s", groupKey, spaceKey)
+			}
+			if ruMode != "READWRITE" {
+				return fmt.Errorf("composite sharding with NATIVE replication currently supports only READWRITE shardGroups")
+			}
+		}
 
 		for i := range instance.Spec.Shard {
 			s := instance.Spec.Shard[i]
@@ -4100,18 +4126,27 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 				return fmt.Errorf("composite sharding with NATIVE replication: region %s in shardSpace %s is already used by shardGroup %s", regionKey, spaceKey, prevGroup)
 			}
 			groupByRegionBySpace[spaceKey][regionKey] = groupKey
+			if _, ok := groupsBySpace[spaceKey]; !ok {
+				groupsBySpace[spaceKey] = map[string]bool{}
+			}
+			groupsBySpace[spaceKey][groupKey] = true
 
 			ruMode := r.resolveCompositeNativeShardGroupRuMode(instance, groupKey, spaceKey)
 			if ruMode == "" {
 				return fmt.Errorf("composite sharding with NATIVE replication requires ru_mode for shardGroup %s in shardSpace %s", groupKey, spaceKey)
 			}
-			if ruMode == "READWRITE" {
-				readWriteShardCountByGroup[groupKey]++
+			if ruMode != "READWRITE" {
+				return fmt.Errorf("composite sharding with NATIVE replication currently supports only READWRITE shardGroups")
 			}
 		}
-		for groupKey, rwCount := range readWriteShardCountByGroup {
-			if rwCount > 1 {
-				return fmt.Errorf("composite sharding with NATIVE replication: shardGroup %s allows at most one READWRITE database; found %d", groupKey, rwCount)
+		for spaceKey, groups := range groupsBySpace {
+			if len(groups) > 1 {
+				groupNames := make([]string, 0, len(groups))
+				for groupKey := range groups {
+					groupNames = append(groupNames, groupKey)
+				}
+				slices.Sort(groupNames)
+				return fmt.Errorf("composite sharding with NATIVE replication currently supports at most one shardGroup per shardSpace; shardSpace %s has groups: %s", spaceKey, strings.Join(groupNames, ","))
 			}
 		}
 		return nil

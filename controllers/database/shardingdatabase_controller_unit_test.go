@@ -770,7 +770,24 @@ func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *
 		wantErr string
 	}{
 		{
-			name: "allows composite native with unique region per shardgroup and one readwrite database",
+			name: "allows composite native one readwrite shardgroup with multiple members",
+			inst: &databasev4.ShardingDatabase{
+				Spec: databasev4.ShardingDatabaseSpec{
+					ShardingType:    "COMPOSITE",
+					ReplicationType: "NATIVE",
+					ShardGroup: []databasev4.ShardGroupSpec{
+						{Name: "sg-rw", ShardSpace: "ss1", RuMode: "READWRITE"},
+					},
+					Shard: []databasev4.ShardSpec{
+						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "rw2", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "rw3", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+					},
+				},
+			},
+		},
+		{
+			name: "rejects readonly shardgroup for composite native",
 			inst: &databasev4.ShardingDatabase{
 				Spec: databasev4.ShardingDatabaseSpec{
 					ShardingType:    "COMPOSITE",
@@ -782,28 +799,10 @@ func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *
 					Shard: []databasev4.ShardSpec{
 						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
 						{Name: "ro1", ShardGroup: "sg-ro", ShardSpace: "ss1", ShardRegion: "iad"},
-						{Name: "ro2", ShardGroup: "sg-ro", ShardSpace: "ss1", ShardRegion: "iad"},
 					},
 				},
 			},
-		},
-		{
-			name: "rejects duplicate region across shardgroups in same shardspace",
-			inst: &databasev4.ShardingDatabase{
-				Spec: databasev4.ShardingDatabaseSpec{
-					ShardingType:    "COMPOSITE",
-					ReplicationType: "NATIVE",
-					ShardGroup: []databasev4.ShardGroupSpec{
-						{Name: "sg-rw", ShardSpace: "ss1", RuMode: "READWRITE"},
-						{Name: "sg-ro", ShardSpace: "ss1", RuMode: "READONLY"},
-					},
-					Shard: []databasev4.ShardSpec{
-						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
-						{Name: "ro1", ShardGroup: "sg-ro", ShardSpace: "ss1", ShardRegion: "phx"},
-					},
-				},
-			},
-			wantErr: "already used by shardGroup",
+			wantErr: "currently supports only READWRITE shardGroups",
 		},
 		{
 			name: "rejects missing ru_mode for composite native shardgroup",
@@ -822,21 +821,22 @@ func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *
 			wantErr: "requires ru_mode",
 		},
 		{
-			name: "rejects more than one readwrite database in same shardgroup",
+			name: "rejects multiple shardgroups in same shardspace for composite native",
 			inst: &databasev4.ShardingDatabase{
 				Spec: databasev4.ShardingDatabaseSpec{
 					ShardingType:    "COMPOSITE",
 					ReplicationType: "NATIVE",
 					ShardGroup: []databasev4.ShardGroupSpec{
-						{Name: "sg-rw", ShardSpace: "ss1", RuMode: "READWRITE"},
+						{Name: "sg-rw-1", ShardSpace: "ss1", RuMode: "READWRITE"},
+						{Name: "sg-rw-2", ShardSpace: "ss1", RuMode: "READWRITE"},
 					},
 					Shard: []databasev4.ShardSpec{
-						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
-						{Name: "rw2", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "rw1", ShardGroup: "sg-rw-1", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "rw2", ShardGroup: "sg-rw-2", ShardSpace: "ss1", ShardRegion: "iad"},
 					},
 				},
 			},
-			wantErr: "allows at most one READWRITE database",
+			wantErr: "currently supports at most one shardGroup per shardSpace",
 		},
 	}
 
