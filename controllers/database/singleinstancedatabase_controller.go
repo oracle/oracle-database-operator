@@ -6022,9 +6022,85 @@ func syncStandbySourceTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner
 	return syncDesiredTNSAliasesInPod(r, standbyPod, ctx, req, tnsFile, stateFile, desired, desiredNames)
 }
 
+func addAutomaticDataguardNetAliases(desired map[string]dbapi.SingleInstanceDatabaseTNSAlias, aliasBase, host string, includeTCPS bool, includeDGMGRL bool) {
+	aliasBase = strings.ToUpper(strings.TrimSpace(aliasBase))
+	host = strings.TrimSpace(host)
+	if desired == nil || aliasBase == "" || host == "" {
+		return
+	}
+
+	desired[aliasBase] = dbapi.SingleInstanceDatabaseTNSAlias{
+		Name:        aliasBase,
+		Host:        host,
+		Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
+		ServiceName: aliasBase,
+		Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
+	}
+	if includeDGMGRL {
+		desired[aliasBase+"_DGMGRL"] = dbapi.SingleInstanceDatabaseTNSAlias{
+			Name:        aliasBase + "_DGMGRL",
+			Host:        host,
+			Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
+			ServiceName: aliasBase + "_DGMGRL",
+			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
+		}
+	}
+
+	if !includeTCPS {
+		return
+	}
+
+	desired[aliasBase+"TCPS"] = dbapi.SingleInstanceDatabaseTNSAlias{
+		Name:        aliasBase + "TCPS",
+		Host:        host,
+		Port:        int(dbcommons.CONTAINER_TCPS_PORT),
+		ServiceName: aliasBase,
+		Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
+	}
+	if includeDGMGRL {
+		desired[aliasBase+"TCPS_DGMGRL"] = dbapi.SingleInstanceDatabaseTNSAlias{
+			Name:        aliasBase + "TCPS_DGMGRL",
+			Host:        host,
+			Port:        int(dbcommons.CONTAINER_TCPS_PORT),
+			ServiceName: aliasBase + "_DGMGRL",
+			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
+		}
+	}
+}
+
+func resolveProtectedDesiredTNSAliases(owner *dbapi.SingleInstanceDatabase, defaults map[string]dbapi.SingleInstanceDatabaseTNSAlias, appendExtras bool) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
+	desired := make(map[string]dbapi.SingleInstanceDatabaseTNSAlias, len(defaults))
+	for name, item := range defaults {
+		normalized := normalizeTNSAlias(item)
+		if strings.TrimSpace(normalized.Name) == "" {
+			normalized.Name = strings.ToUpper(strings.TrimSpace(name))
+		}
+		desired[normalized.Name] = normalized
+	}
+	if owner == nil {
+		return sortedDesiredTNSAliases(desired)
+	}
+
+	for i := range owner.Spec.TNSAliases {
+		item := normalizeTNSAlias(owner.Spec.TNSAliases[i])
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := desired[name]; exists {
+			continue
+		}
+		if appendExtras {
+			desired[name] = item
+		}
+	}
+
+	return sortedDesiredTNSAliases(desired)
+}
+
 func buildManagedTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
 	defaults, _ := buildAutomaticPrimaryTNSAliases(owner, primary)
-	return resolveDesiredTNSAliases(owner, defaults, true)
+	return resolveProtectedDesiredTNSAliases(owner, defaults, true)
 }
 
 func buildAutomaticPrimaryTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
@@ -6036,45 +6112,20 @@ func buildAutomaticPrimaryTNSAliases(owner *dbapi.SingleInstanceDatabase, primar
 		return desired, nil
 	}
 
+	includeTCPS := getTcpsEnabled(owner) || (primary != nil && getTcpsEnabled(primary))
+	includeDGMGRL := strings.EqualFold(strings.TrimSpace(owner.Spec.CreateAs), "standby")
+	if strings.EqualFold(strings.TrimSpace(owner.Spec.CreateAs), "standby") {
+		currentAlias := strings.ToUpper(strings.TrimSpace(owner.Spec.Sid))
+		currentHost := strings.TrimSpace(owner.Name)
+		addAutomaticDataguardNetAliases(desired, currentAlias, currentHost, includeTCPS, includeDGMGRL)
+	}
+
 	primaryAlias := strings.ToUpper(strings.TrimSpace(GetPrimaryDatabaseSid(owner, primary)))
 	primaryHost := strings.TrimSpace(GetPrimaryDatabaseHost(owner, primary))
 	if primaryAlias == "" || primaryHost == "" {
 		return desired, nil
 	}
-
-	desired[primaryAlias] = dbapi.SingleInstanceDatabaseTNSAlias{
-		Name:        primaryAlias,
-		Host:        primaryHost,
-		Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
-		ServiceName: primaryAlias,
-		Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
-	}
-	desired[primaryAlias+"_DGMGRL"] = dbapi.SingleInstanceDatabaseTNSAlias{
-		Name:        primaryAlias + "_DGMGRL",
-		Host:        primaryHost,
-		Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
-		ServiceName: primaryAlias + "_DGMGRL",
-		Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
-	}
-
-	if getTcpsEnabled(owner) {
-		desired[primaryAlias+"TCPS"] = dbapi.SingleInstanceDatabaseTNSAlias{
-			Name:        primaryAlias + "TCPS",
-			Host:        primaryHost,
-			Port:        int(dbcommons.CONTAINER_TCPS_PORT),
-			ServiceName: primaryAlias,
-			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
-		}
-		if owner.Spec.CreateAs == "standby" {
-			desired[primaryAlias+"TCPS_DGMGRL"] = dbapi.SingleInstanceDatabaseTNSAlias{
-				Name:        primaryAlias + "TCPS_DGMGRL",
-				Host:        primaryHost,
-				Port:        int(dbcommons.CONTAINER_TCPS_PORT),
-				ServiceName: primaryAlias + "_DGMGRL",
-				Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
-			}
-		}
-	}
+	addAutomaticDataguardNetAliases(desired, primaryAlias, primaryHost, includeTCPS, includeDGMGRL)
 
 	desiredNames := make([]string, 0, len(desired))
 	for name := range desired {
@@ -6162,22 +6213,18 @@ func sortedDesiredTNSAliases(desired map[string]dbapi.SingleInstanceDatabaseTNSA
 }
 
 func buildPrimaryPeerTNSAliases(primary *dbapi.SingleInstanceDatabase, standby *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
-	defaultAlias := strings.ToUpper(strings.TrimSpace(standby.Spec.Sid))
-	defaultHost := strings.TrimSpace(standby.Name)
-	defaultService := strings.ToUpper(strings.TrimSpace(standby.Spec.Sid))
-	if defaultAlias == "" || defaultHost == "" || defaultService == "" {
-		return map[string]dbapi.SingleInstanceDatabaseTNSAlias{}, nil
+	defaults := map[string]dbapi.SingleInstanceDatabaseTNSAlias{}
+	if primary == nil || standby == nil {
+		return defaults, nil
 	}
-	defaults := map[string]dbapi.SingleInstanceDatabaseTNSAlias{
-		defaultAlias: {
-			Name:        defaultAlias,
-			Host:        defaultHost,
-			Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
-			ServiceName: defaultService,
-			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
-		},
-	}
-	return resolveDesiredTNSAliases(primary, defaults, false)
+
+	includeTCPS := getTcpsEnabled(primary) || getTcpsEnabled(standby)
+	includeDGMGRL := !strings.EqualFold(strings.TrimSpace(primary.Spec.CreateAs), "truecache") &&
+		!strings.EqualFold(strings.TrimSpace(standby.Spec.CreateAs), "truecache")
+	addAutomaticDataguardNetAliases(defaults, primary.Spec.Sid, primary.Name, includeTCPS, includeDGMGRL)
+	addAutomaticDataguardNetAliases(defaults, standby.Spec.Sid, standby.Name, includeTCPS, includeDGMGRL)
+
+	return resolveProtectedDesiredTNSAliases(primary, defaults, false)
 }
 
 // #############################################################################

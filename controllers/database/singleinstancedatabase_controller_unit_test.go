@@ -463,8 +463,10 @@ func TestSIDBUnit_BuildSIDBPreviewTCPSConfigUsesGeneratedWalletSecretWhenEnabled
 
 func TestSIDBUnit_BuildAutomaticPrimaryTNSAliases(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby"},
 		Spec: dbapi.SingleInstanceDatabaseSpec{
 			CreateAs: "standby",
+			Sid:      "STBYDB",
 			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
 				DatabaseRef: "primary-db",
 			},
@@ -483,11 +485,23 @@ func TestSIDBUnit_BuildAutomaticPrimaryTNSAliases(t *testing.T) {
 	}
 
 	aliases, names := buildAutomaticPrimaryTNSAliases(sidb, primary)
-	expectedNames := []string{"ORCLCDB", "ORCLCDBTCPS", "ORCLCDBTCPS_DGMGRL", "ORCLCDB_DGMGRL"}
+	expectedNames := []string{"ORCLCDB", "ORCLCDBTCPS", "ORCLCDBTCPS_DGMGRL", "ORCLCDB_DGMGRL", "STBYDB", "STBYDBTCPS", "STBYDBTCPS_DGMGRL", "STBYDB_DGMGRL"}
 	if !reflect.DeepEqual(names, expectedNames) {
 		t.Fatalf("unexpected generated alias names: got %v want %v", names, expectedNames)
 	}
 
+	if got := aliases["STBYDB"]; got.Host != "sidb-standby" || got.Port != 1521 || got.ServiceName != "STBYDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
+		t.Fatalf("unexpected base standby self alias: %#v", got)
+	}
+	if got := aliases["STBYDB_DGMGRL"]; got.Host != "sidb-standby" || got.Port != 1521 || got.ServiceName != "STBYDB_DGMGRL" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
+		t.Fatalf("unexpected standby self dgmgrl alias: %#v", got)
+	}
+	if got := aliases["STBYDBTCPS"]; got.Host != "sidb-standby" || got.Port != 2484 || got.ServiceName != "STBYDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
+		t.Fatalf("unexpected standby self tcps alias: %#v", got)
+	}
+	if got := aliases["STBYDBTCPS_DGMGRL"]; got.Host != "sidb-standby" || got.Port != 2484 || got.ServiceName != "STBYDB_DGMGRL" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
+		t.Fatalf("unexpected standby self tcps dgmgrl alias: %#v", got)
+	}
 	if got := aliases["ORCLCDB"]; got.Host != "primary-db" || got.Port != 1521 || got.ServiceName != "ORCLCDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
 		t.Fatalf("unexpected base primary alias: %#v", got)
 	}
@@ -540,19 +554,19 @@ func TestSIDBUnit_BuildManagedTNSAliasesAppliesOverridesAndAppendsExtras(t *test
 	}
 
 	aliases, names := buildManagedTNSAliases(sidb, nil)
-	expectedNames := []string{"DATAGUARD", "PRIMDB", "PRIMDBTCPS", "PRIMDB_DGMGRL"}
+	expectedNames := []string{"DATAGUARD", "PRIMDB", "PRIMDBTCPS"}
 	if !reflect.DeepEqual(names, expectedNames) {
 		t.Fatalf("unexpected managed alias names: got %v want %v", names, expectedNames)
 	}
 
-	if got := aliases["PRIMDB"]; got.Host != "override-host" || got.Port != 1525 || got.ServiceName != "OVERRIDE_SVC" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
-		t.Fatalf("unexpected overridden PRIMDB alias: %#v", got)
+	if got := aliases["PRIMDB"]; got.Host != "primary-host" || got.Port != 1521 || got.ServiceName != "PRIMDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
+		t.Fatalf("unexpected protected PRIMDB alias: %#v", got)
 	}
-	if got := aliases["PRIMDBTCPS"]; got.Host != "secure-host" || got.Port != 2484 || got.ServiceName != "PRIMDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS || got.SSLServerDN != "CN=primary" {
-		t.Fatalf("unexpected merged PRIMDBTCPS alias: %#v", got)
+	if got := aliases["PRIMDBTCPS"]; got.Host != "primary-host" || got.Port != 2484 || got.ServiceName != "PRIMDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS || got.SSLServerDN != "" {
+		t.Fatalf("unexpected protected PRIMDBTCPS alias: %#v", got)
 	}
-	if got := aliases["PRIMDB_DGMGRL"]; got.Host != "primary-host" || got.Port != 1521 || got.ServiceName != "PRIMDB_DGMGRL" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
-		t.Fatalf("unexpected generated PRIMDB_DGMGRL alias: %#v", got)
+	if _, exists := aliases["PRIMDB_DGMGRL"]; exists {
+		t.Fatalf("did not expect PRIMDB_DGMGRL alias for truecache")
 	}
 	if _, exists := aliases["PRIMDBTCPS_DGMGRL"]; exists {
 		t.Fatalf("did not expect PRIMDBTCPS_DGMGRL alias for truecache")
@@ -564,7 +578,9 @@ func TestSIDBUnit_BuildManagedTNSAliasesAppliesOverridesAndAppendsExtras(t *test
 
 func TestSIDBUnit_BuildPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtras(t *testing.T) {
 	primary := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-primary"},
 		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "PRIMDB",
 			TNSAliases: []dbapi.SingleInstanceDatabaseTNSAlias{
 				{
 					Name:        "STBYDB",
@@ -590,17 +606,38 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtr
 	}
 
 	aliases, names := buildPrimaryPeerTNSAliases(primary, standby)
-	expectedNames := []string{"STBYDB"}
+	expectedNames := []string{"PRIMDB", "PRIMDB_DGMGRL", "STBYDB", "STBYDB_DGMGRL"}
 	if !reflect.DeepEqual(names, expectedNames) {
 		t.Fatalf("unexpected primary peer alias names: got %v want %v", names, expectedNames)
 	}
+	if got := aliases["PRIMDB"]; got.Host != "sidb-primary" ||
+		got.Port != 1521 ||
+		got.ServiceName != "PRIMDB" ||
+		got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP ||
+		got.SSLServerDN != "" {
+		t.Fatalf("unexpected protected primary self alias: %#v", got)
+	}
 	got := aliases["STBYDB"]
-	if got.Host != "override-standby" ||
-		got.Port != 1525 ||
-		got.ServiceName != "STBY_SERVICE" ||
-		got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS ||
-		got.SSLServerDN != "CN=standby" {
-		t.Fatalf("unexpected primary peer alias: %#v", got)
+	if got.Host != "sidb-standby" ||
+		got.Port != 1521 ||
+		got.ServiceName != "STBYDB" ||
+		got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP ||
+		got.SSLServerDN != "" {
+		t.Fatalf("unexpected protected standby peer alias: %#v", got)
+	}
+	if got := aliases["STBYDB_DGMGRL"]; got.Host != "sidb-standby" ||
+		got.Port != 1521 ||
+		got.ServiceName != "STBYDB_DGMGRL" ||
+		got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP ||
+		got.SSLServerDN != "" {
+		t.Fatalf("unexpected protected standby peer dgmgrl alias: %#v", got)
+	}
+	if got := aliases["PRIMDB_DGMGRL"]; got.Host != "sidb-primary" ||
+		got.Port != 1521 ||
+		got.ServiceName != "PRIMDB_DGMGRL" ||
+		got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP ||
+		got.SSLServerDN != "" {
+		t.Fatalf("unexpected protected primary self dgmgrl alias: %#v", got)
 	}
 	if _, exists := aliases["EXTRA_ALIAS"]; exists {
 		t.Fatalf("did not expect extra alias to be appended on primary peer path")

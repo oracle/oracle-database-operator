@@ -45,6 +45,49 @@ type dataguardTopologyResolvedState struct {
 	DesiredPhysicalMembers []*dataguardTopologyResolvedMember
 }
 
+func dataguardTopologyUsesTCPS(member *dbapi.DataguardTopologyMember) bool {
+	return member != nil && member.TCPS != nil && member.TCPS.Enabled
+}
+
+func dataguardTopologyTransportProtocol(member *dbapi.DataguardTopologyMember) string {
+	if dataguardTopologyUsesTCPS(member) {
+		return "TCPS"
+	}
+	return "TCP"
+}
+
+func dataguardTopologyCanonicalPort(protocol string) int32 {
+	if strings.EqualFold(strings.TrimSpace(protocol), "TCPS") {
+		return dbcommons.CONTAINER_TCPS_PORT
+	}
+	return dbcommons.CONTAINER_LISTENER_PORT
+}
+
+func selectDataguardEndpointForTransport(member *dbapi.DataguardTopologyMember, protocol string) (*dbapi.DataguardEndpointSpec, error) {
+	if member == nil {
+		return nil, fmt.Errorf("topology member is nil")
+	}
+	normalizedProtocol := strings.ToUpper(strings.TrimSpace(protocol))
+	if normalizedProtocol == "" {
+		normalizedProtocol = "TCP"
+	}
+
+	var fallback *dbapi.DataguardEndpointSpec
+	for i := range member.Endpoints {
+		endpoint := &member.Endpoints[i]
+		if fallback == nil && strings.TrimSpace(endpoint.Host) != "" {
+			fallback = endpoint
+		}
+		if strings.EqualFold(strings.TrimSpace(endpoint.Protocol), normalizedProtocol) {
+			return endpoint, nil
+		}
+	}
+	if fallback != nil {
+		return fallback, nil
+	}
+	return nil, fmt.Errorf("topology member %q does not declare a usable endpoint", strings.TrimSpace(member.Name))
+}
+
 func resolveDataguardTopologyState(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime, requireAdminPasswords bool) (*dataguardTopologyResolvedState, error) {
 	if broker == nil || broker.Spec.Topology == nil {
 		return nil, fmt.Errorf("spec.topology is not set")
@@ -112,27 +155,38 @@ func resolveDataguardTopologyMember(ctx context.Context, r *DataguardBrokerRecon
 		return nil, fmt.Errorf("topology member %q uses unsupported role %q", strings.TrimSpace(member.Name), member.Role)
 	}
 
-	endpoint, _ := selectPreferredDataguardEndpoint(member.Endpoints)
-	if endpoint == nil {
-		return nil, fmt.Errorf("topology member %q does not declare a usable endpoint", strings.TrimSpace(member.Name))
+	protocol := dataguardTopologyTransportProtocol(member)
+	endpoint, err := selectDataguardEndpointForTransport(member, protocol)
+	if err != nil {
+		return nil, err
 	}
 
 	dbUniqueName := strings.ToUpper(strings.TrimSpace(member.DBUniqueName))
 	if dbUniqueName == "" {
 		dbUniqueName = strings.ToUpper(strings.TrimSpace(member.Name))
 	}
-	alias := sanitizeDataguardRunnerName(dbUniqueName, strings.TrimSpace(member.Name))
-	alias = strings.ToUpper(alias)
-	staticAlias := strings.ToUpper(dbUniqueName + "_DGMGRL")
+	alias := dbUniqueName
+	staticAlias := dbUniqueName + "_DGMGRL"
+	if protocol == "TCPS" {
+		alias += "TCPS"
+		staticAlias = dbUniqueName + "TCPS_DGMGRL"
+	}
 
 	resolved := &dataguardTopologyResolvedMember{
-		Name:          strings.TrimSpace(member.Name),
-		Role:          role,
-		DBUniqueName:  dbUniqueName,
-		Alias:         alias,
-		StaticAlias:   staticAlias,
-		LocalRef:      member.LocalRef,
-		Endpoint:      *endpoint,
+		Name:         strings.TrimSpace(member.Name),
+		Role:         role,
+		DBUniqueName: dbUniqueName,
+		Alias:        strings.ToUpper(strings.TrimSpace(alias)),
+		StaticAlias:  strings.ToUpper(strings.TrimSpace(staticAlias)),
+		LocalRef:     member.LocalRef,
+		Endpoint: dbapi.DataguardEndpointSpec{
+			Name:        strings.TrimSpace(endpoint.Name),
+			Protocol:    protocol,
+			Host:        strings.TrimSpace(endpoint.Host),
+			Port:        dataguardTopologyCanonicalPort(protocol),
+			ServiceName: strings.ToUpper(strings.TrimSpace(endpoint.ServiceName)),
+			SSLServerDN: strings.TrimSpace(endpoint.SSLServerDN),
+		},
 		ConnectString: formatDataguardEndpointConnectString(endpoint),
 		SSLServerDN:   firstNonEmptyString(strings.TrimSpace(endpoint.SSLServerDN), tcpsServerDN(member.TCPS)),
 		UseAuthWallet: runtime != nil && runtime.usesAuthWallet(),
@@ -159,7 +213,7 @@ func resolveDataguardTopologyMember(ctx context.Context, r *DataguardBrokerRecon
 		resolved.AdminPassword = adminPassword
 	}
 
-	if strings.EqualFold(strings.TrimSpace(endpoint.Protocol), "TCPS") {
+	if protocol == "TCPS" {
 		walletSecret := dbapi.ResolveDataguardTopologyMemberClientWalletSecret(broker.Spec.Topology, member)
 		if walletSecret == "" {
 			return nil, fmt.Errorf("topology member %q uses TCPS but tcps.clientWalletSecret is not set", resolved.Name)
