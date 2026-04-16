@@ -948,6 +948,19 @@ spec:
                       standbyRedoSize:
                         type: string
                     type: object
+                  standbySources:
+                    items:
+                      properties:
+                        dbUniqueName:
+                          type: string
+                        host:
+                          type: string
+                        tcpPort:
+                          type: integer
+                        tcpsEnabled:
+                          type: boolean
+                      type: object
+                    type: array
                 type: object
               dbEdition:
                 type: string
