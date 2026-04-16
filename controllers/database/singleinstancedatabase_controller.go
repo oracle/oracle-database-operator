@@ -1171,6 +1171,9 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		if err := syncConfiguredTNSAliasesInPod(r, sidb, referredPrimaryDatabase, readyPod, ctx, req); err != nil {
 			return requeueY, err
 		}
+		if err := reconcilePrimaryDataguardTNSAliasesInPod(r, sidb, readyPod, ctx, req); err != nil {
+			return requeueY, err
+		}
 		return requeueN, nil
 	}
 
@@ -6241,6 +6244,13 @@ func configuredSIDBPrimaryPeerAliasTargets(primary *dbapi.SingleInstanceDatabase
 	return targets
 }
 
+func sidbPrimaryUsesExplicitStandbySources(primary *dbapi.SingleInstanceDatabase) bool {
+	return primary != nil &&
+		strings.EqualFold(strings.TrimSpace(primary.Spec.CreateAs), "primary") &&
+		primary.Spec.Dataguard != nil &&
+		len(primary.Spec.Dataguard.StandbySources) > 0
+}
+
 func legacySIDBPrimaryPeerAliasTarget(standby *dbapi.SingleInstanceDatabase) sidbPrimaryPeerAliasTarget {
 	return normalizeSIDBPrimaryPeerAliasTarget(sidbPrimaryPeerAliasTarget{
 		DBUniqueName: normalizedSIDBDataguardDBUniqueName(standby),
@@ -6519,6 +6529,39 @@ func resolvePrimaryPeerTNSAliases(
 	return desired, desiredNames, "legacy primaryDatabaseRef/primarySource discovery", nil
 }
 
+func reconcilePrimaryDataguardTNSAliasesInPod(
+	r *SingleInstanceDatabaseReconciler,
+	primary *dbapi.SingleInstanceDatabase,
+	primaryReadyPod corev1.Pod,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+	if !sidbPrimaryUsesExplicitStandbySources(primary) {
+		return nil
+	}
+
+	desiredPrimaryPeerAliases, desiredPrimaryPeerAliasNames, aliasSource, err := resolvePrimaryPeerTNSAliases(r, primary, nil, ctx)
+	if err != nil {
+		return err
+	}
+	desiredPrimaryPeerAliasesHash := computeTNSAliasesHash(desiredPrimaryPeerAliases, desiredPrimaryPeerAliasNames)
+	appliedPrimaryPeerAliasesHash, err := readManagedTNSAliasesHashInPod(r, primaryReadyPod, ctx, req, primaryPeerTNSAliasesHashStateFileBySID(primary.Spec.Sid))
+	if err != nil {
+		return err
+	}
+	if appliedPrimaryPeerAliasesHash == desiredPrimaryPeerAliasesHash {
+		return nil
+	}
+
+	r.Log.Info("Reconciling primary Data Guard aliases from standbySources",
+		"primaryDatabase", primary.Name,
+		"aliasSource", aliasSource,
+		"desiredAliasNames", desiredPrimaryPeerAliasNames,
+		"appliedHash", appliedPrimaryPeerAliasesHash,
+		"desiredHash", desiredPrimaryPeerAliasesHash)
+	return SetupTnsNamesPrimaryForDG(r, primary, desiredPrimaryPeerAliases, desiredPrimaryPeerAliasNames, primaryReadyPod, ctx, req)
+}
+
 func primaryPeerTNSAliasesStateFileBySID(sid string) string {
 	return getTnsFilePathBySID(sid) + ".operator_primary_peer_aliases"
 }
@@ -6561,12 +6604,18 @@ func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 
 	log := r.Log.WithValues("SetupPrimaryDatabase", req.NamespacedName)
 
-	totalStandbyPods, err := GetTotalDatabasePods(r, stdby, ctx, req)
+	primaryDbReadyPod, err := GetDatabaseReadyPod(r, primary, ctx, req)
 	if err != nil {
 		return err
 	}
 
-	primaryDbReadyPod, err := GetDatabaseReadyPod(r, primary, ctx, req)
+	if sidbPrimaryUsesExplicitStandbySources(primary) {
+		log.Info("Skipping legacy standby-driven primary tnsnames.ora update because primary manages aliases from standbySources",
+			"primaryDatabase", primary.Name)
+		return SetupListenerForDGOnDatabase(r, primary, primaryDbReadyPod, ctx, req)
+	}
+
+	totalStandbyPods, err := GetTotalDatabasePods(r, stdby, ctx, req)
 	if err != nil {
 		return err
 	}

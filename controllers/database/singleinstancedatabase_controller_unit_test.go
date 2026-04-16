@@ -740,6 +740,66 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesForConfiguredStandbySources(t *testi
 	}
 }
 
+func TestSIDBUnit_SIDBPrimaryUsesExplicitStandbySources(t *testing.T) {
+	primary := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "primary",
+			Dataguard: &dbapi.DataguardProducerSpec{
+				StandbySources: []dbapi.DataguardStandbySourceSpec{{DBUniqueName: "STBYDB", Host: "sidb-standby"}},
+			},
+		},
+	}
+	if !sidbPrimaryUsesExplicitStandbySources(primary) {
+		t.Fatalf("expected primary with standbySources to use explicit standby source management")
+	}
+
+	standby := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "standby",
+			Dataguard: &dbapi.DataguardProducerSpec{
+				StandbySources: []dbapi.DataguardStandbySourceSpec{{DBUniqueName: "STBYDB", Host: "sidb-standby"}},
+			},
+		},
+	}
+	if sidbPrimaryUsesExplicitStandbySources(standby) {
+		t.Fatalf("did not expect non-primary SIDB to use explicit standby source management")
+	}
+}
+
+func TestSIDBUnit_ResolvePrimaryPeerTNSAliasesUsesConfiguredStandbySources(t *testing.T) {
+	primary := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-primary", Namespace: "shns"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "primary",
+			Sid:      "PRIMDB",
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{Enabled: true},
+			},
+			Dataguard: &dbapi.DataguardProducerSpec{
+				Prereqs: &dbapi.DataguardPrereqsSpec{Enabled: true},
+				StandbySources: []dbapi.DataguardStandbySourceSpec{
+					{DBUniqueName: "STBYDB", Host: "sidb-standby.shns.svc.cluster.local", TCPSEnabled: true},
+				},
+			},
+		},
+	}
+
+	aliases, names, source, err := resolvePrimaryPeerTNSAliases(&SingleInstanceDatabaseReconciler{}, primary, nil, context.Background())
+	if err != nil {
+		t.Fatalf("resolvePrimaryPeerTNSAliases() error = %v", err)
+	}
+	if source != "spec.dataguard.standbySources" {
+		t.Fatalf("unexpected alias source: got %q", source)
+	}
+	expectedNames := []string{"PRIMDB", "PRIMDBTCPS", "PRIMDBTCPS_DGMGRL", "PRIMDB_DGMGRL", "STBYDB", "STBYDBTCPS", "STBYDBTCPS_DGMGRL", "STBYDB_DGMGRL"}
+	if !reflect.DeepEqual(names, expectedNames) {
+		t.Fatalf("unexpected alias names: got %v want %v", names, expectedNames)
+	}
+	if got := aliases["STBYDBTCPS"]; got.Host != "sidb-standby.shns.svc.cluster.local" || got.Port != 2484 {
+		t.Fatalf("unexpected STBYDBTCPS alias: %#v", got)
+	}
+}
+
 func TestSIDBUnit_DiscoverLegacyPrimaryPeerAliasTargetsIncludesAllStandbysForPrimary(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := dbapi.AddToScheme(scheme); err != nil {
