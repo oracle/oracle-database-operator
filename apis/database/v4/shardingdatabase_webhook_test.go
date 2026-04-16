@@ -43,6 +43,111 @@ func TestShardingWebhookRejectsManagedDataguardMode(t *testing.T) {
 	}
 }
 
+func TestShardingDeprecatedFieldWarnings(t *testing.T) {
+	spec := &ShardingDatabaseSpec{
+		IsDataGuard:               true,
+		GsmShardSpace:             []ShardSpaceSpec{{Name: "legacy-ss"}},
+		GsmShardGroup:             []ShardGroupSpec{{Name: "legacy-sg"}},
+		ShardRegion:               []string{"phx"},
+		ShardBuddyRegion:          "iad",
+		IsTdeWallet:               "enable",
+		TdeWalletPvc:              "tde-pvc",
+		TdeWalletPvcMountLocation: "/mnt/tde",
+		Shard: []ShardSpec{{
+			Name:          "sh1",
+			PvcName:       "legacy-pvc",
+			PvAnnotations: map[string]string{"a": "b"},
+		}},
+		Catalog: []CatalogSpec{{
+			Name:          "cat1",
+			PvcName:       "legacy-cat-pvc",
+			PvMatchLabels: map[string]string{"c": "d"},
+		}},
+		Gsm: []GsmSpec{{
+			Name:    "gsm1",
+			PvcName: "legacy-gsm-pvc",
+		}},
+		ShardGroup: []ShardGroupSpec{{
+			Name:             "sg1",
+			ShardGroupName:   "legacy-sg",
+			LegacyShardSpace: "SS1",
+		}},
+		ShardSpace: []ShardSpaceSpec{{
+			Name:           "ss1",
+			ShardSpaceName: "legacy-ss",
+			Chnuks:         8,
+			ProtectionMode: "MAXPERFORMANCE",
+		}},
+		Service: []GsmServiceSpec{{
+			Name:        "svc1",
+			PrferredAll: "pool1",
+		}},
+		GsmService: []GsmServiceSpec{{
+			Name:        "svc2",
+			PrferredAll: "pool2",
+		}},
+		ShardInfo: []ShardingDetails{{
+			ShardPreFixName: "sh",
+			Replicas:        2,
+			ShardGroupDetails: &ShardGroupSpec{
+				Name:             "sgi",
+				ShardGroupName:   "legacy-sgi",
+				LegacyShardSpace: "SS2",
+			},
+			ShardSpaceDetails: &ShardSpaceSpec{
+				Name:           "ssi",
+				ShardSpaceName: "legacy-ssi",
+				Chnuks:         4,
+				ProtectionMode: "MAXAVAILABILITY",
+			},
+		}},
+	}
+
+	warnings := deprecatedShardingFieldWarnings(spec)
+	expectedWarnings := []string{
+		"spec.isDataGuard is deprecated and retained only for backward compatibility",
+		"spec.gsmShardSpace is deprecated; use spec.shardSpace",
+		"spec.gsmShardGroup is deprecated; use spec.shardGroup",
+		"spec.shardRegion is deprecated; use spec.region",
+		"spec.shardBuddyRegion is deprecated; use spec.region[].buddy",
+		"spec.isTdeWallet is deprecated; use spec.tdeWallet.isEnabled",
+		"spec.tdeWalletPvc is deprecated; use spec.tdeWallet.pvcName",
+		"spec.tdeWalletPvcMountLocation is deprecated; use spec.tdeWallet.mountPath",
+		"spec.shard[0] uses deprecated pvcName/pvAnnotations/pvMatchLabels fields; these fields are ignored by the operator. Use additionalPVCs instead.",
+		"spec.catalog[0] uses deprecated pvcName/pvAnnotations/pvMatchLabels fields; these fields are ignored by the operator. Use additionalPVCs instead.",
+		"spec.gsm[0] uses deprecated pvcName/pvAnnotations/pvMatchLabels fields; these fields are ignored by the operator. Use additionalPVCs instead.",
+		"spec.shardGroup[0].shardGroupName is deprecated; use spec.shardGroup[0].name",
+		"spec.shardGroup[0].ShardSpace is deprecated; use spec.shardGroup[0].shardSpace",
+		"spec.shardSpace[0].shardSpaceName is deprecated; use spec.shardSpace[0].name",
+		"spec.shardSpace[0].Chnuks is deprecated; use spec.shardSpace[0].chunks",
+		"spec.shardSpace[0].protectionMode is deprecated; use spec.shardSpace[0].protectMode",
+		"spec.service[0].prferredAll is deprecated; use spec.service[0].preferredAll",
+		"spec.gsmService[0].prferredAll is deprecated; use spec.gsmService[0].preferredAll",
+		"spec.shardInfo[0].replicas is deprecated; use spec.shardInfo[0].shardNum",
+		"spec.shardInfo[0].shardGroupDetails.shardGroupName is deprecated; use spec.shardInfo[0].shardGroupDetails.name",
+		"spec.shardInfo[0].shardGroupDetails.ShardSpace is deprecated; use spec.shardInfo[0].shardGroupDetails.shardSpace",
+		"spec.shardInfo[0].shardSpaceDetails.shardSpaceName is deprecated; use spec.shardInfo[0].shardSpaceDetails.name",
+		"spec.shardInfo[0].shardSpaceDetails.Chnuks is deprecated; use spec.shardInfo[0].shardSpaceDetails.chunks",
+		"spec.shardInfo[0].shardSpaceDetails.protectionMode is deprecated; use spec.shardInfo[0].shardSpaceDetails.protectMode",
+	}
+
+	if len(warnings) != len(expectedWarnings) {
+		t.Fatalf("expected %d warnings, got %#v", len(expectedWarnings), warnings)
+	}
+	for _, expected := range expectedWarnings {
+		found := false
+		for _, warning := range warnings {
+			if warning == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected warning %q, got %#v", expected, warnings)
+		}
+	}
+}
+
 func TestValidateShardOperationRules(t *testing.T) {
 	tests := []struct {
 		name         string

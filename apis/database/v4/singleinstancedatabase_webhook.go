@@ -246,7 +246,7 @@ func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj *Single
 	singleinstancedatabaselog.Info("validate create", "name", sidb.Name)
 
 	allErrs := validateSingleInstanceDatabaseSpec(sidb)
-	warnings := sidbDeprecatedServiceConfigWarnings(sidb)
+	warnings := sidbDeprecatedFieldWarnings(sidb)
 	if len(allErrs) == 0 {
 		return warnings, nil
 	}
@@ -260,7 +260,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 	singleinstancedatabaselog.Info("validate update", "name", newSidb.Name)
 
 	allErrs := validateSingleInstanceDatabaseSpec(newSidb)
-	warnings := sidbDeprecatedServiceConfigWarnings(newSidb)
+	warnings := sidbDeprecatedFieldWarnings(newSidb)
 	specChanged := !reflect.DeepEqual(oldSidb.Spec, newSidb.Spec)
 	if specChanged {
 		if locked, lockGen, lockMsg := lockpolicy.IsControllerUpdateLocked(oldSidb.Status.Conditions, lockpolicy.DefaultReconcilingConditionType, lockpolicy.DefaultUpdateLockReason); locked {
@@ -511,7 +511,7 @@ func sidbUsesNewExternalServices(sidb *SingleInstanceDatabase) bool {
 	return sidb != nil && sidb.Spec.Services != nil && sidb.Spec.Services.External != nil
 }
 
-func sidbDeprecatedServiceConfigWarnings(sidb *SingleInstanceDatabase) admission.Warnings {
+func sidbDeprecatedFieldWarnings(sidb *SingleInstanceDatabase) admission.Warnings {
 	if sidb == nil {
 		return nil
 	}
@@ -527,6 +527,30 @@ func sidbDeprecatedServiceConfigWarnings(sidb *SingleInstanceDatabase) admission
 	}
 	if len(sidb.Spec.ServiceAnnotations) != 0 {
 		warnings = append(warnings, "spec.serviceAnnotations is deprecated; use spec.services.external.annotations")
+	}
+	if sidb.Spec.EnableTCPS {
+		warnings = append(warnings, "spec.enableTCPS is deprecated; use spec.security.tcps.enabled")
+	}
+	if strings.TrimSpace(sidb.Spec.TcpsCertRenewInterval) != "" {
+		warnings = append(warnings, "spec.tcpsCertRenewInterval is deprecated; use spec.security.tcps.certRenewInterval")
+	}
+	if strings.TrimSpace(sidb.Spec.TcpsTlsSecret) != "" {
+		warnings = append(warnings, "spec.tcpsTlsSecret is deprecated; use spec.security.tcps.tlsSecret")
+	}
+	if strings.TrimSpace(sidb.Spec.AdminPassword.SecretName) != "" {
+		warnings = append(warnings, "spec.adminPassword is deprecated; use spec.security.secrets.admin")
+	}
+	if sidb.Spec.Resources.Requests != nil || sidb.Spec.Resources.Limits != nil {
+		warnings = append(warnings, "spec.resources is deprecated; use spec.resourceRequirements")
+	}
+	if strings.TrimSpace(sidb.Spec.Persistence.Size) != "" {
+		warnings = append(warnings, "spec.persistence.size is deprecated; use spec.persistence.oradata.size")
+	}
+	if strings.TrimSpace(sidb.Spec.Persistence.StorageClass) != "" {
+		warnings = append(warnings, "spec.persistence.storageClass is deprecated; use spec.persistence.oradata.storageClass")
+	}
+	if strings.TrimSpace(sidb.Spec.Persistence.AccessMode) != "" {
+		warnings = append(warnings, "spec.persistence.accessMode is deprecated; use spec.persistence.oradata.accessMode")
 	}
 	return warnings
 }

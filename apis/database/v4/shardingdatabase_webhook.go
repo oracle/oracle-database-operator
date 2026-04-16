@@ -664,7 +664,7 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj *ShardingData
 	var validationErr field.ErrorList
 	var validationErrs1 field.ErrorList
 	cr := obj
-	warnings := deprecatedLegacyPVCFieldWarnings(&cr.Spec)
+	warnings := deprecatedShardingFieldWarnings(&cr.Spec)
 	logger = logger.WithValues("name", cr.Name, "namespace", cr.Namespace)
 	logger.Info("running create validation")
 	validationErr = append(validationErr, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), cr.Spec.Dataguard)...)
@@ -789,7 +789,7 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *S
 
 	oldCR := oldObj
 	newCR := newObj
-	warnings := deprecatedLegacyPVCFieldWarnings(&newCR.Spec)
+	warnings := deprecatedShardingFieldWarnings(&newCR.Spec)
 	validationErr = append(validationErr, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), newCR.Spec.Dataguard)...)
 
 	oldMode := detectShardingMode(&oldCR.Spec)
@@ -1013,28 +1013,114 @@ func (r *ShardingDatabase) validateStorageSizeNoShrink(oldCR *ShardingDatabase) 
 	return nil
 }
 
-func deprecatedLegacyPVCFieldWarnings(spec *ShardingDatabaseSpec) admission.Warnings {
+func deprecatedShardingFieldWarnings(spec *ShardingDatabaseSpec) admission.Warnings {
 	if spec == nil {
 		return nil
 	}
 	warnings := admission.Warnings{}
-	appendWarn := func(path string) {
-		warnings = append(warnings, path+" uses deprecated pvcName/pvAnnotations/pvMatchLabels fields; these fields are ignored by the operator. Use additionalPVCs instead.")
+	appendWarn := func(message string) {
+		for _, existing := range warnings {
+			if existing == message {
+				return
+			}
+		}
+		warnings = append(warnings, message)
+	}
+	appendPVCWarn := func(path string) {
+		appendWarn(path + " uses deprecated pvcName/pvAnnotations/pvMatchLabels fields; these fields are ignored by the operator. Use additionalPVCs instead.")
+	}
+
+	if spec.IsDataGuard {
+		appendWarn("spec.isDataGuard is deprecated and retained only for backward compatibility")
+	}
+	if len(spec.GsmShardSpace) > 0 {
+		appendWarn("spec.gsmShardSpace is deprecated; use spec.shardSpace")
+	}
+	if len(spec.GsmShardGroup) > 0 {
+		appendWarn("spec.gsmShardGroup is deprecated; use spec.shardGroup")
+	}
+	if len(spec.ShardRegion) > 0 {
+		appendWarn("spec.shardRegion is deprecated; use spec.region")
+	}
+	if strings.TrimSpace(spec.ShardBuddyRegion) != "" {
+		appendWarn("spec.shardBuddyRegion is deprecated; use spec.region[].buddy")
+	}
+	if strings.TrimSpace(spec.IsTdeWallet) != "" {
+		appendWarn("spec.isTdeWallet is deprecated; use spec.tdeWallet.isEnabled")
+	}
+	if strings.TrimSpace(spec.TdeWalletPvc) != "" {
+		appendWarn("spec.tdeWalletPvc is deprecated; use spec.tdeWallet.pvcName")
+	}
+	if strings.TrimSpace(spec.TdeWalletPvcMountLocation) != "" {
+		appendWarn("spec.tdeWalletPvcMountLocation is deprecated; use spec.tdeWallet.mountPath")
 	}
 
 	for i := range spec.Shard {
 		if strings.TrimSpace(spec.Shard[i].PvcName) != "" || len(spec.Shard[i].PvAnnotations) > 0 || len(spec.Shard[i].PvMatchLabels) > 0 {
-			appendWarn(fmt.Sprintf("spec.shard[%d]", i))
+			appendPVCWarn(fmt.Sprintf("spec.shard[%d]", i))
 		}
 	}
 	for i := range spec.Catalog {
 		if strings.TrimSpace(spec.Catalog[i].PvcName) != "" || len(spec.Catalog[i].PvAnnotations) > 0 || len(spec.Catalog[i].PvMatchLabels) > 0 {
-			appendWarn(fmt.Sprintf("spec.catalog[%d]", i))
+			appendPVCWarn(fmt.Sprintf("spec.catalog[%d]", i))
 		}
 	}
 	for i := range spec.Gsm {
 		if strings.TrimSpace(spec.Gsm[i].PvcName) != "" || len(spec.Gsm[i].PvAnnotations) > 0 || len(spec.Gsm[i].PvMatchLabels) > 0 {
-			appendWarn(fmt.Sprintf("spec.gsm[%d]", i))
+			appendPVCWarn(fmt.Sprintf("spec.gsm[%d]", i))
+		}
+	}
+	for i := range spec.ShardGroup {
+		if strings.TrimSpace(spec.ShardGroup[i].ShardGroupName) != "" {
+			appendWarn(fmt.Sprintf("spec.shardGroup[%d].shardGroupName is deprecated; use spec.shardGroup[%d].name", i, i))
+		}
+		if strings.TrimSpace(spec.ShardGroup[i].LegacyShardSpace) != "" {
+			appendWarn(fmt.Sprintf("spec.shardGroup[%d].ShardSpace is deprecated; use spec.shardGroup[%d].shardSpace", i, i))
+		}
+	}
+	for i := range spec.ShardSpace {
+		if strings.TrimSpace(spec.ShardSpace[i].ShardSpaceName) != "" {
+			appendWarn(fmt.Sprintf("spec.shardSpace[%d].shardSpaceName is deprecated; use spec.shardSpace[%d].name", i, i))
+		}
+		if spec.ShardSpace[i].Chnuks > 0 {
+			appendWarn(fmt.Sprintf("spec.shardSpace[%d].Chnuks is deprecated; use spec.shardSpace[%d].chunks", i, i))
+		}
+		if strings.TrimSpace(spec.ShardSpace[i].ProtectionMode) != "" {
+			appendWarn(fmt.Sprintf("spec.shardSpace[%d].protectionMode is deprecated; use spec.shardSpace[%d].protectMode", i, i))
+		}
+	}
+	for i := range spec.Service {
+		if strings.TrimSpace(spec.Service[i].PrferredAll) != "" {
+			appendWarn(fmt.Sprintf("spec.service[%d].prferredAll is deprecated; use spec.service[%d].preferredAll", i, i))
+		}
+	}
+	for i := range spec.GsmService {
+		if strings.TrimSpace(spec.GsmService[i].PrferredAll) != "" {
+			appendWarn(fmt.Sprintf("spec.gsmService[%d].prferredAll is deprecated; use spec.gsmService[%d].preferredAll", i, i))
+		}
+	}
+	for i := range spec.ShardInfo {
+		if spec.ShardInfo[i].Replicas > 0 {
+			appendWarn(fmt.Sprintf("spec.shardInfo[%d].replicas is deprecated; use spec.shardInfo[%d].shardNum", i, i))
+		}
+		if spec.ShardInfo[i].ShardGroupDetails != nil {
+			if strings.TrimSpace(spec.ShardInfo[i].ShardGroupDetails.ShardGroupName) != "" {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardGroupDetails.shardGroupName is deprecated; use spec.shardInfo[%d].shardGroupDetails.name", i, i))
+			}
+			if strings.TrimSpace(spec.ShardInfo[i].ShardGroupDetails.LegacyShardSpace) != "" {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardGroupDetails.ShardSpace is deprecated; use spec.shardInfo[%d].shardGroupDetails.shardSpace", i, i))
+			}
+		}
+		if spec.ShardInfo[i].ShardSpaceDetails != nil {
+			if strings.TrimSpace(spec.ShardInfo[i].ShardSpaceDetails.ShardSpaceName) != "" {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardSpaceDetails.shardSpaceName is deprecated; use spec.shardInfo[%d].shardSpaceDetails.name", i, i))
+			}
+			if spec.ShardInfo[i].ShardSpaceDetails.Chnuks > 0 {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardSpaceDetails.Chnuks is deprecated; use spec.shardInfo[%d].shardSpaceDetails.chunks", i, i))
+			}
+			if strings.TrimSpace(spec.ShardInfo[i].ShardSpaceDetails.ProtectionMode) != "" {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardSpaceDetails.protectionMode is deprecated; use spec.shardInfo[%d].shardSpaceDetails.protectMode", i, i))
+			}
 		}
 	}
 	return warnings

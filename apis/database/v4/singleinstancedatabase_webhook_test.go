@@ -156,7 +156,7 @@ func TestSIDBWebhookRejectsExternalTCPSWithoutDatabaseTCPS(t *testing.T) {
 	}
 }
 
-func TestSIDBWebhookValidateCreateReturnsDeprecatedServiceWarnings(t *testing.T) {
+func TestSIDBDeprecatedFieldWarnings(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.LoadBalancer = true
 	sidb.Spec.ListenerPort = 32001
@@ -164,13 +164,53 @@ func TestSIDBWebhookValidateCreateReturnsDeprecatedServiceWarnings(t *testing.T)
 	sidb.Spec.ServiceAnnotations = map[string]string{
 		"service.beta.kubernetes.io/oci-load-balancer-internal": "true",
 	}
-
-	warnings, err := (&SingleInstanceDatabase{}).ValidateCreate(context.Background(), sidb)
-	if err != nil {
-		t.Fatalf("expected validate create to succeed, got: %v", err)
+	sidb.Spec.EnableTCPS = true
+	sidb.Spec.TcpsCertRenewInterval = "48h"
+	sidb.Spec.TcpsTlsSecret = "legacy-tls"
+	sidb.Spec.AdminPassword = SingleInstanceDatabaseAdminPassword{
+		SecretName: "sidb-admin",
 	}
-	if len(warnings) != 4 {
-		t.Fatalf("expected 4 deprecation warnings, got %#v", warnings)
+	sidb.Spec.Resources = SingleInstanceDatabaseResources{
+		Requests: &SingleInstanceDatabaseResource{Cpu: "1", Memory: "1Gi"},
+	}
+	sidb.Spec.Persistence.Size = "100Gi"
+	sidb.Spec.Persistence.StorageClass = "oci-bv"
+	sidb.Spec.Persistence.AccessMode = "ReadWriteOnce"
+
+	warnings := sidbDeprecatedFieldWarnings(sidb)
+	expectedWarnings := []string{
+		"spec.loadBalancer is deprecated; use spec.services.external.type",
+		"spec.listenerPort is deprecated; use spec.services.external.tcp",
+		"spec.tcpsListenerPort is deprecated; use spec.services.external.tcps",
+		"spec.serviceAnnotations is deprecated; use spec.services.external.annotations",
+		"spec.enableTCPS is deprecated; use spec.security.tcps.enabled",
+		"spec.tcpsCertRenewInterval is deprecated; use spec.security.tcps.certRenewInterval",
+		"spec.tcpsTlsSecret is deprecated; use spec.security.tcps.tlsSecret",
+		"spec.adminPassword is deprecated; use spec.security.secrets.admin",
+		"spec.resources is deprecated; use spec.resourceRequirements",
+		"spec.persistence.size is deprecated; use spec.persistence.oradata.size",
+		"spec.persistence.storageClass is deprecated; use spec.persistence.oradata.storageClass",
+		"spec.persistence.accessMode is deprecated; use spec.persistence.oradata.accessMode",
+	}
+	if len(warnings) != len(expectedWarnings) {
+		t.Fatalf("expected %d deprecation warnings, got %#v", len(expectedWarnings), warnings)
+	}
+	for _, expected := range expectedWarnings {
+		found := false
+		for _, warning := range warnings {
+			if warning == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected warning %q, got %#v", expected, warnings)
+		}
+	}
+	for _, warning := range warnings {
+		if strings.Contains(warning, "primaryDatabaseRef") {
+			t.Fatalf("did not expect warning for spec.primaryDatabaseRef, got %#v", warnings)
+		}
 	}
 }
 
