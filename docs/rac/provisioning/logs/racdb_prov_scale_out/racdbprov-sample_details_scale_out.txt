@@ -18,8 +18,8 @@ service/racnode2-0-ons      NodePort    10.110.160.140   <none>        6200:3020
 service/racnode2-0-vip      ClusterIP   None             <none>        <none>            53m   statefulset.kubernetes.io/pod-name=racnode2-0
 
 NAME                        READY   AGE   CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     53m   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
-statefulset.apps/racnode2   1/1     53m   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode1   1/1     53m   racnode1-0   dbocir/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     53m   racnode2-0   dbocir/oracle/database-rac:19.3.0-slim
 
 
 
@@ -73,7 +73,7 @@ Spec:
     Value:            true
     Name:             IGNORE_DB_PREREQS
     Value:            true
-  Image:              phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+  Image:              dbocir/oracle/database-rac:19.3.0-slim
   Image Pull Policy:  Always
   Instance Details:
     Base Lsnr Target Port:  31522
@@ -377,14 +377,14 @@ service/racnode3-0-ons      NodePort    10.98.30.132     <none>        6200:3020
 service/racnode3-0-vip      ClusterIP   None             <none>        <none>            4s    statefulset.kubernetes.io/pod-name=racnode3-0
 
 NAME                        READY   AGE   CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     56m   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
-statefulset.apps/racnode2   1/1     56m   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
-statefulset.apps/racnode3   0/1     4s    racnode3-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode1   1/1     56m   racnode1-0   dbocir/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     56m   racnode2-0   dbocir/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode3   0/1     4s    racnode3-0   dbocir/oracle/database-rac:19.3.0-slim
 
 
 # Monitor the logs for the new RAC node i.e. racnode3-0 using below command:
 
-$ phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+$ dbocir/oracle/database-rac:19.3.0-slim
 .
 .
 12/18/2025 11:16:43 PM     INFO:   oracommon   -    checksqlerr     :Sql command completed sucessfully.
@@ -429,9 +429,9 @@ service/racnode3-0-ons      NodePort    10.98.30.132     <none>        6200:3020
 service/racnode3-0-vip      ClusterIP   None             <none>        <none>            17m   statefulset.kubernetes.io/pod-name=racnode3-0
 
 NAME                        READY   AGE   CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     74m   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
-statefulset.apps/racnode2   1/1     74m   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
-statefulset.apps/racnode3   1/1     17m   racnode3-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode1   1/1     74m   racnode1-0   dbocir/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     74m   racnode2-0   dbocir/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode3   1/1     17m   racnode3-0   dbocir/oracle/database-rac:19.3.0-slim
 
 
 
@@ -485,7 +485,7 @@ Spec:
     Value:            true
     Name:             IGNORE_DB_PREREQS
     Value:            true
-  Image:              phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+  Image:              dbocir/oracle/database-rac:19.3.0-slim
   Image Pull Policy:  Always
   Instance Details:
     Base Lsnr Target Port:  31522

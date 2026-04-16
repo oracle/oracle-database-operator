@@ -343,7 +343,7 @@ For more details, please refer to [Install Oracle DB Operator](../../../README.m
 
 After the image is ready, push it to your private container images repository, so that you can pull this image during Oracle Restart Database provisioning..
 
-**Note**: In the Oracle Restart Database provisioning sample .yaml files, we are using Oracle Restart Database slim image `odbcir/oracle/database-orestart:19.3.0-slim`.
+**Note**: In the Oracle Restart Database provisioning sample .yaml files, we are using Oracle Restart Database slim image `dbocir/oracle/database-orestart:19.3.0-slim`.
 
 ## Create a Kubernetes secret for the Oracle Restart Database installation owner for the Oracle Restart Database Deployment
  * Create a Kubernetes secret named `db-user-pass` in `orestart` namespace using these steps: [Create Kubernetes Secret](./create_kubernetes_secret_for_db_user.md)

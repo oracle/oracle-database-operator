@@ -21,7 +21,7 @@ These steps include::
 - Storage requirements
 - RBAC Rules for deployment of Oracle RAC Database
 - Oracle RAC Slim Image
-- Kuberentes Secrets
+- Kubernetes Secrets
 
 **Note:** The example in this QuickStart Guide deploys a two-node Oracle RAC Database with a NodePort Service.
 
@@ -32,7 +32,7 @@ Follow these steps to deploy a 2-node Oracle RAC Database using the Oracle RAC C
 - Copy the [racdb_prov_quickstart.yaml](./racdb_prov_quickstart.yaml) file from in your working directory. 
 - Stage the Oracle Grid Infrastructure and Oracle RDBMS Binaries in the location specified by the parameter `hostSwStageLocation` on your worker nodes. 
 - Ensure the parameter `racHostSwLocation` points to the software location on the worker nodes. The GI Home and RDBMS Home in the Oracle RAC Pods will be mounted using this lcoation on the corresponding worker nodes. 
-- Use the following prebuilt Oracle RAC Database Slim Image: `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim` 
+- Use the following prebuilt Oracle RAC Database Slim Image: `dbocir/oracle/database-rac:19.3.0-slim` 
 - Verify that the shared disks on the worker nodes for ASM are as follows: `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2` 
 - Deploy the 2-node Oracle RAC Database using file `racdb_prov_quickstart.yaml` file:
     ```sh
@@ -89,7 +89,7 @@ After provisioning the Oracle RAC Database with the Oracle RAC Database Controll
 
 If you want to clean up the Oracle RAC Database after deploying it, run the following command: 
 ```bash
-kubectl apply -f racdb_prov_quickstart.yaml
+kubectl delete -f racdb_prov_quickstart.yaml
 ```
 
 This command will clean up the Oracle RAC Database deployed earlier with the Oracle RAC Controller.

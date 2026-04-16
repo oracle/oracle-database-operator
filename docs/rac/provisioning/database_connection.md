@@ -27,8 +27,8 @@ service/racnode2-0-ons      NodePort    10.104.243.56    <none>        6200:3020
 service/racnode2-0-vip      ClusterIP   None             <none>        <none>            48m   statefulset.kubernetes.io/pod-name=racnode2-0
 
 NAME                        READY   AGE   CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     48m   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
-statefulset.apps/racnode2   1/1     48m   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode1   1/1     48m   racnode1-0   dbocir/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     48m   racnode2-0   dbocir/oracle/database-rac:19.3.0-slim
 ```
 In this case, the port 1521 for Scan Listener from the pod is mapped to port 31521 on the worker node. To make the connection from outside, you must open the port `31521` on the worker node for INGRESS. 
 
