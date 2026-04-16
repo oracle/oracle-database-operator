@@ -395,6 +395,9 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	allErrs = append(allErrs, validateSIDBRestoreSpec(sidb, mode)...)
 	allErrs = append(allErrs, validateSIDBTrueCacheByMode(sidb, mode)...)
 	allErrs = append(allErrs, validatePrimarySourceSpec(sidb, mode)...)
+	if sidb.Spec.Dataguard != nil && len(sidb.Spec.Dataguard.StandbySources) > 0 && mode != "" && mode != "primary" {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("dataguard").Child("standbySources"), "standbySources are supported only for createAs=primary"))
+	}
 	if mode == "clone" || mode == "standby" || mode == "truecache" {
 		if !resolvePrimarySourceInputPresent(sidb) {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primarySource"), sidb.Spec.PrimarySource, fmt.Sprintf("%s requires one primary source: primarySource.databaseRef, primarySource.connectString, primarySource.details, or deprecated spec.primaryDatabaseRef", mode)))
@@ -1028,6 +1031,32 @@ func validateDataguardProducerSpec(path *field.Path, spec *DataguardProducerSpec
 		}
 		if size := strings.TrimSpace(spec.Prereqs.StandbyRedoSize); strings.ContainsAny(size, " \t\r\n") {
 			allErrs = append(allErrs, field.Invalid(path.Child("prereqs").Child("standbyRedoSize"), spec.Prereqs.StandbyRedoSize, "must not contain whitespace"))
+		}
+	}
+	if spec != nil {
+		seenStandbys := make(map[string]int)
+		for i, standby := range spec.StandbySources {
+			standbyPath := path.Child("standbySources").Index(i)
+			dbUniqueName := strings.ToUpper(strings.TrimSpace(standby.DBUniqueName))
+			host := strings.TrimSpace(standby.Host)
+			if dbUniqueName == "" {
+				allErrs = append(allErrs, field.Required(standbyPath.Child("dbUniqueName"), "dbUniqueName is required"))
+			}
+			if host == "" {
+				allErrs = append(allErrs, field.Required(standbyPath.Child("host"), "host is required"))
+			}
+			if standby.TCPPort < 0 || standby.TCPPort > 65535 {
+				allErrs = append(allErrs, field.Invalid(standbyPath.Child("tcpPort"), standby.TCPPort, "must be between 0 and 65535"))
+			}
+			if dbUniqueName == "" {
+				continue
+			}
+			key := strings.ToLower(dbUniqueName)
+			if prior, exists := seenStandbys[key]; exists {
+				allErrs = append(allErrs, field.Duplicate(standbyPath.Child("dbUniqueName"), spec.StandbySources[prior].DBUniqueName))
+				continue
+			}
+			seenStandbys[key] = i
 		}
 	}
 	return allErrs

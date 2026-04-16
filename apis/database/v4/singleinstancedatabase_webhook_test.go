@@ -73,6 +73,42 @@ func TestSIDBWebhookRejectsRelativeDataguardPrereqsBrokerConfigDir(t *testing.T)
 	}
 }
 
+func TestSIDBWebhookAllowsDataguardStandbySourcesOnPrimary(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Dataguard = &DataguardProducerSpec{
+		StandbySources: []DataguardStandbySourceSpec{
+			{
+				DBUniqueName: "STBYDB",
+				Host:         "sidb-standby.shns.svc.cluster.local",
+				TCPSEnabled:  true,
+				TCPPort:      1521,
+			},
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors for dataguard standbySources on primary, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookRejectsDataguardStandbySourcesOnStandby(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{DatabaseRef: "sidb-primary"}
+	sidb.Spec.Dataguard = &DataguardProducerSpec{
+		StandbySources: []DataguardStandbySourceSpec{
+			{
+				DBUniqueName: "STBYDB",
+				Host:         "sidb-standby.shns.svc.cluster.local",
+			},
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for dataguard standbySources on standby")
+	}
+}
+
 func TestSIDBWebhookRejectsClientWalletSecretWhenTCPSDisabled(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{

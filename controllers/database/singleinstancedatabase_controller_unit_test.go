@@ -484,7 +484,7 @@ func TestSIDBUnit_BuildAutomaticPrimaryTNSAliases(t *testing.T) {
 		},
 	}
 
-	aliases, names := buildAutomaticPrimaryTNSAliases(sidb, primary)
+	aliases, names := buildAutomaticStandbyPeerTNSAliases(sidb, primary)
 	expectedNames := []string{"ORCLCDB", "ORCLCDBTCPS", "ORCLCDBTCPS_DGMGRL", "ORCLCDB_DGMGRL", "STBYDB", "STBYDBTCPS", "STBYDBTCPS_DGMGRL", "STBYDB_DGMGRL"}
 	if !reflect.DeepEqual(names, expectedNames) {
 		t.Fatalf("unexpected generated alias names: got %v want %v", names, expectedNames)
@@ -553,7 +553,7 @@ func TestSIDBUnit_BuildManagedTNSAliasesAppliesOverridesAndAppendsExtras(t *test
 		},
 	}
 
-	aliases, names := buildManagedTNSAliases(sidb, nil)
+	aliases, names := buildStandbyManagedTNSAliases(sidb, nil)
 	expectedNames := []string{"DATAGUARD", "PRIMDB", "PRIMDBTCPS"}
 	if !reflect.DeepEqual(names, expectedNames) {
 		t.Fatalf("unexpected managed alias names: got %v want %v", names, expectedNames)
@@ -576,7 +576,7 @@ func TestSIDBUnit_BuildManagedTNSAliasesAppliesOverridesAndAppendsExtras(t *test
 	}
 }
 
-func TestSIDBUnit_BuildPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtras(t *testing.T) {
+func TestSIDBUnit_BuildLegacySingleStandbyPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtras(t *testing.T) {
 	primary := &dbapi.SingleInstanceDatabase{
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb-primary"},
 		Spec: dbapi.SingleInstanceDatabaseSpec{
@@ -610,7 +610,7 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtr
 		},
 	}
 
-	aliases, names := buildPrimaryPeerTNSAliases(primary, standby)
+	aliases, names := buildLegacySingleStandbyPrimaryPeerTNSAliases(primary, standby)
 	expectedNames := []string{"PRIMDB", "PRIMDB_DGMGRL", "STBYDB", "STBYDB_DGMGRL"}
 	if !reflect.DeepEqual(names, expectedNames) {
 		t.Fatalf("unexpected primary peer alias names: got %v want %v", names, expectedNames)
@@ -649,7 +649,7 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesAppliesOverridesWithoutAppendingExtr
 	}
 }
 
-func TestSIDBUnit_BuildPrimaryPeerTNSAliasesSkipsDGMGRLWhenPrimaryPrereqsDisabled(t *testing.T) {
+func TestSIDBUnit_BuildLegacySingleStandbyPrimaryPeerTNSAliasesSkipsDGMGRLWhenPrimaryPrereqsDisabled(t *testing.T) {
 	primary := &dbapi.SingleInstanceDatabase{
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb-primary"},
 		Spec: dbapi.SingleInstanceDatabaseSpec{
@@ -663,7 +663,7 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesSkipsDGMGRLWhenPrimaryPrereqsDisable
 		},
 	}
 
-	aliases, names := buildPrimaryPeerTNSAliases(primary, standby)
+	aliases, names := buildLegacySingleStandbyPrimaryPeerTNSAliases(primary, standby)
 	expectedNames := []string{"PRIMDB", "STBYDB"}
 	if !reflect.DeepEqual(names, expectedNames) {
 		t.Fatalf("unexpected primary peer alias names when prereqs disabled: got %v want %v", names, expectedNames)
@@ -673,6 +673,128 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesSkipsDGMGRLWhenPrimaryPrereqsDisable
 	}
 	if _, exists := aliases["STBYDB_DGMGRL"]; exists {
 		t.Fatalf("did not expect STBYDB_DGMGRL alias when primary dataguard prereqs are disabled")
+	}
+}
+
+func TestSIDBUnit_BuildPrimaryPeerTNSAliasesForConfiguredStandbySources(t *testing.T) {
+	primary := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-primary", Namespace: "shns"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "PRIMDB",
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{Enabled: true},
+			},
+			Dataguard: &dbapi.DataguardProducerSpec{
+				Prereqs: &dbapi.DataguardPrereqsSpec{Enabled: true},
+				StandbySources: []dbapi.DataguardStandbySourceSpec{
+					{
+						DBUniqueName: "STBYA",
+						Host:         "stbya.example",
+						TCPSEnabled:  true,
+						TCPPort:      1621,
+					},
+					{
+						DBUniqueName: "STBYB",
+						Host:         "stbyb.example",
+					},
+				},
+			},
+			TNSAliases: []dbapi.SingleInstanceDatabaseTNSAlias{
+				{
+					Name:        "STBYA",
+					Host:        "ignored-host",
+					Port:        9999,
+					ServiceName: "IGNORED",
+				},
+			},
+		},
+	}
+
+	aliases, names := buildPrimaryPeerTNSAliasesForTargets(primary, configuredSIDBPrimaryPeerAliasTargets(primary), true)
+	expectedNames := []string{
+		"PRIMDB",
+		"PRIMDBTCPS",
+		"PRIMDBTCPS_DGMGRL",
+		"PRIMDB_DGMGRL",
+		"STBYA",
+		"STBYATCPS",
+		"STBYATCPS_DGMGRL",
+		"STBYA_DGMGRL",
+		"STBYB",
+		"STBYB_DGMGRL",
+	}
+	if !reflect.DeepEqual(names, expectedNames) {
+		t.Fatalf("unexpected configured primary peer alias names: got %v want %v", names, expectedNames)
+	}
+	if got := aliases["STBYA"]; got.Host != "stbya.example" || got.Port != 1621 || got.ServiceName != "STBYA" {
+		t.Fatalf("unexpected STBYA alias: %#v", got)
+	}
+	if got := aliases["STBYATCPS"]; got.Host != "stbya.example" || got.Port != 2484 || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
+		t.Fatalf("unexpected STBYATCPS alias: %#v", got)
+	}
+	if got := aliases["STBYB"]; got.Host != "stbyb.example" || got.Port != 1521 || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
+		t.Fatalf("unexpected STBYB alias: %#v", got)
+	}
+	if _, exists := aliases["STBYBTCPS"]; exists {
+		t.Fatalf("did not expect STBYBTCPS alias when configured standby does not enable TCPS")
+	}
+}
+
+func TestSIDBUnit_DiscoverLegacyPrimaryPeerAliasTargetsIncludesAllStandbysForPrimary(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() error = %v", err)
+	}
+
+	primary := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-primary", Namespace: "shns"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "PRIMDB",
+		},
+	}
+	standbyOne := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby-a", Namespace: "shns"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:      "STBYA",
+			CreateAs: "standby",
+			Security: &dbapi.SingleInstanceDatabaseSecurity{TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{Enabled: true}},
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				DatabaseRef: "sidb-primary",
+			},
+		},
+	}
+	standbyTwo := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby-b", Namespace: "shns"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:                "STBYB",
+			CreateAs:           "standby",
+			PrimaryDatabaseRef: "sidb-primary",
+		},
+	}
+	unrelated := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-other", Namespace: "shns"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:      "OTHER",
+			CreateAs: "primary",
+		},
+	}
+
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(primary, standbyOne, standbyTwo, unrelated).Build(),
+	}
+
+	targets, err := discoverLegacyPrimaryPeerAliasTargets(reconciler, primary, nil, context.Background())
+	if err != nil {
+		t.Fatalf("discoverLegacyPrimaryPeerAliasTargets() error = %v", err)
+	}
+	if len(targets) != 2 {
+		t.Fatalf("expected 2 standby targets, got %d: %#v", len(targets), targets)
+	}
+	if targets[0].DBUniqueName != "STBYA" || targets[0].Host != "sidb-standby-a" || !targets[0].TCPSEnabled {
+		t.Fatalf("unexpected first discovered standby target: %#v", targets[0])
+	}
+	if targets[1].DBUniqueName != "STBYB" || targets[1].Host != "sidb-standby-b" || targets[1].TCPSEnabled {
+		t.Fatalf("unexpected second discovered standby target: %#v", targets[1])
 	}
 }
 

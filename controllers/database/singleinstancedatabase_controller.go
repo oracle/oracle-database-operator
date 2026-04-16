@@ -5992,7 +5992,7 @@ func syncConfiguredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner *d
 	}
 	tnsFile := getTnsFilePathBySID(owner.Spec.Sid)
 	stateFile := tnsFile + ".operator_aliases"
-	desired, desiredNames := buildManagedTNSAliases(owner, primary)
+	desired, desiredNames := buildStandbyManagedTNSAliases(owner, primary)
 	return syncDesiredTNSAliasesInPod(r, pod, ctx, req, tnsFile, stateFile, desired, desiredNames)
 }
 
@@ -6122,16 +6122,33 @@ func syncStandbySourceTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, owner
 }
 
 func addAutomaticDataguardNetAliases(desired map[string]dbapi.SingleInstanceDatabaseTNSAlias, aliasBase, host string, includeTCPS bool, includeDGMGRL bool) {
+	addAutomaticDataguardNetAliasesWithPorts(desired, aliasBase, host, includeTCPS, includeDGMGRL, int(dbcommons.CONTAINER_LISTENER_PORT), int(dbcommons.CONTAINER_TCPS_PORT))
+}
+
+func addAutomaticDataguardNetAliasesWithPorts(
+	desired map[string]dbapi.SingleInstanceDatabaseTNSAlias,
+	aliasBase, host string,
+	includeTCPS bool,
+	includeDGMGRL bool,
+	tcpPort int,
+	tcpsPort int,
+) {
 	aliasBase = strings.ToUpper(strings.TrimSpace(aliasBase))
 	host = strings.TrimSpace(host)
 	if desired == nil || aliasBase == "" || host == "" {
 		return
 	}
+	if tcpPort <= 0 {
+		tcpPort = int(dbcommons.CONTAINER_LISTENER_PORT)
+	}
+	if tcpsPort <= 0 {
+		tcpsPort = int(dbcommons.CONTAINER_TCPS_PORT)
+	}
 
 	desired[aliasBase] = dbapi.SingleInstanceDatabaseTNSAlias{
 		Name:        aliasBase,
 		Host:        host,
-		Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
+		Port:        tcpPort,
 		ServiceName: aliasBase,
 		Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
 	}
@@ -6139,7 +6156,7 @@ func addAutomaticDataguardNetAliases(desired map[string]dbapi.SingleInstanceData
 		desired[aliasBase+"_DGMGRL"] = dbapi.SingleInstanceDatabaseTNSAlias{
 			Name:        aliasBase + "_DGMGRL",
 			Host:        host,
-			Port:        int(dbcommons.CONTAINER_LISTENER_PORT),
+			Port:        tcpPort,
 			ServiceName: aliasBase + "_DGMGRL",
 			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP,
 		}
@@ -6152,7 +6169,7 @@ func addAutomaticDataguardNetAliases(desired map[string]dbapi.SingleInstanceData
 	desired[aliasBase+"TCPS"] = dbapi.SingleInstanceDatabaseTNSAlias{
 		Name:        aliasBase + "TCPS",
 		Host:        host,
-		Port:        int(dbcommons.CONTAINER_TCPS_PORT),
+		Port:        tcpsPort,
 		ServiceName: aliasBase,
 		Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
 	}
@@ -6160,11 +6177,157 @@ func addAutomaticDataguardNetAliases(desired map[string]dbapi.SingleInstanceData
 		desired[aliasBase+"TCPS_DGMGRL"] = dbapi.SingleInstanceDatabaseTNSAlias{
 			Name:        aliasBase + "TCPS_DGMGRL",
 			Host:        host,
-			Port:        int(dbcommons.CONTAINER_TCPS_PORT),
+			Port:        tcpsPort,
 			ServiceName: aliasBase + "_DGMGRL",
 			Protocol:    dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS,
 		}
 	}
+}
+
+type sidbPrimaryPeerAliasTarget struct {
+	DBUniqueName string
+	Host         string
+	TCPPort      int
+	TCPSEnabled  bool
+}
+
+func normalizedSIDBDataguardDBUniqueName(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	if m.Status.Dataguard != nil && strings.TrimSpace(m.Status.Dataguard.DBUniqueName) != "" {
+		return strings.ToUpper(strings.TrimSpace(m.Status.Dataguard.DBUniqueName))
+	}
+	return strings.ToUpper(strings.TrimSpace(m.Spec.Sid))
+}
+
+func normalizeSIDBPrimaryPeerAliasTarget(target sidbPrimaryPeerAliasTarget) sidbPrimaryPeerAliasTarget {
+	target.DBUniqueName = strings.ToUpper(strings.TrimSpace(target.DBUniqueName))
+	target.Host = strings.TrimSpace(target.Host)
+	if target.TCPPort <= 0 {
+		target.TCPPort = int(dbcommons.CONTAINER_LISTENER_PORT)
+	}
+	return target
+}
+
+func appendUniqueSIDBPrimaryPeerAliasTarget(targets []sidbPrimaryPeerAliasTarget, target sidbPrimaryPeerAliasTarget, index map[string]int) []sidbPrimaryPeerAliasTarget {
+	target = normalizeSIDBPrimaryPeerAliasTarget(target)
+	if target.DBUniqueName == "" || target.Host == "" {
+		return targets
+	}
+	key := strings.ToLower(target.DBUniqueName)
+	if existing, ok := index[key]; ok {
+		targets[existing] = target
+		return targets
+	}
+	index[key] = len(targets)
+	return append(targets, target)
+}
+
+func configuredSIDBPrimaryPeerAliasTargets(primary *dbapi.SingleInstanceDatabase) []sidbPrimaryPeerAliasTarget {
+	if primary == nil || primary.Spec.Dataguard == nil || len(primary.Spec.Dataguard.StandbySources) == 0 {
+		return nil
+	}
+	targets := make([]sidbPrimaryPeerAliasTarget, 0, len(primary.Spec.Dataguard.StandbySources))
+	index := make(map[string]int, len(primary.Spec.Dataguard.StandbySources))
+	for _, standby := range primary.Spec.Dataguard.StandbySources {
+		targets = appendUniqueSIDBPrimaryPeerAliasTarget(targets, sidbPrimaryPeerAliasTarget{
+			DBUniqueName: standby.DBUniqueName,
+			Host:         standby.Host,
+			TCPPort:      standby.TCPPort,
+			TCPSEnabled:  standby.TCPSEnabled,
+		}, index)
+	}
+	return targets
+}
+
+func legacySIDBPrimaryPeerAliasTarget(standby *dbapi.SingleInstanceDatabase) sidbPrimaryPeerAliasTarget {
+	return normalizeSIDBPrimaryPeerAliasTarget(sidbPrimaryPeerAliasTarget{
+		DBUniqueName: normalizedSIDBDataguardDBUniqueName(standby),
+		Host:         standby.GetName(),
+		TCPPort:      int(dbcommons.CONTAINER_LISTENER_PORT),
+		TCPSEnabled:  getTcpsEnabled(standby),
+	})
+}
+
+func isLegacyLocalStandbyForPrimary(candidate *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) bool {
+	if candidate == nil || primary == nil {
+		return false
+	}
+	if candidate.Namespace != primary.Namespace || candidate.Name == primary.Name {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(candidate.Spec.CreateAs), "standby") {
+		return false
+	}
+	if strings.TrimSpace(candidate.Spec.PrimaryDatabaseRef) == primary.Name {
+		return true
+	}
+	if candidate.Spec.PrimarySource != nil && strings.TrimSpace(candidate.Spec.PrimarySource.DatabaseRef) == primary.Name {
+		return true
+	}
+	return false
+}
+
+func discoverLegacyPrimaryPeerAliasTargets(
+	r *SingleInstanceDatabaseReconciler,
+	primary *dbapi.SingleInstanceDatabase,
+	fallbackStandby *dbapi.SingleInstanceDatabase,
+	ctx context.Context,
+) ([]sidbPrimaryPeerAliasTarget, error) {
+	targets := make([]sidbPrimaryPeerAliasTarget, 0)
+	index := make(map[string]int)
+	if primary == nil {
+		return targets, nil
+	}
+	var standbyList dbapi.SingleInstanceDatabaseList
+	if err := r.Client.List(ctx, &standbyList, client.InNamespace(primary.Namespace)); err != nil {
+		return nil, err
+	}
+	for i := range standbyList.Items {
+		candidate := &standbyList.Items[i]
+		if !isLegacyLocalStandbyForPrimary(candidate, primary) {
+			continue
+		}
+		targets = appendUniqueSIDBPrimaryPeerAliasTarget(targets, legacySIDBPrimaryPeerAliasTarget(candidate), index)
+	}
+	if len(targets) == 0 && fallbackStandby != nil {
+		targets = appendUniqueSIDBPrimaryPeerAliasTarget(targets, legacySIDBPrimaryPeerAliasTarget(fallbackStandby), index)
+	}
+	sort.SliceStable(targets, func(i, j int) bool {
+		return targets[i].DBUniqueName < targets[j].DBUniqueName
+	})
+	return targets, nil
+}
+
+func buildPrimaryPeerTNSAliasesForTargets(primary *dbapi.SingleInstanceDatabase, standbyTargets []sidbPrimaryPeerAliasTarget, includeDGMGRL bool) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
+	defaults := map[string]dbapi.SingleInstanceDatabaseTNSAlias{}
+	if primary == nil {
+		return defaults, nil
+	}
+
+	addAutomaticDataguardNetAliasesWithPorts(
+		defaults,
+		normalizedSIDBDataguardDBUniqueName(primary),
+		primary.Name,
+		getTcpsEnabled(primary),
+		includeDGMGRL,
+		int(dbcommons.CONTAINER_LISTENER_PORT),
+		int(dbcommons.CONTAINER_TCPS_PORT),
+	)
+	for _, standby := range standbyTargets {
+		addAutomaticDataguardNetAliasesWithPorts(
+			defaults,
+			standby.DBUniqueName,
+			standby.Host,
+			standby.TCPSEnabled,
+			includeDGMGRL,
+			standby.TCPPort,
+			int(dbcommons.CONTAINER_TCPS_PORT),
+		)
+	}
+
+	return sortedDesiredTNSAliases(defaults)
 }
 
 func resolveProtectedDesiredTNSAliases(owner *dbapi.SingleInstanceDatabase, defaults map[string]dbapi.SingleInstanceDatabaseTNSAlias, appendExtras bool) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
@@ -6197,12 +6360,12 @@ func resolveProtectedDesiredTNSAliases(owner *dbapi.SingleInstanceDatabase, defa
 	return sortedDesiredTNSAliases(desired)
 }
 
-func buildManagedTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
-	defaults, _ := buildAutomaticPrimaryTNSAliases(owner, primary)
+func buildStandbyManagedTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
+	defaults, _ := buildAutomaticStandbyPeerTNSAliases(owner, primary)
 	return resolveProtectedDesiredTNSAliases(owner, defaults, true)
 }
 
-func buildAutomaticPrimaryTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
+func buildAutomaticStandbyPeerTNSAliases(owner *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
 	desired := map[string]dbapi.SingleInstanceDatabaseTNSAlias{}
 	if owner == nil {
 		return desired, nil
@@ -6311,20 +6474,49 @@ func sortedDesiredTNSAliases(desired map[string]dbapi.SingleInstanceDatabaseTNSA
 	return desired, desiredNames
 }
 
-func buildPrimaryPeerTNSAliases(primary *dbapi.SingleInstanceDatabase, standby *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
-	defaults := map[string]dbapi.SingleInstanceDatabaseTNSAlias{}
+func buildLegacySingleStandbyPrimaryPeerTNSAliases(primary *dbapi.SingleInstanceDatabase, standby *dbapi.SingleInstanceDatabase) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string) {
 	if primary == nil || standby == nil {
-		return defaults, nil
+		return map[string]dbapi.SingleInstanceDatabaseTNSAlias{}, nil
 	}
-
 	includeTCPS := getTcpsEnabled(primary) || getTcpsEnabled(standby)
 	includeDGMGRL := getDataguardPrereqsEnabled(primary) &&
 		!strings.EqualFold(strings.TrimSpace(primary.Spec.CreateAs), "truecache") &&
 		!strings.EqualFold(strings.TrimSpace(standby.Spec.CreateAs), "truecache")
-	addAutomaticDataguardNetAliases(defaults, primary.Spec.Sid, primary.Name, includeTCPS, includeDGMGRL)
-	addAutomaticDataguardNetAliases(defaults, standby.Spec.Sid, standby.Name, includeTCPS, includeDGMGRL)
+	targets := []sidbPrimaryPeerAliasTarget{}
+	if standby != nil {
+		targets = append(targets, sidbPrimaryPeerAliasTarget{
+			DBUniqueName: normalizedSIDBDataguardDBUniqueName(standby),
+			Host:         standby.Name,
+			TCPPort:      int(dbcommons.CONTAINER_LISTENER_PORT),
+			TCPSEnabled:  includeTCPS,
+		})
+	}
+	return buildPrimaryPeerTNSAliasesForTargets(primary, targets, includeDGMGRL)
+}
 
-	return resolveProtectedDesiredTNSAliases(primary, defaults, false)
+func resolvePrimaryPeerTNSAliases(
+	r *SingleInstanceDatabaseReconciler,
+	primary *dbapi.SingleInstanceDatabase,
+	fallbackStandby *dbapi.SingleInstanceDatabase,
+	ctx context.Context,
+) (map[string]dbapi.SingleInstanceDatabaseTNSAlias, []string, string, error) {
+	if primary == nil {
+		return map[string]dbapi.SingleInstanceDatabaseTNSAlias{}, nil, "", nil
+	}
+	includeDGMGRL := getDataguardPrereqsEnabled(primary) &&
+		!strings.EqualFold(strings.TrimSpace(primary.Spec.CreateAs), "truecache")
+
+	if configured := configuredSIDBPrimaryPeerAliasTargets(primary); len(configured) > 0 {
+		desired, desiredNames := buildPrimaryPeerTNSAliasesForTargets(primary, configured, includeDGMGRL)
+		return desired, desiredNames, "spec.dataguard.standbySources", nil
+	}
+
+	discovered, err := discoverLegacyPrimaryPeerAliasTargets(r, primary, fallbackStandby, ctx)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	desired, desiredNames := buildPrimaryPeerTNSAliasesForTargets(primary, discovered, includeDGMGRL)
+	return desired, desiredNames, "legacy primaryDatabaseRef/primarySource discovery", nil
 }
 
 func primaryPeerTNSAliasesStateFileBySID(sid string) string {
@@ -6341,10 +6533,16 @@ func primaryPeerTNSAliasesHashStateFileBySID(sid string) string {
 //
 // #############################################################################
 // SetupTnsNamesPrimaryForDG configures primary tnsnames alias entries for Data Guard.
-func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
-	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+func SetupTnsNamesPrimaryForDG(
+	r *SingleInstanceDatabaseReconciler,
+	p *dbapi.SingleInstanceDatabase,
+	desired map[string]dbapi.SingleInstanceDatabaseTNSAlias,
+	desiredNames []string,
+	primaryReadyPod corev1.Pod,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
 	tnsFile := getTnsFilePathBySID(p.Spec.Sid)
-	desired, desiredNames := buildPrimaryPeerTNSAliases(p, s)
 	stateFile := primaryPeerTNSAliasesStateFileBySID(p.Spec.Sid)
 	if err := syncDesiredTNSAliasesInPod(r, primaryReadyPod, ctx, req, tnsFile, stateFile, desired, desiredNames); err != nil {
 		return err
@@ -6373,7 +6571,10 @@ func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 		return err
 	}
 
-	desiredPrimaryPeerAliases, desiredPrimaryPeerAliasNames := buildPrimaryPeerTNSAliases(primary, stdby)
+	desiredPrimaryPeerAliases, desiredPrimaryPeerAliasNames, aliasSource, err := resolvePrimaryPeerTNSAliases(r, primary, stdby, ctx)
+	if err != nil {
+		return err
+	}
 	desiredPrimaryPeerAliasesHash := computeTNSAliasesHash(desiredPrimaryPeerAliases, desiredPrimaryPeerAliasNames)
 	appliedPrimaryPeerAliasesHash, err := readManagedTNSAliasesHashInPod(r, primaryDbReadyPod, ctx, req, primaryPeerTNSAliasesHashStateFileBySID(primary.Spec.Sid))
 	if err != nil {
@@ -6387,6 +6588,8 @@ func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 	if totalStandbyPods > 0 && appliedPrimaryPeerAliasesHash != desiredPrimaryPeerAliasesHash {
 		log.Info("Refreshing primary peer TNS aliases because desired alias set changed",
 			"primaryDatabase", primary.Name,
+			"aliasSource", aliasSource,
+			"desiredAliasNames", desiredPrimaryPeerAliasNames,
 			"appliedHash", appliedPrimaryPeerAliasesHash,
 			"desiredHash", desiredPrimaryPeerAliasesHash)
 	}
@@ -6394,8 +6597,8 @@ func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 	log.Info("Setting up tnsnames.ora in primary database", "primaryDatabase", primary.Name)
 	workflow := dgsidb.NewStandbyWorkflow(dgsidb.StandbyWorkflowOptions{
 		EnsureBrokerFilesAndStart: func() error {
-			log.Info("Setting up tnsnames.ora in primary database", "primaryDatabase", primary.Name)
-			return SetupTnsNamesPrimaryForDG(r, primary, stdby, primaryDbReadyPod, ctx, req)
+			log.Info("Setting up tnsnames.ora in primary database", "primaryDatabase", primary.Name, "aliasSource", aliasSource, "desiredAliasNames", desiredPrimaryPeerAliasNames)
+			return SetupTnsNamesPrimaryForDG(r, primary, desiredPrimaryPeerAliases, desiredPrimaryPeerAliasNames, primaryDbReadyPod, ctx, req)
 		},
 		RunPrimaryPrerequisites: func() error {
 			log.Info("Setting up listener.ora in primary database", "primaryDatabase", primary.Name)

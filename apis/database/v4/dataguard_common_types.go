@@ -72,6 +72,14 @@ type DataguardAuthWalletSpec struct {
 	RebuildToken string `json:"rebuildToken,omitempty"`
 }
 
+// DataguardStandbySourceSpec declares one standby peer for producer-side alias generation.
+type DataguardStandbySourceSpec struct {
+	DBUniqueName string `json:"dbUniqueName,omitempty"`
+	Host         string `json:"host,omitempty"`
+	TCPSEnabled  bool   `json:"tcpsEnabled,omitempty"`
+	TCPPort      int    `json:"tcpPort,omitempty"`
+}
+
 // DataguardProducerSpec configures how a producer exposes or manages DG topology.
 type DataguardProducerSpec struct {
 	// +kubebuilder:validation:Enum=Disabled;Preview;Managed
@@ -80,6 +88,8 @@ type DataguardProducerSpec struct {
 	Prereqs *DataguardPrereqsSpec `json:"prereqs,omitempty"`
 	// AuthWallet optionally publishes default broker auth wallet settings for generated DataguardBroker specs.
 	AuthWallet *DataguardAuthWalletSpec `json:"authWallet,omitempty"`
+	// StandbySources declares primary-side standby peers used for generated Data Guard aliases.
+	StandbySources []DataguardStandbySourceSpec `json:"standbySources,omitempty"`
 }
 
 func normalizeDataguardProducerMode(spec *DataguardProducerSpec) DataguardProducerMode {
