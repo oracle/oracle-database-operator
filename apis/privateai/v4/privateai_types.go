@@ -55,8 +55,8 @@ type PrivateAiSpec struct {
 	// +kubebuilder:default="false"
 	PaiEnableAuthentication string         `json:"paiEnableAuthentication,omitempty"`
 	PaiSecret               *PaiSecretSpec `json:"paiSecret,omitempty"`
+	// Deprecated: use spec.paiService.external.enabled.
 	// +kubebuilder:validation:Enum="true";"false"
-	// +kubebuilder:default="true"
 	IsExternalSvc        string                       `json:"isExternalSvc,omitempty"`
 	StorageClass         string                       `json:"storageClass,omitempty"`
 	PvcList              map[string]string            `json:"pvcList,omitempty"`
@@ -81,18 +81,21 @@ type PrivateAiSpec struct {
 	PaiHTTPSEnabled string `json:"paiHTTPSEnabled,omitempty"`
 	PaiHTTPPort     int32  `json:"paiHTTPPort,omitempty"`
 	PaiHTTPSPort    int32  `json:"paiHTTPSPort,omitempty"`
-	PaiLBPort       int32  `json:"paiLBPort,omitempty"`
-	PaiLBIP         string `json:"paiLBIP,omitempty"`
+	// Deprecated: use spec.paiService.external.port.
+	PaiLBPort int32 `json:"paiLBPort,omitempty"`
+	// Deprecated: use spec.paiService.external.loadBalancerIP.
+	PaiLBIP string `json:"paiLBIP,omitempty"`
+	// Deprecated: use spec.paiService.external.externalTrafficPolicy.
 	// +kubebuilder:validation:Enum="local";"cluster"
-	// +kubebuilder:default="local"
 	PaiLBExternalTrafficPolicy string `json:"paiLBExternalTrafficPolicy,omitempty"`
+	// Deprecated: use spec.paiService.external.internal.
 	// +kubebuilder:validation:Enum="true";"false"
-	// +kubebuilder:default="false"
-	PaiInternalLB   string            `json:"paiInternalLB,omitempty"`
-	PailbAnnotation map[string]string `json:"pailbAnnotation,omitempty"`
-	WorkerNodes     []string          `json:"workerNodes,omitempty"`
-	Gateway         *GatewaySpec      `json:"gateway,omitempty"`
-	Logging         *LoggingSpec      `json:"logging,omitempty"`
+	PaiInternalLB string `json:"paiInternalLB,omitempty"`
+	// Deprecated: use spec.paiService.external.annotations.
+	PailbAnnotation map[string]string      `json:"pailbAnnotation,omitempty"`
+	WorkerNodes     []string               `json:"workerNodes,omitempty"`
+	TrafficManager  *TrafficManagerRefSpec `json:"trafficManager,omitempty"`
+	Logging         *LoggingSpec           `json:"logging,omitempty"`
 }
 
 // PaiSecretSpec stores secret reference and mount details for PrivateAI.
@@ -109,27 +112,23 @@ type EnvironmentVariable struct {
 
 // PaiServiceSpec defines the service shape for the PrivateAI runtime.
 type PaiServiceSpec struct {
-	PortMappings []PaiPortMapping `json:"portMappings,omitempty"` // Port mappings for the service that is created
-	SvcName      string           `json:"name,omitempty"`
-	SvcType      string           `json:"svcType,omitempty"`
+	PortMappings []PaiPortMapping        `json:"portMappings,omitempty"` // Port mappings for the service that is created
+	SvcName      string                  `json:"name,omitempty"`
+	SvcType      string                  `json:"svcType,omitempty"`
+	External     *PaiExternalServiceSpec `json:"external,omitempty"`
 }
 
-// GatewaySpec defines optional gateway deployment and networking configuration.
-type GatewaySpec struct {
-	Image string `json:"image,omitempty"`
-	// +kubebuilder:validation:Enum=nginx;litellm
-	Type             string                       `json:"type,omitempty"`
-	ContainerPort    int32                        `json:"containerPort,omitempty"`
-	TLSSecretName    string                       `json:"tlsSecretName,omitempty"`
-	TLSMountLocation string                       `json:"tlsMountLocation,omitempty"`
-	ConfigMap        PaiConfigMap                 `json:"configMap,omitempty"`
-	ConfigFileKey    string                       `json:"configFileKey,omitempty"`
-	Replicas         int32                        `json:"replicas,omitempty"`
-	ImagePullPolicy  corev1.PullPolicy            `json:"imagePullPolicy,omitempty"`
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty"`
-	EnvVars          []EnvironmentVariable        `json:"envVars,omitempty"`
-	InternalService  GatewayServiceSpec           `json:"internalService,omitempty"`
-	ExternalService  GatewayServiceSpec           `json:"externalService,omitempty"`
+// PaiExternalServiceSpec configures optional external exposure for PrivateAI.
+type PaiExternalServiceSpec struct {
+	Enabled        *bool              `json:"enabled,omitempty"`
+	ServiceType    corev1.ServiceType `json:"serviceType,omitempty"`
+	Port           int32              `json:"port,omitempty"`
+	TargetPort     int32              `json:"targetPort,omitempty"`
+	Annotations    map[string]string  `json:"annotations,omitempty"`
+	LoadBalancerIP string             `json:"loadBalancerIP,omitempty"`
+	// +kubebuilder:validation:Enum="Local";"Cluster";"local";"cluster"
+	ExternalTrafficPolicy string `json:"externalTrafficPolicy,omitempty"`
+	Internal              *bool  `json:"internal,omitempty"`
 }
 
 // GatewayServiceSpec configures one gateway service endpoint.
@@ -139,6 +138,12 @@ type GatewayServiceSpec struct {
 	Port        int32              `json:"port,omitempty"`
 	TargetPort  int32              `json:"targetPort,omitempty"`
 	Annotations map[string]string  `json:"annotations,omitempty"`
+}
+
+// TrafficManagerRefSpec binds a PrivateAI backend to a shared TrafficManager.
+type TrafficManagerRefSpec struct {
+	Ref       string `json:"ref,omitempty"`
+	RoutePath string `json:"routePath,omitempty"`
 }
 
 // LoggingSpec configures logging sidecar behavior.
@@ -175,18 +180,18 @@ type PaiPortMapping struct {
 type PrivateAiStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Status         string          `json:"status,omitempty"`
-	Replicas       int             `json:"replicas,omitempty"`
-	ReleaseUpdate  string          `json:"releaseUpdate,omitempty"`
-	LoadBalancerIP string          `json:"loadBalancerIP,omitempty"`
-	PodIP          string          `json:"podIP,omitempty"`
-	NodeIP         string          `json:"NodeIP,omitempty"`
-	ClusterIP      string          `json:"clusterIP,omitempty"`
-	PaiSecret      SecretStatus    `json:"paiSecret,omitempty"`
-	PaiConfigMap   ConfigMapStatus `json:"paiConfigMap,omitempty"`
-	Mode           string          `json:"mode,omitempty"`
-	Gateway        GatewayStatus   `json:"gateway,omitempty"`
-	Logging        LoggingStatus   `json:"logging,omitempty"`
+	Status         string                  `json:"status,omitempty"`
+	Replicas       int                     `json:"replicas,omitempty"`
+	ReleaseUpdate  string                  `json:"releaseUpdate,omitempty"`
+	LoadBalancerIP string                  `json:"loadBalancerIP,omitempty"`
+	PodIP          string                  `json:"podIP,omitempty"`
+	NodeIP         string                  `json:"NodeIP,omitempty"`
+	ClusterIP      string                  `json:"clusterIP,omitempty"`
+	PaiSecret      SecretStatus            `json:"paiSecret,omitempty"`
+	PaiConfigMap   ConfigMapStatus         `json:"paiConfigMap,omitempty"`
+	Mode           string                  `json:"mode,omitempty"`
+	TrafficManager TrafficManagerRefStatus `json:"trafficManager,omitempty"`
+	Logging        LoggingStatus           `json:"logging,omitempty"`
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
@@ -209,16 +214,10 @@ type ConfigMapStatus struct {
 	Name            string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 }
 
-// GatewayStatus tracks observed status of gateway resources.
-type GatewayStatus struct {
-	Enabled          bool   `json:"enabled,omitempty"`
-	ReadyReplicas    int32  `json:"readyReplicas,omitempty"`
-	Type             string `json:"type,omitempty"`
-	ConfigMapName    string `json:"configMapName,omitempty"`
-	ConfigMapVersion string `json:"configMapVersion,omitempty"`
-	InternalService  string `json:"internalService,omitempty"`
-	ExternalService  string `json:"externalService,omitempty"`
-	ExternalEndpoint string `json:"externalEndpoint,omitempty"`
+// TrafficManagerRefStatus tracks the resolved TrafficManager binding for PrivateAI.
+type TrafficManagerRefStatus struct {
+	Ref       string `json:"ref,omitempty"`
+	RoutePath string `json:"routePath,omitempty"`
 }
 
 // LoggingStatus tracks observed logging sidecar state.
@@ -236,7 +235,6 @@ type LoggingStatus struct {
 //+kubebuilder:printcolumn:JSONPath=".status.loadBalancerIP",name="LbIP",type=string
 //+kubebuilder:printcolumn:JSONPath=".status.releaseUpdate",name="ReleaseUpdate",type=string,priority=1
 //+kubebuilder:printcolumn:JSONPath=".status.mode",name="Mode",type=string,priority=1
-//+kubebuilder:printcolumn:JSONPath=".status.gateway.readyReplicas",name="GatewayReady",type=number,priority=1
 
 // PrivateAi is the Schema for the privateais API.
 type PrivateAi struct {

@@ -85,7 +85,7 @@ func getOwnerRef(instance *privateaiv4.PrivateAi,
 }
 
 // FUnction to build the svc definition for catalog/shard and GSM
-func buildSvcPortsDef(instance *privateaiv4.PrivateAi) []corev1.ServicePort {
+func buildSvcPortsDef(instance *privateaiv4.PrivateAi, svcType string) []corev1.ServicePort {
 	var result []corev1.ServicePort
 	if len(instance.Spec.PaiService.PortMappings) > 0 {
 		for _, portMapping := range instance.Spec.PaiService.PortMappings {
@@ -102,6 +102,43 @@ func buildSvcPortsDef(instance *privateaiv4.PrivateAi) []corev1.ServicePort {
 			result = append(result, servicePort)
 		}
 	}
+
+	if svcType != "external" {
+		return result
+	}
+
+	external := resolvePaiExternalServiceSettings(instance)
+	if external.Port == 0 && external.TargetPort == 0 {
+		return result
+	}
+
+	if len(result) == 0 {
+		targetPort, _, _, _ := resolveServicePort(&instance.Spec)
+		if external.TargetPort > 0 {
+			targetPort = external.TargetPort
+		}
+		servicePort := targetPort
+		if external.Port > 0 {
+			servicePort = external.Port
+		}
+		return []corev1.ServicePort{{
+			Protocol: corev1.ProtocolTCP,
+			Port:     servicePort,
+			Name:     fmt.Sprintf("tcp-%d-%d", servicePort, targetPort),
+			TargetPort: intstr.IntOrString{
+				Type:   intstr.Int,
+				IntVal: targetPort,
+			},
+		}}
+	}
+
+	if external.Port > 0 {
+		result[0].Port = external.Port
+	}
+	if external.TargetPort > 0 {
+		result[0].TargetPort = intstr.FromInt(int(external.TargetPort))
+	}
+	result[0].Name = fmt.Sprintf("tcp-%d-%d", result[0].Port, result[0].TargetPort.IntVal)
 	return result
 }
 

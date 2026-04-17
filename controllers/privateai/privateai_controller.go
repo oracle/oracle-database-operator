@@ -41,7 +41,6 @@ package privateai
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -49,6 +48,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	networkv4 "github.com/oracle/oracle-database-operator/apis/network/v4"
 	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
 	k8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
 	sharedk8sutil "github.com/oracle/oracle-database-operator/commons/k8sutil"
@@ -114,6 +114,7 @@ type reconcileState struct {
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
+// +kubebuilder:rbac:groups=network.oracle.com,resources=trafficmanagers,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -169,14 +170,13 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		privateAiInst.Status.Replicas = 0
 		privateAiInst.Status.ReleaseUpdate = privateaiv4.ValueUnavailable
 	}
-	if aicommons.IsGatewayEnabled(privateAiInst) {
-		privateAiInst.Status.Mode = "gateway"
-		privateAiInst.Status.Gateway.Enabled = true
-		privateAiInst.Status.Gateway.Type = normalizedGatewayType(privateAiInst)
+	if privateAiInst.Spec.TrafficManager != nil && strings.TrimSpace(privateAiInst.Spec.TrafficManager.Ref) != "" {
+		privateAiInst.Status.Mode = "traffic-managed"
+		privateAiInst.Status.TrafficManager.Ref = strings.TrimSpace(privateAiInst.Spec.TrafficManager.Ref)
+		privateAiInst.Status.TrafficManager.RoutePath = strings.TrimSpace(privateAiInst.Spec.TrafficManager.RoutePath)
 	} else {
 		privateAiInst.Status.Mode = "direct"
-		privateAiInst.Status.Gateway.Enabled = false
-		privateAiInst.Status.Gateway.Type = ""
+		privateAiInst.Status.TrafficManager = privateaiv4.TrafficManagerRefStatus{}
 	}
 	if privateAiInst.Spec.Logging != nil {
 		privateAiInst.Status.Logging.Enabled = privateAiInst.Spec.Logging.Enabled
@@ -326,11 +326,21 @@ func (r *PrivateAiReconciler) updateReconcileStatus(
 //
 // #############################################################################
 func (r *PrivateAiReconciler) validate(m *privateaiv4.PrivateAi, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	//var err error
-	//eventReason := "Spec Error"
-	//var eventMsgs []string
-
 	r.Log.Info("Entering reconcile validation")
+	if m.Spec.TrafficManager != nil && strings.TrimSpace(m.Spec.TrafficManager.Ref) != "" {
+		trafficManager := &networkv4.TrafficManager{}
+		ref := strings.TrimSpace(m.Spec.TrafficManager.Ref)
+		if err := r.Client.Get(ctx, types.NamespacedName{Name: ref, Namespace: req.Namespace}, trafficManager); err != nil {
+			return resultNq, err
+		}
+		if trafficManager.Spec.Type != networkv4.TrafficManagerTypeNginx {
+			return resultNq, fmt.Errorf("spec.trafficManager.ref %q points to unsupported TrafficManager type %q", ref, trafficManager.Spec.Type)
+		}
+		if path := strings.TrimSpace(m.Spec.TrafficManager.RoutePath); path != "" &&
+			(!strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/")) {
+			return resultNq, fmt.Errorf("spec.trafficManager.routePath must start and end with '/'")
+		}
+	}
 
 	r.Log.Info("Completed reconcile validation")
 
@@ -361,8 +371,8 @@ func (r *PrivateAiReconciler) runPhase(
 func (r *PrivateAiReconciler) reconcileDependencies(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (ctrl.Result, error) {
 	authEnabled := parseBoolFlag(privateAiInst.Spec.PaiEnableAuthentication)
 	storageEnabled := privateAiInst.Spec.StorageClass != ""
-	gatewayEnabled := aicommons.IsGatewayEnabled(privateAiInst)
-	externalSvcEnabled := parseBoolFlag(privateAiInst.Spec.IsExternalSvc) && !gatewayEnabled
+	trafficManaged := privateAiInst.Spec.TrafficManager != nil && strings.TrimSpace(privateAiInst.Spec.TrafficManager.Ref) != ""
+	externalSvcEnabled := aicommons.ExternalServiceEnabledForPrivateAI(privateAiInst) && !trafficManaged
 
 	if authEnabled {
 		if _, err := r.ensureSecret(ctx, req, privateAiInst); err != nil {
@@ -384,23 +394,12 @@ func (r *PrivateAiReconciler) reconcileDependencies(ctx context.Context, req ctr
 	if _, err := r.ensureServices(ctx, privateAiInst, "local"); err != nil {
 		return resultNq, err
 	}
-	if gatewayEnabled {
-		if _, err := r.ensureGatewayConfigMap(ctx, req, privateAiInst); err != nil {
-			return resultNq, err
-		}
-		if err := r.deleteServiceIfExists(ctx, privateAiInst.Namespace, aicommons.GetSvcName(privateAiInst.Name, "external")); err != nil {
-			return resultNq, err
-		}
-		if _, err := r.ensureGatewayServices(ctx, privateAiInst); err != nil {
+	if externalSvcEnabled {
+		if _, err := r.ensureServices(ctx, privateAiInst, "external"); err != nil {
 			return resultNq, err
 		}
 	} else {
-		if err := r.cleanupGatewayResources(ctx, privateAiInst); err != nil {
-			return resultNq, err
-		}
-	}
-	if externalSvcEnabled {
-		if _, err := r.ensureServices(ctx, privateAiInst, "external"); err != nil {
+		if err := r.deleteServiceIfExists(ctx, privateAiInst.Namespace, aicommons.GetSvcName(privateAiInst.Name, "external")); err != nil {
 			return resultNq, err
 		}
 	}
@@ -453,18 +452,6 @@ func (r *PrivateAiReconciler) reconcileWorkload(ctx context.Context, req ctrl.Re
 	}
 	if _, err := aicommons.UpdateDeploySetForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, foundDeploy, firstPod, r.Log); err != nil {
 		return resultNq, err
-	}
-	if aicommons.IsGatewayEnabled(privateAiInst) {
-		if _, err := r.reconcileGatewayWorkload(ctx, privateAiInst); err != nil {
-			return resultNq, err
-		}
-	} else {
-		privateAiInst.Status.Gateway.ReadyReplicas = 0
-		privateAiInst.Status.Gateway.InternalService = ""
-		privateAiInst.Status.Gateway.ExternalService = ""
-		privateAiInst.Status.Gateway.ExternalEndpoint = ""
-		privateAiInst.Status.Gateway.ConfigMapName = ""
-		privateAiInst.Status.Gateway.ConfigMapVersion = ""
 	}
 	return requeueN, nil
 }
@@ -540,7 +527,7 @@ func (r *PrivateAiReconciler) managePrivateAiDeletion(ctx context.Context, insta
 }
 
 func (r *PrivateAiReconciler) finalizePrivateAi(ctx context.Context, instance *privateaiv4.PrivateAi) error {
-	deploymentNames := []string{instance.Name, instance.Name + "-gateway"}
+	deploymentNames := []string{instance.Name}
 	for _, depName := range deploymentNames {
 		if depSet, err := r.getDeployment(ctx, depName, instance.Namespace); err == nil {
 			if err := r.Client.Delete(ctx, depSet); err != nil && !apierrors.IsNotFound(err) {
@@ -572,8 +559,6 @@ func (r *PrivateAiReconciler) finalizePrivateAi(ctx context.Context, instance *p
 		aicommons.GetSvcName(instance.Name, "external"),
 		instance.Name,
 		instance.Name + "-svc",
-		instance.Name + "-gateway",
-		instance.Name + "-gateway-ext",
 	}
 	seen := map[string]struct{}{}
 	for _, svcName := range serviceNames {
@@ -648,152 +633,6 @@ func (r *PrivateAiReconciler) ensureConfigMap(ctx context.Context, req ctrl.Requ
 	privateAiInst.Status.PaiConfigMap.ResourceVersion = latestVersion
 
 	return ctrl.Result{}, nil
-}
-
-func (r *PrivateAiReconciler) ensureGatewayConfigMap(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
-	if !aicommons.IsGatewayEnabled(privateAiInst) || privateAiInst.Spec.Gateway == nil {
-		return ctrl.Result{}, nil
-	}
-	cfg := privateAiInst.Spec.Gateway.ConfigMap
-	if strings.TrimSpace(cfg.Name) == "" {
-		return requeueN, fmt.Errorf("gateway is enabled but gateway.configMap.name is empty")
-	}
-
-	privateAiInst.Status.Gateway.ConfigMapName = cfg.Name
-	currentVersion := privateAiInst.Status.Gateway.ConfigMapVersion
-	latestVersion := aicommons.GetConfigMapResourceVersion(cfg.Name, privateAiInst, r.Client, r.Log)
-
-	if latestVersion == "" || latestVersion == "None" {
-		return ctrl.Result{}, nil
-	}
-	if currentVersion == "" {
-		privateAiInst.Status.Gateway.ConfigMapVersion = latestVersion
-		return ctrl.Result{}, nil
-	}
-	if currentVersion == latestVersion {
-		return ctrl.Result{}, nil
-	}
-
-	privateAiInst.Status.Status = privateaiv4.StatusUpdating
-	r.Log.Info("Gateway ConfigMap change detected", "configMap", cfg.Name)
-
-	gatewayDeployName := privateAiInst.Name + "-gateway"
-	deploy, err := r.getDeployment(ctx, gatewayDeployName, privateAiInst.Namespace)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			privateAiInst.Status.Gateway.ConfigMapVersion = latestVersion
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
-	}
-
-	reloadErr := error(nil)
-	if normalizedGatewayType(privateAiInst) == "nginx" {
-		reloadErr = r.reloadNginxGateway(ctx, req, privateAiInst, deploy)
-		if reloadErr != nil {
-			r.Log.Error(reloadErr, "Nginx reload failed; falling back to gateway rollout restart", "deployment", gatewayDeployName)
-		}
-	}
-
-	if reloadErr != nil || normalizedGatewayType(privateAiInst) != "nginx" {
-		if err := aicommons.UpdateRestartedAtAnnotation(ctx, r, privateAiInst, r.Client, r.Config, deploy, req, r.Log); err != nil {
-			privateAiInst.Status.Status = privateaiv4.StatusError
-			return ctrl.Result{}, err
-		}
-	}
-
-	privateAiInst.Status.Gateway.ConfigMapVersion = latestVersion
-	return ctrl.Result{}, nil
-}
-
-func (r *PrivateAiReconciler) reloadNginxGateway(
-	ctx context.Context,
-	req ctrl.Request,
-	privateAiInst *privateaiv4.PrivateAi,
-	deploy *appsv1.Deployment,
-) error {
-	if deploy == nil || deploy.Spec.Selector == nil || len(deploy.Spec.Selector.MatchLabels) == 0 {
-		return fmt.Errorf("gateway deployment selector is not available for nginx reload")
-	}
-
-	configPath := "/etc/nginx/nginx.conf"
-	if privateAiInst.Spec.Gateway != nil && strings.TrimSpace(privateAiInst.Spec.Gateway.ConfigMap.MountLocation) != "" {
-		configPath = strings.TrimSpace(privateAiInst.Spec.Gateway.ConfigMap.MountLocation)
-	}
-
-	podList := &corev1.PodList{}
-	if err := r.Client.List(
-		ctx,
-		podList,
-		client.InNamespace(privateAiInst.Namespace),
-		client.MatchingLabels(deploy.Spec.Selector.MatchLabels),
-	); err != nil {
-		return err
-	}
-	if len(podList.Items) == 0 {
-		return fmt.Errorf("no gateway pods found for deployment %s", deploy.Name)
-	}
-
-	var reloadCount int
-	var failures []string
-	containerName := deploy.Name
-	for i := range podList.Items {
-		pod := &podList.Items[i]
-		if pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning {
-			continue
-		}
-
-		if _, err := aicommons.ExecCommand(
-			ctx,
-			r,
-			r.Config,
-			pod.Name,
-			pod.Namespace,
-			containerName,
-			req,
-			true,
-			[]string{"nginx", "-t", "-c", configPath},
-		); err != nil {
-			failures = append(failures, fmt.Sprintf("%s: config test failed: %v", pod.Name, err))
-			continue
-		}
-
-		if _, err := aicommons.ExecCommand(
-			ctx,
-			r,
-			r.Config,
-			pod.Name,
-			pod.Namespace,
-			containerName,
-			req,
-			true,
-			[]string{"nginx", "-s", "reload"},
-		); err != nil {
-			failures = append(failures, fmt.Sprintf("%s: reload failed: %v", pod.Name, err))
-			continue
-		}
-
-		reloadCount++
-	}
-
-	if reloadCount == 0 {
-		if len(failures) == 0 {
-			return fmt.Errorf("no running gateway pods available for nginx reload")
-		}
-		return errors.New(strings.Join(failures, "; "))
-	}
-
-	if len(failures) > 0 {
-		r.Log.Info("Nginx reload partially succeeded", "reloadedPods", reloadCount, "failures", strings.Join(failures, "; "))
-	}
-	return nil
-}
-
-func normalizedGatewayType(privateAiInst *privateaiv4.PrivateAi) string {
-	if privateAiInst == nil || privateAiInst.Spec.Gateway == nil || strings.TrimSpace(privateAiInst.Spec.Gateway.Type) == "" {
-		return "nginx"
-	}
-	return strings.ToLower(strings.TrimSpace(privateAiInst.Spec.Gateway.Type))
 }
 
 func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
@@ -923,95 +762,6 @@ func (r *PrivateAiReconciler) ensureServices(ctx context.Context, privateAiInst 
 	return ctrl.Result{}, nil
 }
 
-func (r *PrivateAiReconciler) ensureGatewayServices(ctx context.Context, privateAiInst *privateaiv4.PrivateAi) (ctrl.Result, error) {
-	if !aicommons.IsGatewayEnabled(privateAiInst) {
-		return requeueN, nil
-	}
-	privateAiInst.Status.Gateway.Enabled = true
-
-	if aicommons.IsGatewayServiceEnabled(privateAiInst, "internal") {
-		svc := aicommons.BuildGatewayServiceDefForPrivateAI(privateAiInst, "internal")
-		r.waitForScheme()
-		if err := controllerutil.SetControllerReference(privateAiInst, svc, r.Scheme); err != nil {
-			return resultNq, err
-		}
-		_, err := k8sobjects.EnsureService(ctx, r.Client, privateAiInst.Namespace, svc, k8sobjects.ServiceSyncOptions{
-			SyncOwnerReferences: true,
-		})
-		if err != nil {
-			return resultNq, err
-		}
-		privateAiInst.Status.Gateway.InternalService = svc.Name
-	} else {
-		_ = r.deleteServiceIfExists(ctx, privateAiInst.Namespace, aicommons.GetSvcName(privateAiInst.Name+"-gateway", "local"))
-		privateAiInst.Status.Gateway.InternalService = ""
-	}
-
-	if aicommons.IsGatewayServiceEnabled(privateAiInst, "external") {
-		svc := aicommons.BuildGatewayServiceDefForPrivateAI(privateAiInst, "external")
-		r.waitForScheme()
-		if err := controllerutil.SetControllerReference(privateAiInst, svc, r.Scheme); err != nil {
-			return resultNq, err
-		}
-		_, err := k8sobjects.EnsureService(ctx, r.Client, privateAiInst.Namespace, svc, k8sobjects.ServiceSyncOptions{
-			SyncOwnerReferences:    true,
-			SyncLoadBalancerFields: true,
-		})
-		if err != nil {
-			return resultNq, err
-		}
-		privateAiInst.Status.Gateway.ExternalService = svc.Name
-		existing := &corev1.Service{}
-		if err := r.Client.Get(ctx, types.NamespacedName{Name: svc.Name, Namespace: privateAiInst.Namespace}, existing); err == nil {
-			if len(existing.Status.LoadBalancer.Ingress) > 0 {
-				ingress := existing.Status.LoadBalancer.Ingress[0]
-				if ingress.IP != "" {
-					privateAiInst.Status.Gateway.ExternalEndpoint = ingress.IP
-				} else {
-					privateAiInst.Status.Gateway.ExternalEndpoint = ingress.Hostname
-				}
-			}
-		}
-	} else {
-		_ = r.deleteServiceIfExists(ctx, privateAiInst.Namespace, privateAiInst.Name+"-gateway-ext")
-		privateAiInst.Status.Gateway.ExternalService = ""
-		privateAiInst.Status.Gateway.ExternalEndpoint = ""
-	}
-	return requeueN, nil
-}
-
-func (r *PrivateAiReconciler) reconcileGatewayWorkload(ctx context.Context, privateAiInst *privateaiv4.PrivateAi) (ctrl.Result, error) {
-	desired := aicommons.BuildGatewayDeploySetForPrivateAI(privateAiInst)
-	if desired == nil {
-		return requeueN, nil
-	}
-	r.waitForScheme()
-	if err := controllerutil.SetControllerReference(privateAiInst, desired, r.Scheme); err != nil {
-		return resultNq, err
-	}
-	found, depResult, err := k8sobjects.ReconcileDeployment(ctx, r.Client, privateAiInst.Namespace, desired, nil)
-	if err != nil {
-		return resultNq, err
-	}
-	if depResult.Created {
-		return requeueY, nil
-	}
-	privateAiInst.Status.Gateway.ReadyReplicas = found.Status.ReadyReplicas
-	return requeueN, nil
-}
-
-func (r *PrivateAiReconciler) cleanupGatewayResources(ctx context.Context, privateAiInst *privateaiv4.PrivateAi) error {
-	if err := r.deleteDeploymentIfExists(ctx, privateAiInst.Namespace, privateAiInst.Name+"-gateway"); err != nil {
-		return err
-	}
-	if err := r.deleteServiceIfExists(ctx, privateAiInst.Namespace, privateAiInst.Name+"-gateway"); err != nil {
-		return err
-	}
-	if err := r.deleteServiceIfExists(ctx, privateAiInst.Namespace, privateAiInst.Name+"-gateway-ext"); err != nil {
-		return err
-	}
-	return nil
-}
 func parseBoolFlag(flag string) bool {
 	val, err := strconv.ParseBool(flag)
 	if err != nil {
@@ -1032,23 +782,6 @@ func (r *PrivateAiReconciler) deleteServiceIfExists(ctx context.Context, namespa
 		return err
 	}
 	if err := r.Client.Delete(ctx, svc); err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-	return nil
-}
-
-func (r *PrivateAiReconciler) deleteDeploymentIfExists(ctx context.Context, namespace, name string) error {
-	if name == "" {
-		return nil
-	}
-	dep := &appsv1.Deployment{}
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, dep); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	if err := r.Client.Delete(ctx, dep); err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 	return nil

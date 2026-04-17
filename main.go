@@ -72,12 +72,14 @@ import (
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+	networkv4 "github.com/oracle/oracle-database-operator/apis/network/v4"
 	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
 	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
 	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
 	dataguardcontroller "github.com/oracle/oracle-database-operator/controllers/dataguard"
+	networkcontroller "github.com/oracle/oracle-database-operator/controllers/network"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	privateaiv4controller "github.com/oracle/oracle-database-operator/controllers/privateai"
 	// +kubebuilder:scaffold:imports
@@ -95,6 +97,7 @@ func init() {
 	utilruntime.Must(monitorv1.AddToScheme(scheme))
 	utilruntime.Must(databasev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(databasev4.AddToScheme(scheme))
+	utilruntime.Must(networkv4.AddToScheme(scheme))
 	utilruntime.Must(observabilityv1.AddToScheme(scheme))
 	utilruntime.Must(observabilityv4.AddToScheme(scheme))
 	utilruntime.Must(privateaiv4.AddToScheme(scheme))
@@ -215,6 +218,7 @@ func setupControllers(mgr ctrl.Manager, interval int64) error {
 		{name: "OracleRestDataService", required: true, setup: setupOrdsController},
 		{name: "OracleRestart", required: true, setup: setupOracleRestartController},
 		{name: "PrivateAi", required: true, setup: setupPrivateAiController},
+		{name: "TrafficManager", required: true, setup: setupTrafficManagerController},
 		{name: "LRPDB", required: true, setup: setupLRPDBController},
 		{name: "LREST", required: true, setup: setupLRESTController},
 		{name: "DataguardBroker", required: true, setup: setupDataguardBrokerController},
@@ -330,6 +334,16 @@ func setupPrivateAiController(mgr ctrl.Manager, _ int64) error {
 	}).SetupWithManager(mgr)
 }
 
+func setupTrafficManagerController(mgr ctrl.Manager, _ int64) error {
+	return (&networkcontroller.TrafficManagerReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("network").WithName("TrafficManager"),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("TrafficManager"),
+		Config:   mgr.GetConfig(),
+	}).SetupWithManager(mgr)
+}
+
 func setupLRPDBController(mgr ctrl.Manager, interval int64) error {
 	return (&databasecontroller.LRPDBReconciler{
 		Client:   mgr.GetClient(),
@@ -423,6 +437,7 @@ func setupWebhooks(mgr ctrl.Manager) error {
 		{name: "OracleRestDataService", setup: setupV4OracleRestDataServiceWebhook},
 		{name: "OracleRestart", setup: setupV4OracleRestartWebhook},
 		{name: "PrivateAi", setup: setupV4PrivateAiWebhook},
+		{name: "TrafficManager", setup: setupV4TrafficManagerWebhook},
 		{name: "RacDatabase", setup: setupV4RacDatabaseWebhook},
 	}
 
@@ -544,6 +559,10 @@ func setupV4OracleRestartWebhook(mgr ctrl.Manager) error {
 
 func setupV4PrivateAiWebhook(mgr ctrl.Manager) error {
 	return (&privateaiv4.PrivateAi{}).SetupPrivateAiWebhookWithManager(mgr)
+}
+
+func setupV4TrafficManagerWebhook(mgr ctrl.Manager) error {
+	return (&networkv4.TrafficManager{}).SetupWebhookWithManager(mgr)
 }
 
 func setupV4RacDatabaseWebhook(mgr ctrl.Manager) error {
