@@ -198,6 +198,11 @@ func mergeCapabilitiesWithDefaults(defaultCaps *corev1.Capabilities, userCaps *c
 	if defaultCaps == nil && userCaps == nil {
 		return nil
 	}
+	if userCaps != nil && len(userCaps.Add) == 0 && len(userCaps.Drop) == 0 {
+		// An explicit empty object disables operator defaults while preserving
+		// the existing merge behavior for non-empty user capability specs.
+		return &corev1.Capabilities{}
+	}
 	result := &corev1.Capabilities{}
 	addSeen := map[corev1.Capability]bool{}
 	dropSeen := map[corev1.Capability]bool{}

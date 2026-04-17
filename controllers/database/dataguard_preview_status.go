@@ -428,15 +428,16 @@ func buildSIDBPreviewExecutionStatus(m *dbapi.SingleInstanceDatabase) *dbapi.Dat
 	if m == nil {
 		return nil
 	}
+	authWallet := cloneOrDefaultDataguardAuthWalletSpec(m.Spec.Dataguard)
 	image := strings.TrimSpace(m.Spec.Image.PullFrom)
-	if image == "" {
+	if image == "" && authWallet == nil {
 		return nil
 	}
 	status := &dbapi.DataguardExecutionStatus{Image: image}
 	if secret := strings.TrimSpace(m.Spec.Image.PullSecrets); secret != "" {
 		status.ImagePullSecrets = []string{secret}
 	}
-	status.AuthWallet = cloneDataguardAuthWalletSpec(m.Spec.Dataguard)
+	status.AuthWallet = authWallet
 	return status
 }
 
@@ -1009,7 +1010,7 @@ func buildRenderedBrokerPreviewStatus(resourceName, namespace string, topology *
 	spec := &dbapi.DataguardRenderedBrokerSpec{
 		Topology: topology.DeepCopy(),
 	}
-	if execution != nil && strings.TrimSpace(execution.Image) != "" {
+	if renderedBrokerExecutionSpecHasContent(execution) {
 		spec.Execution = &dbapi.DataguardExecutionSpec{
 			Image:            strings.TrimSpace(execution.Image),
 			ImagePullSecrets: append([]string(nil), execution.ImagePullSecrets...),
@@ -1032,6 +1033,26 @@ func cloneDataguardAuthWalletSpec(spec *dbapi.DataguardProducerSpec) *dbapi.Data
 		return nil
 	}
 	return spec.AuthWallet.DeepCopy()
+}
+
+func cloneOrDefaultDataguardAuthWalletSpec(spec *dbapi.DataguardProducerSpec) *dbapi.DataguardAuthWalletSpec {
+	if authWallet := cloneDataguardAuthWalletSpec(spec); authWallet != nil {
+		return authWallet
+	}
+	return &dbapi.DataguardAuthWalletSpec{Enabled: true}
+}
+
+func renderedBrokerExecutionSpecHasContent(execution *dbapi.DataguardExecutionStatus) bool {
+	if execution == nil {
+		return false
+	}
+	if strings.TrimSpace(execution.Image) != "" {
+		return true
+	}
+	if len(execution.ImagePullSecrets) > 0 {
+		return true
+	}
+	return execution.AuthWallet != nil
 }
 
 func buildRenderedBrokerName(resourceName string) string {

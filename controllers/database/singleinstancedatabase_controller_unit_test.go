@@ -364,6 +364,42 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryInfersTCPSPlaceholder
 	}
 }
 
+func TestSIDBUnit_SyncDataguardPreviewStatusDefaultsRenderedExecutionAuthWalletWithoutImage(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:      "STBY",
+			CreateAs: "standby",
+			AdminPassword: dbapi.SingleInstanceDatabaseAdminPassword{
+				SecretName: "standby-admin",
+			},
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				ConnectString: "external-primary:1521/PRIM",
+			},
+			Dataguard: &dbapi.DataguardProducerSpec{},
+		},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			CreatedAs: "standby",
+		},
+	}
+
+	syncSIDBDataguardPreviewStatus(sidb, nil)
+
+	if sidb.Status.Dataguard == nil || sidb.Status.Dataguard.RenderedBrokerSpec == nil || sidb.Status.Dataguard.RenderedBrokerSpec.Spec == nil {
+		t.Fatalf("expected rendered broker spec to be published, got %#v", sidb.Status.Dataguard)
+	}
+	execution := sidb.Status.Dataguard.RenderedBrokerSpec.Spec.Execution
+	if execution == nil {
+		t.Fatalf("expected rendered broker execution to be published even without image")
+	}
+	if execution.Image != "" {
+		t.Fatalf("expected no execution image, got %q", execution.Image)
+	}
+	if execution.AuthWallet == nil || !execution.AuthWallet.Enabled {
+		t.Fatalf("expected default auth wallet to be enabled, got %#v", execution.AuthWallet)
+	}
+}
+
 func TestSIDBUnit_SyncDataguardPreviewStatusDisabledClearsStatus(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{
@@ -1327,6 +1363,107 @@ func TestSIDBUnit_InstantiatePodSpecCopiesHostAliases(t *testing.T) {
 	}
 	if pod.Spec.HostAliases[1].IP != "10.10.10.11" || len(pod.Spec.HostAliases[1].Hostnames) != 1 || pod.Spec.HostAliases[1].Hostnames[0] != "analytics.example.com" {
 		t.Fatalf("unexpected second host alias: %#v", pod.Spec.HostAliases[1])
+	}
+}
+
+func TestSIDBUnit_InstantiatePodSpecDefaultsCapabilitiesToSysNice(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-default-caps", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "ORCLCDB",
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+
+	got := pod.Spec.Containers[0].SecurityContext.Capabilities
+	want := &corev1.Capabilities{Add: []corev1.Capability{"SYS_NICE"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected default capabilities %#v, got %#v", want, got)
+	}
+}
+
+func TestSIDBUnit_InstantiatePodSpecAllowsEmptyCapabilitiesOverride(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-empty-caps", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:          "ORCLCDB",
+			Capabilities: &corev1.Capabilities{},
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+
+	got := pod.Spec.Containers[0].SecurityContext.Capabilities
+	want := &corev1.Capabilities{}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected empty capability override %#v, got %#v", want, got)
+	}
+}
+
+func TestSIDBUnit_InstantiatePodSpecUsesExplicitCapabilitiesOverride(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-custom-caps", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "ORCLCDB",
+			Capabilities: &corev1.Capabilities{
+				Add:  []corev1.Capability{"NET_RAW"},
+				Drop: []corev1.Capability{"ALL"},
+			},
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+
+	got := pod.Spec.Containers[0].SecurityContext.Capabilities
+	want := &corev1.Capabilities{
+		Add:  []corev1.Capability{"NET_RAW"},
+		Drop: []corev1.Capability{"ALL"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected explicit capability override %#v, got %#v", want, got)
 	}
 }
 

@@ -771,6 +771,16 @@ func buildSIDBPodSecurityContext(
 	return podSecurityContext, nil
 }
 
+func buildSIDBContainerCapabilities(m *dbapi.SingleInstanceDatabase) *corev1.Capabilities {
+	if m != nil && m.Spec.Capabilities != nil {
+		return m.Spec.Capabilities.DeepCopy()
+	}
+	return &corev1.Capabilities{
+		// Allow priority elevation for DB processes by default.
+		Add: []corev1.Capability{"SYS_NICE"},
+	}
+}
+
 func buildSIDBPermissionInitCommand(paths []string) string {
 	commands := make([]string, 0, len(paths))
 	for i := range paths {
@@ -2521,10 +2531,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				Image:           m.Spec.Image.PullFrom,
 				ImagePullPolicy: getSIDBImagePullPolicy(m),
 				SecurityContext: &corev1.SecurityContext{
-					Capabilities: &corev1.Capabilities{
-						// Allow priority elevation for DB processes
-						Add: []corev1.Capability{"SYS_NICE"},
-					},
+					Capabilities: buildSIDBContainerCapabilities(m),
 				},
 				Lifecycle: &corev1.Lifecycle{
 					PreStop: &corev1.LifecycleHandler{
