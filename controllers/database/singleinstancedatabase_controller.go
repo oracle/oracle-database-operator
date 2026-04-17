@@ -771,6 +771,87 @@ func buildSIDBPodSecurityContext(
 	return podSecurityContext, nil
 }
 
+func buildSIDBPermissionInitCommand(paths []string) string {
+	commands := make([]string, 0, len(paths))
+	for i := range paths {
+		if strings.TrimSpace(paths[i]) == "" {
+			continue
+		}
+		quotedPath := strconv.Quote(paths[i])
+		commands = append(commands,
+			fmt.Sprintf("mkdir -p %s || true", quotedPath),
+			fmt.Sprintf("chown -R %d:%d %s || true", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID), quotedPath),
+		)
+	}
+	if len(commands) == 0 {
+		return ""
+	}
+	return strings.Join(commands, " && ")
+}
+
+func buildSIDBPermissionInitVolumeMounts(m *dbapi.SingleInstanceDatabase) []corev1.VolumeMount {
+	if m == nil {
+		return nil
+	}
+	mounts := []corev1.VolumeMount{}
+	if hasOradataPersistence(m) {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      "datafiles-vol",
+			MountPath: "/opt/oracle/oradata",
+		})
+	}
+	if hasFraPersistence(m) {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      "fra-vol",
+			MountPath: getFraMountPath(m),
+		})
+	}
+	for i := range m.Spec.Persistence.AdditionalPVCs {
+		pvcName := strings.TrimSpace(m.Spec.Persistence.AdditionalPVCs[i].PvcName)
+		mountPath := strings.TrimSpace(m.Spec.Persistence.AdditionalPVCs[i].MountPath)
+		if pvcName == "" || mountPath == "" {
+			continue
+		}
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      sidbAdditionalPVCVolumeName(i),
+			MountPath: mountPath,
+		})
+	}
+	return mounts
+}
+
+func buildSIDBPermissionInitPaths(m *dbapi.SingleInstanceDatabase) []string {
+	if m == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	paths := make([]string, 0, 2+len(m.Spec.Persistence.AdditionalPVCs))
+	addPath := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	if hasOradataPersistence(m) {
+		addPath("/opt/oracle/oradata")
+	}
+	if hasFraPersistence(m) {
+		addPath(getFraMountPath(m))
+	}
+	for i := range m.Spec.Persistence.AdditionalPVCs {
+		if strings.TrimSpace(m.Spec.Persistence.AdditionalPVCs[i].PvcName) == "" {
+			continue
+		}
+		addPath(m.Spec.Persistence.AdditionalPVCs[i].MountPath)
+	}
+	return paths
+}
+
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/finalizers,verbs=update
@@ -2341,21 +2422,23 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			}(),
 			InitContainers: func() []corev1.Container {
 				initContainers := []corev1.Container{}
-				if hasOradataPersistence(m) && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
-					initContainers = append(initContainers, corev1.Container{
-						Name:            "init-permissions",
-						Image:           m.Spec.Image.PullFrom,
-						ImagePullPolicy: getSIDBImagePullPolicy(m),
-						Command:         []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata || true", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
-						SecurityContext: &corev1.SecurityContext{
-							// User ID 0 means, root user
-							RunAsUser: func() *int64 { i := int64(0); return &i }(),
-						},
-						VolumeMounts: []corev1.VolumeMount{{
-							MountPath: "/opt/oracle/oradata",
-							Name:      "datafiles-vol",
-						}},
-					})
+				if m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
+					permissionPaths := buildSIDBPermissionInitPaths(m)
+					permissionCommand := buildSIDBPermissionInitCommand(permissionPaths)
+					permissionMounts := buildSIDBPermissionInitVolumeMounts(m)
+					if permissionCommand != "" && len(permissionMounts) > 0 {
+						initContainers = append(initContainers, corev1.Container{
+							Name:            "init-permissions",
+							Image:           m.Spec.Image.PullFrom,
+							ImagePullPolicy: getSIDBImagePullPolicy(m),
+							Command:         []string{"/bin/sh", "-c", permissionCommand},
+							SecurityContext: &corev1.SecurityContext{
+								// User ID 0 means, root user
+								RunAsUser: func() *int64 { i := int64(0); return &i }(),
+							},
+							VolumeMounts: permissionMounts,
+						})
+					}
 				}
 				if m.Spec.Image.PrebuiltDB {
 					initContainers = append(initContainers, corev1.Container{
