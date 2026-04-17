@@ -111,9 +111,9 @@ RUN useradd -u 1002 nonroot
 USER nonroot
 
 # Common runtime files
-COPY  ordssrvs/ords_init.sh /ords_init.sh
-COPY  ordssrvs/ords_start.sh /ords_start.sh
-COPY  ordssrvs/RSADecryptOAEP.java /ordssrvs/
+COPY ordssrvs/ords_init.sh /ordssrvs/
+COPY ordssrvs/ords_start.sh /ordssrvs/
+COPY ordssrvs/RSADecryptOAEP.java /ordssrvs/
 COPY  LICENSE.txt /licenses/LICENSE.txt
 COPY  THIRD_PARTY_LICENSES_DOCKER.txt /licenses/THIRD_PARTY_LICENSES_DOCKER.txt
 COPY  THIRD_PARTY_LICENSES.txt /licenses/THIRD_PARTY_LICENSES.txt
