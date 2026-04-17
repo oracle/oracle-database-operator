@@ -19,11 +19,11 @@ This use case demonstrates adding new ASM Disks to an existing Oracle RAC Databa
 This use case covers adding new ASM Disks to `DATA` diskgroup of an existing Oracle RAC Database. 
 
 ### Example Setup 
-  * The example uses the pre-built Oracle RAC Database slim image from Oracle OCIR: `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim`. To use a custom image, update the `image` field with the image that you have built in your enviornment in file `rac_prov_asm_disk_addition.yaml`
+  * The example uses the pre-built Oracle RAC Database slim image from Oracle OCIR: `dbocir/oracle/database-rac:19.3.0-slim`. To use a custom image, update the `image` field with the image that you have built in your enviornment in file `rac_prov_asm_disk_addition.yaml`
   * The new ASM shared disks on the worker nodes for the RAC shared storage is `/dev/disk/by-partlabel/ocne_asm_disk_03`
   * Similar settings for `hostSwStageLocation`  and `hostSwLocation` also apply to the worker node where the Pod for the New RAC Database Instance will be running when we scale out the existing RAC Database
 
-  * The existing RAC Database was deployed using the pre-built Oracle RAC Database slim image available on Oracle OCIR: `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim`. 
+  * The existing RAC Database was deployed using the pre-built Oracle RAC Database slim image available on Oracle OCIR: `dbocir/oracle/database-rac:19.3.0-slim`. 
   * If you created a custom image using the files from this [GitHub location for building an Oracle RAC Database container slim image](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image), then update the value of `image` with your image you built in your enviornment in the file `rac_prov_asm_disk_addition_autoupdate_true.yaml`. 
   * The ASM diskgroup in the existing Oracle RAC Database was configured using the shared disks on the worker nodes: `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2`. These disks are specified using the parameter `asmDiskGroupDetails` in the YAML file.   
 

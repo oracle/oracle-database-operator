@@ -406,7 +406,7 @@ For details, see: [Use the latest Cluster Verification Utility (CVU) (Doc ID 273
   kubectl create ns rac
 
   #### Check the created namespace 
-  kubectl get rac
+  kubectl get ns rac
   ```
 You can choose any name for the namespace to deploy Oracle RAC Database.
 
@@ -449,7 +449,7 @@ Choose one of the following deployment options:
   **Use Oracle-Supplied Container Images:**
    The Oracle RAC Database Controller uses Oracle RAC Database Slim Image to provision the Oracle RAC Database.
 
-   You can also download the pre-built Oracle RAC Database Slim Image `phx.ocir.io/intsanjaysingh/db-repo/oracle/database:19.3.0-slim`. This image is functionally tested and evaluated with various use cases of Oracle RAC Database on an OCNE Kubernetes Cluster.
+   You can also download the pre-built Oracle RAC Database Slim Image `dbocir/oracle/database-rac:19.3.0-slim`. This image is functionally tested and evaluated with various use cases of Oracle RAC Database on an OCNE Kubernetes Cluster.
 
    You can either download this image and push it to your Container Images Repository, or, if your Kubernetes cluster can reach OCR, you can download this image directly from OCR.
    
@@ -461,7 +461,7 @@ Choose one of the following deployment options:
 
 After the image is ready, push it to your Container Images Repository, so that you can pull this image during Oracle RAC Database provisioning..
 
-**Note**: In the Oracle RAC Database provisioning sample .yaml files, we are using this RAC Database slim image `phx.ocir.io/intsanjaysingh/db-repo/oracle/database:19.3.0-slim`.
+**Note**: In the Oracle RAC Database provisioning sample .yaml files, we are using this RAC Database slim image `dbocir/oracle/database-rac:19.3.0-slim`.
 
 ## Create Kubernetes secrets for the Oracle RAC Database
 

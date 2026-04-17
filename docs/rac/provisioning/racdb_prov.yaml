@@ -70,7 +70,7 @@ spec:
 
   # Container Slim image to be used for the deploying Oracle RAC Pod
   # Please refer to https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters for building the RAC Slim Image
-  image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim        # Replace with the container image you want to use from your container repository
+  image: dbocir/oracle/database-rac:19.3.0-slim                                    # Replace with the container image you want to use from your container repository
   
   # Policy to pull image
   # Use the value as "Always" if you want use the latest version of the image from the container image repository.

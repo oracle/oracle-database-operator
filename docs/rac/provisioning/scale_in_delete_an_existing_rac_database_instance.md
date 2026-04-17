@@ -16,7 +16,7 @@
 * This use case will delete an existing RAC Node `racnode3` from the existing Oracle RAC Cluster completing all the required steps and then the correspoding Pod will be removed from the Kubernetes Cluster. 
 
 ### In this example, 
-  * The existing RAC Database was deployed using pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim`. 
+  * The existing RAC Database was deployed using pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `dbocir/oracle/database-rac:19.3.0-slim`. 
   * If you had built the image yourself using the files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image), you will need to change value of `image` with the image you had built in your enviornment in file `racdb_prov_scale_in.yaml`. 
   * The ASM diskgroup in the existing RAC Database was configured using the shared disks on the worker nodes i.e. `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2`. These disks are specified using parameter `asmDiskGroupDetails` in the YAML file. 
 

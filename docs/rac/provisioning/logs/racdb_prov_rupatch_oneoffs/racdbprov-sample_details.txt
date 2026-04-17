@@ -16,8 +16,8 @@ service/racnode2-0-ons      NodePort    10.107.153.40   <none>        6200:30201
 service/racnode2-0-vip      ClusterIP   None            <none>        <none>            78m   statefulset.kubernetes.io/pod-name=racnode2-0
 
 NAME                        READY   AGE   CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     78m   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
-statefulset.apps/racnode2   1/1     78m   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode1   1/1     78m   racnode1-0   dbocir/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     78m   racnode2-0   dbocir/oracle/database-rac:19.3.0-slim
 
 
 
@@ -77,7 +77,7 @@ Spec:
     Value:            true
     Name:             IGNORE_DB_PREREQS
     Value:            true
-  Image:              phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+  Image:              dbocir/oracle/database-rac:19.3.0-slim
   Image Pull Policy:  Always
   Instance Details:
     Base Lsnr Target Port:  31522

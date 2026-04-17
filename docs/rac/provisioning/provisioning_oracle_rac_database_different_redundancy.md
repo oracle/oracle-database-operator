@@ -25,7 +25,7 @@ Deploy an Oracle RAC Database and Grid Infrastructure using Oracle RAC Controlle
   
 ### Example Details 
 
-  * This example uses a pre-built Oracle RAC Database slim image available on Oracle OCIR: `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim` is used. 
+  * This example uses a pre-built Oracle RAC Database slim image available on Oracle OCIR: `dbocir/oracle/database-rac:19.3.0-slim` is used. 
   * If you plan to build the image yourself, then you can build using the files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). In this case, you will need to change value of `image` with the image that you have built in your enviornment in file `racdb_prov_diff_dg_for_db_and_crs.yaml`.   
   * The ASM diskgroup is configured using the shared disks on the worker nodes:  
     * `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2` for the `CRSDATA` diskgroup 
