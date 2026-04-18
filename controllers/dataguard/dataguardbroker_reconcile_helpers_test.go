@@ -243,6 +243,87 @@ func TestResolveDataguardBrokerExecutionRuntimeFromSIDBProducerStatus(t *testing
 	}
 }
 
+func TestResolveDataguardBrokerExecutionRuntimeDefersAuthWalletSecretUntilInitialized(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{}
+	sidb.Namespace = "ns1"
+	sidb.Name = "sidb-standby"
+	sidb.Status.Dataguard = &dbapi.ProducerDataguardStatus{
+		RenderedBrokerSpec: &dbapi.DataguardRenderedBrokerStatus{
+			Spec: &dbapi.DataguardRenderedBrokerSpec{
+				Execution: &dbapi.DataguardExecutionSpec{
+					Image: "oracle/db:19.3.0",
+					AuthWallet: &dbapi.DataguardAuthWalletSpec{
+						Enabled: true,
+					},
+				},
+			},
+		},
+	}
+
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(sidb).Build(),
+	}
+	broker := &dbapi.DataguardBroker{
+		Spec: dbapi.DataguardBrokerSpec{
+			Topology: &dbapi.DataguardTopologySpec{
+				SourceRef: &dbapi.DataguardSourceRef{
+					Kind:      "SingleInstanceDatabase",
+					Namespace: "ns1",
+					Name:      "sidb-standby",
+				},
+				Members: []dbapi.DataguardTopologyMember{{
+					Name: "primary-a",
+					Role: "PRIMARY",
+				}},
+				Pairs: []dbapi.DataguardTopologyPair{{
+					Primary: "primary-a",
+					Standby: "standby-a",
+				}},
+			},
+		},
+		Status: dbapi.DataguardBrokerStatus{
+			AuthWallet: &dbapi.DataguardAuthWalletStatus{
+				WalletSecretName: "dg-auth-wallet",
+				Initialized:      false,
+			},
+		},
+	}
+
+	got, ready, message, err := resolveDataguardBrokerExecutionRuntime(context.Background(), reconciler, broker)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ready {
+		t.Fatalf("expected runtime to be ready, message=%q", message)
+	}
+	if got == nil {
+		t.Fatalf("expected runtime")
+	}
+	if got.AuthWallet == nil || !got.AuthWallet.Enabled {
+		t.Fatalf("expected auth wallet settings to still be resolved, got %#v", got)
+	}
+	if got.AuthWalletSecretName != "" {
+		t.Fatalf("expected auth wallet secret name to be deferred until initialized, got %q", got.AuthWalletSecretName)
+	}
+
+	broker.Status.AuthWallet.Initialized = true
+	got, ready, message, err = resolveDataguardBrokerExecutionRuntime(context.Background(), reconciler, broker)
+	if err != nil {
+		t.Fatalf("unexpected error after initialization: %v", err)
+	}
+	if !ready {
+		t.Fatalf("expected runtime to remain ready after initialization, message=%q", message)
+	}
+	if got == nil || got.AuthWalletSecretName != "dg-auth-wallet" {
+		t.Fatalf("expected initialized auth wallet secret name to be propagated, got %#v", got)
+	}
+}
+
 func TestEnsureDataguardBrokerRunnerPodCreatesDesiredRunnerBeforeDeletingStaleRunner(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := dbapi.AddToScheme(scheme); err != nil {

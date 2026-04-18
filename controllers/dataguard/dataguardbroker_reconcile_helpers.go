@@ -590,7 +590,7 @@ func resolveDataguardBrokerExecutionRuntime(ctx context.Context, r *DataguardBro
 		}
 		execution.AuthWallet = broker.Spec.Execution.AuthWallet.DeepCopy()
 		if image := strings.TrimSpace(broker.Spec.Execution.Image); image != "" {
-			if execution.AuthWallet != nil && execution.AuthWallet.Enabled && broker.Status.AuthWallet != nil {
+			if execution.AuthWallet != nil && execution.AuthWallet.Enabled && broker.Status.AuthWallet != nil && broker.Status.AuthWallet.Initialized {
 				execution.AuthWalletSecretName = strings.TrimSpace(broker.Status.AuthWallet.WalletSecretName)
 			}
 			execution.Image = image
@@ -619,7 +619,7 @@ func resolveDataguardBrokerExecutionRuntime(ctx context.Context, r *DataguardBro
 	execution.Image = candidates[0].Status.Image
 	execution.ImagePullSecrets = uniqueSortedStrings(candidates[0].Status.ImagePullSecrets)
 	execution.AuthWallet = candidates[0].Status.AuthWallet.DeepCopy()
-	if execution.AuthWallet != nil && execution.AuthWallet.Enabled && broker.Status.AuthWallet != nil {
+	if execution.AuthWallet != nil && execution.AuthWallet.Enabled && broker.Status.AuthWallet != nil && broker.Status.AuthWallet.Initialized {
 		execution.AuthWalletSecretName = strings.TrimSpace(broker.Status.AuthWallet.WalletSecretName)
 	}
 	execution.Source = candidates[0].Source
