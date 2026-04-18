@@ -247,24 +247,38 @@ func resolveServicePort(spec *privateaiv4.PrivateAiSpec) (int32, corev1.URISchem
 	httpsEnabled := boolFromString(spec.PaiHTTPSEnabled)
 
 	if !httpEnabled && !httpsEnabled {
-		// Prefer HTTPS when an HTTPS port is configured and neither flag is set.
-		httpsEnabled = spec.PaiHTTPSPort > 0
-		httpEnabled = !httpsEnabled
+		// Mirror webhook defaulting: when HTTP is not explicitly enabled, default
+		// the runtime to HTTPS.
+		httpsEnabled = true
 	}
 
-	if httpsEnabled && spec.PaiHTTPSPort > 0 {
-		return spec.PaiHTTPSPort, corev1.URISchemeHTTPS, httpEnabled, httpsEnabled
+	if httpsEnabled {
+		port := spec.PaiHTTPSPort
+		if port <= 0 {
+			port = 8443
+		}
+		return port, corev1.URISchemeHTTPS, httpEnabled, httpsEnabled
 	}
 
-	if httpEnabled && spec.PaiHTTPPort > 0 {
-		return spec.PaiHTTPPort, corev1.URISchemeHTTP, httpEnabled, httpsEnabled
+	if httpEnabled {
+		port := spec.PaiHTTPPort
+		if port <= 0 {
+			port = 8080
+		}
+		return port, corev1.URISchemeHTTP, httpEnabled, httpsEnabled
 	}
 
 	// Fall back to whichever port is set.
 	if spec.PaiHTTPSPort > 0 {
 		return spec.PaiHTTPSPort, corev1.URISchemeHTTPS, httpEnabled, true
 	}
-	return spec.PaiHTTPPort, corev1.URISchemeHTTP, true, httpsEnabled
+	if spec.PaiHTTPPort > 0 {
+		return spec.PaiHTTPPort, corev1.URISchemeHTTP, true, httpsEnabled
+	}
+
+	// Mirror webhook defaulting so reconciles remain valid even when mutation
+	// was skipped for older or pre-existing objects.
+	return 8443, corev1.URISchemeHTTPS, false, true
 }
 
 func newHTTPProbe(path string, port int32, scheme corev1.URIScheme, base corev1.Probe) *corev1.Probe {
