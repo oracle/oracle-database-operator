@@ -67,6 +67,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -465,8 +466,36 @@ func (r *PrivateAiReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+			return r.privateAiRequestsForSecret(ctx, obj)
+		})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
 		Complete(r)
+}
+
+func (r *PrivateAiReconciler) privateAiRequestsForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
+	secret, ok := obj.(*corev1.Secret)
+	if !ok {
+		return nil
+	}
+
+	list := &privateaiv4.PrivateAiList{}
+	if err := r.List(ctx, list, client.InNamespace(secret.Namespace)); err != nil {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0)
+	for i := range list.Items {
+		item := &list.Items[i]
+		if item.Spec.PaiSecret == nil || strings.TrimSpace(item.Spec.PaiSecret.Name) != secret.Name {
+			continue
+		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: item.Name, Namespace: item.Namespace},
+		})
+	}
+
+	return requests
 }
 
 // managePrivateAiDeletion handles the deletion lifecycle of a PrivateAi resource.
