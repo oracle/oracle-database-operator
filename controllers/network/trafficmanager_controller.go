@@ -58,6 +58,7 @@ type associatedBackend struct {
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=privateai.oracle.com,resources=privateais,verbs=get;list;watch
 
 func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -83,6 +84,12 @@ func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return trafficManagerRequeue, err
 	}
 	configChecksum := checksumString(configData)
+	tlsChecksum, err := r.resolveTLSSecretChecksum(ctx, inst)
+	if err != nil {
+		inst.Status.Status = privateaiv4.StatusError
+		_ = r.Status().Update(ctx, inst)
+		return trafficManagerRequeue, err
+	}
 
 	configMap := buildTrafficManagerConfigMap(inst, configData)
 	if err := controllerutil.SetControllerReference(inst, configMap, r.Scheme); err != nil {
@@ -92,7 +99,7 @@ func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return trafficManagerNoRequeue, err
 	}
 
-	deploy := buildTrafficManagerDeployment(inst, configChecksum)
+	deploy := buildTrafficManagerDeployment(inst, configChecksum, tlsChecksum)
 	if err := controllerutil.SetControllerReference(inst, deploy, r.Scheme); err != nil {
 		return trafficManagerNoRequeue, err
 	}
@@ -167,6 +174,30 @@ func (r *TrafficManagerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			}
 			return nil
 		})).
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+			secret, ok := obj.(*corev1.Secret)
+			if !ok {
+				return nil
+			}
+			list := &networkv4.TrafficManagerList{}
+			if err := mgr.GetClient().List(ctx, list, client.InNamespace(secret.Namespace)); err != nil {
+				return nil
+			}
+			requests := make([]reconcile.Request, 0)
+			for i := range list.Items {
+				item := &list.Items[i]
+				if item.Spec.Type != networkv4.TrafficManagerTypeNginx || !item.Spec.Security.TLS.Enabled {
+					continue
+				}
+				if strings.TrimSpace(item.Spec.Security.TLS.SecretName) != secret.Name {
+					continue
+				}
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: item.Name, Namespace: item.Namespace},
+				})
+			}
+			return requests
+		})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
 		Complete(r)
 }
@@ -240,6 +271,7 @@ func buildManagedNginxConfig(inst *networkv4.TrafficManager, backends []associat
 		builder.WriteString(fmt.Sprintf("        listen %d ssl;\n", trafficManagerContainerPort(inst)))
 		builder.WriteString("        ssl_certificate /etc/nginx/tls/tls.crt;\n")
 		builder.WriteString("        ssl_certificate_key /etc/nginx/tls/tls.key;\n")
+		builder.WriteString("        ssl_protocols TLSv1.2 TLSv1.3;\n")
 	} else {
 		builder.WriteString(fmt.Sprintf("        listen %d;\n", trafficManagerContainerPort(inst)))
 	}
@@ -300,11 +332,14 @@ func buildTrafficManagerConfigMap(inst *networkv4.TrafficManager, config string)
 	}
 }
 
-func buildTrafficManagerDeployment(inst *networkv4.TrafficManager, configChecksum string) *appsv1.Deployment {
+func buildTrafficManagerDeployment(inst *networkv4.TrafficManager, configChecksum, tlsChecksum string) *appsv1.Deployment {
 	labels := trafficManagerLabels(inst)
 	configMountDir := trafficManagerConfigMountLocation(inst)
 	configMountPath := path.Join(configMountDir, "nginx.conf")
 	annotations := map[string]string{"network.oracle.com/config-hash": configChecksum}
+	if tlsChecksum != "" {
+		annotations["network.oracle.com/tls-secret-hash"] = tlsChecksum
+	}
 	volumeMounts := []corev1.VolumeMount{{
 		Name:      "traffic-manager-config",
 		MountPath: configMountPath,
@@ -520,6 +555,33 @@ func backendServiceDNS(inst *privateaiv4.PrivateAi) string {
 func checksumString(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
+}
+
+func (r *TrafficManagerReconciler) resolveTLSSecretChecksum(ctx context.Context, inst *networkv4.TrafficManager) (string, error) {
+	if !inst.Spec.Security.TLS.Enabled {
+		return "", nil
+	}
+	secretName := strings.TrimSpace(inst.Spec.Security.TLS.SecretName)
+	if secretName == "" {
+		return "", fmt.Errorf("spec.security.tls.secretName must be set when TLS is enabled")
+	}
+	secret := &corev1.Secret{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: secretName, Namespace: inst.Namespace}, secret); err != nil {
+		return "", fmt.Errorf("failed to get TLS secret %s: %w", secretName, err)
+	}
+	crt, ok := secret.Data["tls.crt"]
+	if !ok || len(crt) == 0 {
+		return "", fmt.Errorf("TLS secret %s is missing tls.crt", secretName)
+	}
+	key, ok := secret.Data["tls.key"]
+	if !ok || len(key) == 0 {
+		return "", fmt.Errorf("TLS secret %s is missing tls.key", secretName)
+	}
+	payload := make([]byte, 0, len(crt)+len(key))
+	payload = append(payload, crt...)
+	payload = append(payload, key...)
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func imagePullPolicyOrDefault(policy corev1.PullPolicy) corev1.PullPolicy {
