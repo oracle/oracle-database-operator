@@ -196,6 +196,25 @@ rules:
   - update
   - watch
 - apiGroups:
+  - network.oracle.com
+  resources:
+  - trafficmanagers
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - network.oracle.com
+  resources:
+  - trafficmanagers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - observability.oracle.com
   resources:
   - databaseobservers

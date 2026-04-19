@@ -148,6 +148,10 @@ func (r *DataguardBroker) ValidateUpdate(ctx context.Context, old, newObj *Datag
 		if err != nil {
 			return warnings, err
 		}
+		// Allow finalizer and metadata updates during deletion without re-running
+		// legacy immutable spec checks. This keeps v1alpha1 compatibility webhook
+		// from blocking v4 DataguardBroker cleanup paths that populate status.
+		return warnings, nil
 	}
 
 	// Now check for updation errors

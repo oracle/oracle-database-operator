@@ -434,6 +434,7 @@ type RacDatabaseStatus struct {
 	Operation          *RacOperationStatus          `json:"operation,omitempty"`
 	OldSpec            string                       `json:"oldSpec,omitempty"`
 	ObservedGeneration int64                        `json:"observedGeneration,omitempty"`
+	Dataguard          *ProducerDataguardStatus     `json:"dataguard,omitempty"`
 }
 
 // RacLifecycleState aliases the shared LifecycleState for RAC resources.

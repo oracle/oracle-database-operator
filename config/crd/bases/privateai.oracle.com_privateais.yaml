@@ -11,6 +11,8 @@ spec:
     kind: PrivateAi
     listKind: PrivateAiList
     plural: privateais
+    shortNames:
+    - pai
     singular: privateai
   scope: Namespaced
   versions:
@@ -21,14 +23,39 @@ spec:
     - jsonPath: .status.replicas
       name: Replicas
       type: number
-    - jsonPath: .status.paiSecret.apiKey
-      name: ApiKey
-      type: string
-    - jsonPath: .status.podIP
-      name: PodIP
+    - jsonPath: .status.localService
+      name: LocalSvc
       type: string
     - jsonPath: .status.loadBalancerIP
       name: LbIP
+      type: string
+    - jsonPath: .status.externalService
+      name: ExtSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.paiSecret.name
+      name: Secret
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.ref
+      name: TMRef
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.routePath
+      name: TMRoute
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.serviceName
+      name: TMSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.endpoint
+      name: TMEndpoint
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.publicURL
+      name: PublicURL
+      priority: 1
       type: string
     - jsonPath: .status.releaseUpdate
       name: ReleaseUpdate
@@ -38,10 +65,6 @@ spec:
       name: Mode
       priority: 1
       type: string
-    - jsonPath: .status.gateway.readyReplicas
-      name: GatewayReady
-      priority: 1
-      type: number
     name: v4
     schema:
       openAPIV3Schema:
@@ -66,116 +89,6 @@ spec:
                   - value
                   type: object
                 type: array
-              gateway:
-                properties:
-                  configFileKey:
-                    type: string
-                  configMap:
-                    properties:
-                      mountLocation:
-                        type: string
-                      name:
-                        type: string
-                    type: object
-                  containerPort:
-                    format: int32
-                    type: integer
-                  envVars:
-                    items:
-                      properties:
-                        name:
-                          type: string
-                        value:
-                          type: string
-                      required:
-                      - name
-                      - value
-                      type: object
-                    type: array
-                  externalService:
-                    properties:
-                      annotations:
-                        additionalProperties:
-                          type: string
-                        type: object
-                      enabled:
-                        type: boolean
-                      port:
-                        format: int32
-                        type: integer
-                      serviceType:
-                        type: string
-                      targetPort:
-                        format: int32
-                        type: integer
-                    type: object
-                  image:
-                    type: string
-                  imagePullPolicy:
-                    type: string
-                  internalService:
-                    properties:
-                      annotations:
-                        additionalProperties:
-                          type: string
-                        type: object
-                      enabled:
-                        type: boolean
-                      port:
-                        format: int32
-                        type: integer
-                      serviceType:
-                        type: string
-                      targetPort:
-                        format: int32
-                        type: integer
-                    type: object
-                  replicas:
-                    format: int32
-                    type: integer
-                  resources:
-                    properties:
-                      claims:
-                        items:
-                          properties:
-                            name:
-                              type: string
-                            request:
-                              type: string
-                          required:
-                          - name
-                          type: object
-                        type: array
-                        x-kubernetes-list-map-keys:
-                        - name
-                        x-kubernetes-list-type: map
-                      limits:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                      requests:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                    type: object
-                  tlsMountLocation:
-                    type: string
-                  tlsSecretName:
-                    type: string
-                  type:
-                    enum:
-                    - nginx
-                    - litellm
-                    type: string
-                type: object
               isDebug:
                 type: boolean
               isDeleteOraPvc:
@@ -183,7 +96,6 @@ spec:
               isDownloadScripts:
                 type: boolean
               isExternalSvc:
-                default: "true"
                 enum:
                 - "true"
                 - "false"
@@ -266,13 +178,11 @@ spec:
               paiImagePullSecret:
                 type: string
               paiInternalLB:
-                default: "false"
                 enum:
                 - "true"
                 - "false"
                 type: string
               paiLBExternalTrafficPolicy:
-                default: local
                 enum:
                 - local
                 - cluster
@@ -293,6 +203,34 @@ spec:
                 type: object
               paiService:
                 properties:
+                  external:
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      enabled:
+                        type: boolean
+                      externalTrafficPolicy:
+                        enum:
+                        - Local
+                        - Cluster
+                        - local
+                        - cluster
+                        type: string
+                      internal:
+                        type: boolean
+                      loadBalancerIP:
+                        type: string
+                      port:
+                        format: int32
+                        type: integer
+                      serviceType:
+                        type: string
+                      targetPort:
+                        format: int32
+                        type: integer
+                    type: object
                   name:
                     type: string
                   portMappings:
@@ -389,6 +327,19 @@ spec:
               storageSizeInGb:
                 format: int32
                 type: integer
+              trafficManager:
+                properties:
+                  endpoint:
+                    type: string
+                  publicURL:
+                    type: string
+                  ref:
+                    type: string
+                  routePath:
+                    type: string
+                  serviceName:
+                    type: string
+                type: object
               workerNodes:
                 items:
                   type: string
@@ -399,6 +350,8 @@ spec:
               NodeIP:
                 type: string
               clusterIP:
+                type: string
+              externalService:
                 type: string
               conditions:
                 items:
@@ -439,27 +392,9 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              gateway:
-                properties:
-                  configMapName:
-                    type: string
-                  configMapVersion:
-                    type: string
-                  enabled:
-                    type: boolean
-                  externalEndpoint:
-                    type: string
-                  externalService:
-                    type: string
-                  internalService:
-                    type: string
-                  readyReplicas:
-                    format: int32
-                    type: integer
-                  type:
-                    type: string
-                type: object
               loadBalancerIP:
+                type: string
+              localService:
                 type: string
               logging:
                 properties:
@@ -483,6 +418,10 @@ spec:
                     type: string
                   certpem:
                     type: string
+                  hasAPIKey:
+                    type: boolean
+                  hasCertPem:
+                    type: boolean
                   name:
                     type: string
                   resourceVersion:
@@ -496,6 +435,13 @@ spec:
                 type: integer
               status:
                 type: string
+              trafficManager:
+                properties:
+                  ref:
+                    type: string
+                  routePath:
+                    type: string
+                type: object
             type: object
         type: object
     served: true

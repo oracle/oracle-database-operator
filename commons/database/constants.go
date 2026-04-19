@@ -541,6 +541,12 @@ const RenewCertsCMD string = EnableTcpsCMD
 // Command to disable TCPS
 const DisableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE disable"
 
+// Command to configure Data Guard broker prerequisites from the database image helper.
+const ConfigureDataguardPrereqsCMD string = "$ORACLE_BASE/${CONFIG_DG_PREREQS_FILE:-configDataguardPrereqs.sh} configure"
+
+// Command to inspect Data Guard broker prerequisite state from the database image helper.
+const DataguardPrereqsStatusCMD string = "$ORACLE_BASE/${CONFIG_DG_PREREQS_FILE:-configDataguardPrereqs.sh} status"
+
 // Location of tls certs
 const TlsCertsLocation string = "/run/secrets/tls_secret"
 

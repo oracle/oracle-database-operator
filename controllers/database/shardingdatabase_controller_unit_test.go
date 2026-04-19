@@ -9,6 +9,7 @@ import (
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -216,6 +217,278 @@ func TestShardingUnit_ValidateStandbyWalletSecretRefUsesLongestPrefix(t *testing
 		t.Fatalf("expected validation failure for shard11")
 	} else if !strings.Contains(err.Error(), "wallet-short") {
 		t.Fatalf("expected wallet-short lookup failure, got %v", err)
+	}
+}
+
+func TestShardingUnit_SyncDataguardPreviewStatusUserDG(t *testing.T) {
+	inst := &databasev4.ShardingDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "shdb", Namespace: "ns1"},
+		Spec: databasev4.ShardingDatabaseSpec{
+			ReplicationType:   "DG",
+			ShardingType:      "USER",
+			DbImage:           "oracle/sharding-db:23ai",
+			DbImagePullSecret: "db-pull-secret",
+			DbSecret: &databasev4.SecretDetails{
+				Name: "shard-db-secret",
+				DbAdmin: databasev4.PasswordSecretConfig{
+					PasswordKey: "oracle_pwd",
+				},
+			},
+			Dataguard: &databasev4.DataguardProducerSpec{Mode: databasev4.DataguardProducerModePreview},
+			Shard: []databasev4.ShardSpec{
+				{Name: "primary1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+				{Name: "standby1", ShardSpace: "ss1", DeployAs: "STANDBY"},
+			},
+		},
+	}
+	status := &databasev4.ShardingDatabaseStatus{}
+
+	r := &ShardingDatabaseReconciler{}
+	r.syncShardingDataguardPreviewStatus(inst, status)
+
+	if status.Dataguard == nil {
+		t.Fatalf("expected dataguard preview status to be populated")
+	}
+	if status.Dataguard.Phase != dataguardPreviewPhaseReady {
+		t.Fatalf("expected preview phase %q, got %q", dataguardPreviewPhaseReady, status.Dataguard.Phase)
+	}
+	if !status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be true")
+	}
+	if len(status.Dataguard.Members) != 2 {
+		t.Fatalf("expected two member statuses, got %#v", status.Dataguard.Members)
+	}
+	if status.Dataguard.PublishedTopologyHash == "" {
+		t.Fatalf("expected topology hash to be set")
+	}
+	if status.Dataguard.TopologyHash == "" {
+		t.Fatalf("expected topologyHash to be set")
+	}
+	if status.Dataguard.LastPublishedTime == nil {
+		t.Fatalf("expected lastPublishedTime to be set")
+	}
+	if status.Dataguard.RenderedBrokerSpec == nil {
+		t.Fatalf("expected renderedBrokerSpec to be published")
+	}
+	if status.Dataguard.RenderedBrokerSpec.Name != "shdb-dg" {
+		t.Fatalf("unexpected rendered broker name: %#v", status.Dataguard.RenderedBrokerSpec)
+	}
+	if status.Dataguard.RenderedBrokerSpec.Namespace != "ns1" {
+		t.Fatalf("unexpected rendered broker namespace: %#v", status.Dataguard.RenderedBrokerSpec)
+	}
+	if status.Dataguard.RenderedBrokerSpec.Spec == nil || status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
+		t.Fatalf("expected rendered broker spec topology, got %#v", status.Dataguard.RenderedBrokerSpec)
+	}
+	if status.Dataguard.RenderedBrokerSpec.Spec.Execution == nil || status.Dataguard.RenderedBrokerSpec.Spec.Execution.Image != "oracle/sharding-db:23ai" {
+		t.Fatalf("expected rendered broker execution image to be published, got %#v", status.Dataguard.RenderedBrokerSpec.Spec.Execution)
+	}
+	defaults := status.Dataguard.RenderedBrokerSpec.Spec.Topology.Defaults
+	if defaults == nil || defaults.AdminSecretRef == nil {
+		t.Fatalf("expected topology defaults adminSecretRef to be published")
+	}
+	if defaults.AdminSecretRef.SecretName != "shard-db-secret" || defaults.AdminSecretRef.SecretKey != "oracle_pwd" {
+		t.Fatalf("unexpected topology defaults adminSecretRef %#v", defaults.AdminSecretRef)
+	}
+	for _, member := range status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members {
+		if member.AdminSecretRef != nil {
+			t.Fatalf("expected members to inherit adminSecretRef from topology defaults, got %#v", member)
+		}
+	}
+}
+
+func TestShardingUnit_SyncDataguardPreviewStatusExternalPrimaryRequiresUserInput(t *testing.T) {
+	inst := &databasev4.ShardingDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "shdb", Namespace: "ns1"},
+		Spec: databasev4.ShardingDatabaseSpec{
+			ReplicationType: "DG",
+			ShardingType:    "USER",
+			DbImage:         "oracle/sharding-db:23ai",
+			DbSecret: &databasev4.SecretDetails{
+				Name: "shard-db-secret",
+				DbAdmin: databasev4.PasswordSecretConfig{
+					PasswordKey: "oracle_pwd",
+				},
+			},
+			Dataguard: &databasev4.DataguardProducerSpec{Mode: databasev4.DataguardProducerModePreview},
+			Shard: []databasev4.ShardSpec{
+				{Name: "standby1", ShardSpace: "ss1", DeployAs: "STANDBY"},
+			},
+			ShardInfo: []databasev4.ShardingDetails{{
+				ShardPreFixName: "standby",
+				StandbyConfig: &databasev4.StandbyConfig{
+					StandbyPerPrimary: 1,
+					PrimarySources: []databasev4.StandbyPrimarySource{{
+						Details: &databasev4.PrimaryEndpointRef{
+							Host:    "external-primary",
+							Port:    1521,
+							CdbName: "PRIM",
+						},
+					}},
+				},
+			}},
+		},
+	}
+	status := &databasev4.ShardingDatabaseStatus{}
+
+	r := &ShardingDatabaseReconciler{}
+	r.syncShardingDataguardPreviewStatus(inst, status)
+
+	if status.Dataguard == nil {
+		t.Fatalf("expected dataguard preview status to be populated")
+	}
+	if status.Dataguard.Phase != dataguardPreviewPhaseReady {
+		t.Fatalf("expected preview phase %q, got %q", dataguardPreviewPhaseReady, status.Dataguard.Phase)
+	}
+	if !status.Dataguard.ReadyForBroker {
+		t.Fatalf("expected readyForBroker to be true")
+	}
+	if status.Dataguard.RenderedBrokerSpec == nil || status.Dataguard.RenderedBrokerSpec.Spec == nil || status.Dataguard.RenderedBrokerSpec.Spec.Topology == nil {
+		t.Fatalf("expected rendered broker spec topology to be published")
+	}
+	if !status.Dataguard.RenderedBrokerSpec.Ready {
+		t.Fatalf("expected rendered broker spec to be marked ready")
+	}
+	condition := meta.FindStatusCondition(status.Dataguard.Conditions, "TopologyPreviewReady")
+	if condition == nil {
+		t.Fatalf("expected TopologyPreviewReady condition to be set")
+	}
+	if condition.Reason != "PreviewReady" {
+		t.Fatalf("expected PreviewReady condition reason, got %#v", condition)
+	}
+	if condition.Status != metav1.ConditionTrue {
+		t.Fatalf("expected TopologyPreviewReady condition status true, got %#v", condition)
+	}
+	if !strings.Contains(condition.Message, "topology.defaults.adminSecretRef") {
+		t.Fatalf("expected condition message to explain topology default admin secret usage, got %#v", condition)
+	}
+	members := status.Dataguard.RenderedBrokerSpec.Spec.Topology.Members
+	if len(members) != 2 {
+		t.Fatalf("expected two topology members, got %#v", members)
+	}
+	var primaryMember *databasev4.DataguardTopologyMember
+	var standbyMember *databasev4.DataguardTopologyMember
+	for i := range members {
+		switch members[i].Role {
+		case "PRIMARY":
+			primaryMember = &members[i]
+		case "PHYSICAL_STANDBY":
+			standbyMember = &members[i]
+		}
+	}
+	if primaryMember == nil || standbyMember == nil {
+		t.Fatalf("expected primary and standby members, got %#v", members)
+	}
+	if primaryMember.AdminSecretRef != nil {
+		t.Fatalf("expected external primary to inherit adminSecretRef from topology defaults, got %#v", primaryMember.AdminSecretRef)
+	}
+	if standbyMember.AdminSecretRef != nil {
+		t.Fatalf("expected standby member to inherit adminSecretRef from topology defaults, got %#v", standbyMember.AdminSecretRef)
+	}
+	defaults := status.Dataguard.RenderedBrokerSpec.Spec.Topology.Defaults
+	if defaults == nil || defaults.AdminSecretRef == nil {
+		t.Fatalf("expected topology defaults adminSecretRef to be published")
+	}
+	if defaults.AdminSecretRef.SecretName != "shard-db-secret" || defaults.AdminSecretRef.SecretKey != "oracle_pwd" {
+		t.Fatalf("unexpected topology defaults adminSecretRef %#v", defaults.AdminSecretRef)
+	}
+}
+
+func TestShardingUnit_SyncDataguardPreviewStatusDisabledClearsStatus(t *testing.T) {
+	inst := &databasev4.ShardingDatabase{
+		Spec: databasev4.ShardingDatabaseSpec{
+			ReplicationType: "DG",
+			Dataguard: &databasev4.DataguardProducerSpec{
+				Mode: databasev4.DataguardProducerModeDisabled,
+			},
+		},
+	}
+	status := &databasev4.ShardingDatabaseStatus{
+		Dataguard: &databasev4.ShardingDataguardStatus{Phase: dataguardPreviewPhaseReady},
+	}
+
+	r := &ShardingDatabaseReconciler{}
+	r.syncShardingDataguardPreviewStatus(inst, status)
+
+	if status.Dataguard != nil {
+		t.Fatalf("expected dataguard status to be cleared when preview is disabled")
+	}
+}
+
+func TestShardingUnit_BuildPrimaryIdentitiesUsesStandbyPrimarySources(t *testing.T) {
+	inst := &databasev4.ShardingDatabase{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "shdb",
+			Namespace: "shns",
+		},
+	}
+
+	t.Run("databaseRef", func(t *testing.T) {
+		cfg := &databasev4.StandbyConfig{
+			PrimarySources: []databasev4.StandbyPrimarySource{{
+				DatabaseRef: &databasev4.PrimaryDatabaseCRRef{Name: "primary-db"},
+			}},
+		}
+		ids := buildPrimaryIdentities(inst, cfg)
+		if len(ids) != 1 || ids[0].Key != "shns/primary-db" || ids[0].Source != "PrimaryDatabaseRef" {
+			t.Fatalf("unexpected primary identities for databaseRef: %#v", ids)
+		}
+	})
+
+	t.Run("details", func(t *testing.T) {
+		cfg := &databasev4.StandbyConfig{
+			PrimarySources: []databasev4.StandbyPrimarySource{{
+				Details: &databasev4.PrimaryEndpointRef{
+					Host:    "primary-host",
+					Port:    1522,
+					CdbName: "primdb",
+				},
+			}},
+		}
+		ids := buildPrimaryIdentities(inst, cfg)
+		if len(ids) != 1 {
+			t.Fatalf("expected one primary identity, got %#v", ids)
+		}
+		if ids[0].Source != "Endpoint" {
+			t.Fatalf("expected endpoint source, got %#v", ids[0])
+		}
+		if ids[0].Connect != "//primary-host:1522/PRIMDB_DGMGRL" {
+			t.Fatalf("unexpected endpoint connect string: %#v", ids[0])
+		}
+	})
+
+	t.Run("multiple", func(t *testing.T) {
+		cfg := &databasev4.StandbyConfig{
+			PrimarySources: []databasev4.StandbyPrimarySource{
+				{ConnectString: "//phx-primary:1521/PHX_DGMGRL"},
+				{ConnectString: "//ash-primary:1521/ASH_DGMGRL"},
+			},
+		}
+		ids := buildPrimaryIdentities(inst, cfg)
+		if len(ids) != 2 {
+			t.Fatalf("expected two primary identities, got %#v", ids)
+		}
+	})
+}
+
+func TestShardingUnit_StandbyConfigPrimaryCountControllerSupportsPrimarySources(t *testing.T) {
+	cfg := &databasev4.StandbyConfig{
+		PrimarySources: []databasev4.StandbyPrimarySource{
+			{ConnectString: "//phx-primary:1521/PHX_DGMGRL"},
+			{ConnectString: "//ash-primary:1521/ASH_DGMGRL"},
+		},
+	}
+
+	if got := standbyConfigPrimaryCountController(cfg); got != 2 {
+		t.Fatalf("expected primary source count 2, got %d", got)
+	}
+	if got := standbyConfigDerivedShardCountController(&databasev4.StandbyConfig{
+		StandbyPerPrimary: 2,
+		PrimarySources: []databasev4.StandbyPrimarySource{
+			{ConnectString: "//phx-primary:1521/PHX_DGMGRL"},
+			{ConnectString: "//ash-primary:1521/ASH_DGMGRL"},
+		},
+	}); got != 4 {
+		t.Fatalf("expected derived shard count 4, got %d", got)
 	}
 }
 
@@ -490,6 +763,45 @@ func TestShardingUnit_ValidatePrimaryTopologyConstraint_UserDGOrderIndependent(t
 	}
 }
 
+func TestShardingUnit_ValidatePrimaryTopologyConstraint_SystemNativeDoesNotRequireDeployAsPrimary(t *testing.T) {
+	r := &ShardingDatabaseReconciler{}
+	inst := &databasev4.ShardingDatabase{
+		Spec: databasev4.ShardingDatabaseSpec{
+			ShardingType:    "SYSTEM",
+			ReplicationType: "NATIVE",
+			Shard: []databasev4.ShardSpec{
+				{Name: "n1", ShardGroup: "sg1", ShardRegion: "phx"},
+				{Name: "n2", ShardGroup: "sg1", ShardRegion: "phx"},
+			},
+		},
+	}
+
+	if err := r.validatePrimaryTopologyConstraint(inst); err != nil {
+		t.Fatalf("expected system native without deployAs to pass, got %v", err)
+	}
+}
+
+func TestShardingUnit_ValidatePrimaryTopologyConstraint_SystemDGStillRequiresPrimaryShardGroup(t *testing.T) {
+	r := &ShardingDatabaseReconciler{}
+	inst := &databasev4.ShardingDatabase{
+		Spec: databasev4.ShardingDatabaseSpec{
+			ShardingType:    "SYSTEM",
+			ReplicationType: "DG",
+			Shard: []databasev4.ShardSpec{
+				{Name: "s1", ShardGroup: "sg1", ShardRegion: "phx"},
+			},
+		},
+	}
+
+	err := r.validatePrimaryTopologyConstraint(inst)
+	if err == nil {
+		t.Fatalf("expected DG system topology without PRIMARY shardgroup to fail")
+	}
+	if !strings.Contains(err.Error(), "requires exactly one PRIMARY shardgroup") {
+		t.Fatalf("expected PRIMARY shardgroup error, got %v", err)
+	}
+}
+
 func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -497,7 +809,24 @@ func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *
 		wantErr string
 	}{
 		{
-			name: "allows composite native with unique region per shardgroup and one readwrite database",
+			name: "allows composite native one readwrite shardgroup with multiple members",
+			inst: &databasev4.ShardingDatabase{
+				Spec: databasev4.ShardingDatabaseSpec{
+					ShardingType:    "COMPOSITE",
+					ReplicationType: "NATIVE",
+					ShardGroup: []databasev4.ShardGroupSpec{
+						{Name: "sg-rw", ShardSpace: "ss1", RuMode: "READWRITE"},
+					},
+					Shard: []databasev4.ShardSpec{
+						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "rw2", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "rw3", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+					},
+				},
+			},
+		},
+		{
+			name: "rejects readonly shardgroup for composite native",
 			inst: &databasev4.ShardingDatabase{
 				Spec: databasev4.ShardingDatabaseSpec{
 					ShardingType:    "COMPOSITE",
@@ -509,28 +838,10 @@ func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *
 					Shard: []databasev4.ShardSpec{
 						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
 						{Name: "ro1", ShardGroup: "sg-ro", ShardSpace: "ss1", ShardRegion: "iad"},
-						{Name: "ro2", ShardGroup: "sg-ro", ShardSpace: "ss1", ShardRegion: "iad"},
 					},
 				},
 			},
-		},
-		{
-			name: "rejects duplicate region across shardgroups in same shardspace",
-			inst: &databasev4.ShardingDatabase{
-				Spec: databasev4.ShardingDatabaseSpec{
-					ShardingType:    "COMPOSITE",
-					ReplicationType: "NATIVE",
-					ShardGroup: []databasev4.ShardGroupSpec{
-						{Name: "sg-rw", ShardSpace: "ss1", RuMode: "READWRITE"},
-						{Name: "sg-ro", ShardSpace: "ss1", RuMode: "READONLY"},
-					},
-					Shard: []databasev4.ShardSpec{
-						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
-						{Name: "ro1", ShardGroup: "sg-ro", ShardSpace: "ss1", ShardRegion: "phx"},
-					},
-				},
-			},
-			wantErr: "already used by shardGroup",
+			wantErr: "currently supports only READWRITE shardGroups",
 		},
 		{
 			name: "rejects missing ru_mode for composite native shardgroup",
@@ -549,21 +860,22 @@ func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *
 			wantErr: "requires ru_mode",
 		},
 		{
-			name: "rejects more than one readwrite database in same shardgroup",
+			name: "rejects multiple shardgroups in same shardspace for composite native",
 			inst: &databasev4.ShardingDatabase{
 				Spec: databasev4.ShardingDatabaseSpec{
 					ShardingType:    "COMPOSITE",
 					ReplicationType: "NATIVE",
 					ShardGroup: []databasev4.ShardGroupSpec{
-						{Name: "sg-rw", ShardSpace: "ss1", RuMode: "READWRITE"},
+						{Name: "sg-rw-1", ShardSpace: "ss1", RuMode: "READWRITE"},
+						{Name: "sg-rw-2", ShardSpace: "ss1", RuMode: "READWRITE"},
 					},
 					Shard: []databasev4.ShardSpec{
-						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
-						{Name: "rw2", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "rw1", ShardGroup: "sg-rw-1", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "rw2", ShardGroup: "sg-rw-2", ShardSpace: "ss1", ShardRegion: "iad"},
 					},
 				},
 			},
-			wantErr: "allows at most one READWRITE database",
+			wantErr: "currently supports at most one shardGroup per shardSpace",
 		},
 	}
 

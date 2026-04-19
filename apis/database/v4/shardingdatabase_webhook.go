@@ -46,6 +46,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -126,6 +127,10 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj *ShardingDatabase) e
 	if strings.TrimSpace(getTDEWalletEnabledFromSpec(&cr.Spec)) == "" {
 		cr.Spec.IsTdeWallet = "disable"
 	}
+	if cr.Spec.Dataguard == nil {
+		cr.Spec.Dataguard = &DataguardProducerSpec{}
+	}
+	cr.Spec.Dataguard.Mode = normalizeDataguardProducerMode(cr.Spec.Dataguard)
 
 	applyGlobalShardingReplicationDefaults(&cr.Spec)
 
@@ -323,7 +328,7 @@ func isInlineGsmDefaultsEntry(g GsmSpec) bool {
 		strings.TrimSpace(g.Endpoint) != "" || strings.TrimSpace(g.RemoteEndpoint) != "" ||
 		strings.TrimSpace(g.TraceLevel) != "" || strings.TrimSpace(g.Encryption) != "" ||
 		strings.TrimSpace(g.Catalog) != "" || strings.TrimSpace(g.Pwd) != "" || strings.TrimSpace(g.WalletPassword) != "" ||
-		len(g.AdditionalPVCs) > 0 || g.DisableDefaultLogVolumeClaims || g.SecurityContext != nil || g.Capabilities != nil {
+		len(g.AdditionalPVCs) > 0 || g.SecurityContext != nil || g.Capabilities != nil {
 		return false
 	}
 	// allow only defaults-carrier fields on unnamed gsm item
@@ -395,16 +400,12 @@ type effectivePVCSpec struct {
 	StorageSizeInGb int32
 }
 
-func mergeAdditionalPVCs(primarySize int32, baseMountPath, diagMountPath string, disableDefaultLogPVCs bool, extras []AdditionalPVCSpec) map[string]effectivePVCSpec {
+func mergeAdditionalPVCs(primarySize int32, baseMountPath string, extras []AdditionalPVCSpec) map[string]effectivePVCSpec {
 	result := map[string]effectivePVCSpec{
 		baseMountPath: {
 			MountPath:       baseMountPath,
 			StorageSizeInGb: primarySize,
 		},
-	}
-	if !disableDefaultLogPVCs {
-		result[diagMountPath] = effectivePVCSpec{MountPath: diagMountPath, StorageSizeInGb: DefaultDiagSizeInGb}
-		result[DefaultGddLogMountPath] = effectivePVCSpec{MountPath: DefaultGddLogMountPath, StorageSizeInGb: DefaultGddLogSizeInGb}
 	}
 
 	for i := range extras {
@@ -426,7 +427,7 @@ func mergeAdditionalPVCs(primarySize int32, baseMountPath, diagMountPath string,
 	return result
 }
 
-func validateAdditionalPVCEntries(entries []AdditionalPVCSpec, baseMountPath, diagMountPath string, disableDefaultLogPVCs bool, path *field.Path) field.ErrorList {
+func validateAdditionalPVCEntries(entries []AdditionalPVCSpec, baseMountPath, diagMountPath string, path *field.Path) field.ErrorList {
 	var errs field.ErrorList
 	seenPaths := map[string]int{}
 
@@ -452,8 +453,8 @@ func validateAdditionalPVCEntries(entries []AdditionalPVCSpec, baseMountPath, di
 		if pvcName == "" && entries[i].StorageSizeInGb <= 0 && !isDefaultPath {
 			errs = append(errs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when pvcName is not provided"))
 		}
-		if disableDefaultLogPVCs && mountPath != baseMountPath && pvcName == "" && entries[i].StorageSizeInGb <= 0 && isDefaultPath {
-			errs = append(errs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when disableDefaultLogVolumeClaims is true"))
+		if mountPath != baseMountPath && pvcName == "" && entries[i].StorageSizeInGb <= 0 && isDefaultPath {
+			errs = append(errs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when pvcName is not provided"))
 		}
 	}
 	return errs
@@ -663,9 +664,10 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj *ShardingData
 	var validationErr field.ErrorList
 	var validationErrs1 field.ErrorList
 	cr := obj
-	warnings := deprecatedLegacyPVCFieldWarnings(&cr.Spec)
+	warnings := deprecatedShardingFieldWarnings(&cr.Spec)
 	logger = logger.WithValues("name", cr.Name, "namespace", cr.Namespace)
 	logger.Info("running create validation")
+	validationErr = append(validationErr, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), cr.Spec.Dataguard)...)
 
 	//namespaces := db.GetWatchNamespaces()
 	//_, containsNamespace := namespaces[r.Namespace]
@@ -787,7 +789,8 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *S
 
 	oldCR := oldObj
 	newCR := newObj
-	warnings := deprecatedLegacyPVCFieldWarnings(&newCR.Spec)
+	warnings := deprecatedShardingFieldWarnings(&newCR.Spec)
+	validationErr = append(validationErr, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), newCR.Spec.Dataguard)...)
 
 	oldMode := detectShardingMode(&oldCR.Spec)
 	newMode := detectShardingMode(&newCR.Spec)
@@ -828,6 +831,11 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *S
 					field.Forbidden(field.NewPath("spec"), msg),
 				)
 			}
+		}
+		if isShardingDataguardTopologyLocked(oldCR) && hasShardingDataguardTopologyChange(oldCR, newCR) {
+			validationErr = append(validationErr,
+				field.Forbidden(field.NewPath("spec"),
+					"Data Guard topology-defining fields cannot be changed after sharding dataguard topology is locked"))
 		}
 	}
 
@@ -1005,28 +1013,114 @@ func (r *ShardingDatabase) validateStorageSizeNoShrink(oldCR *ShardingDatabase) 
 	return nil
 }
 
-func deprecatedLegacyPVCFieldWarnings(spec *ShardingDatabaseSpec) admission.Warnings {
+func deprecatedShardingFieldWarnings(spec *ShardingDatabaseSpec) admission.Warnings {
 	if spec == nil {
 		return nil
 	}
 	warnings := admission.Warnings{}
-	appendWarn := func(path string) {
-		warnings = append(warnings, path+" uses deprecated pvcName/pvAnnotations/pvMatchLabels fields; these fields are ignored by the operator. Use additionalPVCs instead.")
+	appendWarn := func(message string) {
+		for _, existing := range warnings {
+			if existing == message {
+				return
+			}
+		}
+		warnings = append(warnings, message)
+	}
+	appendPVCWarn := func(path string) {
+		appendWarn(path + " uses deprecated pvcName/pvAnnotations/pvMatchLabels fields; these fields are ignored by the operator. Use additionalPVCs instead.")
+	}
+
+	if spec.IsDataGuard {
+		appendWarn("spec.isDataGuard is deprecated and retained only for backward compatibility")
+	}
+	if len(spec.GsmShardSpace) > 0 {
+		appendWarn("spec.gsmShardSpace is deprecated; use spec.shardSpace")
+	}
+	if len(spec.GsmShardGroup) > 0 {
+		appendWarn("spec.gsmShardGroup is deprecated; use spec.shardGroup")
+	}
+	if len(spec.ShardRegion) > 0 {
+		appendWarn("spec.shardRegion is deprecated; use spec.region")
+	}
+	if strings.TrimSpace(spec.ShardBuddyRegion) != "" {
+		appendWarn("spec.shardBuddyRegion is deprecated; use spec.region[].buddy")
+	}
+	if strings.TrimSpace(spec.IsTdeWallet) != "" {
+		appendWarn("spec.isTdeWallet is deprecated; use spec.tdeWallet.isEnabled")
+	}
+	if strings.TrimSpace(spec.TdeWalletPvc) != "" {
+		appendWarn("spec.tdeWalletPvc is deprecated; use spec.tdeWallet.pvcName")
+	}
+	if strings.TrimSpace(spec.TdeWalletPvcMountLocation) != "" {
+		appendWarn("spec.tdeWalletPvcMountLocation is deprecated; use spec.tdeWallet.mountPath")
 	}
 
 	for i := range spec.Shard {
 		if strings.TrimSpace(spec.Shard[i].PvcName) != "" || len(spec.Shard[i].PvAnnotations) > 0 || len(spec.Shard[i].PvMatchLabels) > 0 {
-			appendWarn(fmt.Sprintf("spec.shard[%d]", i))
+			appendPVCWarn(fmt.Sprintf("spec.shard[%d]", i))
 		}
 	}
 	for i := range spec.Catalog {
 		if strings.TrimSpace(spec.Catalog[i].PvcName) != "" || len(spec.Catalog[i].PvAnnotations) > 0 || len(spec.Catalog[i].PvMatchLabels) > 0 {
-			appendWarn(fmt.Sprintf("spec.catalog[%d]", i))
+			appendPVCWarn(fmt.Sprintf("spec.catalog[%d]", i))
 		}
 	}
 	for i := range spec.Gsm {
 		if strings.TrimSpace(spec.Gsm[i].PvcName) != "" || len(spec.Gsm[i].PvAnnotations) > 0 || len(spec.Gsm[i].PvMatchLabels) > 0 {
-			appendWarn(fmt.Sprintf("spec.gsm[%d]", i))
+			appendPVCWarn(fmt.Sprintf("spec.gsm[%d]", i))
+		}
+	}
+	for i := range spec.ShardGroup {
+		if strings.TrimSpace(spec.ShardGroup[i].ShardGroupName) != "" {
+			appendWarn(fmt.Sprintf("spec.shardGroup[%d].shardGroupName is deprecated; use spec.shardGroup[%d].name", i, i))
+		}
+		if strings.TrimSpace(spec.ShardGroup[i].LegacyShardSpace) != "" {
+			appendWarn(fmt.Sprintf("spec.shardGroup[%d].ShardSpace is deprecated; use spec.shardGroup[%d].shardSpace", i, i))
+		}
+	}
+	for i := range spec.ShardSpace {
+		if strings.TrimSpace(spec.ShardSpace[i].ShardSpaceName) != "" {
+			appendWarn(fmt.Sprintf("spec.shardSpace[%d].shardSpaceName is deprecated; use spec.shardSpace[%d].name", i, i))
+		}
+		if spec.ShardSpace[i].Chnuks > 0 {
+			appendWarn(fmt.Sprintf("spec.shardSpace[%d].Chnuks is deprecated; use spec.shardSpace[%d].chunks", i, i))
+		}
+		if strings.TrimSpace(spec.ShardSpace[i].ProtectionMode) != "" {
+			appendWarn(fmt.Sprintf("spec.shardSpace[%d].protectionMode is deprecated; use spec.shardSpace[%d].protectMode", i, i))
+		}
+	}
+	for i := range spec.Service {
+		if strings.TrimSpace(spec.Service[i].PrferredAll) != "" {
+			appendWarn(fmt.Sprintf("spec.service[%d].prferredAll is deprecated; use spec.service[%d].preferredAll", i, i))
+		}
+	}
+	for i := range spec.GsmService {
+		if strings.TrimSpace(spec.GsmService[i].PrferredAll) != "" {
+			appendWarn(fmt.Sprintf("spec.gsmService[%d].prferredAll is deprecated; use spec.gsmService[%d].preferredAll", i, i))
+		}
+	}
+	for i := range spec.ShardInfo {
+		if spec.ShardInfo[i].Replicas > 0 {
+			appendWarn(fmt.Sprintf("spec.shardInfo[%d].replicas is deprecated; use spec.shardInfo[%d].shardNum", i, i))
+		}
+		if spec.ShardInfo[i].ShardGroupDetails != nil {
+			if strings.TrimSpace(spec.ShardInfo[i].ShardGroupDetails.ShardGroupName) != "" {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardGroupDetails.shardGroupName is deprecated; use spec.shardInfo[%d].shardGroupDetails.name", i, i))
+			}
+			if strings.TrimSpace(spec.ShardInfo[i].ShardGroupDetails.LegacyShardSpace) != "" {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardGroupDetails.ShardSpace is deprecated; use spec.shardInfo[%d].shardGroupDetails.shardSpace", i, i))
+			}
+		}
+		if spec.ShardInfo[i].ShardSpaceDetails != nil {
+			if strings.TrimSpace(spec.ShardInfo[i].ShardSpaceDetails.ShardSpaceName) != "" {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardSpaceDetails.shardSpaceName is deprecated; use spec.shardInfo[%d].shardSpaceDetails.name", i, i))
+			}
+			if spec.ShardInfo[i].ShardSpaceDetails.Chnuks > 0 {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardSpaceDetails.Chnuks is deprecated; use spec.shardInfo[%d].shardSpaceDetails.chunks", i, i))
+			}
+			if strings.TrimSpace(spec.ShardInfo[i].ShardSpaceDetails.ProtectionMode) != "" {
+				appendWarn(fmt.Sprintf("spec.shardInfo[%d].shardSpaceDetails.protectionMode is deprecated; use spec.shardInfo[%d].shardSpaceDetails.protectMode", i, i))
+			}
 		}
 	}
 	return warnings
@@ -1134,17 +1228,17 @@ func (r *ShardingDatabase) validateAdditionalPVCConfig() field.ErrorList {
 
 	for i := range r.Spec.Shard {
 		basePath := field.NewPath("spec").Child("shard").Index(i).Child("additionalPVCs")
-		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Shard[i].AdditionalPVCs, DefaultOraDataMountPath, DefaultDiagMountPath, r.Spec.Shard[i].DisableDefaultLogVolumeClaims, basePath)...)
+		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Shard[i].AdditionalPVCs, DefaultOraDataMountPath, DefaultDiagMountPath, basePath)...)
 	}
 
 	for i := range r.Spec.Catalog {
 		basePath := field.NewPath("spec").Child("catalog").Index(i).Child("additionalPVCs")
-		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Catalog[i].AdditionalPVCs, DefaultOraDataMountPath, DefaultDiagMountPath, r.Spec.Catalog[i].DisableDefaultLogVolumeClaims, basePath)...)
+		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Catalog[i].AdditionalPVCs, DefaultOraDataMountPath, DefaultDiagMountPath, basePath)...)
 	}
 
 	for i := range r.Spec.Gsm {
 		basePath := field.NewPath("spec").Child("gsm").Index(i).Child("additionalPVCs")
-		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Gsm[i].AdditionalPVCs, DefaultGsmDataMountPath, DefaultGsmDiagMountPath, r.Spec.Gsm[i].DisableDefaultLogVolumeClaims, basePath)...)
+		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Gsm[i].AdditionalPVCs, DefaultGsmDataMountPath, DefaultGsmDiagMountPath, basePath)...)
 	}
 
 	if len(validationErrs) > 0 {
@@ -1169,8 +1263,8 @@ func (r *ShardingDatabase) validateAdditionalPVCUpdate(oldCR *ShardingDatabase) 
 		if !found {
 			continue
 		}
-		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultOraDataMountPath, DefaultDiagMountPath, oldSpec.DisableDefaultLogVolumeClaims, oldSpec.AdditionalPVCs)
-		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultOraDataMountPath, DefaultDiagMountPath, newSpec.DisableDefaultLogVolumeClaims, newSpec.AdditionalPVCs)
+		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultOraDataMountPath, oldSpec.AdditionalPVCs)
+		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultOraDataMountPath, newSpec.AdditionalPVCs)
 		basePath := field.NewPath("spec").Child("shard").Index(i).Child("additionalPVCs")
 		validationErrs = append(validationErrs, validateAdditionalPVCUpdate(oldMap, newMap, basePath)...)
 	}
@@ -1185,8 +1279,8 @@ func (r *ShardingDatabase) validateAdditionalPVCUpdate(oldCR *ShardingDatabase) 
 		if !found {
 			continue
 		}
-		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultOraDataMountPath, DefaultDiagMountPath, oldSpec.DisableDefaultLogVolumeClaims, oldSpec.AdditionalPVCs)
-		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultOraDataMountPath, DefaultDiagMountPath, newSpec.DisableDefaultLogVolumeClaims, newSpec.AdditionalPVCs)
+		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultOraDataMountPath, oldSpec.AdditionalPVCs)
+		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultOraDataMountPath, newSpec.AdditionalPVCs)
 		basePath := field.NewPath("spec").Child("catalog").Index(i).Child("additionalPVCs")
 		validationErrs = append(validationErrs, validateAdditionalPVCUpdate(oldMap, newMap, basePath)...)
 	}
@@ -1201,8 +1295,8 @@ func (r *ShardingDatabase) validateAdditionalPVCUpdate(oldCR *ShardingDatabase) 
 		if !found {
 			continue
 		}
-		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultGsmDataMountPath, DefaultGsmDiagMountPath, oldSpec.DisableDefaultLogVolumeClaims, oldSpec.AdditionalPVCs)
-		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultGsmDataMountPath, DefaultGsmDiagMountPath, newSpec.DisableDefaultLogVolumeClaims, newSpec.AdditionalPVCs)
+		oldMap := mergeAdditionalPVCs(oldSpec.StorageSizeInGb, DefaultGsmDataMountPath, oldSpec.AdditionalPVCs)
+		newMap := mergeAdditionalPVCs(newSpec.StorageSizeInGb, DefaultGsmDataMountPath, newSpec.AdditionalPVCs)
 		basePath := field.NewPath("spec").Child("gsm").Index(i).Child("additionalPVCs")
 		validationErrs = append(validationErrs, validateAdditionalPVCUpdate(oldMap, newMap, basePath)...)
 	}
@@ -1239,7 +1333,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	compositeStandbyReplicaCountBySpaceGroup := map[string]map[string]int32{}
 	compositeNativeGroupRegionBySpace := map[string]map[string]string{}
 	compositeNativeGroupByRegionBySpace := map[string]map[string]string{}
-	compositeNativeReadWriteReplicaCountByGroup := map[string]int32{}
+	compositeNativeGroupsBySpace := map[string]map[string]bool{}
 
 	for pindex := range r.Spec.ShardInfo {
 		if errs := validateStandbyConfigPrimarySourceExclusive(r, pindex); len(errs) > 0 {
@@ -1377,7 +1471,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 						if cfg := r.Spec.ShardInfo[pindex].StandbyConfig; cfg != nil && standbyConfigPrimaryCount(cfg) > 0 {
 							validationErrs = append(validationErrs,
 								field.Forbidden(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("standbyConfig"),
-									"system sharding does not support standbyConfig primary source fields; standby mapping must follow shardGroup primary topology"))
+									"system sharding does not support standbyConfig.primarySources; standby mapping must follow shardGroup primary topology"))
 						}
 					}
 				}
@@ -1486,10 +1580,11 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 						validationErrs = append(validationErrs,
 							field.Required(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("ru_mode"),
 								"composite sharding with NATIVE replication requires shardGroupDetails.ru_mode"))
-					}
-					replicaCount := replicas
-					if replicaCount <= 0 {
-						replicaCount = 1
+					} else if ruMode != "READWRITE" {
+						validationErrs = append(validationErrs,
+							field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("ru_mode"),
+								sg.RuMode,
+								"composite sharding with NATIVE replication currently supports only READWRITE shardGroups"))
 					}
 					if _, ok := compositeNativeGroupRegionBySpace[spaceKey]; !ok {
 						compositeNativeGroupRegionBySpace[spaceKey] = map[string]string{}
@@ -1497,6 +1592,10 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 					if _, ok := compositeNativeGroupByRegionBySpace[spaceKey]; !ok {
 						compositeNativeGroupByRegionBySpace[spaceKey] = map[string]string{}
 					}
+					if _, ok := compositeNativeGroupsBySpace[spaceKey]; !ok {
+						compositeNativeGroupsBySpace[spaceKey] = map[string]bool{}
+					}
+					compositeNativeGroupsBySpace[spaceKey][groupKey] = true
 					if regionKey != "" {
 						if prevRegion, ok := compositeNativeGroupRegionBySpace[spaceKey][groupKey]; ok && prevRegion != regionKey {
 							validationErrs = append(validationErrs,
@@ -1515,9 +1614,6 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 							compositeNativeGroupByRegionBySpace[spaceKey][regionKey] = groupKey
 						}
 					}
-					if ruMode == "READWRITE" {
-						compositeNativeReadWriteReplicaCountByGroup[groupKey] += replicaCount
-					}
 				}
 				if cfg := r.Spec.ShardInfo[pindex].StandbyConfig; cfg != nil && cfg.StandbyPerPrimary > 0 {
 					validationErrs = append(validationErrs,
@@ -1528,7 +1624,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 				if cfg := r.Spec.ShardInfo[pindex].StandbyConfig; cfg != nil && standbyConfigPrimaryCount(cfg) > 0 {
 					validationErrs = append(validationErrs,
 						field.Forbidden(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("standbyConfig"),
-							"composite sharding does not support standbyConfig primary source fields; standby mapping must follow shardGroup primary topology"))
+							"composite sharding does not support standbyConfig.primarySources; standby mapping must follow shardGroup primary topology"))
 				}
 				replicaCount := replicas
 				if replicaCount <= 0 {
@@ -1643,14 +1739,6 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	}
 
 	if replType == replDG && modeHint == modeUser {
-		for spaceKey, count := range userPrimarySourceCountBySpace {
-			if count > 1 {
-				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("standbyConfig"),
-						spaceKey,
-						fmt.Sprintf("User sharding: shardInfo allows at most one primary source per shardSpace; shardSpace %s has %d", spaceKey, count)))
-			}
-		}
 		for spaceKey := range userSpaceSeenInShardInfo {
 			primaryReplicas := userPrimaryReplicaCountBySpace[spaceKey]
 			standbyReplicas := userStandbyReplicaCountBySpace[spaceKey]
@@ -1659,7 +1747,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 				if primaryReplicas > 0 {
 					validationErrs = append(validationErrs,
 						field.Forbidden(field.NewPath("spec").Child("shardInfo"),
-							fmt.Sprintf("user sharding shardSpace %s uses standbyConfig primary source; do not set shardSpaceDetails.deployAs=PRIMARY", spaceKey)))
+							fmt.Sprintf("user sharding shardSpace %s uses standbyConfig.primarySources; do not set shardSpaceDetails.deployAs=PRIMARY", spaceKey)))
 				}
 				continue
 			}
@@ -1677,12 +1765,17 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 		}
 	}
 	if replType == replNative && modeHint == modeComposite {
-		for groupKey, rwCount := range compositeNativeReadWriteReplicaCountByGroup {
-			if rwCount > 1 {
+		for spaceKey, groups := range compositeNativeGroupsBySpace {
+			if len(groups) > 1 {
+				groupNames := make([]string, 0, len(groups))
+				for groupKey := range groups {
+					groupNames = append(groupNames, groupKey)
+				}
+				slices.Sort(groupNames)
 				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardGroupDetails").Child("ru_mode"),
-						groupKey,
-						fmt.Sprintf("composite sharding with NATIVE replication: shardGroup %s allows at most one READWRITE database; found %d", groupKey, rwCount)))
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardSpaceDetails").Child("name"),
+						spaceKey,
+						fmt.Sprintf("composite sharding with NATIVE replication currently supports at most one shardGroup per shardSpace; shardSpace %s has groups: %s", spaceKey, strings.Join(groupNames, ","))))
 			}
 		}
 	}
@@ -1691,60 +1784,6 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 		return validationErrs
 	}
 	return nil
-}
-
-func validateUniquePrimarySourcesForSystemShardInfo(r *ShardingDatabase, index int) field.ErrorList {
-	var errs field.ErrorList
-	if r == nil || index < 0 || index >= len(r.Spec.ShardInfo) {
-		return errs
-	}
-	cfg := r.Spec.ShardInfo[index].StandbyConfig
-	if cfg == nil {
-		return errs
-	}
-
-	connectSeen := map[string]bool{}
-	for i := range cfg.PrimaryConnectStrings {
-		raw := strings.TrimSpace(cfg.PrimaryConnectStrings[i])
-		if raw == "" {
-			continue
-		}
-		key := strings.ToLower(raw)
-		if connectSeen[key] {
-			errs = append(errs,
-				field.Duplicate(
-					field.NewPath("spec").Child("shardInfo").Index(index).Child("standbyConfig").Child("primaryConnectStrings").Index(i),
-					cfg.PrimaryConnectStrings[i],
-				))
-			continue
-		}
-		connectSeen[key] = true
-	}
-
-	refSeen := map[string]bool{}
-	for i := range cfg.PrimaryDatabaseRefs {
-		ref := cfg.PrimaryDatabaseRefs[i]
-		name := strings.TrimSpace(ref.Name)
-		if name == "" {
-			continue
-		}
-		ns := strings.TrimSpace(ref.Namespace)
-		if ns == "" {
-			ns = r.Namespace
-		}
-		key := strings.ToLower(ns + "/" + name)
-		if refSeen[key] {
-			errs = append(errs,
-				field.Duplicate(
-					field.NewPath("spec").Child("shardInfo").Index(index).Child("standbyConfig").Child("primaryDatabaseRefs").Index(i),
-					fmt.Sprintf("%s/%s", ns, name),
-				))
-			continue
-		}
-		refSeen[key] = true
-	}
-
-	return errs
 }
 
 func validateStandbyConfigPrimarySourceExclusive(r *ShardingDatabase, index int) field.ErrorList {
@@ -1757,24 +1796,50 @@ func validateStandbyConfigPrimarySourceExclusive(r *ShardingDatabase, index int)
 		return errs
 	}
 
-	hasRefs := countUniquePrimaryDatabaseRefs(cfg.PrimaryDatabaseRefs) > 0
-	hasConnects := countUniqueStrings(cfg.PrimaryConnectStrings) > 0
-	hasEndpoints := countUniquePrimaryEndpoints(cfg.PrimaryEndpoints) > 0
-
-	count := 0
-	if hasRefs {
-		count++
-	}
-	if hasConnects {
-		count++
-	}
-	if hasEndpoints {
-		count++
-	}
-
 	path := field.NewPath("spec").Child("shardInfo").Index(index).Child("standbyConfig")
-	if count > 1 {
-		errs = append(errs, field.Invalid(path, cfg, "primary source fields are mutually exclusive; set only one of primaryDatabaseRefs, primaryConnectStrings, or primaryEndpoints"))
+	seen := map[string]bool{}
+	for i := range cfg.PrimarySources {
+		source := &cfg.PrimarySources[i]
+		sourcePath := path.Child("primarySources").Index(i)
+		selected := 0
+		if source.DatabaseRef != nil {
+			selected++
+		}
+		if strings.TrimSpace(source.ConnectString) != "" {
+			selected++
+		}
+		if source.Details != nil {
+			selected++
+		}
+		if selected == 0 {
+			errs = append(errs, field.Required(sourcePath, "set exactly one of databaseRef, connectString, or details"))
+		}
+		if selected > 1 {
+			errs = append(errs, field.Forbidden(sourcePath, "databaseRef, connectString, and details are mutually exclusive; set only one"))
+		}
+		if source.DatabaseRef != nil && strings.TrimSpace(source.DatabaseRef.Name) == "" {
+			errs = append(errs, field.Required(sourcePath.Child("databaseRef").Child("name"), "name is required"))
+		}
+		if details := source.Details; details != nil {
+			if strings.TrimSpace(details.ConnectString) == "" {
+				if strings.TrimSpace(details.Host) == "" {
+					errs = append(errs, field.Required(sourcePath.Child("details").Child("host"), "host is required when connectString is not set"))
+				}
+				if strings.TrimSpace(details.CdbName) == "" {
+					errs = append(errs, field.Required(sourcePath.Child("details").Child("cdbName"), "cdbName is required when connectString is not set"))
+				}
+			}
+			if details.Port < 0 {
+				errs = append(errs, field.Invalid(sourcePath.Child("details").Child("port"), details.Port, "must be >= 0"))
+			}
+		}
+		if key := standbyPrimarySourceIdentityKey(source, r.Namespace); key != "" {
+			if seen[key] {
+				errs = append(errs, field.Duplicate(sourcePath, key))
+				continue
+			}
+			seen[key] = true
+		}
 	}
 	return errs
 }
@@ -1992,7 +2057,7 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 	compositeGroupSpaceByName := map[string]string{}
 	compositeNativeGroupRegionBySpace := map[string]map[string]string{}
 	compositeNativeGroupByRegionBySpace := map[string]map[string]string{}
-	compositeNativeReadWriteShardCountByGroup := map[string]int{}
+	compositeNativeGroupsBySpace := map[string]map[string]bool{}
 
 	for i := range r.Spec.ShardInfo {
 		info := r.Spec.ShardInfo[i]
@@ -2021,6 +2086,12 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 						fmt.Sprintf("composite sharding shardGroup names must be unique across shardSpaces; shardGroup %s is used in both %s and %s", groupKey, prevSpace, spaceKey)))
 			} else {
 				compositeGroupSpaceByName[groupKey] = spaceKey
+			}
+			if replType == replNative {
+				if _, ok := compositeNativeGroupsBySpace[spaceKey]; !ok {
+					compositeNativeGroupsBySpace[spaceKey] = map[string]bool{}
+				}
+				compositeNativeGroupsBySpace[spaceKey][groupKey] = true
 			}
 		}
 	}
@@ -2163,9 +2234,16 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 							validationErrs = append(validationErrs,
 								field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
 									fmt.Sprintf("composite sharding with NATIVE replication requires ru_mode for shardGroup %s in shardSpace %s", groupKey, spaceKey)))
-						} else if ruMode == "READWRITE" {
-							compositeNativeReadWriteShardCountByGroup[groupKey]++
+						} else if ruMode != "READWRITE" {
+							validationErrs = append(validationErrs,
+								field.Invalid(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
+									sh.ShardGroup,
+									"composite sharding with NATIVE replication currently supports only READWRITE shardGroups"))
 						}
+						if _, ok := compositeNativeGroupsBySpace[spaceKey]; !ok {
+							compositeNativeGroupsBySpace[spaceKey] = map[string]bool{}
+						}
+						compositeNativeGroupsBySpace[spaceKey][groupKey] = true
 					}
 				}
 			}
@@ -2186,7 +2264,7 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 				if cnt > 0 {
 					validationErrs = append(validationErrs,
 						field.Forbidden(field.NewPath("spec").Child("shard"),
-							fmt.Sprintf("user sharding shardSpace %s uses standbyConfig primary source; do not set local deployAs=PRIMARY", spaceKey)))
+							fmt.Sprintf("user sharding shardSpace %s uses standbyConfig.primarySources; do not set local deployAs=PRIMARY", spaceKey)))
 				}
 				continue
 			}
@@ -2198,12 +2276,17 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 		}
 	}
 	if replType == replNative && modeHint == modeComposite {
-		for groupKey, rwCount := range compositeNativeReadWriteShardCountByGroup {
-			if rwCount > 1 {
+		for spaceKey, groups := range compositeNativeGroupsBySpace {
+			if len(groups) > 1 {
+				groupNames := make([]string, 0, len(groups))
+				for groupKey := range groups {
+					groupNames = append(groupNames, groupKey)
+				}
+				slices.Sort(groupNames)
 				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("shard").Child("shardGroup"),
-						groupKey,
-						fmt.Sprintf("composite sharding with NATIVE replication: shardGroup %s allows at most one READWRITE database; found %d", groupKey, rwCount)))
+					field.Invalid(field.NewPath("spec").Child("shard").Child("shardSpace"),
+						spaceKey,
+						fmt.Sprintf("composite sharding with NATIVE replication currently supports at most one shardGroup per shardSpace; shardSpace %s has groups: %s", spaceKey, strings.Join(groupNames, ","))))
 			}
 		}
 	}
@@ -2393,7 +2476,6 @@ func (r *ShardingDatabase) initShardsSpec() error {
 			if r.Spec.ShardInfo[pindex].Resources != nil {
 				r.Spec.Shard[shardIndex].Resources = r.Spec.ShardInfo[pindex].Resources
 			}
-			r.Spec.Shard[shardIndex].DisableDefaultLogVolumeClaims = r.Spec.ShardInfo[pindex].DisableDefaultLogVolumeClaims
 			if len(r.Spec.ShardInfo[pindex].AdditionalPVCs) > 0 {
 				r.Spec.Shard[shardIndex].AdditionalPVCs = append([]AdditionalPVCSpec(nil), r.Spec.ShardInfo[pindex].AdditionalPVCs...)
 			}
@@ -2454,7 +2536,6 @@ func mergeDesiredAndExistingShards(existing []ShardSpec, desired []ShardSpec) []
 			merged.EnvVars = d.EnvVars
 			merged.Resources = d.Resources
 			merged.AdditionalPVCs = d.AdditionalPVCs
-			merged.DisableDefaultLogVolumeClaims = d.DisableDefaultLogVolumeClaims
 			merged.ServiceAnnotations = d.ServiceAnnotations
 			merged.ExternalServiceAnnotations = d.ExternalServiceAnnotations
 			merged.SecurityContext = d.SecurityContext
@@ -2692,27 +2773,19 @@ func standbyConfigPrimaryCount(cfg *StandbyConfig) int32 {
 		return 0
 	}
 
-	if c := countUniquePrimaryDatabaseRefs(cfg.PrimaryDatabaseRefs); c > 0 {
-		return c
-	}
-	if c := countUniqueStrings(cfg.PrimaryConnectStrings); c > 0 {
-		return c
-	}
-	return countUniquePrimaryEndpoints(cfg.PrimaryEndpoints)
+	return standbyConfigPrimarySourceCount(cfg, "")
 }
 
-func countUniquePrimaryDatabaseRefs(in []PrimaryDatabaseCRRef) int32 {
+func standbyConfigPrimarySourceCount(cfg *StandbyConfig, defaultNamespace string) int32 {
+	if cfg == nil {
+		return 0
+	}
+
 	seen := map[string]bool{}
 	var count int32
-	for i := range in {
-		ref := in[i]
-		name := strings.ToLower(strings.TrimSpace(ref.Name))
-		if name == "" {
-			continue
-		}
-		ns := strings.ToLower(strings.TrimSpace(ref.Namespace))
-		key := ns + "/" + name
-		if seen[key] {
+	for i := range cfg.PrimarySources {
+		key := standbyPrimarySourceIdentityKey(&cfg.PrimarySources[i], defaultNamespace)
+		if key == "" || seen[key] {
 			continue
 		}
 		seen[key] = true
@@ -2721,40 +2794,127 @@ func countUniquePrimaryDatabaseRefs(in []PrimaryDatabaseCRRef) int32 {
 	return count
 }
 
-func countUniqueStrings(in []string) int32 {
-	seen := map[string]bool{}
-	var count int32
-	for i := range in {
-		v := strings.ToLower(strings.TrimSpace(in[i]))
-		if v == "" || seen[v] {
-			continue
-		}
-		seen[v] = true
-		count++
+func standbyPrimarySourceIdentityKey(source *StandbyPrimarySource, defaultNamespace string) string {
+	if source == nil {
+		return ""
 	}
-	return count
+	if ref := source.DatabaseRef; ref != nil && strings.TrimSpace(ref.Name) != "" {
+		ns := strings.TrimSpace(ref.Namespace)
+		if ns == "" {
+			ns = defaultNamespace
+		}
+		return "ref:" + strings.ToLower(ns+"/"+strings.TrimSpace(ref.Name))
+	}
+	if connect := strings.TrimSpace(source.ConnectString); connect != "" {
+		return "connect:" + strings.ToLower(connect)
+	}
+	if details := source.Details; details != nil {
+		if connect := strings.TrimSpace(details.ConnectString); connect != "" {
+			return "endpoint:" + strings.ToLower(connect)
+		}
+		host := strings.ToLower(strings.TrimSpace(details.Host))
+		cdb := strings.ToLower(strings.TrimSpace(details.CdbName))
+		pdb := strings.ToLower(strings.TrimSpace(details.PdbName))
+		if host == "" && cdb == "" && pdb == "" {
+			return ""
+		}
+		port := details.Port
+		if port <= 0 {
+			port = 1521
+		}
+		return fmt.Sprintf("endpoint:%s:%d/%s/%s", host, port, cdb, pdb)
+	}
+	return ""
 }
 
-func countUniquePrimaryEndpoints(in []PrimaryEndpointRef) int32 {
-	seen := map[string]bool{}
-	var count int32
-	for i := range in {
-		e := in[i]
-		key := strings.ToLower(strings.TrimSpace(e.ConnectString))
-		if key == "" {
-			host := strings.ToLower(strings.TrimSpace(e.Host))
-			cdb := strings.ToLower(strings.TrimSpace(e.CdbName))
-			pdb := strings.ToLower(strings.TrimSpace(e.PdbName))
-			if host == "" && cdb == "" && pdb == "" {
-				continue
-			}
-			key = host + ":" + strconv.Itoa(int(e.Port)) + "/" + cdb + "/" + pdb
-		}
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		count++
+func isShardingDataguardTopologyLocked(cr *ShardingDatabase) bool {
+	return cr != nil && cr.Status.Dataguard != nil && cr.Status.Dataguard.TopologyLocked
+}
+
+func hasShardingDataguardTopologyChange(oldCR, newCR *ShardingDatabase) bool {
+	return !reflect.DeepEqual(buildShardingDataguardTopologyProjection(oldCR), buildShardingDataguardTopologyProjection(newCR))
+}
+
+type shardingDataguardTopologyProjection struct {
+	ReplicationType string
+	ShardingType    string
+	EnableTCPS      bool
+	TcpsTlsSecret   string
+	Shard           []shardingDataguardShardProjection
+	ShardInfo       []shardingDataguardShardInfoProjection
+	ShardGroup      []ShardGroupSpec
+	ShardSpace      []ShardSpaceSpec
+}
+
+type shardingDataguardShardProjection struct {
+	Name               string
+	ShardSpace         string
+	ShardGroup         string
+	ShardRegion        string
+	DeployAs           string
+	PrimaryDatabaseRef *DatabaseRef
+	StandbyConfig      *StandbyConfig
+}
+
+type shardingDataguardShardInfoProjection struct {
+	ShardPreFixName    string
+	ShardNum           int32
+	Replicas           int32
+	ShardGroupDetails  *ShardGroupSpec
+	ShardSpaceDetails  *ShardSpaceSpec
+	PrimaryDatabaseRef *DatabaseRef
+	StandbyConfig      *StandbyConfig
+}
+
+func buildShardingDataguardTopologyProjection(cr *ShardingDatabase) shardingDataguardTopologyProjection {
+	var projection shardingDataguardTopologyProjection
+	if cr == nil {
+		return projection
 	}
-	return count
+
+	projection.ReplicationType = normalizeReplicationType(&cr.Spec)
+	projection.ShardingType = string(detectShardingMode(&cr.Spec))
+	projection.EnableTCPS = cr.Spec.EnableTCPS
+	projection.TcpsTlsSecret = strings.TrimSpace(cr.Spec.TcpsTlsSecret)
+
+	if len(cr.Spec.Shard) > 0 {
+		projection.Shard = make([]shardingDataguardShardProjection, 0, len(cr.Spec.Shard))
+		for i := range cr.Spec.Shard {
+			shard := cr.Spec.Shard[i]
+			projection.Shard = append(projection.Shard, shardingDataguardShardProjection{
+				Name:               shard.Name,
+				ShardSpace:         shard.ShardSpace,
+				ShardGroup:         shard.ShardGroup,
+				ShardRegion:        shard.ShardRegion,
+				DeployAs:           shard.DeployAs,
+				PrimaryDatabaseRef: shard.PrimaryDatabaseRef,
+				StandbyConfig:      shard.StandbyConfig,
+			})
+		}
+	}
+
+	if len(cr.Spec.ShardInfo) > 0 {
+		projection.ShardInfo = make([]shardingDataguardShardInfoProjection, 0, len(cr.Spec.ShardInfo))
+		for i := range cr.Spec.ShardInfo {
+			info := cr.Spec.ShardInfo[i]
+			projection.ShardInfo = append(projection.ShardInfo, shardingDataguardShardInfoProjection{
+				ShardPreFixName:    info.ShardPreFixName,
+				ShardNum:           info.ShardNum,
+				Replicas:           info.Replicas,
+				ShardGroupDetails:  info.ShardGroupDetails,
+				ShardSpaceDetails:  info.ShardSpaceDetails,
+				PrimaryDatabaseRef: info.PrimaryDatabaseRef,
+				StandbyConfig:      info.StandbyConfig,
+			})
+		}
+	}
+
+	if len(cr.Spec.ShardGroup) > 0 {
+		projection.ShardGroup = append(projection.ShardGroup, cr.Spec.ShardGroup...)
+	}
+	if len(cr.Spec.ShardSpace) > 0 {
+		projection.ShardSpace = append(projection.ShardSpace, cr.Spec.ShardSpace...)
+	}
+
+	return projection
 }

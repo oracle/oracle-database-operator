@@ -17,7 +17,8 @@ spec:
   createAs: truecache
 
   ## Reference to the source primary database.
-  primaryDatabaseRef: "freedb-sample"
+  primarySource:
+    databaseRef: "freedb-sample"
   
   ## Accepts a semi colon separated list of `PRIMARY_PDB_SERIVCE_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
   trueCacheServices:

@@ -8997,45 +8997,34 @@ spec:
             type: object
           spec:
             properties:
-              externalAdminPassword:
+              execution:
                 properties:
-                  secretKey:
+                  authWallet:
+                    properties:
+                      enabled:
+                        type: boolean
+                      passwordSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      rebuildToken:
+                        type: string
+                    type: object
+                  image:
                     type: string
-                  secretName:
+                  imagePullSecrets:
+                    items:
+                      type: string
+                    type: array
+                  tnsAdminPath:
                     type: string
-                required:
-                - secretKey
-                - secretName
+                  walletMountPath:
+                    type: string
                 type: object
-              externalDatabaseConnectStrings:
-                items:
-                  properties:
-                    hostName:
-                      type: string
-                    port:
-                      default: 1521
-                      format: int32
-                      type: integer
-                    secret:
-                      type: string
-                    secretKey:
-                      default: password
-                      type: string
-                    svcName:
-                      type: string
-                    userName:
-                      default: sys
-                      type: string
-                  required:
-                  - hostName
-                  - secret
-                  - svcName
-                  type: object
-                minItems: 2
-                type: array
               fastStartFailover:
-                type: boolean
-              isNonSingleInstanceDatabase:
                 type: boolean
               loadBalancer:
                 type: boolean
@@ -9043,8 +9032,6 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
-              observerImage:
-                type: string
               primaryDatabaseRef:
                 type: string
               protectionMode:
@@ -9062,26 +9049,208 @@ spec:
                 items:
                   type: string
                 type: array
-            required:
-            - primaryDatabaseRef
-            - protectionMode
-            - standbyDatabaseRefs
+              topology:
+                properties:
+                  defaults:
+                    properties:
+                      adminSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      tcps:
+                        properties:
+                          clientWalletSecret:
+                            type: string
+                        type: object
+                    type: object
+                  members:
+                    items:
+                      properties:
+                        adminSecretRef:
+                          properties:
+                            secretKey:
+                              type: string
+                            secretName:
+                              type: string
+                          type: object
+                        dbUniqueName:
+                          type: string
+                        endpoints:
+                          items:
+                            properties:
+                              host:
+                                type: string
+                              name:
+                                type: string
+                              port:
+                                format: int32
+                                type: integer
+                              protocol:
+                                type: string
+                              serviceName:
+                                type: string
+                              sslServerDN:
+                                type: string
+                            type: object
+                          type: array
+                        localRef:
+                          properties:
+                            apiVersion:
+                              type: string
+                            kind:
+                              type: string
+                            name:
+                              type: string
+                            namespace:
+                              type: string
+                          type: object
+                        name:
+                          type: string
+                        role:
+                          type: string
+                        tcps:
+                          properties:
+                            clientWalletSecret:
+                              type: string
+                            enabled:
+                              type: boolean
+                            serverTLSSecret:
+                              type: string
+                            sslServerDN:
+                              type: string
+                            walletKey:
+                              type: string
+                          type: object
+                      type: object
+                    type: array
+                  observer:
+                    properties:
+                      enabled:
+                        type: boolean
+                      image:
+                        type: string
+                      name:
+                        type: string
+                      nodeSelector:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                  pairs:
+                    items:
+                      properties:
+                        primary:
+                          type: string
+                        standby:
+                          type: string
+                        type:
+                          type: string
+                      type: object
+                    type: array
+                  policy:
+                    properties:
+                      fastStartFailover:
+                        type: boolean
+                      protectionMode:
+                        type: string
+                      transportMode:
+                        type: string
+                    type: object
+                  sourceKind:
+                    type: string
+                  sourceRef:
+                    properties:
+                      apiVersion:
+                        type: string
+                      kind:
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    type: object
+                type: object
             type: object
           status:
             properties:
+              authWallet:
+                properties:
+                  generatedPasswordSecretName:
+                    type: string
+                  initialized:
+                    type: boolean
+                  message:
+                    type: string
+                  observedRebuildToken:
+                    type: string
+                  phase:
+                    type: string
+                  walletSecretName:
+                    type: string
+                type: object
               clusterConnectString:
                 type: string
+              conditions:
+                items:
+                  properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                    message:
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
               databasesInDataguardConfig:
                 additionalProperties:
                   type: string
                 type: object
               externalConnectString:
                 type: string
-              externalDgMapping:
-                additionalProperties:
-                  type: string
-                type: object
               fastStartFailover:
+                type: string
+              observedPairs:
+                items:
+                  properties:
+                    message:
+                      type: string
+                    primary:
+                      type: string
+                    standby:
+                      type: string
+                    state:
+                      type: string
+                  type: object
+                type: array
+              observedTopologyHash:
                 type: string
               primaryDatabase:
                 type: string
@@ -9089,6 +9258,23 @@ spec:
                 type: string
               protectionMode:
                 type: string
+              resolvedMembers:
+                items:
+                  properties:
+                    connectString:
+                      type: string
+                    dbUniqueName:
+                      type: string
+                    message:
+                      type: string
+                    name:
+                      type: string
+                    phase:
+                      type: string
+                    role:
+                      type: string
+                  type: object
+                type: array
               standbyDatabases:
                 type: string
               status:
@@ -12535,17 +12721,6 @@ spec:
             type: object
           spec:
             properties:
-              commonMetadata:
-                properties:
-                  additionalAnnotations:
-                    additionalProperties:
-                      type: string
-                    type: object
-                  additionalLabels:
-                    additionalProperties:
-                      type: string
-                    type: object
-                type: object
               encPrivKey:
                 properties:
                   passwordKey:
@@ -12637,9 +12812,6 @@ spec:
                   feature.grahpql.max.nesting.depth:
                     format: int32
                     type: integer
-                  feature.graphql.max.nesting.depth:
-                    format: int32
-                    type: integer
                   icap.port:
                     format: int32
                     type: integer
@@ -12650,23 +12822,9 @@ spec:
                     type: string
                   instance.api.enabled:
                     type: boolean
-                  instanceAPIAdminSecret:
-                    properties:
-                      passwordKey:
-                        default: password
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - secretName
-                    type: object
-                  instanceAPIAdminUser:
-                    default: instance_api_admin
-                    type: string
                   log.procedure:
                     type: boolean
                   mongo.enabled:
-                    default: false
                     type: boolean
                   mongo.idle.timeout:
                     type: string
@@ -12719,7 +12877,6 @@ spec:
                     type: string
                 type: object
               image:
-                default: container-registry.oracle.com/database/ords:latest
                 type: string
               imagePullPolicy:
                 default: IfNotPresent
@@ -12730,22 +12887,6 @@ spec:
                 type: string
               imagePullSecrets:
                 type: string
-              jdkJavaOptions:
-                type: string
-              podTemplate:
-                properties:
-                  metadata:
-                    properties:
-                      additionalAnnotations:
-                        additionalProperties:
-                          type: string
-                        type: object
-                      additionalLabels:
-                        additionalProperties:
-                          type: string
-                        type: object
-                    type: object
-                type: object
               poolSettings:
                 items:
                   properties:
@@ -12892,7 +13033,6 @@ spec:
                       - proxied
                       type: string
                     poolName:
-                      pattern: ^[a-z0-9._-]+$
                       type: string
                     procedure.preProcess:
                       type: string
@@ -12949,69 +13089,8 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
-              resources:
-                properties:
-                  claims:
-                    items:
-                      properties:
-                        name:
-                          type: string
-                        request:
-                          type: string
-                      required:
-                      - name
-                      type: object
-                    type: array
-                    x-kubernetes-list-map-keys:
-                    - name
-                    x-kubernetes-list-type: map
-                  limits:
-                    additionalProperties:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                      x-kubernetes-int-or-string: true
-                    type: object
-                  requests:
-                    additionalProperties:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                      x-kubernetes-int-or-string: true
-                    type: object
-                type: object
-              service:
-                properties:
-                  metadata:
-                    properties:
-                      additionalAnnotations:
-                        additionalProperties:
-                          type: string
-                        type: object
-                      additionalLabels:
-                        additionalProperties:
-                          type: string
-                        type: object
-                    type: object
-                type: object
               serviceAccountName:
                 type: string
-              workload:
-                properties:
-                  metadata:
-                    properties:
-                      additionalAnnotations:
-                        additionalProperties:
-                          type: string
-                        type: object
-                      additionalLabels:
-                        additionalProperties:
-                          type: string
-                        type: object
-                    type: object
-                type: object
               workloadType:
                 default: Deployment
                 enum:
@@ -13069,9 +13148,6 @@ spec:
               mongoPort:
                 format: int32
                 type: integer
-              observedGeneration:
-                format: int64
-                type: integer
               ordsInstalled:
                 type: boolean
               ordsVersion:
@@ -13082,6 +13158,8 @@ spec:
                 type: string
               workloadType:
                 type: string
+            required:
+            - restartRequired
             type: object
         type: object
     served: true
@@ -13102,6 +13180,8 @@ spec:
     kind: PrivateAi
     listKind: PrivateAiList
     plural: privateais
+    shortNames:
+    - pai
     singular: privateai
   scope: Namespaced
   versions:
@@ -13112,14 +13192,39 @@ spec:
     - jsonPath: .status.replicas
       name: Replicas
       type: number
-    - jsonPath: .status.paiSecret.apiKey
-      name: ApiKey
-      type: string
-    - jsonPath: .status.podIP
-      name: PodIP
+    - jsonPath: .status.localService
+      name: LocalSvc
       type: string
     - jsonPath: .status.loadBalancerIP
       name: LbIP
+      type: string
+    - jsonPath: .status.externalService
+      name: ExtSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.paiSecret.name
+      name: Secret
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.ref
+      name: TMRef
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.routePath
+      name: TMRoute
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.serviceName
+      name: TMSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.endpoint
+      name: TMEndpoint
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.publicURL
+      name: PublicURL
+      priority: 1
       type: string
     - jsonPath: .status.releaseUpdate
       name: ReleaseUpdate
@@ -13129,10 +13234,6 @@ spec:
       name: Mode
       priority: 1
       type: string
-    - jsonPath: .status.gateway.readyReplicas
-      name: GatewayReady
-      priority: 1
-      type: number
     name: v4
     schema:
       openAPIV3Schema:
@@ -13157,116 +13258,6 @@ spec:
                   - value
                   type: object
                 type: array
-              gateway:
-                properties:
-                  configFileKey:
-                    type: string
-                  configMap:
-                    properties:
-                      mountLocation:
-                        type: string
-                      name:
-                        type: string
-                    type: object
-                  containerPort:
-                    format: int32
-                    type: integer
-                  envVars:
-                    items:
-                      properties:
-                        name:
-                          type: string
-                        value:
-                          type: string
-                      required:
-                      - name
-                      - value
-                      type: object
-                    type: array
-                  externalService:
-                    properties:
-                      annotations:
-                        additionalProperties:
-                          type: string
-                        type: object
-                      enabled:
-                        type: boolean
-                      port:
-                        format: int32
-                        type: integer
-                      serviceType:
-                        type: string
-                      targetPort:
-                        format: int32
-                        type: integer
-                    type: object
-                  image:
-                    type: string
-                  imagePullPolicy:
-                    type: string
-                  internalService:
-                    properties:
-                      annotations:
-                        additionalProperties:
-                          type: string
-                        type: object
-                      enabled:
-                        type: boolean
-                      port:
-                        format: int32
-                        type: integer
-                      serviceType:
-                        type: string
-                      targetPort:
-                        format: int32
-                        type: integer
-                    type: object
-                  replicas:
-                    format: int32
-                    type: integer
-                  resources:
-                    properties:
-                      claims:
-                        items:
-                          properties:
-                            name:
-                              type: string
-                            request:
-                              type: string
-                          required:
-                          - name
-                          type: object
-                        type: array
-                        x-kubernetes-list-map-keys:
-                        - name
-                        x-kubernetes-list-type: map
-                      limits:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                      requests:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                    type: object
-                  tlsMountLocation:
-                    type: string
-                  tlsSecretName:
-                    type: string
-                  type:
-                    enum:
-                    - nginx
-                    - litellm
-                    type: string
-                type: object
               isDebug:
                 type: boolean
               isDeleteOraPvc:
@@ -13274,7 +13265,6 @@ spec:
               isDownloadScripts:
                 type: boolean
               isExternalSvc:
-                default: "true"
                 enum:
                 - "true"
                 - "false"
@@ -13357,13 +13347,11 @@ spec:
               paiImagePullSecret:
                 type: string
               paiInternalLB:
-                default: "false"
                 enum:
                 - "true"
                 - "false"
                 type: string
               paiLBExternalTrafficPolicy:
-                default: local
                 enum:
                 - local
                 - cluster
@@ -13384,6 +13372,34 @@ spec:
                 type: object
               paiService:
                 properties:
+                  external:
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      enabled:
+                        type: boolean
+                      externalTrafficPolicy:
+                        enum:
+                        - Local
+                        - Cluster
+                        - local
+                        - cluster
+                        type: string
+                      internal:
+                        type: boolean
+                      loadBalancerIP:
+                        type: string
+                      port:
+                        format: int32
+                        type: integer
+                      serviceType:
+                        type: string
+                      targetPort:
+                        format: int32
+                        type: integer
+                    type: object
                   name:
                     type: string
                   portMappings:
@@ -13480,6 +13496,19 @@ spec:
               storageSizeInGb:
                 format: int32
                 type: integer
+              trafficManager:
+                properties:
+                  endpoint:
+                    type: string
+                  publicURL:
+                    type: string
+                  ref:
+                    type: string
+                  routePath:
+                    type: string
+                  serviceName:
+                    type: string
+                type: object
               workerNodes:
                 items:
                   type: string
@@ -13490,6 +13519,8 @@ spec:
               NodeIP:
                 type: string
               clusterIP:
+                type: string
+              externalService:
                 type: string
               conditions:
                 items:
@@ -13530,27 +13561,9 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              gateway:
-                properties:
-                  configMapName:
-                    type: string
-                  configMapVersion:
-                    type: string
-                  enabled:
-                    type: boolean
-                  externalEndpoint:
-                    type: string
-                  externalService:
-                    type: string
-                  internalService:
-                    type: string
-                  readyReplicas:
-                    format: int32
-                    type: integer
-                  type:
-                    type: string
-                type: object
               loadBalancerIP:
+                type: string
+              localService:
                 type: string
               logging:
                 properties:
@@ -13574,6 +13587,10 @@ spec:
                     type: string
                   certpem:
                     type: string
+                  hasAPIKey:
+                    type: boolean
+                  hasCertPem:
+                    type: boolean
                   name:
                     type: string
                   resourceVersion:
@@ -13587,6 +13604,13 @@ spec:
                 type: integer
               status:
                 type: string
+              trafficManager:
+                properties:
+                  ref:
+                    type: string
+                  routePath:
+                    type: string
+                type: object
             type: object
         type: object
     served: true
@@ -14407,6 +14431,272 @@ spec:
                 type: object
               connectString:
                 type: string
+              dataguard:
+                properties:
+                  brokerRef:
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    type: object
+                  conditions:
+                    items:
+                      properties:
+                        lastTransitionTime:
+                          format: date-time
+                          type: string
+                        message:
+                          maxLength: 32768
+                          type: string
+                        observedGeneration:
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        reason:
+                          maxLength: 1024
+                          minLength: 1
+                          pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                          type: string
+                        status:
+                          enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                          type: string
+                        type:
+                          maxLength: 316
+                          pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                          type: string
+                      required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                      type: object
+                    type: array
+                  dbUniqueName:
+                    type: string
+                  endpoints:
+                    items:
+                      properties:
+                        host:
+                          type: string
+                        name:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
+                        protocol:
+                          type: string
+                        serviceName:
+                          type: string
+                        sslServerDN:
+                          type: string
+                      type: object
+                    type: array
+                  lastPublishedTime:
+                    format: date-time
+                    type: string
+                  memberName:
+                    type: string
+                  phase:
+                    type: string
+                  primaryMemberName:
+                    type: string
+                  publishedTopologyHash:
+                    type: string
+                  readyForBroker:
+                    type: boolean
+                  renderedBrokerSpec:
+                    properties:
+                      generatedAt:
+                        format: date-time
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      ready:
+                        type: boolean
+                      spec:
+                        properties:
+                          execution:
+                            properties:
+                              authWallet:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  passwordSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  rebuildToken:
+                                    type: string
+                                type: object
+                              image:
+                                type: string
+                              imagePullSecrets:
+                                items:
+                                  type: string
+                                type: array
+                              tnsAdminPath:
+                                type: string
+                              walletMountPath:
+                                type: string
+                            type: object
+                          topology:
+                            properties:
+                              defaults:
+                                properties:
+                                  adminSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  tcps:
+                                    properties:
+                                      clientWalletSecret:
+                                        type: string
+                                    type: object
+                                type: object
+                              members:
+                                items:
+                                  properties:
+                                    adminSecretRef:
+                                      properties:
+                                        secretKey:
+                                          type: string
+                                        secretName:
+                                          type: string
+                                      type: object
+                                    dbUniqueName:
+                                      type: string
+                                    endpoints:
+                                      items:
+                                        properties:
+                                          host:
+                                            type: string
+                                          name:
+                                            type: string
+                                          port:
+                                            format: int32
+                                            type: integer
+                                          protocol:
+                                            type: string
+                                          serviceName:
+                                            type: string
+                                          sslServerDN:
+                                            type: string
+                                        type: object
+                                      type: array
+                                    localRef:
+                                      properties:
+                                        apiVersion:
+                                          type: string
+                                        kind:
+                                          type: string
+                                        name:
+                                          type: string
+                                        namespace:
+                                          type: string
+                                      type: object
+                                    name:
+                                      type: string
+                                    role:
+                                      type: string
+                                    tcps:
+                                      properties:
+                                        clientWalletSecret:
+                                          type: string
+                                        enabled:
+                                          type: boolean
+                                        serverTLSSecret:
+                                          type: string
+                                        sslServerDN:
+                                          type: string
+                                        walletKey:
+                                          type: string
+                                      type: object
+                                  type: object
+                                type: array
+                              observer:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  image:
+                                    type: string
+                                  name:
+                                    type: string
+                                  nodeSelector:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              pairs:
+                                items:
+                                  properties:
+                                    primary:
+                                      type: string
+                                    standby:
+                                      type: string
+                                    type:
+                                      type: string
+                                  type: object
+                                type: array
+                              policy:
+                                properties:
+                                  fastStartFailover:
+                                    type: boolean
+                                  protectionMode:
+                                    type: string
+                                  transportMode:
+                                    type: string
+                                type: object
+                              sourceKind:
+                                type: string
+                              sourceRef:
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                            type: object
+                        type: object
+                      topologyHash:
+                        type: string
+                    type: object
+                  role:
+                    type: string
+                  tcps:
+                    properties:
+                      clientWalletSecret:
+                        type: string
+                      enabled:
+                        type: boolean
+                      serverTLSSecret:
+                        type: string
+                      sslServerDN:
+                        type: string
+                      walletKey:
+                        type: string
+                    type: object
+                  topologyHash:
+                    type: string
+                  topologyLocked:
+                    type: boolean
+                type: object
               dbSecret:
                 properties:
                   encryptionType:
@@ -15572,8 +15862,6 @@ spec:
                       type: string
                     createAs:
                       type: string
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     encryption:
                       type: string
                     envVars:
@@ -15802,6 +16090,51 @@ spec:
                   - name
                   type: object
                 type: array
+              dataguard:
+                properties:
+                  authWallet:
+                    properties:
+                      enabled:
+                        type: boolean
+                      passwordSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      rebuildToken:
+                        type: string
+                    type: object
+                  mode:
+                    enum:
+                    - Disabled
+                    - Preview
+                    - Managed
+                    type: string
+                  prereqs:
+                    properties:
+                      brokerConfigDir:
+                        type: string
+                      enabled:
+                        type: boolean
+                      standbyRedoSize:
+                        type: string
+                    type: object
+                  standbySources:
+                    items:
+                      properties:
+                        dbUniqueName:
+                          type: string
+                        host:
+                          type: string
+                        tcpPort:
+                          type: integer
+                        tcpsEnabled:
+                          type: boolean
+                      type: object
+                    type: array
+                type: object
               dbEdition:
                 type: string
               dbImage:
@@ -15905,8 +16238,6 @@ spec:
                       type: string
                     directorName:
                       type: string
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     encryption:
                       type: string
                     endpoint:
@@ -16177,8 +16508,6 @@ spec:
                           type: string
                         directorName:
                           type: string
-                        disableDefaultLogVolumeClaims:
-                          type: boolean
                         encryption:
                           type: string
                         endpoint:
@@ -16813,8 +17142,6 @@ spec:
                       - STANDBY
                       - ACTIVE_STANDBY
                       type: string
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     diskThreshold:
                       format: int32
                       minimum: 1
@@ -17023,35 +17350,34 @@ spec:
                       type: string
                     standbyConfig:
                       properties:
-                        primaryConnectStrings:
-                          items:
-                            type: string
-                          type: array
-                        primaryDatabaseRefs:
+                        primarySources:
                           items:
                             properties:
-                              name:
-                                type: string
-                              namespace:
-                                type: string
-                            required:
-                            - name
-                            type: object
-                          type: array
-                        primaryEndpoints:
-                          items:
-                            properties:
-                              cdbName:
-                                type: string
                               connectString:
                                 type: string
-                              host:
-                                type: string
-                              pdbName:
-                                type: string
-                              port:
-                                format: int32
-                                type: integer
+                              databaseRef:
+                                properties:
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              details:
+                                properties:
+                                  cdbName:
+                                    type: string
+                                  connectString:
+                                    type: string
+                                  host:
+                                    type: string
+                                  pdbName:
+                                    type: string
+                                  port:
+                                    format: int32
+                                    type: integer
+                                type: object
                             type: object
                           type: array
                         protectionMode:
@@ -17168,8 +17494,6 @@ spec:
                           type: array
                           x-kubernetes-list-type: atomic
                       type: object
-                    disableDefaultLogVolumeClaims:
-                      type: boolean
                     envVars:
                       items:
                         properties:
@@ -17397,35 +17721,34 @@ spec:
                       type: object
                     standbyConfig:
                       properties:
-                        primaryConnectStrings:
-                          items:
-                            type: string
-                          type: array
-                        primaryDatabaseRefs:
+                        primarySources:
                           items:
                             properties:
-                              name:
-                                type: string
-                              namespace:
-                                type: string
-                            required:
-                            - name
-                            type: object
-                          type: array
-                        primaryEndpoints:
-                          items:
-                            properties:
-                              cdbName:
-                                type: string
                               connectString:
                                 type: string
-                              host:
-                                type: string
-                              pdbName:
-                                type: string
-                              port:
-                                format: int32
-                                type: integer
+                              databaseRef:
+                                properties:
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              details:
+                                properties:
+                                  cdbName:
+                                    type: string
+                                  connectString:
+                                    type: string
+                                  host:
+                                    type: string
+                                  pdbName:
+                                    type: string
+                                  port:
+                                    format: int32
+                                    type: integer
+                                type: object
                             type: object
                           type: array
                         protectionMode:
@@ -17598,6 +17921,306 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              dataguard:
+                properties:
+                  brokerRef:
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    type: object
+                  conditions:
+                    items:
+                      properties:
+                        lastTransitionTime:
+                          format: date-time
+                          type: string
+                        message:
+                          maxLength: 32768
+                          type: string
+                        observedGeneration:
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        reason:
+                          maxLength: 1024
+                          minLength: 1
+                          pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                          type: string
+                        status:
+                          enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                          type: string
+                        type:
+                          maxLength: 316
+                          pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                          type: string
+                      required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                      type: object
+                    type: array
+                  lastPublishedTime:
+                    format: date-time
+                    type: string
+                  members:
+                    items:
+                      properties:
+                        dbUniqueName:
+                          type: string
+                        endpoints:
+                          items:
+                            properties:
+                              host:
+                                type: string
+                              name:
+                                type: string
+                              port:
+                                format: int32
+                                type: integer
+                              protocol:
+                                type: string
+                              serviceName:
+                                type: string
+                              sslServerDN:
+                                type: string
+                            type: object
+                          type: array
+                        message:
+                          type: string
+                        name:
+                          type: string
+                        phase:
+                          type: string
+                        primaryMemberName:
+                          type: string
+                        role:
+                          type: string
+                        shardGroup:
+                          type: string
+                        shardSpace:
+                          type: string
+                        tcps:
+                          properties:
+                            clientWalletSecret:
+                              type: string
+                            enabled:
+                              type: boolean
+                            serverTLSSecret:
+                              type: string
+                            sslServerDN:
+                              type: string
+                            walletKey:
+                              type: string
+                          type: object
+                      type: object
+                    type: array
+                  pairs:
+                    items:
+                      properties:
+                        message:
+                          type: string
+                        primary:
+                          type: string
+                        standby:
+                          type: string
+                        state:
+                          type: string
+                      type: object
+                    type: array
+                  phase:
+                    type: string
+                  publishedTopologyHash:
+                    type: string
+                  readyForBroker:
+                    type: boolean
+                  renderedBrokerSpec:
+                    properties:
+                      generatedAt:
+                        format: date-time
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      ready:
+                        type: boolean
+                      spec:
+                        properties:
+                          execution:
+                            properties:
+                              authWallet:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  passwordSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  rebuildToken:
+                                    type: string
+                                type: object
+                              image:
+                                type: string
+                              imagePullSecrets:
+                                items:
+                                  type: string
+                                type: array
+                              tnsAdminPath:
+                                type: string
+                              walletMountPath:
+                                type: string
+                            type: object
+                          topology:
+                            properties:
+                              defaults:
+                                properties:
+                                  adminSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  tcps:
+                                    properties:
+                                      clientWalletSecret:
+                                        type: string
+                                    type: object
+                                type: object
+                              members:
+                                items:
+                                  properties:
+                                    adminSecretRef:
+                                      properties:
+                                        secretKey:
+                                          type: string
+                                        secretName:
+                                          type: string
+                                      type: object
+                                    dbUniqueName:
+                                      type: string
+                                    endpoints:
+                                      items:
+                                        properties:
+                                          host:
+                                            type: string
+                                          name:
+                                            type: string
+                                          port:
+                                            format: int32
+                                            type: integer
+                                          protocol:
+                                            type: string
+                                          serviceName:
+                                            type: string
+                                          sslServerDN:
+                                            type: string
+                                        type: object
+                                      type: array
+                                    localRef:
+                                      properties:
+                                        apiVersion:
+                                          type: string
+                                        kind:
+                                          type: string
+                                        name:
+                                          type: string
+                                        namespace:
+                                          type: string
+                                      type: object
+                                    name:
+                                      type: string
+                                    role:
+                                      type: string
+                                    tcps:
+                                      properties:
+                                        clientWalletSecret:
+                                          type: string
+                                        enabled:
+                                          type: boolean
+                                        serverTLSSecret:
+                                          type: string
+                                        sslServerDN:
+                                          type: string
+                                        walletKey:
+                                          type: string
+                                      type: object
+                                  type: object
+                                type: array
+                              observer:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  image:
+                                    type: string
+                                  name:
+                                    type: string
+                                  nodeSelector:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              pairs:
+                                items:
+                                  properties:
+                                    primary:
+                                      type: string
+                                    standby:
+                                      type: string
+                                    type:
+                                      type: string
+                                  type: object
+                                type: array
+                              policy:
+                                properties:
+                                  fastStartFailover:
+                                    type: boolean
+                                  protectionMode:
+                                    type: string
+                                  transportMode:
+                                    type: string
+                                type: object
+                              sourceKind:
+                                type: string
+                              sourceRef:
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                            type: object
+                        type: object
+                      topologyHash:
+                        type: string
+                    type: object
+                  topologyHash:
+                    type: string
+                  topologyLocked:
+                    type: boolean
+                type: object
+              dataguardPrereqsHash:
+                additionalProperties:
+                  type: string
+                type: object
+              dataguardPrereqsRerunToken:
+                additionalProperties:
+                  type: string
+                type: object
               dg:
                 properties:
                   broker:
@@ -17783,17 +18406,6 @@ spec:
                 type: string
               enableTCPS:
                 type: boolean
-              externalPrimaryDatabaseRef:
-                properties:
-                  host:
-                    type: string
-                  pdbName:
-                    type: string
-                  port:
-                    type: integer
-                  sid:
-                    type: string
-                type: object
               flashBack:
                 type: boolean
               forceLog:
@@ -18092,6 +18704,10 @@ spec:
       name: TCPS Pdb Connect Str
       priority: 1
       type: string
+    - jsonPath: .status.clientWalletSecret
+      name: Wallet Secret
+      priority: 1
+      type: string
     - jsonPath: .status.oemExpressUrl
       name: Oem Express Url
       type: string
@@ -18149,6 +18765,51 @@ spec:
                 - clone
                 - truecache
                 type: string
+              dataguard:
+                properties:
+                  authWallet:
+                    properties:
+                      enabled:
+                        type: boolean
+                      passwordSecretRef:
+                        properties:
+                          secretKey:
+                            type: string
+                          secretName:
+                            type: string
+                        type: object
+                      rebuildToken:
+                        type: string
+                    type: object
+                  mode:
+                    enum:
+                    - Disabled
+                    - Preview
+                    - Managed
+                    type: string
+                  prereqs:
+                    properties:
+                      brokerConfigDir:
+                        type: string
+                      enabled:
+                        type: boolean
+                      standbyRedoSize:
+                        type: string
+                    type: object
+                  standbySources:
+                    items:
+                      properties:
+                        dbUniqueName:
+                          type: string
+                        host:
+                          type: string
+                        tcpPort:
+                          type: integer
+                        tcpsEnabled:
+                          type: boolean
+                      type: object
+                    type: array
+                type: object
               disableDefaultDiagVolumeClaim:
                 type: boolean
               edition:
@@ -18243,17 +18904,6 @@ spec:
                   - name
                   type: object
                 type: array
-              externalPrimaryDatabaseRef:
-                properties:
-                  host:
-                    type: string
-                  pdbName:
-                    type: string
-                  port:
-                    type: integer
-                  sid:
-                    type: string
-                type: object
               flashBack:
                 type: boolean
               forceLog:
@@ -18274,15 +18924,15 @@ spec:
                 type: array
               image:
                 properties:
-                  imagePullPolicy:
+                  prebuiltDB:
+                    type: boolean
+                  pullFrom:
+                    type: string
+                  pullPolicy:
                     enum:
                     - Always
                     - IfNotPresent
                     - Never
-                    type: string
-                  prebuiltDB:
-                    type: boolean
-                  pullFrom:
                     type: string
                   pullSecrets:
                     type: string
@@ -18382,6 +19032,24 @@ spec:
                 type: object
               primaryDatabaseRef:
                 type: string
+              primarySource:
+                properties:
+                  connectString:
+                    type: string
+                  databaseRef:
+                    type: string
+                  details:
+                    properties:
+                      host:
+                        type: string
+                      pdbName:
+                        type: string
+                      port:
+                        type: integer
+                      sid:
+                        type: string
+                    type: object
+                type: object
               readinessCheckPeriod:
                 type: integer
               replicas:
@@ -18596,10 +19264,10 @@ spec:
                         type: string
                       certRenewInterval:
                         type: string
+                      clientWalletSecret:
+                        type: string
                       enabled:
                         type: boolean
-                      listenerPort:
-                        type: integer
                       tlsSecret:
                         type: string
                     type: object
@@ -18689,43 +19357,44 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              services:
+                properties:
+                  external:
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      tcp:
+                        properties:
+                          enabled:
+                            type: boolean
+                          nodePort:
+                            type: integer
+                          port:
+                            type: integer
+                        type: object
+                      tcps:
+                        properties:
+                          enabled:
+                            type: boolean
+                          nodePort:
+                            type: integer
+                          port:
+                            type: integer
+                        type: object
+                      type:
+                        enum:
+                        - Disabled
+                        - NodePort
+                        - LoadBalancer
+                        type: string
+                    type: object
+                type: object
               sid:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
-              standbyConfig:
-                properties:
-                  primaryConnectString:
-                    type: string
-                  primaryDatabaseRef:
-                    type: string
-                  primaryDetails:
-                    properties:
-                      cdbName:
-                        type: string
-                      host:
-                        type: string
-                      pdbName:
-                        type: string
-                      port:
-                        type: integer
-                      sid:
-                        type: string
-                    type: object
-                type: object
-              tcps:
-                properties:
-                  certMountLocation:
-                    type: string
-                  certRenewInterval:
-                    type: string
-                  enabled:
-                    type: boolean
-                  listenerPort:
-                    type: integer
-                  tlsSecret:
-                    type: string
-                type: object
               tcpsCertRenewInterval:
                 type: string
               tcpsListenerPort:
@@ -18789,6 +19458,8 @@ spec:
                 type: string
               clientWalletLoc:
                 type: string
+              clientWalletSecret:
+                type: string
               clusterConnectString:
                 type: string
               conditions:
@@ -18841,6 +19512,276 @@ spec:
                 type: string
               datafilesPatched:
                 default: "false"
+                type: string
+              dataguard:
+                properties:
+                  brokerRef:
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    type: object
+                  conditions:
+                    items:
+                      properties:
+                        lastTransitionTime:
+                          format: date-time
+                          type: string
+                        message:
+                          maxLength: 32768
+                          type: string
+                        observedGeneration:
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        reason:
+                          maxLength: 1024
+                          minLength: 1
+                          pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                          type: string
+                        status:
+                          enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                          type: string
+                        type:
+                          maxLength: 316
+                          pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                          type: string
+                      required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                      type: object
+                    type: array
+                  dbUniqueName:
+                    type: string
+                  endpoints:
+                    items:
+                      properties:
+                        host:
+                          type: string
+                        name:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
+                        protocol:
+                          type: string
+                        serviceName:
+                          type: string
+                        sslServerDN:
+                          type: string
+                      type: object
+                    type: array
+                  lastPublishedTime:
+                    format: date-time
+                    type: string
+                  memberName:
+                    type: string
+                  phase:
+                    type: string
+                  primaryMemberName:
+                    type: string
+                  publishedTopologyHash:
+                    type: string
+                  readyForBroker:
+                    type: boolean
+                  renderedBrokerSpec:
+                    properties:
+                      generatedAt:
+                        format: date-time
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      ready:
+                        type: boolean
+                      spec:
+                        properties:
+                          execution:
+                            properties:
+                              authWallet:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  passwordSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  rebuildToken:
+                                    type: string
+                                type: object
+                              image:
+                                type: string
+                              imagePullSecrets:
+                                items:
+                                  type: string
+                                type: array
+                              tnsAdminPath:
+                                type: string
+                              walletMountPath:
+                                type: string
+                            type: object
+                          topology:
+                            properties:
+                              defaults:
+                                properties:
+                                  adminSecretRef:
+                                    properties:
+                                      secretKey:
+                                        type: string
+                                      secretName:
+                                        type: string
+                                    type: object
+                                  tcps:
+                                    properties:
+                                      clientWalletSecret:
+                                        type: string
+                                    type: object
+                                type: object
+                              members:
+                                items:
+                                  properties:
+                                    adminSecretRef:
+                                      properties:
+                                        secretKey:
+                                          type: string
+                                        secretName:
+                                          type: string
+                                      type: object
+                                    dbUniqueName:
+                                      type: string
+                                    endpoints:
+                                      items:
+                                        properties:
+                                          host:
+                                            type: string
+                                          name:
+                                            type: string
+                                          port:
+                                            format: int32
+                                            type: integer
+                                          protocol:
+                                            type: string
+                                          serviceName:
+                                            type: string
+                                          sslServerDN:
+                                            type: string
+                                        type: object
+                                      type: array
+                                    localRef:
+                                      properties:
+                                        apiVersion:
+                                          type: string
+                                        kind:
+                                          type: string
+                                        name:
+                                          type: string
+                                        namespace:
+                                          type: string
+                                      type: object
+                                    name:
+                                      type: string
+                                    role:
+                                      type: string
+                                    tcps:
+                                      properties:
+                                        clientWalletSecret:
+                                          type: string
+                                        enabled:
+                                          type: boolean
+                                        serverTLSSecret:
+                                          type: string
+                                        sslServerDN:
+                                          type: string
+                                        walletKey:
+                                          type: string
+                                      type: object
+                                  type: object
+                                type: array
+                              observer:
+                                properties:
+                                  enabled:
+                                    type: boolean
+                                  image:
+                                    type: string
+                                  name:
+                                    type: string
+                                  nodeSelector:
+                                    additionalProperties:
+                                      type: string
+                                    type: object
+                                type: object
+                              pairs:
+                                items:
+                                  properties:
+                                    primary:
+                                      type: string
+                                    standby:
+                                      type: string
+                                    type:
+                                      type: string
+                                  type: object
+                                type: array
+                              policy:
+                                properties:
+                                  fastStartFailover:
+                                    type: boolean
+                                  protectionMode:
+                                    type: string
+                                  transportMode:
+                                    type: string
+                                type: object
+                              sourceKind:
+                                type: string
+                              sourceRef:
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                            type: object
+                        type: object
+                      topologyHash:
+                        type: string
+                    type: object
+                  role:
+                    type: string
+                  tcps:
+                    properties:
+                      clientWalletSecret:
+                        type: string
+                      enabled:
+                        type: boolean
+                      serverTLSSecret:
+                        type: string
+                      sslServerDN:
+                        type: string
+                      walletKey:
+                        type: string
+                    type: object
+                  topologyHash:
+                    type: string
+                  topologyLocked:
+                    type: boolean
+                type: object
+              dataguardPrereqsHash:
+                type: string
+              dataguardPrereqsRerunToken:
                 type: string
               dgBroker:
                 type: string
@@ -18985,6 +19926,290 @@ spec:
       scale:
         specReplicasPath: .spec.replicas
         statusReplicasPath: .status.replicas
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: trafficmanagers.network.oracle.com
+spec:
+  group: network.oracle.com
+  names:
+    kind: TrafficManager
+    listKind: TrafficManagerList
+    plural: trafficmanagers
+    shortNames:
+    - cman
+    - connectionmanager
+    - trm
+    singular: trafficmanager
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.type
+      name: Type
+      type: string
+    - jsonPath: .status.readyReplicas
+      name: Ready
+      type: number
+    - jsonPath: .status.externalEndpoint
+      name: Endpoint
+      type: string
+    - jsonPath: .status.nginx.backendCount
+      name: Backends
+      type: number
+    - jsonPath: .status.nginx.tlsEnabled
+      name: TLS
+      type: boolean
+    - jsonPath: .status.nginx.configMode
+      name: Config
+      type: string
+    - jsonPath: .status.internalService
+      name: IntSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.externalService
+      name: ExtSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.nginx.configMapName
+      name: ConfigMap
+      priority: 1
+      type: string
+    - jsonPath: .status.nginx.tlsSecretName
+      name: TLSSecret
+      priority: 1
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              nginx:
+                properties:
+                  config:
+                    properties:
+                      configMapName:
+                        type: string
+                      mountLocation:
+                        type: string
+                    type: object
+                type: object
+              runtime:
+                properties:
+                  envVars:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        value:
+                          type: string
+                      required:
+                      - name
+                      - value
+                      type: object
+                    type: array
+                  image:
+                    type: string
+                  imagePullPolicy:
+                    type: string
+                  imagePullSecrets:
+                    items:
+                      type: string
+                    type: array
+                  replicas:
+                    format: int32
+                    type: integer
+                  resources:
+                    properties:
+                      claims:
+                        items:
+                          properties:
+                            name:
+                              type: string
+                            request:
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                    type: object
+                type: object
+              security:
+                properties:
+                  tls:
+                    properties:
+                      enabled:
+                        type: boolean
+                      mountLocation:
+                        type: string
+                      secretName:
+                        type: string
+                    type: object
+                type: object
+              service:
+                properties:
+                  external:
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      enabled:
+                        type: boolean
+                      port:
+                        format: int32
+                        type: integer
+                      serviceType:
+                        type: string
+                      targetPort:
+                        format: int32
+                        type: integer
+                    type: object
+                  internal:
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      enabled:
+                        type: boolean
+                      port:
+                        format: int32
+                        type: integer
+                      serviceType:
+                        type: string
+                      targetPort:
+                        format: int32
+                        type: integer
+                    type: object
+                type: object
+              type:
+                enum:
+                - nginx
+                type: string
+            type: object
+          status:
+            properties:
+              conditions:
+                items:
+                  properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                    message:
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              externalEndpoint:
+                type: string
+              externalService:
+                type: string
+              internalService:
+                type: string
+              nginx:
+                properties:
+                  associatedBackends:
+                    items:
+                      type: string
+                    type: array
+                  backendCount:
+                    format: int32
+                    type: integer
+                  configMode:
+                    type: string
+                  configMapName:
+                    type: string
+                  routes:
+                    items:
+                      properties:
+                        backendName:
+                          type: string
+                        backendService:
+                          type: string
+                        backendURL:
+                          type: string
+                        path:
+                          type: string
+                        publicURL:
+                          type: string
+                      type: object
+                    type: array
+                  tlsEnabled:
+                    type: boolean
+                  tlsSecretName:
+                    type: string
+                type: object
+              readyReplicas:
+                format: int32
+                type: integer
+              status:
+                type: string
+              type:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
       status: {}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -19229,6 +20454,25 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - network.oracle.com
+  resources:
+  - trafficmanagers
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - network.oracle.com
+  resources:
+  - trafficmanagers/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - observability.oracle.com
   resources:
@@ -19633,26 +20877,6 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /mutate-privateai-oracle-com-v4-privateai
-  failurePolicy: Fail
-  name: mprivateai-v4.kb.io
-  rules:
-  - apiGroups:
-    - privateai.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - privateais
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
       path: /mutate-database-oracle-com-v4-racdatabase
   failurePolicy: Fail
   name: mracdatabase.kb.io
@@ -20046,26 +21270,6 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /validate-privateai-oracle-com-v4-privateai
-  failurePolicy: Fail
-  name: vprivateai-v4.kb.io
-  rules:
-  - apiGroups:
-    - privateai.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - privateais
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v4-racdatabase
   failurePolicy: Fail
   name: vracdatabase.kb.io
@@ -20172,7 +21376,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-mltp1
         imagePullPolicy: Always
         name: manager
         ports:

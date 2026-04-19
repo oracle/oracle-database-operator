@@ -22,6 +22,7 @@ resources:
 - bases/database.oracle.com_racdatabases.yaml
 - bases/database.oracle.com_oraclerestarts.yaml
 - bases/privateai.oracle.com_privateais.yaml
+- bases/network.oracle.com_trafficmanagers.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

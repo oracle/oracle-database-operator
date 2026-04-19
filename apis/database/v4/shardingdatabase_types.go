@@ -109,12 +109,13 @@ type ShardingDatabaseSpec struct {
 	TdeWalletPvc    string `json:"tdeWalletPvc,omitempty"`
 	FssStorageClass string `json:"fssStorageClass,omitempty"`
 	// Deprecated: use tdeWallet.mountPath.
-	TdeWalletPvcMountLocation string            `json:"tdeWalletPvcMountLocation,omitempty"`
-	TDEWallet                 *TDEWalletConfig  `json:"tdeWallet,omitempty"`
-	DbEdition                 string            `json:"dbEdition,omitempty"`
-	TopicId                   string            `json:"topicId,omitempty"`
-	SrvAccountName            string            `json:"serviceAccountName,omitempty"`
-	ShardInfo                 []ShardingDetails `json:"shardInfo,omitempty"`
+	TdeWalletPvcMountLocation string                 `json:"tdeWalletPvcMountLocation,omitempty"`
+	TDEWallet                 *TDEWalletConfig       `json:"tdeWallet,omitempty"`
+	DbEdition                 string                 `json:"dbEdition,omitempty"`
+	TopicId                   string                 `json:"topicId,omitempty"`
+	SrvAccountName            string                 `json:"serviceAccountName,omitempty"`
+	ShardInfo                 []ShardingDetails      `json:"shardInfo,omitempty"`
+	Dataguard                 *DataguardProducerSpec `json:"dataguard,omitempty"`
 	// New fields for GDD-style YAML
 	Region                []RegionSpec       `json:"region,omitempty"`
 	ShardGroup            []ShardGroupSpec   `json:"shardGroup,omitempty"`
@@ -135,8 +136,13 @@ type ShardingDatabaseStatus struct {
 	Shard   map[string]string `json:"shards,omitempty"`
 	Catalog map[string]string `json:"catalogs,omitempty"`
 
-	Gsm GsmStatus `json:"gsm,omitempty"`
-	Dg  DgStatus  `json:"dg,omitempty"`
+	Gsm       GsmStatus                `json:"gsm,omitempty"`
+	Dg        DgStatus                 `json:"dg,omitempty"`
+	Dataguard *ShardingDataguardStatus `json:"dataguard,omitempty"`
+	// DataguardPrereqsHash stores the last successfully applied DG prerequisite hash per local shard pod.
+	DataguardPrereqsHash map[string]string `json:"dataguardPrereqsHash,omitempty"`
+	// DataguardPrereqsRerunToken stores the last processed rerun token per local shard pod.
+	DataguardPrereqsRerunToken map[string]string `json:"dataguardPrereqsRerunToken,omitempty"`
 	// TDEKeyRefresh tracks manual token-triggered key refresh progress.
 	TDEKeyRefresh *TDEKeyRefreshStatus `json:"tdeKeyRefresh,omitempty"`
 
@@ -281,21 +287,20 @@ type ShardSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	CpuThreshold int32 `json:"cpuThreshold,omitempty"` // CPU utilization threshold
 	// +kubebuilder:validation:Minimum=1
-	DiskThreshold                 int32                      `json:"diskThreshold,omitempty"`   // Disk latency threshold (ms)
-	Force                         bool                       `json:"force,omitempty"`           // Force replace existing GDS config
-	Rack                          string                     `json:"rack,omitempty"`            // Rack / availability group
-	ValidateNetwork               bool                       `json:"validateNetwork,omitempty"` // Enable network validation
-	GgService                     string                     `json:"ggService,omitempty"`       // GoldenGate Admin Server URI
-	Replace                       string                     `json:"replace,omitempty"`         // Replaced database name
-	Pwd                           string                     `json:"pwd,omitempty"`             // GSM user password
-	SaveName                      bool                       `json:"savename,omitempty"`        // Store net service name instead of descriptor
-	Connect                       string                     `json:"connect,omitempty"`         // Connect identifier / net service name
-	AdditionalPVCs                []AdditionalPVCSpec        `json:"additionalPVCs,omitempty"`
-	DisableDefaultLogVolumeClaims bool                       `json:"disableDefaultLogVolumeClaims,omitempty"`
-	ServiceAnnotations            map[string]string          `json:"serviceAnnotations,omitempty"`
-	ExternalServiceAnnotations    map[string]string          `json:"externalServiceAnnotations,omitempty"`
-	SecurityContext               *corev1.PodSecurityContext `json:"securityContext,omitempty"`
-	Capabilities                  *corev1.Capabilities       `json:"capabilities,omitempty"`
+	DiskThreshold              int32                      `json:"diskThreshold,omitempty"`   // Disk latency threshold (ms)
+	Force                      bool                       `json:"force,omitempty"`           // Force replace existing GDS config
+	Rack                       string                     `json:"rack,omitempty"`            // Rack / availability group
+	ValidateNetwork            bool                       `json:"validateNetwork,omitempty"` // Enable network validation
+	GgService                  string                     `json:"ggService,omitempty"`       // GoldenGate Admin Server URI
+	Replace                    string                     `json:"replace,omitempty"`         // Replaced database name
+	Pwd                        string                     `json:"pwd,omitempty"`             // GSM user password
+	SaveName                   bool                       `json:"savename,omitempty"`        // Store net service name instead of descriptor
+	Connect                    string                     `json:"connect,omitempty"`         // Connect identifier / net service name
+	AdditionalPVCs             []AdditionalPVCSpec        `json:"additionalPVCs,omitempty"`
+	ServiceAnnotations         map[string]string          `json:"serviceAnnotations,omitempty"`
+	ExternalServiceAnnotations map[string]string          `json:"externalServiceAnnotations,omitempty"`
+	SecurityContext            *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+	Capabilities               *corev1.Capabilities       `json:"capabilities,omitempty"`
 	// Extra shard fields for GDD-style sharding
 	PdbPreFix            string         `json:"pdbPreFix,omitempty"`
 	ReadinessCheckPeriod int            `json:"readinessCheckPeriod,omitempty"`
@@ -362,14 +367,13 @@ type CatalogSpec struct {
 	CatalogDatabaseRef *DatabaseRef `json:"catalogDatabaseRef,omitempty"` // Existing catalog DB (reuse)
 
 	// Control flags
-	UseExistingCatalog            bool                       `json:"useExistingCatalog,omitempty"` // true to reuse existing catalog
-	CreateAs                      string                     `json:"createAs,omitempty"`           // CreateAs mode (if you define semantics)
-	AdditionalPVCs                []AdditionalPVCSpec        `json:"additionalPVCs,omitempty"`
-	DisableDefaultLogVolumeClaims bool                       `json:"disableDefaultLogVolumeClaims,omitempty"`
-	ServiceAnnotations            map[string]string          `json:"serviceAnnotations,omitempty"`
-	ExternalServiceAnnotations    map[string]string          `json:"externalServiceAnnotations,omitempty"`
-	SecurityContext               *corev1.PodSecurityContext `json:"securityContext,omitempty"`
-	Capabilities                  *corev1.Capabilities       `json:"capabilities,omitempty"`
+	UseExistingCatalog         bool                       `json:"useExistingCatalog,omitempty"` // true to reuse existing catalog
+	CreateAs                   string                     `json:"createAs,omitempty"`           // CreateAs mode (if you define semantics)
+	AdditionalPVCs             []AdditionalPVCSpec        `json:"additionalPVCs,omitempty"`
+	ServiceAnnotations         map[string]string          `json:"serviceAnnotations,omitempty"`
+	ExternalServiceAnnotations map[string]string          `json:"externalServiceAnnotations,omitempty"`
+	SecurityContext            *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+	Capabilities               *corev1.Capabilities       `json:"capabilities,omitempty"`
 }
 
 // GsmSpec defines the desired state of GSM (ADD GSM + deployment info).
@@ -413,15 +417,14 @@ type GsmSpec struct {
 
 	// Catalog / credentials bindings (Add GSM)
 
-	Catalog                       string                     `json:"catalog,omitempty"` // GDS catalog connect string (TNS alias)
-	Pwd                           string                     `json:"pwd,omitempty"`     // GSMCATUSER password
-	WalletPassword                string                     `json:"wpwd,omitempty"`    // Wallet password
-	AdditionalPVCs                []AdditionalPVCSpec        `json:"additionalPVCs,omitempty"`
-	DisableDefaultLogVolumeClaims bool                       `json:"disableDefaultLogVolumeClaims,omitempty"`
-	ServiceAnnotations            map[string]string          `json:"serviceAnnotations,omitempty"`
-	ExternalServiceAnnotations    map[string]string          `json:"externalServiceAnnotations,omitempty"`
-	SecurityContext               *corev1.PodSecurityContext `json:"securityContext,omitempty"`
-	Capabilities                  *corev1.Capabilities       `json:"capabilities,omitempty"`
+	Catalog                    string                     `json:"catalog,omitempty"` // GDS catalog connect string (TNS alias)
+	Pwd                        string                     `json:"pwd,omitempty"`     // GSMCATUSER password
+	WalletPassword             string                     `json:"wpwd,omitempty"`    // Wallet password
+	AdditionalPVCs             []AdditionalPVCSpec        `json:"additionalPVCs,omitempty"`
+	ServiceAnnotations         map[string]string          `json:"serviceAnnotations,omitempty"`
+	ExternalServiceAnnotations map[string]string          `json:"externalServiceAnnotations,omitempty"`
+	SecurityContext            *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+	Capabilities               *corev1.Capabilities       `json:"capabilities,omitempty"`
 }
 
 // GsmInfo wraps common GSM defaults and itemized GSM entries.
@@ -610,6 +613,13 @@ type PrimaryEndpointRef struct {
 	PdbName       string `json:"pdbName,omitempty"`
 }
 
+// StandbyPrimarySource defines a single standby primary source using one mutually exclusive mode.
+type StandbyPrimarySource struct {
+	DatabaseRef   *PrimaryDatabaseCRRef `json:"databaseRef,omitempty"`
+	ConnectString string                `json:"connectString,omitempty"`
+	Details       *PrimaryEndpointRef   `json:"details,omitempty"`
+}
+
 // TDEWalletConfig provides common wallet configuration for both global and standby-specific flows.
 type TDEWalletConfig struct {
 	// +kubebuilder:validation:Enum=enable;disable
@@ -631,10 +641,8 @@ type StandbyConfig struct {
 	// +kubebuilder:validation:Enum=SYNC;ASYNC
 	TransportMode string `json:"transportMode,omitempty"`
 
-	PrimaryDatabaseRefs   []PrimaryDatabaseCRRef `json:"primaryDatabaseRefs,omitempty"`
-	PrimaryConnectStrings []string               `json:"primaryConnectStrings,omitempty"`
-	PrimaryEndpoints      []PrimaryEndpointRef   `json:"primaryEndpoints,omitempty"`
-	TDEWallet             *TDEWalletConfig       `json:"tdeWallet,omitempty"`
+	PrimarySources []StandbyPrimarySource `json:"primarySources,omitempty"`
+	TDEWallet      *TDEWalletConfig       `json:"tdeWallet,omitempty"`
 }
 
 // EnvironmentVariable represents a named variable accessible for containers.
@@ -721,19 +729,18 @@ type ShardingDetails struct {
 	Replicas int32 `json:"replicas,omitempty"`
 
 	// +kubebuilder:default:=50
-	StorageSizeInGb               int32                        `json:"storageSizeInGb,omitempty"`
-	ShardGroupDetails             *ShardGroupSpec              `json:"shardGroupDetails,omitempty"`
-	ShardSpaceDetails             *ShardSpaceSpec              `json:"shardSpaceDetails,omitempty"`
-	PrimaryDatabaseRef            *DatabaseRef                 `json:"primaryDatabaseRef,omitempty"`
-	StandbyConfig                 *StandbyConfig               `json:"standbyConfig,omitempty"`
-	EnvVars                       []EnvironmentVariable        `json:"envVars,omitempty"`
-	Resources                     *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
-	AdditionalPVCs                []AdditionalPVCSpec          `json:"additionalPVCs,omitempty"`
-	DisableDefaultLogVolumeClaims bool                         `json:"disableDefaultLogVolumeClaims,omitempty"`
-	ServiceAnnotations            map[string]string            `json:"serviceAnnotations,omitempty"`
-	ExternalServiceAnnotations    map[string]string            `json:"externalServiceAnnotations,omitempty"`
-	SecurityContext               *corev1.PodSecurityContext   `json:"securityContext,omitempty"`
-	Capabilities                  *corev1.Capabilities         `json:"capabilities,omitempty"`
+	StorageSizeInGb            int32                        `json:"storageSizeInGb,omitempty"`
+	ShardGroupDetails          *ShardGroupSpec              `json:"shardGroupDetails,omitempty"`
+	ShardSpaceDetails          *ShardSpaceSpec              `json:"shardSpaceDetails,omitempty"`
+	PrimaryDatabaseRef         *DatabaseRef                 `json:"primaryDatabaseRef,omitempty"`
+	StandbyConfig              *StandbyConfig               `json:"standbyConfig,omitempty"`
+	EnvVars                    []EnvironmentVariable        `json:"envVars,omitempty"`
+	Resources                  *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	AdditionalPVCs             []AdditionalPVCSpec          `json:"additionalPVCs,omitempty"`
+	ServiceAnnotations         map[string]string            `json:"serviceAnnotations,omitempty"`
+	ExternalServiceAnnotations map[string]string            `json:"externalServiceAnnotations,omitempty"`
+	SecurityContext            *corev1.PodSecurityContext   `json:"securityContext,omitempty"`
+	Capabilities               *corev1.Capabilities         `json:"capabilities,omitempty"`
 }
 
 type ShardStatusMapKeys string

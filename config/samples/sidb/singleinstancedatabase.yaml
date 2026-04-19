@@ -25,9 +25,16 @@ spec:
   convertToSnapshotStandby: false
 
   ## Reference to a source primary database.
-  ## Valid only when createAs is clone, standby or truecache
-  ## The name of a source primary database resource from the same namespace
-  primaryDatabaseRef: ""
+  ## Valid only when createAs is clone, standby or truecache.
+  ## Set exactly one of primarySource.databaseRef, primarySource.connectString, or primarySource.details.
+  primarySource:
+  #   databaseRef: sidb-sample
+  #   connectString: primary-host:1521/ORCL1
+  #   details:
+  #     host: primary-host
+  #     port: 1521
+  #     sid: ORCL1
+  #     pdbName: ORCLPDB1
 
   ## Only valid when createAs is set to truecache 
   ## Accepts a semi colon separated map of `PRIMARY_PDB_SERIVCE_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
@@ -157,6 +164,18 @@ spec:
   ## Service Annotations (Cloud provider specific), for configuring the service (e.g. private LoadBalancer service)
   #serviceAnnotations:
   #  service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+  ##
+  ## Preferred external service configuration
+  ## services:
+  ##   external:
+  ##     type: LoadBalancer
+  ##     annotations:
+  ##       service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+  ##     tcp:
+  ##       enabled: true
+  ##       port: 1521
+  ##     tcps:
+  ##       enabled: false
 
   ## Deploy only on nodes having required labels. Format label_name: label_value
   ## For instance if the pods need to be restricted to a particular AD

@@ -71,9 +71,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	dataguardcommon "github.com/oracle/oracle-database-operator/commons/dataguard"
 	dgsharding "github.com/oracle/oracle-database-operator/commons/dataguard/sharding"
 	sharedk8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
@@ -101,6 +103,8 @@ type phaseResult struct {
 	message      string
 }
 
+type shardingPhaseFunc func(context.Context, *databasev4.ShardingDatabase, *databasev4.ShardingDatabaseStatus, *conditionSet) phaseResult
+
 type conditionSet struct {
 	observedGen int64
 	ready       metav1.Condition
@@ -114,7 +118,8 @@ const (
 	updateLockRequeue    = 15 * time.Second
 	statusRefreshRequeue = 60 * time.Second
 
-	lockOverrideAnnotation = lockpolicy.DefaultOverrideAnnotation
+	lockOverrideAnnotation                  = lockpolicy.DefaultOverrideAnnotation
+	shardingDataguardPrereqsRerunAnnotation = "database.oracle.com/dataguard-prereqs-rerun-token"
 
 	credentialSyncConditionType         = "CredentialSync"
 	credentialSyncHashAnnotation        = "database.oracle.com/credential-sync-hash"
@@ -155,6 +160,7 @@ var (
 func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	//ctx := context.Background()
 	//_ = r.Log.WithValues("shardingdatabase", req.NamespacedName)
+	reqLogger := ctrllog.FromContext(ctx).WithValues("shardingdatabase", req.NamespacedName)
 	inst := &databasev4.ShardingDatabase{}
 	if err := r.Get(ctx, req.NamespacedName, inst); err != nil {
 		if errors.IsNotFound(err) {
@@ -167,7 +173,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if locked, lockGen, lockMsg := isUpdateLockActive(inst); locked && inst.Generation > lockGen {
 			enforceLock := true
 			if lastSuccSpec, err := inst.GetLastSuccessfulSpec(); err != nil {
-				r.logLegacy("WARNING", "Unable to evaluate conditional update lock; enforcing lock. err="+err.Error(), err, inst, r.Log)
+				r.logLegacy("WARNING", "Unable to evaluate conditional update lock; enforcing lock. err="+err.Error(), err, inst, reqLogger)
 			} else if lastSuccSpec != nil {
 				enforceLock = shouldEnforceUpdateLock(lastSuccSpec, &inst.Spec)
 			}
@@ -175,7 +181,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			if enforceLock {
 				overrideEnabled, overrideMsg := isUpdateLockOverrideEnabled(inst)
 				if overrideEnabled {
-					r.logLegacy("WARNING", "Bypassing update lock due to break-glass override. "+overrideMsg, nil, inst, r.Log)
+					r.logLegacy("WARNING", "Bypassing update lock due to break-glass override. "+overrideMsg, nil, inst, reqLogger)
 				} else {
 					status := inst.Status.DeepCopy()
 					finalCond := newConditionSet(inst.Generation)
@@ -188,7 +194,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 					return ctrl.Result{RequeueAfter: updateLockRequeue}, nil
 				}
 			} else {
-				r.logLegacy("INFO", "Update lock not enforced for non-topology spec change", nil, inst, r.Log)
+				r.logLegacy("INFO", "Update lock not enforced for non-topology spec change", nil, inst, reqLogger)
 			}
 		}
 	}
@@ -198,7 +204,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	finalCond := newConditionSet(inst.Generation)
 
 	// Phase 3: Delete
-	pr := r.phaseDelete(ctx, inst, status, finalCond)
+	pr := r.runPhase(ctx, inst, "delete", r.phaseDelete, status, finalCond)
 	if pr.err != nil {
 		r.markDegraded(finalCond, pr.reason, pr.message)
 		_ = r.flushStatus(ctx, req.NamespacedName, status, finalCond)
@@ -211,18 +217,21 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	//Calling different pahses from following block
-	phases := []func(context.Context, *databasev4.ShardingDatabase, *databasev4.ShardingDatabaseStatus, *conditionSet) phaseResult{
-		r.phaseValidateAndPlan,
-		r.phaseEnsureCoreResources,
-		r.phaseValidateCoreReady,
-		r.phasePrimaryShardOps,
-		r.phaseStandbyShardOps,
-		r.phaseScaleOps,
-		r.phasePostSync,
+	phases := []struct {
+		name string
+		fn   shardingPhaseFunc
+	}{
+		{name: "validate_plan", fn: r.phaseValidateAndPlan},
+		{name: "ensure_core_resources", fn: r.phaseEnsureCoreResources},
+		{name: "validate_core", fn: r.phaseValidateCoreReady},
+		{name: "primary_shard_ops", fn: r.phasePrimaryShardOps},
+		{name: "standby_shard_ops", fn: r.phaseStandbyShardOps},
+		{name: "scale_ops", fn: r.phaseScaleOps},
+		{name: "post_sync", fn: r.phasePostSync},
 	}
 
 	for _, p := range phases {
-		pr = p(ctx, inst, status, finalCond)
+		pr = r.runPhase(ctx, inst, p.name, p.fn, status, finalCond)
 		if pr.err != nil {
 			r.markDegraded(finalCond, pr.reason, pr.message)
 			_ = r.flushStatus(ctx, req.NamespacedName, status, finalCond)
@@ -251,6 +260,29 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{RequeueAfter: credentialRetryAfter}, nil
 	}
 	return ctrl.Result{RequeueAfter: statusRefreshRequeue}, nil
+}
+
+func (r *ShardingDatabaseReconciler) runPhase(
+	ctx context.Context,
+	inst *databasev4.ShardingDatabase,
+	phase string,
+	fn shardingPhaseFunc,
+	st *databasev4.ShardingDatabaseStatus,
+	c *conditionSet,
+) phaseResult {
+	log := r.phaseLogger(ctx, inst, phase)
+	log.Info("Phase started")
+	pr := fn(ctx, inst, st, c)
+	if pr.err != nil {
+		log.Error(pr.err, "Phase failed", "reason", pr.reason, "message", pr.message)
+		return pr
+	}
+	if pr.wait {
+		log.Info("Phase requested requeue", "reason", pr.reason, "message", pr.message, "requeueAfter", pr.requeueAfter)
+		return pr
+	}
+	log.Info("Phase completed")
+	return pr
 }
 
 // Phase 2 :Condition + Status Writer (single-writer pattern)
@@ -313,9 +345,9 @@ func (r *ShardingDatabaseReconciler) phaseDelete(
 // Phase 4 : Validate + Plan
 // phaseValidateAndPlan validates spec and applies prerequisite spec patches before core reconciliation.
 func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
-	ctx context.Context, inst *databasev4.ShardingDatabase, _ *databasev4.ShardingDatabaseStatus, _ *conditionSet,
+	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, _ *conditionSet,
 ) phaseResult {
-	plog := r.phaseLogger(inst, "validate_plan")
+	plog := r.phaseLogger(ctx, inst, "validate_plan")
 	if err := r.validateSpex(inst); err != nil {
 		return phaseResult{err: err, reason: "SpecInvalid", message: err.Error()}
 	}
@@ -348,6 +380,10 @@ func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
 	if err := r.syncDgPairsFromStandbyConfig(inst); err != nil {
 		plog.Error(err, "failed to sync dg pair status from standbyConfig", "reason", "DgPairStatusSyncRetry")
 		return phaseResult{wait: true, requeueAfter: 30 * time.Second, reason: "DgPairStatusSyncRetry", message: err.Error()}
+	}
+	if st != nil {
+		st.Dg.Pairs = r.buildDgPairsFromStandbyConfig(inst)
+		r.syncShardingDataguardPreviewStatus(inst, st)
 	}
 
 	origScaleOut := inst.DeepCopy()
@@ -384,7 +420,6 @@ func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
 func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
 
@@ -400,11 +435,11 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	if !externalCatalogMode {
 		for i = 0; i < int32(len(inst.Spec.Catalog)); i++ {
 			oraCatalogSpec := inst.Spec.Catalog[i]
-			if _, err := r.createService(inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "local")); err != nil {
+			if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "local")); err != nil {
 				return phaseResult{err: err, reason: "CatalogServiceCreateFailed", message: err.Error()}
 			}
 			if inst.Spec.IsExternalSvc {
-				if _, err := r.createService(inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "external")); err != nil {
+				if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "external")); err != nil {
 					return phaseResult{err: err, reason: "CatalogExternalServiceCreateFailed", message: err.Error()}
 				}
 			}
@@ -427,6 +462,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 				return phaseResult{err: err, reason: "CatalogMemoryValidationFailed", message: err.Error()}
 			}
 			if _, err := r.deployStatefulSet(
+				ctx,
 				inst,
 				catalogSts,
 				"CATALOG",
@@ -435,7 +471,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 			); err != nil {
 				return phaseResult{err: err, reason: "CatalogStatefulSetFailed", message: err.Error()}
 			}
-			if err := r.reconcilePVCExpansion(inst, oraCatalogSpec.Name, normalizedPVCResizeSpecs(oraCatalogSpec.Name, oraCatalogSpec.StorageSizeInGb, oraCatalogSpec.DisableDefaultLogVolumeClaims, oraCatalogSpec.AdditionalPVCs)); err != nil {
+			if err := r.reconcilePVCExpansion(inst, oraCatalogSpec.Name, normalizedPVCResizeSpecs(oraCatalogSpec.Name, oraCatalogSpec.StorageSizeInGb, oraCatalogSpec.AdditionalPVCs)); err != nil {
 				return phaseResult{err: err, reason: "CatalogPVCExpandFailed", message: err.Error()}
 			}
 		}
@@ -444,11 +480,11 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	// Service setup for GSM
 	for i = 0; i < int32(len(inst.Spec.Gsm)); i++ {
 		oraGsmSpec := inst.Spec.Gsm[i]
-		if _, err := r.createService(inst, shardingv1.BuildServiceDefForGsm(inst, 0, oraGsmSpec, "local")); err != nil {
+		if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForGsm(inst, 0, oraGsmSpec, "local")); err != nil {
 			return phaseResult{err: err, reason: "GsmServiceCreateFailed", message: err.Error()}
 		}
 		if inst.Spec.IsExternalSvc {
-			if _, err := r.createService(inst, shardingv1.BuildServiceDefForGsm(inst, 0, oraGsmSpec, "external")); err != nil {
+			if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForGsm(inst, 0, oraGsmSpec, "external")); err != nil {
 				return phaseResult{err: err, reason: "GsmExternalServiceCreateFailed", message: err.Error()}
 			}
 		}
@@ -458,6 +494,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	for i = 0; i < int32(len(inst.Spec.Gsm)); i++ {
 		oraGsmSpec := inst.Spec.Gsm[i]
 		if _, err := r.deployStatefulSet(
+			ctx,
 			inst,
 			shardingv1.BuildStatefulSetForGsm(inst, oraGsmSpec),
 			"GSM",
@@ -466,7 +503,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		); err != nil {
 			return phaseResult{err: err, reason: "GsmStatefulSetFailed", message: err.Error()}
 		}
-		if err := r.reconcilePVCExpansion(inst, oraGsmSpec.Name, normalizedGsmPVCResizeSpecs(oraGsmSpec.Name, oraGsmSpec.StorageSizeInGb, oraGsmSpec.DisableDefaultLogVolumeClaims, oraGsmSpec.AdditionalPVCs)); err != nil {
+		if err := r.reconcilePVCExpansion(inst, oraGsmSpec.Name, normalizedGsmPVCResizeSpecs(oraGsmSpec.Name, oraGsmSpec.StorageSizeInGb, oraGsmSpec.AdditionalPVCs)); err != nil {
 			return phaseResult{err: err, reason: "GsmPVCExpandFailed", message: err.Error()}
 		}
 	}
@@ -484,11 +521,11 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		if shardingv1.CheckIsDeleteFlag(oraShardSpec.IsDelete, inst, r.Log) {
 			continue
 		}
-		if _, err := r.createService(inst, shardingv1.BuildServiceDefForShard(inst, 0, oraShardSpec, "local")); err != nil {
+		if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForShard(inst, 0, oraShardSpec, "local")); err != nil {
 			return phaseResult{err: err, reason: "ShardServiceCreateFailed", message: err.Error()}
 		}
 		if inst.Spec.IsExternalSvc {
-			if _, err := r.createService(inst, shardingv1.BuildServiceDefForShard(inst, 0, oraShardSpec, "external")); err != nil {
+			if _, err := r.createService(ctx, inst, shardingv1.BuildServiceDefForShard(inst, 0, oraShardSpec, "external")); err != nil {
 				return phaseResult{err: err, reason: "ShardExternalServiceCreateFailed", message: err.Error()}
 			}
 		}
@@ -505,6 +542,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 			return phaseResult{err: err, reason: "ShardMemoryValidationFailed", message: err.Error()}
 		}
 		if _, err := r.deployStatefulSet(
+			ctx,
 			inst,
 			shardSts,
 			"SHARD",
@@ -513,7 +551,7 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		); err != nil {
 			return phaseResult{err: err, reason: "ShardStatefulSetFailed", message: err.Error()}
 		}
-		if err := r.reconcilePVCExpansion(inst, oraShardSpec.Name, normalizedPVCResizeSpecs(oraShardSpec.Name, oraShardSpec.StorageSizeInGb, oraShardSpec.DisableDefaultLogVolumeClaims, oraShardSpec.AdditionalPVCs)); err != nil {
+		if err := r.reconcilePVCExpansion(inst, oraShardSpec.Name, normalizedPVCResizeSpecs(oraShardSpec.Name, oraShardSpec.StorageSizeInGb, oraShardSpec.AdditionalPVCs)); err != nil {
 			return phaseResult{err: err, reason: "ShardPVCExpandFailed", message: err.Error()}
 		}
 	}
@@ -550,31 +588,21 @@ type pvcResizeSpec struct {
 	storageSizeInGb int32
 }
 
-func normalizedPVCResizeSpecs(ownerName string, baseStorageSize int32, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
-	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, disableDefaultLogPVCs, databasev4.DefaultOraDataMountPath, databasev4.DefaultDiagMountPath, additionalPVCs)
+func normalizedPVCResizeSpecs(ownerName string, baseStorageSize int32, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
+	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, databasev4.DefaultOraDataMountPath, additionalPVCs)
 }
 
-func normalizedGsmPVCResizeSpecs(ownerName string, baseStorageSize int32, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
-	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, disableDefaultLogPVCs, databasev4.DefaultGsmDataMountPath, databasev4.DefaultGsmDiagMountPath, additionalPVCs)
+func normalizedGsmPVCResizeSpecs(ownerName string, baseStorageSize int32, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
+	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, databasev4.DefaultGsmDataMountPath, additionalPVCs)
 }
 
-func normalizedPVCResizeSpecsWithDefaults(ownerName string, baseStorageSize int32, disableDefaultLogPVCs bool, baseMountPath, diagMountPath string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
+func normalizedPVCResizeSpecsWithDefaults(ownerName string, baseStorageSize int32, baseMountPath string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
 	trimmedOwner := strings.TrimSpace(ownerName)
 	specByPath := map[string]pvcResizeSpec{
 		baseMountPath: {
 			volumeName:      trimmedOwner + "-oradata-vol4",
 			storageSizeInGb: baseStorageSize,
 		},
-	}
-	if !disableDefaultLogPVCs {
-		specByPath[diagMountPath] = pvcResizeSpec{
-			volumeName:      trimmedOwner + "-diag-vol10",
-			storageSizeInGb: databasev4.DefaultDiagSizeInGb,
-		}
-		specByPath[databasev4.DefaultGddLogMountPath] = pvcResizeSpec{
-			volumeName:      trimmedOwner + "-gdd-vol11",
-			storageSizeInGb: databasev4.DefaultGddLogSizeInGb,
-		}
 	}
 
 	for i := range additionalPVCs {
@@ -602,14 +630,6 @@ func normalizedPVCResizeSpecsWithDefaults(ownerName string, baseStorageSize int3
 	result := make([]pvcResizeSpec, 0, len(specByPath))
 	result = append(result, specByPath[baseMountPath])
 	delete(specByPath, baseMountPath)
-	if cfg, ok := specByPath[diagMountPath]; ok {
-		result = append(result, cfg)
-		delete(specByPath, diagMountPath)
-	}
-	if cfg, ok := specByPath[databasev4.DefaultGddLogMountPath]; ok {
-		result = append(result, cfg)
-		delete(specByPath, databasev4.DefaultGddLogMountPath)
-	}
 	extraPaths := make([]string, 0, len(specByPath))
 	for mountPath := range specByPath {
 		extraPaths = append(extraPaths, mountPath)
@@ -713,10 +733,9 @@ func (r *ShardingDatabaseReconciler) reconcilePVCExpansion(instance *databasev4.
 func (r *ShardingDatabaseReconciler) phaseValidateCoreReady(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
-	plog := r.phaseLogger(inst, "validate_core")
+	plog := r.phaseLogger(ctx, inst, "validate_core")
 
 	// Existing reconcile behavior: if GSM/Catalog are not ready, keep waiting/requeueing.
 	if err := r.validateGsmnCatalog(inst); err != nil {
@@ -737,10 +756,9 @@ func (r *ShardingDatabaseReconciler) phaseValidateCoreReady(
 func (r *ShardingDatabaseReconciler) phasePrimaryShardOps(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
-	plog := r.phaseLogger(inst, "primary_shard_ops")
+	plog := r.phaseLogger(ctx, inst, "primary_shard_ops")
 
 	// Existing behavior: check shard state first; if transitional/error states exist, requeue.
 	if err := r.checkShardState(inst); err != nil {
@@ -772,10 +790,9 @@ func (r *ShardingDatabaseReconciler) phasePrimaryShardOps(
 func (r *ShardingDatabaseReconciler) phaseStandbyShardOps(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
-	plog := r.phaseLogger(inst, "standby_shard_ops")
+	plog := r.phaseLogger(ctx, inst, "standby_shard_ops")
 
 	// Existing behavior: standby shard + DG broker enablement is retried until complete.
 	if err := r.addStandbyShards(ctx, inst); err != nil {
@@ -800,10 +817,9 @@ func (r *ShardingDatabaseReconciler) phaseStandbyShardOps(
 func (r *ShardingDatabaseReconciler) phaseScaleOps(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = ctx
 	_ = st
 	_ = c
-	plog := r.phaseLogger(inst, "scale_ops")
+	plog := r.phaseLogger(ctx, inst, "scale_ops")
 
 	if err := r.pruneImportedTDEShardsAnnotation(ctx, inst); err != nil {
 		plog.Info("failed to prune tde import annotation; requeue", "reason", "TDEImportAnnotationPruneRetry", "error", err.Error(), "requeueAfter", 10*time.Second)
@@ -834,9 +850,12 @@ func (r *ShardingDatabaseReconciler) phaseScaleOps(
 func (r *ShardingDatabaseReconciler) phasePostSync(
 	ctx context.Context, inst *databasev4.ShardingDatabase, st *databasev4.ShardingDatabaseStatus, c *conditionSet,
 ) phaseResult {
-	_ = st
 	_ = c
-	plog := r.phaseLogger(inst, "post_sync")
+	plog := r.phaseLogger(ctx, inst, "post_sync")
+
+	if st != nil {
+		r.syncShardingDataguardPreviewStatus(inst, st)
+	}
 
 	// Existing behavior: always refresh aggregate shard topology status near end of reconcile.
 	defer r.updateShardTopologyStatus(inst)
@@ -889,8 +908,8 @@ func (r *ShardingDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // phaseLogger returns a logger pre-populated with phase and object identity fields.
-func (r *ShardingDatabaseReconciler) phaseLogger(inst *databasev4.ShardingDatabase, phase string) logr.Logger {
-	log := r.Log.WithValues("phase", phase)
+func (r *ShardingDatabaseReconciler) phaseLogger(ctx context.Context, inst *databasev4.ShardingDatabase, phase string) logr.Logger {
+	log := ctrllog.FromContext(ctx).WithValues("phase", phase)
 	if inst != nil {
 		log = log.WithValues("namespace", inst.Namespace, "name", inst.Name)
 	}
@@ -1817,6 +1836,96 @@ type primaryIdentity struct {
 	Source  string
 }
 
+type resolvedStandbyPrimarySource struct {
+	databaseRef   *databasev4.PrimaryDatabaseCRRef
+	connectString string
+	details       *databasev4.PrimaryEndpointRef
+}
+
+func resolveStandbyPrimarySources(cfg *databasev4.StandbyConfig) []resolvedStandbyPrimarySource {
+	if cfg == nil {
+		return nil
+	}
+	out := make([]resolvedStandbyPrimarySource, 0, len(cfg.PrimarySources))
+	for i := range cfg.PrimarySources {
+		source := cfg.PrimarySources[i]
+		if ref := source.DatabaseRef; ref != nil && strings.TrimSpace(ref.Name) != "" {
+			out = append(out, resolvedStandbyPrimarySource{databaseRef: ref})
+			continue
+		}
+		if connect := strings.TrimSpace(source.ConnectString); connect != "" {
+			out = append(out, resolvedStandbyPrimarySource{connectString: connect})
+			continue
+		}
+		if source.Details != nil {
+			out = append(out, resolvedStandbyPrimarySource{details: source.Details})
+		}
+	}
+	return out
+}
+
+func (source resolvedStandbyPrimarySource) hasSource() bool {
+	return source.databaseRef != nil || source.connectString != "" || source.details != nil
+}
+
+func (source resolvedStandbyPrimarySource) toIdentity(defaultNamespace string) *primaryIdentity {
+	if source.databaseRef != nil && strings.TrimSpace(source.databaseRef.Name) != "" {
+		ns := strings.TrimSpace(source.databaseRef.Namespace)
+		if ns == "" {
+			ns = defaultNamespace
+		}
+		return &primaryIdentity{
+			Key:    ns + "/" + strings.TrimSpace(source.databaseRef.Name),
+			Source: "PrimaryDatabaseRef",
+		}
+	}
+	if source.connectString != "" {
+		return &primaryIdentity{
+			Key:     source.connectString,
+			Connect: source.connectString,
+			Source:  "ConnectString",
+		}
+	}
+	if source.details != nil {
+		connect := buildExternalPrimaryConnectString(source.details)
+		key := connect
+		if key == "" {
+			host := strings.ToLower(strings.TrimSpace(source.details.Host))
+			cdb := strings.ToUpper(strings.TrimSpace(source.details.CdbName))
+			pdb := strings.ToUpper(strings.TrimSpace(source.details.PdbName))
+			key = host + ":" + strconv.Itoa(int(source.details.Port)) + "/" + cdb + "/" + pdb
+		}
+		if key == "" {
+			return nil
+		}
+		return &primaryIdentity{
+			Key:     key,
+			Connect: connect,
+			Source:  "Endpoint",
+		}
+	}
+	return nil
+}
+
+func buildExternalPrimaryConnectString(endpoint *databasev4.PrimaryEndpointRef) string {
+	if endpoint == nil {
+		return ""
+	}
+	if connect := strings.TrimSpace(endpoint.ConnectString); connect != "" {
+		return connect
+	}
+	host := strings.TrimSpace(endpoint.Host)
+	cdb := strings.TrimSpace(endpoint.CdbName)
+	if host == "" || cdb == "" {
+		return ""
+	}
+	port := endpoint.Port
+	if port <= 0 {
+		port = 1521
+	}
+	return fmt.Sprintf("//%s:%d/%s", host, port, shardingv1.BuildDgmgrlServiceName(cdb))
+}
+
 func (r *ShardingDatabaseReconciler) buildDgPairsFromStandbyConfig(instance *databasev4.ShardingDatabase) []databasev4.DgPairStatus {
 	if effectiveShardingTypeForConstraints(instance) != "USER" {
 		return nil
@@ -1884,61 +1993,11 @@ func buildPrimaryIdentities(instance *databasev4.ShardingDatabase, cfg *database
 		ids = append(ids, pid)
 	}
 
-	appendRefs := func() {
-		for i := range cfg.PrimaryDatabaseRefs {
-			ref := cfg.PrimaryDatabaseRefs[i]
-			name := strings.TrimSpace(ref.Name)
-			if name == "" {
-				continue
-			}
-			ns := strings.TrimSpace(ref.Namespace)
-			if ns == "" {
-				ns = instance.Namespace
-			}
-			appendID(primaryIdentity{
-				Key:    ns + "/" + name,
-				Source: "PrimaryDatabaseRef",
-			})
+	for _, resolved := range resolveStandbyPrimarySources(cfg) {
+		if pid := resolved.toIdentity(instance.Namespace); pid != nil {
+			appendID(*pid)
 		}
 	}
-	appendConnects := func() {
-		for i := range cfg.PrimaryConnectStrings {
-			c := strings.TrimSpace(cfg.PrimaryConnectStrings[i])
-			if c == "" {
-				continue
-			}
-			appendID(primaryIdentity{
-				Key:     c,
-				Connect: c,
-				Source:  "ConnectString",
-			})
-		}
-	}
-	appendEndpoints := func() {
-		for i := range cfg.PrimaryEndpoints {
-			e := cfg.PrimaryEndpoints[i]
-			connect := strings.TrimSpace(e.ConnectString)
-			key := connect
-			if key == "" {
-				host := strings.TrimSpace(e.Host)
-				cdb := strings.TrimSpace(e.CdbName)
-				pdb := strings.TrimSpace(e.PdbName)
-				if host == "" && cdb == "" && pdb == "" {
-					continue
-				}
-				key = strings.ToLower(host) + ":" + strconv.Itoa(int(e.Port)) + "/" + strings.ToUpper(cdb) + "/" + strings.ToUpper(pdb)
-			}
-			appendID(primaryIdentity{
-				Key:     key,
-				Connect: connect,
-				Source:  "Endpoint",
-			})
-		}
-	}
-
-	appendRefs()
-	appendConnects()
-	appendEndpoints()
 
 	sort.Slice(ids, func(i, j int) bool { return ids[i].Key < ids[j].Key })
 	return ids
@@ -2549,7 +2608,7 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 		}
 
 		if standbyConfigPrimaryCountController(info.StandbyConfig) > 0 {
-			// standbyConfig explicitly provides primary source(s); no local primary-ref autofill required.
+			// standbyConfig explicitly provides primarySources; no local primary-ref autofill required.
 			continue
 		}
 
@@ -2888,6 +2947,16 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(_ context.Context, instanc
 
 			cfgName := r.buildDgConfigName(instance, *primary, OraShardSpex)
 			standbyConnects := []string{r.buildShardConnectIdentifier(instance, OraShardSpex, strings.ToUpper(strings.TrimSpace(OraShardSpex.Name)))}
+			if err := r.ensureShardDataguardPrereqs(instance, *primary); err != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:primary-prereqs:"+err.Error())
+				return err
+			}
+			if err := r.ensureShardDataguardPrereqs(instance, OraShardSpex); err != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:standby-prereqs:"+err.Error())
+				return err
+			}
 
 			workflow := dgsharding.NewStandbyWorkflow(dgsharding.StandbyWorkflowOptions{
 				Instance:        instance,
@@ -3293,14 +3362,14 @@ func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev4.Shard
 // ================================== CREATE FUNCTIONS =============================
 // This function create a service based isExtern parameter set in the yaml file
 // createService ensures a Service exists for the requested topology member.
-func (r *ShardingDatabaseReconciler) createService(instance *databasev4.ShardingDatabase,
+func (r *ShardingDatabaseReconciler) createService(ctx context.Context, instance *databasev4.ShardingDatabase,
 	dep *corev1.Service,
 ) (ctrl.Result, error) {
 	if dep == nil {
 		return ctrl.Result{}, fmt.Errorf("createService received nil Service")
 	}
 
-	reqLogger := r.Log.WithValues(
+	reqLogger := ctrllog.FromContext(ctx).WithValues(
 		"instanceNamespace", instance.Namespace,
 		"instanceName", instance.Name,
 		"serviceName", dep.GetName(),
@@ -3334,7 +3403,7 @@ func (r *ShardingDatabaseReconciler) createService(instance *databasev4.Sharding
 		reqLogger.Info("Service reconciled to desired state")
 		return ctrl.Result{Requeue: true}, nil
 	}
-	r.logLegacy("DEBUG", "Service "+shardingv1.GetFmtStr(dep.Name)+" already in desired state", nil, instance, r.Log)
+	r.logLegacy("DEBUG", "Service "+shardingv1.GetFmtStr(dep.Name)+" already in desired state", nil, instance, reqLogger)
 	return ctrl.Result{}, nil
 }
 
@@ -3342,6 +3411,7 @@ func (r *ShardingDatabaseReconciler) createService(instance *databasev4.Sharding
 
 // deployStatefulSet ensures a StatefulSet exists for the requested topology member.
 func (r *ShardingDatabaseReconciler) deployStatefulSet(
+	ctx context.Context,
 	instance *databasev4.ShardingDatabase,
 	dep *appsv1.StatefulSet,
 	resType string,
@@ -3352,7 +3422,7 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(
 		return ctrl.Result{}, fmt.Errorf("deployStatefulSet received nil StatefulSet for %s", strings.ToUpper(strings.TrimSpace(resType)))
 	}
 
-	reqLogger := r.Log.WithValues(
+	reqLogger := ctrllog.FromContext(ctx).WithValues(
 		"instanceNamespace", instance.Namespace,
 		"instanceName", instance.Name,
 		"resourceType", strings.ToUpper(strings.TrimSpace(resType)),
@@ -3483,6 +3553,78 @@ func (r *ShardingDatabaseReconciler) dgBrokerDone(instance *databasev4.ShardingD
 	}
 	v := strings.ToLower(strings.TrimSpace(instance.Status.Dg.Broker[shardName]))
 	return v == "true" || v == "enabled" || v == "configured"
+}
+
+func getShardingDataguardPrereqsEnabled(instance *databasev4.ShardingDatabase) bool {
+	if instance == nil {
+		return false
+	}
+	return databasev4.DataguardProducerPrereqsEnabled(instance.Spec.Dataguard)
+}
+
+func getShardingDataguardPrereqsRerunToken(instance *databasev4.ShardingDatabase) string {
+	if instance == nil {
+		return ""
+	}
+	return strings.TrimSpace(instance.GetAnnotations()[shardingDataguardPrereqsRerunAnnotation])
+}
+
+func shardingDataguardPrereqsDesiredHash(instance *databasev4.ShardingDatabase) string {
+	if instance == nil {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		databasev4.DataguardProducerBrokerConfigDir(instance.Spec.Dataguard),
+		databasev4.DataguardProducerStandbyRedoSize(instance.Spec.Dataguard),
+	}, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+func shouldRunShardingDataguardPrereqs(instance *databasev4.ShardingDatabase, shardName string) bool {
+	if !getShardingDataguardPrereqsEnabled(instance) {
+		return false
+	}
+	name := strings.TrimSpace(shardName)
+	if name == "" {
+		return false
+	}
+	desiredHash := shardingDataguardPrereqsDesiredHash(instance)
+	rerunToken := getShardingDataguardPrereqsRerunToken(instance)
+	if instance.Status.DataguardPrereqsHash == nil || strings.TrimSpace(instance.Status.DataguardPrereqsHash[name]) != desiredHash {
+		return true
+	}
+	if instance.Status.DataguardPrereqsRerunToken == nil || strings.TrimSpace(instance.Status.DataguardPrereqsRerunToken[name]) != rerunToken {
+		return true
+	}
+	return false
+}
+
+func (r *ShardingDatabaseReconciler) ensureShardDataguardPrereqs(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) error {
+	if !shouldRunShardingDataguardPrereqs(instance, shard.Name) {
+		return nil
+	}
+	podName := strings.TrimSpace(shard.Name) + "-0"
+	command := dbcommons.BuildDataguardPrereqsCommand(
+		"configure",
+		databasev4.DataguardProducerBrokerConfigDir(instance.Spec.Dataguard),
+		databasev4.DataguardProducerStandbyRedoSize(instance.Spec.Dataguard),
+	)
+	if err := shardingv1.ExecShellInPod(podName, command, instance, r.kubeConfig, r.Log); err != nil {
+		return err
+	}
+	desiredHash := shardingDataguardPrereqsDesiredHash(instance)
+	rerunToken := getShardingDataguardPrereqsRerunToken(instance)
+	return r.updateStatusWithRetry(instance, func(latest *databasev4.ShardingDatabase) {
+		if latest.Status.DataguardPrereqsHash == nil {
+			latest.Status.DataguardPrereqsHash = map[string]string{}
+		}
+		if latest.Status.DataguardPrereqsRerunToken == nil {
+			latest.Status.DataguardPrereqsRerunToken = map[string]string{}
+		}
+		name := strings.TrimSpace(shard.Name)
+		latest.Status.DataguardPrereqsHash[name] = desiredHash
+		latest.Status.DataguardPrereqsRerunToken[name] = rerunToken
+	})
 }
 
 // setupPrimaryRedoTransport handles setup primary redo transport for the sharding database controller.
@@ -3839,12 +3981,18 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 			}
 
 			deployAs := strings.ToUpper(strings.TrimSpace(s.DeployAs))
-			switch deployAs {
-			case "PRIMARY":
-				primaryGroups[g]++
-			case "STANDBY", "ACTIVE_STANDBY":
-				standbyGroups[g]++
+			if replType == "DG" {
+				switch deployAs {
+				case "PRIMARY":
+					primaryGroups[g]++
+				case "STANDBY", "ACTIVE_STANDBY":
+					standbyGroups[g]++
+				}
 			}
+		}
+
+		if replType != "DG" {
+			return nil
 		}
 
 		if len(primaryGroups) != 1 {
@@ -3927,7 +4075,33 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 	if shardingType == "COMPOSITE" && replType == "NATIVE" {
 		groupRegionBySpace := map[string]map[string]string{}
 		groupByRegionBySpace := map[string]map[string]string{}
-		readWriteShardCountByGroup := map[string]int{}
+		groupsBySpace := map[string]map[string]bool{}
+
+		for i := range instance.Spec.ShardInfo {
+			info := instance.Spec.ShardInfo[i]
+			if info.ShardGroupDetails == nil || info.ShardSpaceDetails == nil {
+				continue
+			}
+			if shardingv1.CheckIsDeleteFlag(info.ShardGroupDetails.IsDelete, instance, r.Log) {
+				continue
+			}
+			spaceKey := normalizeShardSpaceKey(info.ShardSpaceDetails.Name)
+			groupKey := normalizeShardGroupKey(info.ShardGroupDetails.Name)
+			if spaceKey == "" || groupKey == "" {
+				continue
+			}
+			if _, ok := groupsBySpace[spaceKey]; !ok {
+				groupsBySpace[spaceKey] = map[string]bool{}
+			}
+			groupsBySpace[spaceKey][groupKey] = true
+			ruMode := normalizeShardGroupRuModeKey(info.ShardGroupDetails.RuMode)
+			if ruMode == "" {
+				return fmt.Errorf("composite sharding with NATIVE replication requires ru_mode for shardGroup %s in shardSpace %s", groupKey, spaceKey)
+			}
+			if ruMode != "READWRITE" {
+				return fmt.Errorf("composite sharding with NATIVE replication currently supports only READWRITE shardGroups")
+			}
+		}
 
 		for i := range instance.Spec.Shard {
 			s := instance.Spec.Shard[i]
@@ -3958,18 +4132,27 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 				return fmt.Errorf("composite sharding with NATIVE replication: region %s in shardSpace %s is already used by shardGroup %s", regionKey, spaceKey, prevGroup)
 			}
 			groupByRegionBySpace[spaceKey][regionKey] = groupKey
+			if _, ok := groupsBySpace[spaceKey]; !ok {
+				groupsBySpace[spaceKey] = map[string]bool{}
+			}
+			groupsBySpace[spaceKey][groupKey] = true
 
 			ruMode := r.resolveCompositeNativeShardGroupRuMode(instance, groupKey, spaceKey)
 			if ruMode == "" {
 				return fmt.Errorf("composite sharding with NATIVE replication requires ru_mode for shardGroup %s in shardSpace %s", groupKey, spaceKey)
 			}
-			if ruMode == "READWRITE" {
-				readWriteShardCountByGroup[groupKey]++
+			if ruMode != "READWRITE" {
+				return fmt.Errorf("composite sharding with NATIVE replication currently supports only READWRITE shardGroups")
 			}
 		}
-		for groupKey, rwCount := range readWriteShardCountByGroup {
-			if rwCount > 1 {
-				return fmt.Errorf("composite sharding with NATIVE replication: shardGroup %s allows at most one READWRITE database; found %d", groupKey, rwCount)
+		for spaceKey, groups := range groupsBySpace {
+			if len(groups) > 1 {
+				groupNames := make([]string, 0, len(groups))
+				for groupKey := range groups {
+					groupNames = append(groupNames, groupKey)
+				}
+				slices.Sort(groupNames)
+				return fmt.Errorf("composite sharding with NATIVE replication currently supports at most one shardGroup per shardSpace; shardSpace %s has groups: %s", spaceKey, strings.Join(groupNames, ","))
 			}
 		}
 		return nil
@@ -4014,7 +4197,7 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 		}
 		if spaceExternalPrimary[ss] {
 			if cnt > 0 {
-				return fmt.Errorf("user sharding shardSpace %s uses standbyConfig primary source; do not set local deployAs=PRIMARY", ss)
+				return fmt.Errorf("user sharding shardSpace %s uses standbyConfig.primarySources; do not set local deployAs=PRIMARY", ss)
 			}
 			continue
 		}
@@ -4984,65 +5167,15 @@ func standbyConfigPrimaryCountController(cfg *databasev4.StandbyConfig) int32 {
 		return 0
 	}
 
-	if c := countUniquePrimaryDatabaseRefsController(cfg.PrimaryDatabaseRefs); c > 0 {
-		return c
-	}
-	if c := countUniqueStringsController(cfg.PrimaryConnectStrings); c > 0 {
-		return c
-	}
-	return countUniquePrimaryEndpointsController(cfg.PrimaryEndpoints)
-}
-
-func countUniquePrimaryDatabaseRefsController(in []databasev4.PrimaryDatabaseCRRef) int32 {
 	seen := map[string]bool{}
 	var count int32
-	for i := range in {
-		ref := in[i]
-		name := strings.ToLower(strings.TrimSpace(ref.Name))
-		if name == "" {
+	for _, resolved := range resolveStandbyPrimarySources(cfg) {
+		pid := resolved.toIdentity("")
+		if pid == nil {
 			continue
 		}
-		ns := strings.ToLower(strings.TrimSpace(ref.Namespace))
-		key := ns + "/" + name
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		count++
-	}
-	return count
-}
-
-func countUniqueStringsController(in []string) int32 {
-	seen := map[string]bool{}
-	var count int32
-	for i := range in {
-		v := strings.ToLower(strings.TrimSpace(in[i]))
-		if v == "" || seen[v] {
-			continue
-		}
-		seen[v] = true
-		count++
-	}
-	return count
-}
-
-func countUniquePrimaryEndpointsController(in []databasev4.PrimaryEndpointRef) int32 {
-	seen := map[string]bool{}
-	var count int32
-	for i := range in {
-		e := in[i]
-		key := strings.ToLower(strings.TrimSpace(e.ConnectString))
-		if key == "" {
-			host := strings.ToLower(strings.TrimSpace(e.Host))
-			cdb := strings.ToLower(strings.TrimSpace(e.CdbName))
-			pdb := strings.ToLower(strings.TrimSpace(e.PdbName))
-			if host == "" && cdb == "" && pdb == "" {
-				continue
-			}
-			key = host + ":" + strconv.Itoa(int(e.Port)) + "/" + cdb + "/" + pdb
-		}
-		if seen[key] {
+		key := strings.ToLower(strings.TrimSpace(pid.Key))
+		if key == "" || seen[key] {
 			continue
 		}
 		seen[key] = true

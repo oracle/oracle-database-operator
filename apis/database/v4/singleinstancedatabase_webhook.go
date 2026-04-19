@@ -54,7 +54,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -133,6 +135,10 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 	if sidb.Spec.TrueCacheServices == nil {
 		sidb.Spec.TrueCacheServices = make([]string, 0)
 	}
+	if sidb.Spec.Dataguard == nil {
+		sidb.Spec.Dataguard = &DataguardProducerSpec{}
+	}
+	sidb.Spec.Dataguard.Mode = normalizeDataguardProducerMode(sidb.Spec.Dataguard)
 	defaultSIDBPersistence(&sidb.Spec.Persistence)
 	defaultSIDBAdditionalPVCs(&sidb.Spec.Persistence.AdditionalPVCs)
 	defaultSIDBRestoreSpec(&sidb.Spec.Restore)
@@ -145,22 +151,21 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 var _ admission.Validator[*SingleInstanceDatabase] = &SingleInstanceDatabase{}
 
 func sidbTcpsEnabled(sidb *SingleInstanceDatabase) bool {
+	if sidb == nil {
+		return false
+	}
 	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && sidb.Spec.Security.TCPS.Enabled {
 		return true
 	}
-	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.Enabled {
+	// Preserve legacy compatibility for manifests that only set deprecated TCPS
+	// listenerPort field without the explicit enabled flag.
+	if sidb.Spec.TcpsListenerPort != 0 {
 		return true
 	}
 	return sidb.Spec.EnableTCPS
 }
 
 func sidbTcpsListenerPort(sidb *SingleInstanceDatabase) int {
-	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && sidb.Spec.Security.TCPS.ListenerPort != 0 {
-		return sidb.Spec.Security.TCPS.ListenerPort
-	}
-	if sidb.Spec.TCPS != nil && sidb.Spec.TCPS.ListenerPort != 0 {
-		return sidb.Spec.TCPS.ListenerPort
-	}
 	return sidb.Spec.TcpsListenerPort
 }
 
@@ -168,18 +173,19 @@ func sidbTcpsTlsSecret(sidb *SingleInstanceDatabase) string {
 	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && strings.TrimSpace(sidb.Spec.Security.TCPS.TlsSecret) != "" {
 		return strings.TrimSpace(sidb.Spec.Security.TCPS.TlsSecret)
 	}
-	if sidb.Spec.TCPS != nil && strings.TrimSpace(sidb.Spec.TCPS.TlsSecret) != "" {
-		return strings.TrimSpace(sidb.Spec.TCPS.TlsSecret)
-	}
 	return strings.TrimSpace(sidb.Spec.TcpsTlsSecret)
+}
+
+func sidbTcpsClientWalletSecret(sidb *SingleInstanceDatabase) string {
+	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && strings.TrimSpace(sidb.Spec.Security.TCPS.ClientWalletSecret) != "" {
+		return strings.TrimSpace(sidb.Spec.Security.TCPS.ClientWalletSecret)
+	}
+	return ""
 }
 
 func sidbTcpsCertRenewInterval(sidb *SingleInstanceDatabase) string {
 	if sidb.Spec.Security != nil && sidb.Spec.Security.TCPS != nil && strings.TrimSpace(sidb.Spec.Security.TCPS.CertRenewInterval) != "" {
 		return strings.TrimSpace(sidb.Spec.Security.TCPS.CertRenewInterval)
-	}
-	if sidb.Spec.TCPS != nil && strings.TrimSpace(sidb.Spec.TCPS.CertRenewInterval) != "" {
-		return strings.TrimSpace(sidb.Spec.TCPS.CertRenewInterval)
 	}
 	return strings.TrimSpace(sidb.Spec.TcpsCertRenewInterval)
 }
@@ -240,10 +246,11 @@ func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj *Single
 	singleinstancedatabaselog.Info("validate create", "name", sidb.Name)
 
 	allErrs := validateSingleInstanceDatabaseSpec(sidb)
+	warnings := sidbDeprecatedFieldWarnings(sidb)
 	if len(allErrs) == 0 {
-		return nil, nil
+		return warnings, nil
 	}
-	return nil, apierrors.NewInvalid(
+	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		sidb.Name, allErrs)
 }
@@ -253,6 +260,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 	singleinstancedatabaselog.Info("validate update", "name", newSidb.Name)
 
 	allErrs := validateSingleInstanceDatabaseSpec(newSidb)
+	warnings := sidbDeprecatedFieldWarnings(newSidb)
 	specChanged := !reflect.DeepEqual(oldSidb.Spec, newSidb.Spec)
 	if specChanged {
 		if locked, lockGen, lockMsg := lockpolicy.IsControllerUpdateLocked(oldSidb.Status.Conditions, lockpolicy.DefaultReconcilingConditionType, lockpolicy.DefaultUpdateLockReason); locked {
@@ -270,8 +278,10 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 		if newSidb.Spec.Edition != "" && oldSidb.Status.Edition != "" && !strings.EqualFold(oldSidb.Status.Edition, newSidb.Spec.Edition) {
 			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("edition"), "edition of a cloned database cannot be changed post creation"))
 		}
-		if !strings.EqualFold(oldSidb.Status.PrimaryDatabase, resolvePrimaryRefForCloneOrStandby(newSidb)) {
-			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "primary database of a cloned database cannot be changed post creation"))
+	}
+	if isPrimarySourceLocked(oldSidb) {
+		if resolveEffectivePrimarySource(oldSidb) != resolveEffectivePrimarySource(newSidb) {
+			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("primarySource"), primarySourceLockedMessage(oldSidb)))
 		}
 	}
 
@@ -291,9 +301,9 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 	}
 
 	if len(allErrs) == 0 {
-		return nil, nil
+		return warnings, nil
 	}
-	return nil, apierrors.NewInvalid(
+	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		newSidb.Name, allErrs)
 }
@@ -311,6 +321,9 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 			allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("namespace"), sidb.Namespace, "operator does not watch this namespace"))
 		}
 	}
+	allErrs = append(allErrs, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), sidb.Spec.Dataguard)...)
+	allErrs = append(allErrs, validateSIDBImageSpec(field.NewPath("spec").Child("image"), &sidb.Spec.Image)...)
+	allErrs = append(allErrs, validateSIDBExternalServices(field.NewPath("spec").Child("services").Child("external"), sidb)...)
 
 	oradata := sidbOradataPersistence(sidb)
 	if sidb.Spec.Persistence.Oradata != nil && (sidb.Spec.Persistence.Size != "" || sidb.Spec.Persistence.StorageClass != "" || sidb.Spec.Persistence.AccessMode != "") {
@@ -381,13 +394,16 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	mode := strings.ToLower(strings.TrimSpace(sidb.Spec.CreateAs))
 	allErrs = append(allErrs, validateSIDBRestoreSpec(sidb, mode)...)
 	allErrs = append(allErrs, validateSIDBTrueCacheByMode(sidb, mode)...)
-	if mode == "clone" && resolvePrimaryRefForCloneOrStandby(sidb) == "" {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primaryDatabaseRef"), sidb.Spec.PrimaryDatabaseRef, "primary reference is required for clone"))
+	allErrs = append(allErrs, validatePrimarySourceSpec(sidb, mode)...)
+	if sidb.Spec.Dataguard != nil && len(sidb.Spec.Dataguard.StandbySources) > 0 && mode != "" && mode != "primary" {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("dataguard").Child("standbySources"), "standbySources are supported only for createAs=primary"))
+	}
+	if mode == "clone" || mode == "standby" || mode == "truecache" {
+		if !resolvePrimarySourceInputPresent(sidb) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primarySource"), sidb.Spec.PrimarySource, fmt.Sprintf("%s requires one primary source: primarySource.databaseRef, primarySource.connectString, primarySource.details, or deprecated spec.primaryDatabaseRef", mode)))
+		}
 	}
 	if mode == "standby" {
-		if !resolveStandbyPrimaryInputPresent(sidb) {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig"), sidb.Spec.StandbyConfig, "standby requires one primary source: primaryDatabaseRef, standbyConfig.primaryDatabaseRef, standbyConfig.primaryConnectString, or external primary details host/sid"))
-		}
 		if sidb.Spec.ArchiveLog != nil {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("archiveLog"), sidb.Spec.ArchiveLog, "archiveLog cannot be specified for standby"))
 		}
@@ -402,15 +418,15 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 		}
 	}
 
-	if details := resolveExternalPrimaryDetails(sidb); details != nil {
+	if details := resolvePrimarySourceDetails(sidb); details != nil {
 		if strings.TrimSpace(details.Host) == "" {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig").Child("primaryDetails").Child("host"), details.Host, "host cannot be empty"))
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primarySource").Child("details").Child("host"), details.Host, "host cannot be empty"))
 		}
 		if strings.TrimSpace(details.Sid) == "" {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig").Child("primaryDetails").Child("sid"), details.Sid, "sid cannot be empty"))
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primarySource").Child("details").Child("sid"), details.Sid, "sid cannot be empty"))
 		}
 		if details.Port < 0 {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("standbyConfig").Child("primaryDetails").Child("port"), details.Port, "port cannot be negative"))
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("primarySource").Child("details").Child("port"), details.Port, "port cannot be negative"))
 		}
 	}
 
@@ -441,6 +457,7 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 
 	tcpsEnabled := sidbTcpsEnabled(sidb)
 	tcpsTlsSecret := sidbTcpsTlsSecret(sidb)
+	tcpsClientWalletSecret := sidbTcpsClientWalletSecret(sidb)
 	tcpsCertRenewInterval := sidbTcpsCertRenewInterval(sidb)
 	tcpsListenerPort := sidbTcpsListenerPort(sidb)
 
@@ -459,18 +476,21 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	if !tcpsEnabled && tcpsTlsSecret != "" {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("tcpsTlsSecret"), "allowed only when enableTCPS=true"))
 	}
+	if !tcpsEnabled && tcpsClientWalletSecret != "" {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("security").Child("tcps").Child("clientWalletSecret"), "allowed only when enableTCPS=true"))
+	}
 	if tcpsTlsSecret != "" && tcpsCertRenewInterval != "" {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("tcpsCertRenewInterval"), "not applicable when tcpsTlsSecret is provided"))
 	}
-	if tcpsEnabled && sidb.Spec.ListenerPort != 0 && tcpsListenerPort != 0 && sidb.Spec.ListenerPort == tcpsListenerPort {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "listenerPort and tcpsListenerPort cannot be equal"))
-	}
-	if !sidb.Spec.LoadBalancer {
-		if sidb.Spec.ListenerPort != 0 && (sidb.Spec.ListenerPort < 30000 || sidb.Spec.ListenerPort > 32767) {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("listenerPort"), sidb.Spec.ListenerPort, "must be in 30000-32767 for NodePort"))
+	if !sidbUsesNewExternalServices(sidb) {
+		if tcpsEnabled && sidb.Spec.ListenerPort != 0 && tcpsListenerPort != 0 && sidb.Spec.ListenerPort == tcpsListenerPort {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "listenerPort and tcpsListenerPort cannot be equal"))
 		}
-		if tcpsEnabled && tcpsListenerPort != 0 && (tcpsListenerPort < 30000 || tcpsListenerPort > 32767) {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "must be in 30000-32767 for NodePort"))
+		if sidb.Spec.ListenerPort != 0 && (sidb.Spec.ListenerPort < 1 || sidb.Spec.ListenerPort > 65535) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("listenerPort"), sidb.Spec.ListenerPort, "must be in 1-65535"))
+		}
+		if tcpsEnabled && tcpsListenerPort != 0 && (tcpsListenerPort < 1 || tcpsListenerPort > 65535) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), tcpsListenerPort, "must be in 1-65535"))
 		}
 	}
 	allErrs = append(allErrs, validateTNSAliases(sidb)...)
@@ -485,6 +505,150 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	allErrs = append(allErrs, validateSingleInstanceDatabaseAdditionalPVCs(sidb)...)
 
 	return allErrs
+}
+
+func sidbUsesNewExternalServices(sidb *SingleInstanceDatabase) bool {
+	return sidb != nil && sidb.Spec.Services != nil && sidb.Spec.Services.External != nil
+}
+
+func sidbDeprecatedFieldWarnings(sidb *SingleInstanceDatabase) admission.Warnings {
+	if sidb == nil {
+		return nil
+	}
+	var warnings admission.Warnings
+	if sidb.Spec.LoadBalancer {
+		warnings = append(warnings, "spec.loadBalancer is deprecated; use spec.services.external.type")
+	}
+	if sidb.Spec.ListenerPort != 0 {
+		warnings = append(warnings, "spec.listenerPort is deprecated; use spec.services.external.tcp")
+	}
+	if sidb.Spec.TcpsListenerPort != 0 {
+		warnings = append(warnings, "spec.tcpsListenerPort is deprecated; use spec.services.external.tcps")
+	}
+	if len(sidb.Spec.ServiceAnnotations) != 0 {
+		warnings = append(warnings, "spec.serviceAnnotations is deprecated; use spec.services.external.annotations")
+	}
+	if sidb.Spec.EnableTCPS {
+		warnings = append(warnings, "spec.enableTCPS is deprecated; use spec.security.tcps.enabled")
+	}
+	if strings.TrimSpace(sidb.Spec.TcpsCertRenewInterval) != "" {
+		warnings = append(warnings, "spec.tcpsCertRenewInterval is deprecated; use spec.security.tcps.certRenewInterval")
+	}
+	if strings.TrimSpace(sidb.Spec.TcpsTlsSecret) != "" {
+		warnings = append(warnings, "spec.tcpsTlsSecret is deprecated; use spec.security.tcps.tlsSecret")
+	}
+	if strings.TrimSpace(sidb.Spec.AdminPassword.SecretName) != "" {
+		warnings = append(warnings, "spec.adminPassword is deprecated; use spec.security.secrets.admin")
+	}
+	if sidb.Spec.Resources.Requests != nil || sidb.Spec.Resources.Limits != nil {
+		warnings = append(warnings, "spec.resources is deprecated; use spec.resourceRequirements")
+	}
+	if strings.TrimSpace(sidb.Spec.Persistence.Size) != "" {
+		warnings = append(warnings, "spec.persistence.size is deprecated; use spec.persistence.oradata.size")
+	}
+	if strings.TrimSpace(sidb.Spec.Persistence.StorageClass) != "" {
+		warnings = append(warnings, "spec.persistence.storageClass is deprecated; use spec.persistence.oradata.storageClass")
+	}
+	if strings.TrimSpace(sidb.Spec.Persistence.AccessMode) != "" {
+		warnings = append(warnings, "spec.persistence.accessMode is deprecated; use spec.persistence.oradata.accessMode")
+	}
+	return warnings
+}
+
+func validateSIDBExternalServices(path *field.Path, sidb *SingleInstanceDatabase) field.ErrorList {
+	var allErrs field.ErrorList
+	if sidb == nil || sidb.Spec.Services == nil || sidb.Spec.Services.External == nil {
+		return allErrs
+	}
+
+	external := sidb.Spec.Services.External
+	typePath := path.Child("type")
+	switch external.Type {
+	case SingleInstanceDatabaseExternalServiceTypeDisabled:
+	case SingleInstanceDatabaseExternalServiceTypeNodePort:
+	case SingleInstanceDatabaseExternalServiceTypeLoadBalancer:
+	default:
+		allErrs = append(allErrs, field.Required(typePath, "type must be set to Disabled, NodePort, or LoadBalancer"))
+		return allErrs
+	}
+
+	tcpEnabled := external.TCP != nil && external.TCP.Enabled
+	tcpsEnabled := external.TCPS != nil && external.TCPS.Enabled
+	if external.Type != SingleInstanceDatabaseExternalServiceTypeDisabled && !tcpEnabled && !tcpsEnabled {
+		allErrs = append(allErrs, field.Invalid(path, external, "enable at least one of tcp or tcps when external service type is not Disabled"))
+	}
+	if tcpsEnabled && !sidbTcpsEnabled(sidb) {
+		allErrs = append(allErrs, field.Forbidden(path.Child("tcps"), "tcps exposure requires TCPS to be enabled in the database spec"))
+	}
+
+	allErrs = append(allErrs, validateSIDBExternalServicePort(path.Child("tcp"), external.Type, external.TCP)...)
+	allErrs = append(allErrs, validateSIDBExternalServicePort(path.Child("tcps"), external.Type, external.TCPS)...)
+
+	if external.Type == SingleInstanceDatabaseExternalServiceTypeLoadBalancer {
+		tcpPort := intOrDefault(0, 1521, tcpEnabled && external.TCP != nil && external.TCP.Port == 0)
+		if external.TCP != nil && external.TCP.Port != 0 {
+			tcpPort = external.TCP.Port
+		}
+		tcpsPort := intOrDefault(0, 2484, tcpsEnabled && external.TCPS != nil && external.TCPS.Port == 0)
+		if external.TCPS != nil && external.TCPS.Port != 0 {
+			tcpsPort = external.TCPS.Port
+		}
+		if tcpEnabled && tcpsEnabled && tcpPort == tcpsPort {
+			allErrs = append(allErrs, field.Invalid(path.Child("tcps").Child("port"), tcpsPort, "tcp.port and tcps.port cannot be equal"))
+		}
+	}
+	if external.Type == SingleInstanceDatabaseExternalServiceTypeNodePort &&
+		tcpEnabled && tcpsEnabled &&
+		external.TCP != nil && external.TCPS != nil &&
+		external.TCP.NodePort != 0 && external.TCP.NodePort == external.TCPS.NodePort {
+		allErrs = append(allErrs, field.Invalid(path.Child("tcps").Child("nodePort"), external.TCPS.NodePort, "tcp.nodePort and tcps.nodePort cannot be equal"))
+	}
+
+	return allErrs
+}
+
+func validateSIDBExternalServicePort(path *field.Path, serviceType SingleInstanceDatabaseExternalServiceType, port *SingleInstanceDatabaseExternalServicePort) field.ErrorList {
+	var allErrs field.ErrorList
+	if port == nil {
+		return allErrs
+	}
+	if !port.Enabled {
+		if port.Port != 0 {
+			allErrs = append(allErrs, field.Forbidden(path.Child("port"), "port is allowed only when enabled=true"))
+		}
+		if port.NodePort != 0 {
+			allErrs = append(allErrs, field.Forbidden(path.Child("nodePort"), "nodePort is allowed only when enabled=true"))
+		}
+		return allErrs
+	}
+
+	switch serviceType {
+	case SingleInstanceDatabaseExternalServiceTypeDisabled:
+		allErrs = append(allErrs, field.Forbidden(path.Child("enabled"), "enabled endpoints are not allowed when external service type is Disabled"))
+	case SingleInstanceDatabaseExternalServiceTypeLoadBalancer:
+		if port.NodePort != 0 {
+			allErrs = append(allErrs, field.Forbidden(path.Child("nodePort"), "nodePort is not used when external service type is LoadBalancer"))
+		}
+		if port.Port != 0 && (port.Port < 1 || port.Port > 65535) {
+			allErrs = append(allErrs, field.Invalid(path.Child("port"), port.Port, "must be in 1-65535"))
+		}
+	case SingleInstanceDatabaseExternalServiceTypeNodePort:
+		if port.Port != 0 {
+			allErrs = append(allErrs, field.Forbidden(path.Child("port"), "port is not used when external service type is NodePort"))
+		}
+		if port.NodePort != 0 && (port.NodePort < 30000 || port.NodePort > 32767) {
+			allErrs = append(allErrs, field.Invalid(path.Child("nodePort"), port.NodePort, "must be in 30000-32767 for NodePort"))
+		}
+	}
+
+	return allErrs
+}
+
+func intOrDefault(current, fallback int, useFallback bool) int {
+	if useFallback {
+		return fallback
+	}
+	return current
 }
 
 func validateTNSAliases(sidb *SingleInstanceDatabase) field.ErrorList {
@@ -526,6 +690,24 @@ func validateTNSAliases(sidb *SingleInstanceDatabase) field.ErrorList {
 	}
 
 	return allErrs
+}
+
+func validateSIDBImageSpec(path *field.Path, image *SingleInstanceDatabaseImage) field.ErrorList {
+	var allErrs field.ErrorList
+	if image == nil || image.PullPolicy == nil {
+		return allErrs
+	}
+
+	switch *image.PullPolicy {
+	case corev1.PullAlways, corev1.PullIfNotPresent, corev1.PullNever:
+		return allErrs
+	default:
+		return append(allErrs, field.NotSupported(
+			path.Child("pullPolicy"),
+			*image.PullPolicy,
+			[]string{string(corev1.PullAlways), string(corev1.PullIfNotPresent), string(corev1.PullNever)},
+		))
+	}
 }
 
 func defaultSIDBRestoreSpec(restore **SingleInstanceDatabaseRestoreSpec) {
@@ -709,9 +891,6 @@ func defaultSIDBAdditionalPVCs(pvcs *[]AdditionalPVCSpec) {
 		(*pvcs)[i].MountPath = strings.TrimSpace((*pvcs)[i].MountPath)
 		(*pvcs)[i].PvcName = strings.TrimSpace((*pvcs)[i].PvcName)
 		(*pvcs)[i].StorageClass = strings.TrimSpace((*pvcs)[i].StorageClass)
-		if (*pvcs)[i].MountPath == DefaultDiagMountPath && (*pvcs)[i].PvcName == "" && (*pvcs)[i].StorageSizeInGb <= 0 {
-			(*pvcs)[i].StorageSizeInGb = DefaultDiagSizeInGb
-		}
 	}
 }
 
@@ -737,7 +916,7 @@ func validateSingleInstanceDatabaseAdditionalPVCs(sidb *SingleInstanceDatabase) 
 			seenMountPaths[mountPath] = struct{}{}
 		}
 
-		if pvcName == "" && sidb.Spec.Persistence.AdditionalPVCs[i].StorageSizeInGb <= 0 && mountPath != DefaultDiagMountPath {
+		if pvcName == "" && sidb.Spec.Persistence.AdditionalPVCs[i].StorageSizeInGb <= 0 {
 			allErrs = append(allErrs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when pvcName is not provided"))
 		}
 	}
@@ -745,37 +924,200 @@ func validateSingleInstanceDatabaseAdditionalPVCs(sidb *SingleInstanceDatabase) 
 	return allErrs
 }
 
-func resolvePrimaryRefForCloneOrStandby(sidb *SingleInstanceDatabase) string {
-	if sidb.Spec.StandbyConfig != nil {
-		if ref := strings.TrimSpace(sidb.Spec.StandbyConfig.PrimaryDatabaseRef); ref != "" {
+func resolvePrimarySourceDatabaseRef(sidb *SingleInstanceDatabase) string {
+	if sidb.Spec.PrimarySource != nil {
+		if ref := strings.TrimSpace(sidb.Spec.PrimarySource.DatabaseRef); ref != "" {
 			return ref
 		}
 	}
 	return strings.TrimSpace(sidb.Spec.PrimaryDatabaseRef)
 }
 
-func resolveExternalPrimaryDetails(sidb *SingleInstanceDatabase) *SingleInstanceDatabaseExternalPrimaryRef {
-	if sidb.Spec.StandbyConfig != nil && sidb.Spec.StandbyConfig.PrimaryDetails != nil {
-		d := sidb.Spec.StandbyConfig.PrimaryDetails
-		return &SingleInstanceDatabaseExternalPrimaryRef{
-			Host:    d.Host,
-			Port:    d.Port,
-			Sid:     d.Sid,
-			Pdbname: d.Pdbname,
+func resolvePrimarySourceConnectString(sidb *SingleInstanceDatabase) string {
+	if sidb.Spec.PrimarySource != nil {
+		if c := strings.TrimSpace(sidb.Spec.PrimarySource.ConnectString); c != "" {
+			return c
 		}
 	}
-	return sidb.Spec.ExternalPrimaryDatabaseRef
+	return ""
 }
 
-func resolveStandbyPrimaryInputPresent(sidb *SingleInstanceDatabase) bool {
-	if resolvePrimaryRefForCloneOrStandby(sidb) != "" {
+func resolvePrimarySourceDetails(sidb *SingleInstanceDatabase) *SingleInstanceDatabasePrimaryDetails {
+	if sidb.Spec.PrimarySource != nil && sidb.Spec.PrimarySource.Details != nil {
+		return sidb.Spec.PrimarySource.Details
+	}
+	return nil
+}
+
+func resolvePrimarySourceInputPresent(sidb *SingleInstanceDatabase) bool {
+	if resolvePrimarySourceDatabaseRef(sidb) != "" {
 		return true
 	}
-	if sidb.Spec.StandbyConfig != nil && strings.TrimSpace(sidb.Spec.StandbyConfig.PrimaryConnectString) != "" {
+	if resolvePrimarySourceConnectString(sidb) != "" {
 		return true
 	}
-	if ext := resolveExternalPrimaryDetails(sidb); ext != nil && strings.TrimSpace(ext.Host) != "" {
+	if details := resolvePrimarySourceDetails(sidb); details != nil && strings.TrimSpace(details.Host) != "" {
 		return true
 	}
 	return false
+}
+
+func resolveEffectivePrimarySource(sidb *SingleInstanceDatabase) string {
+	if ref := resolvePrimarySourceDatabaseRef(sidb); ref != "" {
+		return "databaseRef:" + ref
+	}
+	if connectString := resolvePrimarySourceConnectString(sidb); connectString != "" {
+		return "connectString:" + connectString
+	}
+	if details := resolvePrimarySourceDetails(sidb); details != nil {
+		return fmt.Sprintf("details:%s:%d/%s/%s",
+			strings.TrimSpace(details.Host),
+			details.Port,
+			strings.TrimSpace(details.Sid),
+			strings.TrimSpace(details.Pdbname),
+		)
+	}
+	return ""
+}
+
+func isPrimarySourceLocked(sidb *SingleInstanceDatabase) bool {
+	if sidb == nil {
+		return false
+	}
+	if sidb.Status.Dataguard != nil && sidb.Status.Dataguard.TopologyLocked {
+		return true
+	}
+
+	switch strings.ToLower(strings.TrimSpace(sidb.Status.CreatedAs)) {
+	case "clone":
+		return true
+	case "standby":
+		return strings.EqualFold(strings.TrimSpace(sidb.Status.DatafilesCreated), "true") ||
+			(isPopulatedStatusValue(sidb.Status.Role) && !strings.EqualFold(strings.TrimSpace(sidb.Status.Role), "PRIMARY"))
+	case "truecache":
+		return strings.EqualFold(strings.TrimSpace(sidb.Status.DatafilesCreated), "true") ||
+			isConditionTrue(sidb.Status.Conditions, "TrueCacheBlobSourceReady") ||
+			isConditionTrue(sidb.Status.Conditions, "TrueCacheBlobReady")
+	default:
+		return false
+	}
+}
+
+func primarySourceLockedMessage(sidb *SingleInstanceDatabase) string {
+	if sidb != nil && sidb.Status.Dataguard != nil && sidb.Status.Dataguard.TopologyLocked {
+		switch strings.ToLower(strings.TrimSpace(sidb.Status.CreatedAs)) {
+		case "clone":
+			return "primary source of a cloned database cannot be changed post creation"
+		case "standby":
+			return "primary source of a standby database cannot be changed after dataguard topology is locked"
+		case "truecache":
+			return "primary source of a truecache database cannot be changed after dataguard topology is locked"
+		default:
+			return "primary source cannot be changed after dataguard topology is locked"
+		}
+	}
+
+	switch strings.ToLower(strings.TrimSpace(sidb.Status.CreatedAs)) {
+	case "clone":
+		return "primary source of a cloned database cannot be changed post creation"
+	case "standby":
+		return "primary source of a standby database cannot be changed after datafiles are created or the role is populated"
+	case "truecache":
+		return "primary source of a truecache database cannot be changed after source resolution or datafile creation begins"
+	default:
+		return "primary source cannot be changed after creation has progressed"
+	}
+}
+
+func isPopulatedStatusValue(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed != "" && trimmed != dbcommons.ValueUnavailable
+}
+
+func isConditionTrue(conditions []metav1.Condition, conditionType string) bool {
+	condition := meta.FindStatusCondition(conditions, conditionType)
+	return condition != nil && condition.Status == metav1.ConditionTrue
+}
+
+func validateDataguardProducerSpec(path *field.Path, spec *DataguardProducerSpec) field.ErrorList {
+	var allErrs field.ErrorList
+	mode := normalizeDataguardProducerMode(spec)
+	switch mode {
+	case DataguardProducerModeDisabled, DataguardProducerModePreview:
+	case DataguardProducerModeManaged:
+		allErrs = append(allErrs, field.Forbidden(path.Child("mode"), "Managed mode is reserved for future DataguardBroker automation and is not supported yet"))
+	default:
+		allErrs = append(allErrs, field.Invalid(path.Child("mode"), mode, "must be Disabled, Preview, or Managed"))
+	}
+	if spec != nil && spec.Prereqs != nil {
+		if dir := strings.TrimSpace(spec.Prereqs.BrokerConfigDir); dir != "" && !strings.HasPrefix(dir, "/") && !strings.HasPrefix(dir, "+") {
+			allErrs = append(allErrs, field.Invalid(path.Child("prereqs").Child("brokerConfigDir"), spec.Prereqs.BrokerConfigDir, "must be an absolute path or ASM path starting with '+'"))
+		}
+		if size := strings.TrimSpace(spec.Prereqs.StandbyRedoSize); strings.ContainsAny(size, " \t\r\n") {
+			allErrs = append(allErrs, field.Invalid(path.Child("prereqs").Child("standbyRedoSize"), spec.Prereqs.StandbyRedoSize, "must not contain whitespace"))
+		}
+	}
+	if spec != nil {
+		seenStandbys := make(map[string]int)
+		for i, standby := range spec.StandbySources {
+			standbyPath := path.Child("standbySources").Index(i)
+			dbUniqueName := strings.ToUpper(strings.TrimSpace(standby.DBUniqueName))
+			host := strings.TrimSpace(standby.Host)
+			if dbUniqueName == "" {
+				allErrs = append(allErrs, field.Required(standbyPath.Child("dbUniqueName"), "dbUniqueName is required"))
+			}
+			if host == "" {
+				allErrs = append(allErrs, field.Required(standbyPath.Child("host"), "host is required"))
+			}
+			if standby.TCPPort < 0 || standby.TCPPort > 65535 {
+				allErrs = append(allErrs, field.Invalid(standbyPath.Child("tcpPort"), standby.TCPPort, "must be between 0 and 65535"))
+			}
+			if dbUniqueName == "" {
+				continue
+			}
+			key := strings.ToLower(dbUniqueName)
+			if prior, exists := seenStandbys[key]; exists {
+				allErrs = append(allErrs, field.Duplicate(standbyPath.Child("dbUniqueName"), spec.StandbySources[prior].DBUniqueName))
+				continue
+			}
+			seenStandbys[key] = i
+		}
+	}
+	return allErrs
+}
+
+func validatePrimarySourceSpec(sidb *SingleInstanceDatabase, mode string) field.ErrorList {
+	var allErrs field.ErrorList
+	sourcePath := field.NewPath("spec").Child("primarySource")
+	legacyRefPath := field.NewPath("spec").Child("primaryDatabaseRef")
+
+	if strings.TrimSpace(sidb.Spec.PrimaryDatabaseRef) != "" && sidb.Spec.PrimarySource != nil {
+		allErrs = append(allErrs, field.Forbidden(legacyRefPath, "deprecated spec.primaryDatabaseRef cannot be used with spec.primarySource"))
+	}
+
+	if sidb.Spec.PrimarySource != nil {
+		selected := 0
+		if strings.TrimSpace(sidb.Spec.PrimarySource.DatabaseRef) != "" {
+			selected++
+		}
+		if strings.TrimSpace(sidb.Spec.PrimarySource.ConnectString) != "" {
+			selected++
+		}
+		if sidb.Spec.PrimarySource.Details != nil {
+			selected++
+		}
+
+		if selected == 0 {
+			allErrs = append(allErrs, field.Required(sourcePath, "set exactly one of databaseRef, connectString, or details"))
+		}
+		if selected > 1 {
+			allErrs = append(allErrs, field.Forbidden(sourcePath, "databaseRef, connectString, and details are mutually exclusive; set only one"))
+		}
+	}
+
+	if (mode == "" || mode == "primary") && (sidb.Spec.PrimarySource != nil || strings.TrimSpace(sidb.Spec.PrimaryDatabaseRef) != "") {
+		allErrs = append(allErrs, field.Forbidden(sourcePath, "primary source is supported only when createAs=clone, standby, or truecache"))
+	}
+
+	return allErrs
 }

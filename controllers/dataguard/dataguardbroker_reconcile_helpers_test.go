@@ -1,0 +1,596 @@
+package controllers
+
+import (
+	"context"
+	"testing"
+
+	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+func TestResolveDataguardBrokerDesiredSpecLegacy(t *testing.T) {
+	broker := &dbapi.DataguardBroker{
+		Spec: dbapi.DataguardBrokerSpec{
+			PrimaryDatabaseRef:  "primary-db",
+			StandbyDatabaseRefs: []string{"standby-a", "standby-b"},
+			ProtectionMode:      "MaxPerformance",
+			FastStartFailover:   true,
+			LoadBalancer:        true,
+			ServiceAnnotations: map[string]string{
+				"shape": "lb",
+			},
+		},
+	}
+
+	got := resolveDataguardBrokerDesiredSpec(broker)
+	if got.Path != dataguardBrokerPathLegacy {
+		t.Fatalf("expected legacy path, got %q", got.Path)
+	}
+	if got.PrimaryDatabaseRef != "primary-db" {
+		t.Fatalf("expected primary-db, got %q", got.PrimaryDatabaseRef)
+	}
+	if len(got.StandbyDatabaseRefs) != 2 {
+		t.Fatalf("expected 2 standby refs, got %d", len(got.StandbyDatabaseRefs))
+	}
+	if !got.FastStartFailover {
+		t.Fatalf("expected FSFO to be enabled")
+	}
+	if !got.SupportsLegacyExecution {
+		t.Fatalf("expected legacy spec to support execution")
+	}
+	if got.ServiceAnnotations["shape"] != "lb" {
+		t.Fatalf("expected service annotation to be copied")
+	}
+}
+
+func TestResolveDataguardBrokerDesiredSpecTopologyProjectsLocalSIDBMembers(t *testing.T) {
+	broker := &dbapi.DataguardBroker{
+		Spec: dbapi.DataguardBrokerSpec{
+			Topology: &dbapi.DataguardTopologySpec{
+				Policy: &dbapi.DataguardPolicySpec{
+					ProtectionMode:    "MaxAvailability",
+					FastStartFailover: true,
+				},
+				Members: []dbapi.DataguardTopologyMember{
+					{
+						Name:         "primary-a",
+						Role:         "PRIMARY",
+						DBUniqueName: "PRIMARYA",
+						LocalRef: &dbapi.DataguardLocalRef{
+							Kind: "SingleInstanceDatabase",
+							Name: "primary-db",
+						},
+						Endpoints: []dbapi.DataguardEndpointSpec{{
+							Protocol:    "TCP",
+							Host:        "primary-db",
+							Port:        1521,
+							ServiceName: "PRIMARYA_DGMGRL",
+						}},
+					},
+					{
+						Name:         "standby-a",
+						Role:         "PHYSICAL_STANDBY",
+						DBUniqueName: "STBYA",
+						LocalRef: &dbapi.DataguardLocalRef{
+							Kind: "SingleInstanceDatabase",
+							Name: "standby-db",
+						},
+						Endpoints: []dbapi.DataguardEndpointSpec{{
+							Protocol:    "TCP",
+							Host:        "standby-db",
+							Port:        1521,
+							ServiceName: "STBYA_DGMGRL",
+						}},
+					},
+				},
+				Pairs: []dbapi.DataguardTopologyPair{{
+					Primary: "primary-a",
+					Standby: "standby-a",
+					Type:    "PHYSICAL",
+				}},
+			},
+		},
+	}
+
+	got := resolveDataguardBrokerDesiredSpec(broker)
+	if got.Path != dataguardBrokerPathTopology {
+		t.Fatalf("expected topology path, got %q", got.Path)
+	}
+	if !got.SupportsLegacyExecution {
+		t.Fatalf("expected projected topology to support legacy execution, message=%q", got.CompatibilityMessage)
+	}
+	if got.PrimaryDatabaseRef != "primary-db" {
+		t.Fatalf("expected primary-db, got %q", got.PrimaryDatabaseRef)
+	}
+	if len(got.StandbyDatabaseRefs) != 1 || got.StandbyDatabaseRefs[0] != "standby-db" {
+		t.Fatalf("unexpected standby refs: %#v", got.StandbyDatabaseRefs)
+	}
+	if got.ProtectionMode != "MaxAvailability" {
+		t.Fatalf("expected MaxAvailability, got %q", got.ProtectionMode)
+	}
+	if !got.FastStartFailover {
+		t.Fatalf("expected FSFO true")
+	}
+	if got.TopologyHash == "" {
+		t.Fatalf("expected topology hash to be set")
+	}
+	if len(got.ResolvedMembers) != 2 {
+		t.Fatalf("expected resolved members, got %d", len(got.ResolvedMembers))
+	}
+	if len(got.ObservedPairs) != 1 || got.ObservedPairs[0].State != "Resolved" {
+		t.Fatalf("unexpected observed pairs: %#v", got.ObservedPairs)
+	}
+}
+
+func TestResolveDataguardBrokerDesiredSpecTopologyMarksTCPSAsPendingNativeExecution(t *testing.T) {
+	broker := &dbapi.DataguardBroker{
+		Spec: dbapi.DataguardBrokerSpec{
+			Topology: &dbapi.DataguardTopologySpec{
+				Members: []dbapi.DataguardTopologyMember{
+					{
+						Name: "primary-a",
+						Role: "PRIMARY",
+						LocalRef: &dbapi.DataguardLocalRef{
+							Kind: "SingleInstanceDatabase",
+							Name: "primary-db",
+						},
+						Endpoints: []dbapi.DataguardEndpointSpec{{
+							Protocol:    "TCPS",
+							Host:        "primary-db",
+							Port:        2484,
+							ServiceName: "PRIMARYA_DGMGRL",
+						}},
+						TCPS: &dbapi.DataguardTCPSConfig{Enabled: true},
+					},
+					{
+						Name: "standby-a",
+						Role: "PHYSICAL_STANDBY",
+						LocalRef: &dbapi.DataguardLocalRef{
+							Kind: "SingleInstanceDatabase",
+							Name: "standby-db",
+						},
+						Endpoints: []dbapi.DataguardEndpointSpec{{
+							Protocol:    "TCP",
+							Host:        "standby-db",
+							Port:        1521,
+							ServiceName: "STBYA_DGMGRL",
+						}},
+					},
+				},
+				Pairs: []dbapi.DataguardTopologyPair{{
+					Primary: "primary-a",
+					Standby: "standby-a",
+				}},
+			},
+		},
+	}
+
+	got := resolveDataguardBrokerDesiredSpec(broker)
+	if got.SupportsLegacyExecution {
+		t.Fatalf("expected TCPS topology to require topology-native execution")
+	}
+	if got.CompatibilityMessage == "" {
+		t.Fatalf("expected compatibility message")
+	}
+}
+
+func TestResolveDataguardBrokerExecutionRuntimeFromSIDBProducerStatus(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{}
+	sidb.Namespace = "ns1"
+	sidb.Name = "sidb-standby"
+	sidb.Status.Dataguard = &dbapi.ProducerDataguardStatus{
+		RenderedBrokerSpec: &dbapi.DataguardRenderedBrokerStatus{
+			Spec: &dbapi.DataguardRenderedBrokerSpec{
+				Execution: &dbapi.DataguardExecutionSpec{
+					Image:            "oracle/db:19.3.0",
+					ImagePullSecrets: []string{"pull-secret"},
+					AuthWallet: &dbapi.DataguardAuthWalletSpec{
+						Enabled:      true,
+						RebuildToken: "token-1",
+					},
+				},
+			},
+		},
+	}
+
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(sidb).Build(),
+	}
+	broker := &dbapi.DataguardBroker{
+		Spec: dbapi.DataguardBrokerSpec{
+			Topology: &dbapi.DataguardTopologySpec{
+				SourceRef: &dbapi.DataguardSourceRef{
+					Kind:      "SingleInstanceDatabase",
+					Namespace: "ns1",
+					Name:      "sidb-standby",
+				},
+				Members: []dbapi.DataguardTopologyMember{{
+					Name: "primary-a",
+					Role: "PRIMARY",
+				}},
+				Pairs: []dbapi.DataguardTopologyPair{{
+					Primary: "primary-a",
+					Standby: "standby-a",
+				}},
+			},
+		},
+	}
+
+	got, ready, message, err := resolveDataguardBrokerExecutionRuntime(context.Background(), reconciler, broker)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ready {
+		t.Fatalf("expected runtime to be ready, message=%q", message)
+	}
+	if got == nil || got.Image != "oracle/db:19.3.0" {
+		t.Fatalf("expected execution image from producer status, got %#v", got)
+	}
+	if got.AuthWallet == nil || !got.AuthWallet.Enabled || got.AuthWallet.RebuildToken != "token-1" {
+		t.Fatalf("expected auth wallet settings from producer status, got %#v", got)
+	}
+	if got.Source == "" {
+		t.Fatalf("expected runtime source to be recorded")
+	}
+}
+
+func TestResolveDataguardBrokerExecutionRuntimeDefersAuthWalletSecretUntilInitialized(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{}
+	sidb.Namespace = "ns1"
+	sidb.Name = "sidb-standby"
+	sidb.Status.Dataguard = &dbapi.ProducerDataguardStatus{
+		RenderedBrokerSpec: &dbapi.DataguardRenderedBrokerStatus{
+			Spec: &dbapi.DataguardRenderedBrokerSpec{
+				Execution: &dbapi.DataguardExecutionSpec{
+					Image: "oracle/db:19.3.0",
+					AuthWallet: &dbapi.DataguardAuthWalletSpec{
+						Enabled: true,
+					},
+				},
+			},
+		},
+	}
+
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(sidb).Build(),
+	}
+	broker := &dbapi.DataguardBroker{
+		Spec: dbapi.DataguardBrokerSpec{
+			Topology: &dbapi.DataguardTopologySpec{
+				SourceRef: &dbapi.DataguardSourceRef{
+					Kind:      "SingleInstanceDatabase",
+					Namespace: "ns1",
+					Name:      "sidb-standby",
+				},
+				Members: []dbapi.DataguardTopologyMember{{
+					Name: "primary-a",
+					Role: "PRIMARY",
+				}},
+				Pairs: []dbapi.DataguardTopologyPair{{
+					Primary: "primary-a",
+					Standby: "standby-a",
+				}},
+			},
+		},
+		Status: dbapi.DataguardBrokerStatus{
+			AuthWallet: &dbapi.DataguardAuthWalletStatus{
+				WalletSecretName: "dg-auth-wallet",
+				Initialized:      false,
+			},
+		},
+	}
+
+	got, ready, message, err := resolveDataguardBrokerExecutionRuntime(context.Background(), reconciler, broker)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ready {
+		t.Fatalf("expected runtime to be ready, message=%q", message)
+	}
+	if got == nil {
+		t.Fatalf("expected runtime")
+	}
+	if got.AuthWallet == nil || !got.AuthWallet.Enabled {
+		t.Fatalf("expected auth wallet settings to still be resolved, got %#v", got)
+	}
+	if got.AuthWalletSecretName != "" {
+		t.Fatalf("expected auth wallet secret name to be deferred until initialized, got %q", got.AuthWalletSecretName)
+	}
+
+	broker.Status.AuthWallet.Initialized = true
+	got, ready, message, err = resolveDataguardBrokerExecutionRuntime(context.Background(), reconciler, broker)
+	if err != nil {
+		t.Fatalf("unexpected error after initialization: %v", err)
+	}
+	if !ready {
+		t.Fatalf("expected runtime to remain ready after initialization, message=%q", message)
+	}
+	if got == nil || got.AuthWalletSecretName != "dg-auth-wallet" {
+		t.Fatalf("expected initialized auth wallet secret name to be propagated, got %#v", got)
+	}
+}
+
+func TestEnsureDataguardBrokerRunnerPodCreatesDesiredRunnerBeforeDeletingStaleRunner(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	broker := &dbapi.DataguardBroker{
+		ObjectMeta: metav1.ObjectMeta{Name: "dg", Namespace: "ns1"},
+		Status: dbapi.DataguardBrokerStatus{
+			ObservedTopologyHash: "topology-hash-1",
+		},
+	}
+	runtimeSpec := &dataguardBrokerExecutionRuntime{
+		Image:            "runner:19c",
+		ImagePullSecrets: []string{"pull-secret"},
+		WalletMountPath:  "/wallets",
+		TNSAdminPath:     "/tns",
+	}
+	staleHash := "oldhashvalue"
+	stalePod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, staleHash)
+	stalePod.Status.Phase = corev1.PodRunning
+
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(stalePod).Build(),
+		Scheme: scheme,
+	}
+
+	ready, message, err := ensureDataguardBrokerRunnerPod(context.Background(), reconciler, broker, runtimeSpec)
+	if err != nil {
+		t.Fatalf("ensureDataguardBrokerRunnerPod returned error: %v", err)
+	}
+	if ready {
+		t.Fatalf("expected desired runner creation to return not-ready")
+	}
+	if message == "" {
+		t.Fatalf("expected creation message")
+	}
+
+	desiredHash := computeDataguardBrokerRunnerRuntimeHash(broker, runtimeSpec)
+	desiredName := dataguardBrokerRunnerPodNameForHash(broker, desiredHash)
+
+	var desiredPod corev1.Pod
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: desiredName, Namespace: broker.Namespace}, &desiredPod); err != nil {
+		t.Fatalf("expected desired runner pod %q to exist: %v", desiredName, err)
+	}
+	var stillThere corev1.Pod
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: stalePod.Name, Namespace: broker.Namespace}, &stillThere); err != nil {
+		t.Fatalf("expected stale runner pod to remain until desired pod is ready: %v", err)
+	}
+}
+
+func TestEnsureDataguardBrokerRunnerPodDeletesStaleRunnerAfterDesiredReady(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	broker := &dbapi.DataguardBroker{
+		ObjectMeta: metav1.ObjectMeta{Name: "dg", Namespace: "ns1"},
+		Status: dbapi.DataguardBrokerStatus{
+			ObservedTopologyHash: "topology-hash-2",
+		},
+	}
+	runtimeSpec := &dataguardBrokerExecutionRuntime{
+		Image:            "runner:19c",
+		ImagePullSecrets: []string{"pull-secret"},
+		WalletMountPath:  "/wallets",
+		TNSAdminPath:     "/tns",
+	}
+
+	desiredHash := computeDataguardBrokerRunnerRuntimeHash(broker, runtimeSpec)
+	desiredPod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, desiredHash)
+	desiredPod.Status.Phase = corev1.PodRunning
+
+	stalePod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, "stalehash00")
+	stalePod.Status.Phase = corev1.PodRunning
+
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(desiredPod, stalePod).Build(),
+		Scheme: scheme,
+	}
+
+	ready, _, err := ensureDataguardBrokerRunnerPod(context.Background(), reconciler, broker, runtimeSpec)
+	if err != nil {
+		t.Fatalf("ensureDataguardBrokerRunnerPod returned error: %v", err)
+	}
+	if !ready {
+		t.Fatalf("expected desired runner pod to be ready")
+	}
+
+	var deletedCheck corev1.Pod
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: stalePod.Name, Namespace: broker.Namespace}, &deletedCheck); err == nil {
+		t.Fatalf("expected stale runner pod %q to be deleted", stalePod.Name)
+	}
+}
+
+func TestBuildDataguardBrokerRunnerPodStoresShortLabelAndFullRuntimeHashAnnotation(t *testing.T) {
+	broker := &dbapi.DataguardBroker{
+		ObjectMeta: metav1.ObjectMeta{Name: "dg", Namespace: "ns1"},
+	}
+	runtimeSpec := &dataguardBrokerExecutionRuntime{
+		Image:           "runner:19c",
+		WalletMountPath: "/wallets",
+		TNSAdminPath:    "/tns",
+	}
+	fullHash := "7e5f19a7838b553ca1b419e59e303aff3e22f252ae0014197f7f760a1bce6195"
+
+	pod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, fullHash)
+	if got := pod.Labels["database.oracle.com/runtime-hash"]; len(got) > 63 {
+		t.Fatalf("expected runtime hash label to satisfy kubernetes length rules, got len=%d value=%q", len(got), got)
+	}
+	if got := pod.Annotations["database.oracle.com/runtime-hash"]; got != fullHash {
+		t.Fatalf("expected full runtime hash annotation %q, got %q", fullHash, got)
+	}
+	if got := dataguardBrokerRunnerPodRuntimeHash(pod); got != fullHash {
+		t.Fatalf("expected runtime hash reader to prefer full annotation %q, got %q", fullHash, got)
+	}
+}
+
+func TestResolveDataguardBrokerExecutionRuntimeRequiresTCPSWalletSecret(t *testing.T) {
+	reconciler := &DataguardBrokerReconciler{}
+	broker := &dbapi.DataguardBroker{
+		Spec: dbapi.DataguardBrokerSpec{
+			Topology: &dbapi.DataguardTopologySpec{
+				Members: []dbapi.DataguardTopologyMember{
+					{
+						Name: "primary-a",
+						Role: "PRIMARY",
+						TCPS: &dbapi.DataguardTCPSConfig{Enabled: true},
+					},
+				},
+				Pairs: []dbapi.DataguardTopologyPair{{
+					Primary: "primary-a",
+					Standby: "standby-a",
+				}},
+			},
+		},
+	}
+
+	got, ready, message, err := resolveDataguardBrokerExecutionRuntime(context.Background(), reconciler, broker)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ready {
+		t.Fatalf("expected runtime to be blocked on missing wallet secret, got %#v", got)
+	}
+	if message == "" {
+		t.Fatalf("expected missing wallet message")
+	}
+}
+
+func TestResolveDataguardTopologyMemberAdminSecretRefUsesGroupedSIDBSecret(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{}
+	sidb.Namespace = "ns1"
+	sidb.Name = "sidb-standby"
+	sidb.Spec.Security = &dbapi.SingleInstanceDatabaseSecurity{
+		Secrets: &dbapi.SingleInstanceDatabaseSecrets{
+			Admin: &dbapi.SingleInstanceDatabaseAdminPassword{
+				SecretName: "grouped-admin",
+				SecretKey:  "oracle_pwd",
+			},
+		},
+	}
+
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(sidb).Build(),
+	}
+	broker := &dbapi.DataguardBroker{}
+	broker.Namespace = "ns1"
+	member := &dbapi.DataguardTopologyMember{
+		Name: "standby-a",
+		LocalRef: &dbapi.DataguardLocalRef{
+			Kind:      "SingleInstanceDatabase",
+			Namespace: "ns1",
+			Name:      "sidb-standby",
+		},
+	}
+
+	secretName, secretKey, secretNamespace, err := resolveDataguardTopologyMemberAdminSecretRef(context.Background(), reconciler, broker, member)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if secretName != "grouped-admin" || secretKey != "oracle_pwd" || secretNamespace != "ns1" {
+		t.Fatalf("unexpected resolved secret ref: %q/%q in %q", secretName, secretKey, secretNamespace)
+	}
+}
+
+func TestResolveDataguardTopologyMemberAdminSecretRefUsesTopologyDefault(t *testing.T) {
+	reconciler := &DataguardBrokerReconciler{}
+	broker := &dbapi.DataguardBroker{}
+	broker.Namespace = "ns1"
+	broker.Spec.Topology = &dbapi.DataguardTopologySpec{
+		Defaults: &dbapi.DataguardTopologyDefaults{
+			AdminSecretRef: &dbapi.DataguardSecretRef{
+				SecretName: "shared-admin",
+				SecretKey:  "oracle_pwd",
+			},
+		},
+	}
+	member := &dbapi.DataguardTopologyMember{Name: "primary-a"}
+
+	secretName, secretKey, secretNamespace, err := resolveDataguardTopologyMemberAdminSecretRef(context.Background(), reconciler, broker, member)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if secretName != "shared-admin" || secretKey != "oracle_pwd" || secretNamespace != "ns1" {
+		t.Fatalf("unexpected resolved default secret ref: %q/%q in %q", secretName, secretKey, secretNamespace)
+	}
+}
+
+func TestResolveDataguardBrokerExecutionRuntimeAllowsTopologyDefaultWallet(t *testing.T) {
+	reconciler := &DataguardBrokerReconciler{}
+	broker := &dbapi.DataguardBroker{
+		Spec: dbapi.DataguardBrokerSpec{
+			Execution: &dbapi.DataguardExecutionSpec{
+				Image: "oracle/db:19.3.0",
+			},
+			Topology: &dbapi.DataguardTopologySpec{
+				Defaults: &dbapi.DataguardTopologyDefaults{
+					TCPS: &dbapi.DataguardTopologyTCPSDefaults{
+						ClientWalletSecret: "shared-dg-wallet",
+					},
+				},
+				Members: []dbapi.DataguardTopologyMember{
+					{
+						Name: "primary-a",
+						Role: "PRIMARY",
+						Endpoints: []dbapi.DataguardEndpointSpec{{
+							Protocol:    "TCPS",
+							Host:        "primary-a",
+							Port:        2484,
+							ServiceName: "PRIM",
+						}},
+						TCPS: &dbapi.DataguardTCPSConfig{Enabled: true},
+					},
+					{
+						Name: "standby-a",
+						Role: "PHYSICAL_STANDBY",
+					},
+				},
+				Pairs: []dbapi.DataguardTopologyPair{{
+					Primary: "primary-a",
+					Standby: "standby-a",
+				}},
+			},
+		},
+	}
+
+	got, ready, message, err := resolveDataguardBrokerExecutionRuntime(context.Background(), reconciler, broker)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ready {
+		t.Fatalf("expected runtime to be ready when topology default wallet is set, message=%q", message)
+	}
+	if got == nil || got.Image != "oracle/db:19.3.0" {
+		t.Fatalf("unexpected runtime: %#v", got)
+	}
+}

@@ -247,24 +247,38 @@ func resolveServicePort(spec *privateaiv4.PrivateAiSpec) (int32, corev1.URISchem
 	httpsEnabled := boolFromString(spec.PaiHTTPSEnabled)
 
 	if !httpEnabled && !httpsEnabled {
-		// Preserve legacy behaviour – prefer HTTPS when port available.
-		httpsEnabled = spec.PaiHTTPSPort > 0
-		httpEnabled = !httpsEnabled
+		// Mirror webhook defaulting: when HTTP is not explicitly enabled, default
+		// the runtime to HTTPS.
+		httpsEnabled = true
 	}
 
-	if httpsEnabled && spec.PaiHTTPSPort > 0 {
-		return spec.PaiHTTPSPort, corev1.URISchemeHTTPS, httpEnabled, httpsEnabled
+	if httpsEnabled {
+		port := spec.PaiHTTPSPort
+		if port <= 0 {
+			port = 8443
+		}
+		return port, corev1.URISchemeHTTPS, httpEnabled, httpsEnabled
 	}
 
-	if httpEnabled && spec.PaiHTTPPort > 0 {
-		return spec.PaiHTTPPort, corev1.URISchemeHTTP, httpEnabled, httpsEnabled
+	if httpEnabled {
+		port := spec.PaiHTTPPort
+		if port <= 0 {
+			port = 8080
+		}
+		return port, corev1.URISchemeHTTP, httpEnabled, httpsEnabled
 	}
 
 	// Fall back to whichever port is set.
 	if spec.PaiHTTPSPort > 0 {
 		return spec.PaiHTTPSPort, corev1.URISchemeHTTPS, httpEnabled, true
 	}
-	return spec.PaiHTTPPort, corev1.URISchemeHTTP, true, httpsEnabled
+	if spec.PaiHTTPPort > 0 {
+		return spec.PaiHTTPPort, corev1.URISchemeHTTP, true, httpsEnabled
+	}
+
+	// Mirror webhook defaulting so reconciles remain valid even when mutation
+	// was skipped for older or pre-existing objects.
+	return 8443, corev1.URISchemeHTTPS, false, true
 }
 
 func newHTTPProbe(path string, port int32, scheme corev1.URIScheme, base corev1.Probe) *corev1.Probe {
@@ -430,8 +444,67 @@ func ensureEnvVar(envs *[]corev1.EnvVar, seen map[string]bool, name, value strin
 	seen[name] = true
 }
 
+type paiExternalServiceSettings struct {
+	Enabled               bool
+	ServiceType           corev1.ServiceType
+	Port                  int32
+	TargetPort            int32
+	Annotations           map[string]string
+	LoadBalancerIP        string
+	ExternalTrafficPolicy corev1.ServiceExternalTrafficPolicy
+	Internal              bool
+}
+
+// ExternalServiceEnabledForPrivateAI reports whether the external Service should be created.
+func ExternalServiceEnabledForPrivateAI(instance *privateaiv4.PrivateAi) bool {
+	return resolvePaiExternalServiceSettings(instance).Enabled
+}
+
+func resolvePaiExternalServiceSettings(instance *privateaiv4.PrivateAi) paiExternalServiceSettings {
+	settings := paiExternalServiceSettings{
+		ServiceType:           corev1.ServiceTypeLoadBalancer,
+		Annotations:           map[string]string{},
+		ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyCluster,
+	}
+
+	if instance.Spec.PaiService.External != nil {
+		ext := instance.Spec.PaiService.External
+		if ext.Enabled != nil {
+			settings.Enabled = *ext.Enabled
+		}
+		if ext.ServiceType != "" {
+			settings.ServiceType = ext.ServiceType
+		}
+		settings.Port = ext.Port
+		settings.TargetPort = ext.TargetPort
+		for k, v := range ext.Annotations {
+			settings.Annotations[k] = v
+		}
+		settings.LoadBalancerIP = ext.LoadBalancerIP
+		if strings.EqualFold(strings.TrimSpace(ext.ExternalTrafficPolicy), "local") {
+			settings.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
+		}
+		if ext.Internal != nil {
+			settings.Internal = *ext.Internal
+		}
+		return settings
+	}
+
+	settings.Enabled = boolFromString(instance.Spec.IsExternalSvc)
+	settings.Port = instance.Spec.PaiLBPort
+	settings.LoadBalancerIP = instance.Spec.PaiLBIP
+	if strings.EqualFold(strings.TrimSpace(instance.Spec.PaiLBExternalTrafficPolicy), "local") {
+		settings.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
+	}
+	settings.Internal = boolFromString(instance.Spec.PaiInternalLB)
+	for k, v := range instance.Spec.PailbAnnotation {
+		settings.Annotations[k] = v
+	}
+	return settings
+}
+
 func getOwnerRefPrivateAI(instance *privateaiv4.PrivateAi) []metav1.OwnerReference {
-	return []metav1.OwnerReference{*metav1.NewControllerRef(instance, privateaiv4.GroupVersion.WithKind("PrivateAI"))}
+	return []metav1.OwnerReference{*metav1.NewControllerRef(instance, privateaiv4.GroupVersion.WithKind("PrivateAi"))}
 }
 
 // BuildServiceDefForPrivateAi constructs a Kubernetes Service definition for
@@ -440,7 +513,7 @@ func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svctype string
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForPrivateAi(instance, svctype),
 		Spec: corev1.ServiceSpec{
-			Ports: buildSvcPortsDef(instance),
+			Ports: buildSvcPortsDef(instance, svctype),
 		},
 	}
 
@@ -448,23 +521,19 @@ func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svctype string
 
 	switch svctype {
 	case "external":
-		service.Spec.Type = corev1.ServiceTypeLoadBalancer
+		external := resolvePaiExternalServiceSettings(instance)
+		service.Spec.Type = external.ServiceType
 		service.Spec.Selector = labels
-
-		if instance.Spec.PaiLBExternalTrafficPolicy == "local" {
-			service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
-		} else {
-			service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyCluster
-		}
-
-		if status, err := strconv.ParseBool(instance.Spec.PaiInternalLB); err == nil && status {
-			if service.Annotations == nil {
-				service.Annotations = make(map[string]string, len(instance.Spec.PailbAnnotation)+2)
+		service.Spec.ExternalTrafficPolicy = external.ExternalTrafficPolicy
+		if len(external.Annotations) > 0 {
+			service.Annotations = make(map[string]string, len(external.Annotations)+2)
+			for k, v := range external.Annotations {
+				service.Annotations[k] = v
 			}
-			if len(instance.Spec.PailbAnnotation) > 0 {
-				for k, v := range instance.Spec.PailbAnnotation {
-					service.Annotations[k] = v
-				}
+		}
+		if external.Internal {
+			if service.Annotations == nil {
+				service.Annotations = make(map[string]string, 2)
 			}
 			if _, ok := service.Annotations["oci.oraclecloud.com/load-balancer-type"]; !ok {
 				service.Annotations["oci.oraclecloud.com/load-balancer-type"] = "lb"
@@ -482,8 +551,10 @@ func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svctype string
 		// No additional configuration
 	}
 
-	if instance.Spec.PaiLBIP != "" {
-		service.Spec.LoadBalancerIP = instance.Spec.PaiLBIP
+	if svctype == "external" {
+		if external := resolvePaiExternalServiceSettings(instance); external.LoadBalancerIP != "" {
+			service.Spec.LoadBalancerIP = external.LoadBalancerIP
+		}
 	}
 
 	return service
@@ -502,282 +573,6 @@ func buildSvcLabelsForPrivateAi(instance *privateaiv4.PrivateAi, svcType string)
 	labels := buildLabelsForPrivateAi(instance)
 	labels["app.kubernetes.io/servicetype"] = svcType
 	return labels
-}
-
-// IsGatewayEnabled reports whether gateway deployment is configured for PrivateAI.
-func IsGatewayEnabled(instance *privateaiv4.PrivateAi) bool {
-	return instance.Spec.Gateway != nil && strings.TrimSpace(instance.Spec.Gateway.Image) != ""
-}
-
-// BuildGatewayDeploySetForPrivateAI builds the gateway Deployment for PrivateAI.
-func BuildGatewayDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.Deployment {
-	if !IsGatewayEnabled(instance) {
-		return nil
-	}
-	replicas := int32(1)
-	if instance.Spec.Gateway.Replicas > 0 {
-		replicas = instance.Spec.Gateway.Replicas
-	}
-	labels := buildGatewayLabelsForPrivateAi(instance)
-	imagePullPolicy := corev1.PullIfNotPresent
-	if instance.Spec.Gateway.ImagePullPolicy != "" {
-		imagePullPolicy = instance.Spec.Gateway.ImagePullPolicy
-	}
-	port := gatewayContainerPort(instance)
-
-	gatewayContainer := corev1.Container{
-		Name:            gatewayDeploymentName(instance),
-		Image:           instance.Spec.Gateway.Image,
-		ImagePullPolicy: imagePullPolicy,
-		Ports: []corev1.ContainerPort{{
-			ContainerPort: port,
-			Protocol:      corev1.ProtocolTCP,
-		}},
-		Env:          buildGatewayEnvVars(instance),
-		VolumeMounts: []corev1.VolumeMount{{Name: privateAiLogVolumeName(instance), MountPath: privateAiLogMountPath(instance)}},
-	}
-	if isGatewayTypeNginx(instance) {
-		gatewayContainer.Command = []string{"nginx", "-g", "daemon off;"}
-	}
-	if cfgName, cfgMountPath, cfgKey := gatewayConfigMapDetails(instance); cfgName != "" && cfgMountPath != "" && cfgKey != "" {
-		gatewayContainer.VolumeMounts = append(gatewayContainer.VolumeMounts, corev1.VolumeMount{
-			Name:      gatewayConfigVolumeName(instance),
-			MountPath: cfgMountPath,
-			SubPath:   cfgKey,
-			ReadOnly:  true,
-		})
-	}
-	if tlsSecretName, tlsMountPath := gatewayTLSSecretDetails(instance); tlsSecretName != "" && tlsMountPath != "" {
-		gatewayContainer.VolumeMounts = append(gatewayContainer.VolumeMounts, corev1.VolumeMount{
-			Name:      gatewayTLSVolumeName(instance),
-			MountPath: tlsMountPath,
-			ReadOnly:  true,
-		})
-	}
-	if instance.Spec.Gateway.Resources != nil {
-		gatewayContainer.Resources = *instance.Spec.Gateway.Resources
-	}
-
-	containers := []corev1.Container{gatewayContainer}
-	if sidecar := buildLogSidecarForPrivateAI(instance, gatewayDeploymentName(instance)+"-log-sidecar"); sidecar != nil {
-		containers = append(containers, *sidecar)
-	}
-
-	volumes := []corev1.Volume{{
-		Name:         privateAiLogVolumeName(instance),
-		VolumeSource: corev1.VolumeSource{EmptyDir: privateAiLogEmptyDir(instance)},
-	}}
-	if cfgName, _, cfgKey := gatewayConfigMapDetails(instance); cfgName != "" && cfgKey != "" {
-		volumes = append(volumes, corev1.Volume{
-			Name: gatewayConfigVolumeName(instance),
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: cfgName},
-					Items:                []corev1.KeyToPath{{Key: cfgKey, Path: cfgKey}},
-				},
-			},
-		})
-	}
-	if tlsSecretName, tlsMountPath := gatewayTLSSecretDetails(instance); tlsSecretName != "" && tlsMountPath != "" {
-		volumes = append(volumes, corev1.Volume{
-			Name: gatewayTLSVolumeName(instance),
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: tlsSecretName},
-			},
-		})
-	}
-
-	return &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{Kind: "Deployment", APIVersion: "apps/v1"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            gatewayDeploymentName(instance),
-			Namespace:       instance.Namespace,
-			OwnerReferences: getOwnerRefPrivateAI(instance),
-			Labels:          labels,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(replicas),
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      labels,
-					Annotations: map[string]string{restartAnnotationKey: time.Now().UTC().Format(time.RFC3339)},
-				},
-				Spec: corev1.PodSpec{
-					Containers: containers,
-					Volumes:    volumes,
-				},
-			},
-		},
-	}
-}
-
-// BuildGatewayServiceDefForPrivateAI builds an internal or external gateway Service.
-func BuildGatewayServiceDefForPrivateAI(instance *privateaiv4.PrivateAi, serviceKind string) *corev1.Service {
-	if !IsGatewayEnabled(instance) {
-		return nil
-	}
-	labels := buildGatewayLabelsForPrivateAi(instance)
-	selector := buildGatewayLabelsForPrivateAi(instance)
-
-	spec := gatewayServiceSpec(instance, serviceKind)
-	svcPort := spec.Port
-	targetPort := spec.TargetPort
-	if svcPort <= 0 {
-		svcPort = gatewayServicePort(instance)
-	}
-	if targetPort <= 0 {
-		targetPort = gatewayContainerPort(instance)
-	}
-	service := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            gatewayServiceName(instance, serviceKind),
-			Namespace:       instance.Namespace,
-			OwnerReferences: getOwnerRefPrivateAI(instance),
-			Labels:          labels,
-			Annotations:     map[string]string{},
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: selector,
-			Ports: []corev1.ServicePort{{
-				Name:       generatePortMapping(privateaiv4.PaiPortMapping{Port: svcPort, TargetPort: targetPort}),
-				Protocol:   corev1.ProtocolTCP,
-				Port:       svcPort,
-				TargetPort: intstr.FromInt(int(targetPort)),
-			}},
-		},
-	}
-
-	switch serviceKind {
-	case "external":
-		if spec.ServiceType == "" {
-			service.Spec.Type = corev1.ServiceTypeLoadBalancer
-		} else {
-			service.Spec.Type = spec.ServiceType
-		}
-		for k, v := range spec.Annotations {
-			service.Annotations[k] = v
-		}
-	default:
-		service.Spec.Type = corev1.ServiceTypeClusterIP
-		for k, v := range spec.Annotations {
-			service.Annotations[k] = v
-		}
-	}
-
-	return service
-}
-
-// IsGatewayServiceEnabled reports whether the requested gateway service kind is enabled.
-func IsGatewayServiceEnabled(instance *privateaiv4.PrivateAi, serviceKind string) bool {
-	if !IsGatewayEnabled(instance) {
-		return false
-	}
-	spec := gatewayServiceSpec(instance, serviceKind)
-	if spec.Enabled == nil {
-		return serviceKind == "internal"
-	}
-	return *spec.Enabled
-}
-
-func gatewayDeploymentName(instance *privateaiv4.PrivateAi) string {
-	return instance.Name + "-gateway"
-}
-
-func gatewayServiceName(instance *privateaiv4.PrivateAi, serviceKind string) string {
-	if serviceKind == "external" {
-		return instance.Name + "-gateway-ext"
-	}
-	return instance.Name + "-gateway"
-}
-
-func buildGatewayLabelsForPrivateAi(instance *privateaiv4.PrivateAi) map[string]string {
-	return map[string]string{
-		"app.kubernetes.io/instance":       fmt.Sprintf("PrivateAi-%s", instance.Name),
-		"app.kubernetes.io/name":           instance.Name,
-		"app.kubernetes.io/component":      "Oml-PrivateAi-" + instance.Name + "-gateway",
-		"app.kubernetes.io/managed-by":     "Oracle-Database-Operator",
-		"app.kubernetes.io/offline-status": "false",
-	}
-}
-
-func buildGatewayEnvVars(instance *privateaiv4.PrivateAi) []corev1.EnvVar {
-	if instance.Spec.Gateway == nil || len(instance.Spec.Gateway.EnvVars) == 0 {
-		return nil
-	}
-	out := make([]corev1.EnvVar, 0, len(instance.Spec.Gateway.EnvVars))
-	for _, e := range instance.Spec.Gateway.EnvVars {
-		if strings.TrimSpace(e.Name) == "" {
-			continue
-		}
-		out = append(out, corev1.EnvVar{Name: e.Name, Value: e.Value})
-	}
-	return out
-}
-
-func gatewayServiceSpec(instance *privateaiv4.PrivateAi, serviceKind string) privateaiv4.GatewayServiceSpec {
-	if instance.Spec.Gateway == nil {
-		return privateaiv4.GatewayServiceSpec{}
-	}
-	if serviceKind == "external" {
-		return instance.Spec.Gateway.ExternalService
-	}
-	return instance.Spec.Gateway.InternalService
-}
-
-func gatewayServicePort(instance *privateaiv4.PrivateAi) int32 {
-	spec := gatewayServiceSpec(instance, "internal")
-	if spec.Port > 0 {
-		return spec.Port
-	}
-	return gatewayContainerPort(instance)
-}
-
-func gatewayContainerPort(instance *privateaiv4.PrivateAi) int32 {
-	if instance.Spec.Gateway == nil {
-		return 8080
-	}
-	if instance.Spec.Gateway.ContainerPort > 0 {
-		return instance.Spec.Gateway.ContainerPort
-	}
-	return 8080
-}
-
-func gatewayConfigVolumeName(instance *privateaiv4.PrivateAi) string {
-	return gatewayDeploymentName(instance) + "-config"
-}
-
-func gatewayTLSVolumeName(instance *privateaiv4.PrivateAi) string {
-	return gatewayDeploymentName(instance) + "-tls"
-}
-
-func gatewayConfigMapDetails(instance *privateaiv4.PrivateAi) (name, mountPath, key string) {
-	if instance.Spec.Gateway == nil {
-		return "", "", ""
-	}
-	name = strings.TrimSpace(instance.Spec.Gateway.ConfigMap.Name)
-	mountPath = strings.TrimSpace(instance.Spec.Gateway.ConfigMap.MountLocation)
-	key = strings.TrimSpace(instance.Spec.Gateway.ConfigFileKey)
-	if key == "" {
-		key = "nginx.conf"
-	}
-	return name, mountPath, key
-}
-
-func gatewayTLSSecretDetails(instance *privateaiv4.PrivateAi) (name, mountPath string) {
-	if instance.Spec.Gateway == nil {
-		return "", ""
-	}
-	name = strings.TrimSpace(instance.Spec.Gateway.TLSSecretName)
-	mountPath = strings.TrimSpace(instance.Spec.Gateway.TLSMountLocation)
-	return name, mountPath
-}
-
-func isGatewayTypeNginx(instance *privateaiv4.PrivateAi) bool {
-	if instance.Spec.Gateway == nil || strings.TrimSpace(instance.Spec.Gateway.Type) == "" {
-		return true
-	}
-	return strings.EqualFold(instance.Spec.Gateway.Type, "nginx")
 }
 
 func privateAiLogVolumeName(instance *privateaiv4.PrivateAi) string {
