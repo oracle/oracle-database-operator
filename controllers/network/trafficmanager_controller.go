@@ -129,10 +129,6 @@ func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	inst.Status.InternalService = ""
 	inst.Status.ExternalService = ""
 	inst.Status.ExternalEndpoint = ""
-	inst.Status.Nginx = &networkv4.NginxTrafficManagerStatus{
-		ConfigMapName:      configMap.Name,
-		AssociatedBackends: backendNames(backends),
-	}
 	if trafficManagerServiceEnabled(inst.Spec.Service.Internal.Enabled, true) {
 		inst.Status.InternalService = trafficManagerInternalServiceName(inst)
 	}
@@ -148,6 +144,18 @@ func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				inst.Status.ExternalEndpoint = ingress.Hostname
 			}
 		}
+	}
+	if inst.Status.ExternalEndpoint != "" {
+		inst.Status.ExternalEndpoint = trafficManagerURLBase(inst, inst.Status.ExternalEndpoint)
+	}
+	inst.Status.Nginx = &networkv4.NginxTrafficManagerStatus{
+		ConfigMapName:      configMap.Name,
+		AssociatedBackends: backendNames(backends),
+		BackendCount:       int32(len(backends)),
+		ConfigMode:         trafficManagerConfigMode(inst),
+		TLSEnabled:         inst.Spec.Security.TLS.Enabled,
+		TLSSecretName:      strings.TrimSpace(inst.Spec.Security.TLS.SecretName),
+		Routes:             buildNginxRouteStatuses(inst, backends, inst.Status.ExternalEndpoint),
 	}
 	if err := r.Status().Update(ctx, inst); err != nil {
 		return trafficManagerNoRequeue, err
@@ -216,7 +224,7 @@ func (r *TrafficManagerReconciler) listAssociatedBackends(ctx context.Context, i
 		}
 		path := strings.TrimSpace(item.Spec.TrafficManager.RoutePath)
 		if path == "" {
-			path = fmt.Sprintf("/v1/%s/", strings.ToLower(strings.TrimSpace(item.Name)))
+			path = fmt.Sprintf("/%s/v1/", strings.ToLower(strings.TrimSpace(item.Name)))
 		}
 		if other, exists := seenPaths[path]; exists {
 			return nil, fmt.Errorf("duplicate traffic manager route path %q for backends %s and %s", path, other, item.Name)
@@ -557,6 +565,25 @@ func checksumString(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func buildNginxRouteStatuses(inst *networkv4.TrafficManager, backends []associatedBackend, externalEndpoint string) []networkv4.NginxRouteStatus {
+	routes := make([]networkv4.NginxRouteStatus, 0, len(backends))
+	for _, backend := range backends {
+		backendURL := fmt.Sprintf("%s://%s:%d", backendScheme(backend.UseHTTPS), backend.ServiceName, backend.ServicePort)
+		publicURL := ""
+		if externalEndpoint != "" {
+			publicURL = strings.TrimRight(externalEndpoint, "/") + backend.Path
+		}
+		routes = append(routes, networkv4.NginxRouteStatus{
+			Path:           backend.Path,
+			BackendName:    backend.Name,
+			BackendService: backend.ServiceName,
+			BackendURL:     backendURL,
+			PublicURL:      publicURL,
+		})
+	}
+	return routes
+}
+
 func (r *TrafficManagerReconciler) resolveTLSSecretChecksum(ctx context.Context, inst *networkv4.TrafficManager) (string, error) {
 	if !inst.Spec.Security.TLS.Enabled {
 		return "", nil
@@ -589,6 +616,27 @@ func imagePullPolicyOrDefault(policy corev1.PullPolicy) corev1.PullPolicy {
 		return corev1.PullIfNotPresent
 	}
 	return policy
+}
+
+func trafficManagerURLBase(inst *networkv4.TrafficManager, host string) string {
+	if host == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s://%s", backendScheme(inst.Spec.Security.TLS.Enabled), host)
+}
+
+func trafficManagerConfigMode(inst *networkv4.TrafficManager) string {
+	if inst.Spec.Type == networkv4.TrafficManagerTypeNginx {
+		return "Managed"
+	}
+	return ""
+}
+
+func backendScheme(useHTTPS bool) string {
+	if useHTTPS {
+		return "https"
+	}
+	return "http"
 }
 
 func trafficManagerContainerPort(inst *networkv4.TrafficManager) int32 {

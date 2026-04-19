@@ -180,18 +180,20 @@ type PaiPortMapping struct {
 type PrivateAiStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Status         string                  `json:"status,omitempty"`
-	Replicas       int                     `json:"replicas,omitempty"`
-	ReleaseUpdate  string                  `json:"releaseUpdate,omitempty"`
-	LoadBalancerIP string                  `json:"loadBalancerIP,omitempty"`
-	PodIP          string                  `json:"podIP,omitempty"`
-	NodeIP         string                  `json:"NodeIP,omitempty"`
-	ClusterIP      string                  `json:"clusterIP,omitempty"`
-	PaiSecret      SecretStatus            `json:"paiSecret,omitempty"`
-	PaiConfigMap   ConfigMapStatus         `json:"paiConfigMap,omitempty"`
-	Mode           string                  `json:"mode,omitempty"`
-	TrafficManager TrafficManagerRefStatus `json:"trafficManager,omitempty"`
-	Logging        LoggingStatus           `json:"logging,omitempty"`
+	Status          string                  `json:"status,omitempty"`
+	Replicas        int                     `json:"replicas,omitempty"`
+	ReleaseUpdate   string                  `json:"releaseUpdate,omitempty"`
+	LoadBalancerIP  string                  `json:"loadBalancerIP,omitempty"`
+	PodIP           string                  `json:"podIP,omitempty"`
+	NodeIP          string                  `json:"NodeIP,omitempty"`
+	ClusterIP       string                  `json:"clusterIP,omitempty"`
+	LocalService    string                  `json:"localService,omitempty"`
+	ExternalService string                  `json:"externalService,omitempty"`
+	PaiSecret       SecretStatus            `json:"paiSecret,omitempty"`
+	PaiConfigMap    ConfigMapStatus         `json:"paiConfigMap,omitempty"`
+	Mode            string                  `json:"mode,omitempty"`
+	TrafficManager  TrafficManagerRefStatus `json:"trafficManager,omitempty"`
+	Logging         LoggingStatus           `json:"logging,omitempty"`
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
@@ -203,8 +205,12 @@ type PrivateAiStatus struct {
 type SecretStatus struct {
 	ResourceVersion string `json:"resourceVersion,omitempty" protobuf:"bytes,6,opt,name=resourceVersion"`
 	Name            string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
-	// APIKey is the Go field name; the JSON key remains "apiKey" for compatibility.
-	APIKey  string `json:"apiKey,omitempty"`
+	HasAPIKey       bool   `json:"hasAPIKey,omitempty"`
+	HasCertPem      bool   `json:"hasCertPem,omitempty"`
+	// Deprecated: retained for compatibility with older status consumers.
+	// The JSON key remains "apiKey" for backward compatibility.
+	APIKey string `json:"apiKey,omitempty"`
+	// Deprecated: retained for compatibility with older status consumers.
 	Certpem string `json:"certpem,omitempty"`
 }
 
@@ -216,8 +222,11 @@ type ConfigMapStatus struct {
 
 // TrafficManagerRefStatus tracks the resolved TrafficManager binding for PrivateAI.
 type TrafficManagerRefStatus struct {
-	Ref       string `json:"ref,omitempty"`
-	RoutePath string `json:"routePath,omitempty"`
+	Ref         string `json:"ref,omitempty"`
+	RoutePath   string `json:"routePath,omitempty"`
+	ServiceName string `json:"serviceName,omitempty"`
+	Endpoint    string `json:"endpoint,omitempty"`
+	PublicURL   string `json:"publicURL,omitempty"`
 }
 
 // LoggingStatus tracks observed logging sidecar state.
@@ -230,11 +239,18 @@ type LoggingStatus struct {
 // +kubebuilder:subresource:status
 //+kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type=string
 //+kubebuilder:printcolumn:JSONPath=".status.replicas",name="Replicas",type=number
-//+kubebuilder:printcolumn:JSONPath=".status.paiSecret.apiKey",name="ApiKey",type=string
-//+kubebuilder:printcolumn:JSONPath=".status.podIP",name="PodIP",type=string
+//+kubebuilder:printcolumn:JSONPath=".status.localService",name="LocalSvc",type=string
 //+kubebuilder:printcolumn:JSONPath=".status.loadBalancerIP",name="LbIP",type=string
+//+kubebuilder:printcolumn:JSONPath=".status.externalService",name="ExtSvc",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.paiSecret.name",name="Secret",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.trafficManager.ref",name="TMRef",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.trafficManager.routePath",name="TMRoute",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.trafficManager.serviceName",name="TMSvc",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.trafficManager.endpoint",name="TMEndpoint",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.trafficManager.publicURL",name="PublicURL",type=string,priority=1
 //+kubebuilder:printcolumn:JSONPath=".status.releaseUpdate",name="ReleaseUpdate",type=string,priority=1
 //+kubebuilder:printcolumn:JSONPath=".status.mode",name="Mode",type=string,priority=1
+// +kubebuilder:resource:shortName=pai
 
 // PrivateAi is the Schema for the privateais API.
 type PrivateAi struct {

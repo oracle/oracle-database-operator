@@ -93,3 +93,36 @@ func TestResolveTLSSecretChecksum(t *testing.T) {
 		t.Fatalf("expected checksum to change when TLS secret data changes")
 	}
 }
+
+func TestBuildNginxRouteStatuses(t *testing.T) {
+	inst := &networkv4.TrafficManager{
+		ObjectMeta: metav1.ObjectMeta{Name: "tm", Namespace: "ns"},
+		Spec: networkv4.TrafficManagerSpec{
+			Type: networkv4.TrafficManagerTypeNginx,
+			Security: networkv4.TrafficManagerSecuritySpec{
+				TLS: networkv4.TrafficManagerTLSSpec{Enabled: true},
+			},
+		},
+	}
+	backends := []associatedBackend{{
+		Name:        "pai-a",
+		Path:        "/pai-a/v1/",
+		ServiceName: "pai-a-local.ns.svc.cluster.local",
+		ServicePort: 8443,
+		UseHTTPS:    true,
+	}}
+
+	routes := buildNginxRouteStatuses(inst, backends, "https://141.148.67.224")
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route, got %d", len(routes))
+	}
+	if routes[0].BackendURL != "https://pai-a-local.ns.svc.cluster.local:8443" {
+		t.Fatalf("unexpected backend URL %q", routes[0].BackendURL)
+	}
+	if routes[0].PublicURL != "https://141.148.67.224/pai-a/v1/" {
+		t.Fatalf("unexpected public URL %q", routes[0].PublicURL)
+	}
+	if got := trafficManagerConfigMode(inst); got != "Managed" {
+		t.Fatalf("expected config mode Managed, got %q", got)
+	}
+}

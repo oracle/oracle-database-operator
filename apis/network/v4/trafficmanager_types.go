@@ -78,8 +78,21 @@ type TrafficManagerStatus struct {
 }
 
 type NginxTrafficManagerStatus struct {
-	ConfigMapName      string   `json:"configMapName,omitempty"`
-	AssociatedBackends []string `json:"associatedBackends,omitempty"`
+	ConfigMapName      string             `json:"configMapName,omitempty"`
+	AssociatedBackends []string           `json:"associatedBackends,omitempty"`
+	BackendCount       int32              `json:"backendCount,omitempty"`
+	ConfigMode         string             `json:"configMode,omitempty"`
+	TLSEnabled         bool               `json:"tlsEnabled,omitempty"`
+	TLSSecretName      string             `json:"tlsSecretName,omitempty"`
+	Routes             []NginxRouteStatus `json:"routes,omitempty"`
+}
+
+type NginxRouteStatus struct {
+	Path           string `json:"path,omitempty"`
+	BackendName    string `json:"backendName,omitempty"`
+	BackendService string `json:"backendService,omitempty"`
+	BackendURL     string `json:"backendURL,omitempty"`
+	PublicURL      string `json:"publicURL,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -87,7 +100,15 @@ type NginxTrafficManagerStatus struct {
 //+kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type=string
 //+kubebuilder:printcolumn:JSONPath=".status.type",name="Type",type=string
 //+kubebuilder:printcolumn:JSONPath=".status.readyReplicas",name="Ready",type=number
-//+kubebuilder:printcolumn:JSONPath=".status.externalEndpoint",name="Endpoint",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.externalEndpoint",name="Endpoint",type=string
+//+kubebuilder:printcolumn:JSONPath=".status.nginx.backendCount",name="Backends",type=number
+//+kubebuilder:printcolumn:JSONPath=".status.nginx.tlsEnabled",name="TLS",type=boolean
+//+kubebuilder:printcolumn:JSONPath=".status.nginx.configMode",name="Config",type=string
+//+kubebuilder:printcolumn:JSONPath=".status.internalService",name="IntSvc",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.externalService",name="ExtSvc",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.nginx.configMapName",name="ConfigMap",type=string,priority=1
+//+kubebuilder:printcolumn:JSONPath=".status.nginx.tlsSecretName",name="TLSSecret",type=string,priority=1
+// +kubebuilder:resource:shortName=cman;connectionmanager;trm
 
 type TrafficManager struct {
 	metav1.TypeMeta   `json:",inline"`

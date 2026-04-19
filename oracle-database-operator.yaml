@@ -13180,6 +13180,8 @@ spec:
     kind: PrivateAi
     listKind: PrivateAiList
     plural: privateais
+    shortNames:
+    - pai
     singular: privateai
   scope: Namespaced
   versions:
@@ -13190,14 +13192,39 @@ spec:
     - jsonPath: .status.replicas
       name: Replicas
       type: number
-    - jsonPath: .status.paiSecret.apiKey
-      name: ApiKey
-      type: string
-    - jsonPath: .status.podIP
-      name: PodIP
+    - jsonPath: .status.localService
+      name: LocalSvc
       type: string
     - jsonPath: .status.loadBalancerIP
       name: LbIP
+      type: string
+    - jsonPath: .status.externalService
+      name: ExtSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.paiSecret.name
+      name: Secret
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.ref
+      name: TMRef
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.routePath
+      name: TMRoute
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.serviceName
+      name: TMSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.endpoint
+      name: TMEndpoint
+      priority: 1
+      type: string
+    - jsonPath: .status.trafficManager.publicURL
+      name: PublicURL
+      priority: 1
       type: string
     - jsonPath: .status.releaseUpdate
       name: ReleaseUpdate
@@ -13471,9 +13498,15 @@ spec:
                 type: integer
               trafficManager:
                 properties:
+                  endpoint:
+                    type: string
+                  publicURL:
+                    type: string
                   ref:
                     type: string
                   routePath:
+                    type: string
+                  serviceName:
                     type: string
                 type: object
               workerNodes:
@@ -13486,6 +13519,8 @@ spec:
               NodeIP:
                 type: string
               clusterIP:
+                type: string
+              externalService:
                 type: string
               conditions:
                 items:
@@ -13528,6 +13563,8 @@ spec:
                 x-kubernetes-list-type: map
               loadBalancerIP:
                 type: string
+              localService:
+                type: string
               logging:
                 properties:
                   enabled:
@@ -13550,6 +13587,10 @@ spec:
                     type: string
                   certpem:
                     type: string
+                  hasAPIKey:
+                    type: boolean
+                  hasCertPem:
+                    type: boolean
                   name:
                     type: string
                   resourceVersion:
@@ -19900,6 +19941,10 @@ spec:
     kind: TrafficManager
     listKind: TrafficManagerList
     plural: trafficmanagers
+    shortNames:
+    - cman
+    - connectionmanager
+    - trm
     singular: trafficmanager
   scope: Namespaced
   versions:
@@ -19915,6 +19960,30 @@ spec:
       type: number
     - jsonPath: .status.externalEndpoint
       name: Endpoint
+      type: string
+    - jsonPath: .status.nginx.backendCount
+      name: Backends
+      type: number
+    - jsonPath: .status.nginx.tlsEnabled
+      name: TLS
+      type: boolean
+    - jsonPath: .status.nginx.configMode
+      name: Config
+      type: string
+    - jsonPath: .status.internalService
+      name: IntSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.externalService
+      name: ExtSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.nginx.configMapName
+      name: ConfigMap
+      priority: 1
+      type: string
+    - jsonPath: .status.nginx.tlsSecretName
+      name: TLSSecret
       priority: 1
       type: string
     name: v4
@@ -20102,7 +20171,31 @@ spec:
                     items:
                       type: string
                     type: array
+                  backendCount:
+                    format: int32
+                    type: integer
+                  configMode:
+                    type: string
                   configMapName:
+                    type: string
+                  routes:
+                    items:
+                      properties:
+                        backendName:
+                          type: string
+                        backendService:
+                          type: string
+                        backendURL:
+                          type: string
+                        path:
+                          type: string
+                        publicURL:
+                          type: string
+                      type: object
+                    type: array
+                  tlsEnabled:
+                    type: boolean
+                  tlsSecretName:
                     type: string
                 type: object
               readyReplicas:

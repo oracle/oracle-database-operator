@@ -84,7 +84,7 @@ func (r *PrivateAi) Default(_ context.Context, obj *PrivateAi) error {
 	if privateai.Spec.TrafficManager != nil &&
 		strings.TrimSpace(privateai.Spec.TrafficManager.Ref) != "" &&
 		strings.TrimSpace(privateai.Spec.TrafficManager.RoutePath) == "" {
-		privateai.Spec.TrafficManager.RoutePath = fmt.Sprintf("/v1/%s/", strings.ToLower(strings.TrimSpace(privateai.Name)))
+		privateai.Spec.TrafficManager.RoutePath = fmt.Sprintf("/%s/v1/", strings.ToLower(strings.TrimSpace(privateai.Name)))
 	}
 	return nil
 }

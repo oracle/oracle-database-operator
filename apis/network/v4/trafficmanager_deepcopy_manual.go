@@ -75,6 +75,11 @@ func (in *NginxTrafficManagerStatus) DeepCopyInto(out *NginxTrafficManagerStatus
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.Routes != nil {
+		in, out := &in.Routes, &out.Routes
+		*out = make([]NginxRouteStatus, len(*in))
+		copy(*out, *in)
+	}
 }
 
 func (in *TrafficManagerStatus) DeepCopyInto(out *TrafficManagerStatus) {

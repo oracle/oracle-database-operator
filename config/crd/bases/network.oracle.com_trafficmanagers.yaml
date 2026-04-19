@@ -11,6 +11,10 @@ spec:
     kind: TrafficManager
     listKind: TrafficManagerList
     plural: trafficmanagers
+    shortNames:
+    - cman
+    - connectionmanager
+    - trm
     singular: trafficmanager
   scope: Namespaced
   versions:
@@ -26,6 +30,30 @@ spec:
       type: number
     - jsonPath: .status.externalEndpoint
       name: Endpoint
+      type: string
+    - jsonPath: .status.nginx.backendCount
+      name: Backends
+      type: number
+    - jsonPath: .status.nginx.tlsEnabled
+      name: TLS
+      type: boolean
+    - jsonPath: .status.nginx.configMode
+      name: Config
+      type: string
+    - jsonPath: .status.internalService
+      name: IntSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.externalService
+      name: ExtSvc
+      priority: 1
+      type: string
+    - jsonPath: .status.nginx.configMapName
+      name: ConfigMap
+      priority: 1
+      type: string
+    - jsonPath: .status.nginx.tlsSecretName
+      name: TLSSecret
       priority: 1
       type: string
     name: v4
@@ -213,7 +241,31 @@ spec:
                     items:
                       type: string
                     type: array
+                  backendCount:
+                    format: int32
+                    type: integer
+                  configMode:
+                    type: string
                   configMapName:
+                    type: string
+                  routes:
+                    items:
+                      properties:
+                        backendName:
+                          type: string
+                        backendService:
+                          type: string
+                        backendURL:
+                          type: string
+                        path:
+                          type: string
+                        publicURL:
+                          type: string
+                      type: object
+                    type: array
+                  tlsEnabled:
+                    type: boolean
+                  tlsSecretName:
                     type: string
                 type: object
               readyReplicas:

@@ -174,7 +174,8 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if privateAiInst.Spec.TrafficManager != nil && strings.TrimSpace(privateAiInst.Spec.TrafficManager.Ref) != "" {
 		privateAiInst.Status.Mode = "traffic-managed"
 		privateAiInst.Status.TrafficManager.Ref = strings.TrimSpace(privateAiInst.Spec.TrafficManager.Ref)
-		privateAiInst.Status.TrafficManager.RoutePath = strings.TrimSpace(privateAiInst.Spec.TrafficManager.RoutePath)
+		privateAiInst.Status.TrafficManager.RoutePath = resolvedTrafficManagerRoutePath(privateAiInst)
+		r.populateTrafficManagerAccessStatus(ctx, req.Namespace, privateAiInst)
 	} else {
 		privateAiInst.Status.Mode = "direct"
 		privateAiInst.Status.TrafficManager = privateaiv4.TrafficManagerRefStatus{}
@@ -225,7 +226,15 @@ func (r *PrivateAiReconciler) updateReconcileStatus(
 	state *reconcileState,
 ) error {
 	m.Status.Replicas = int(m.Spec.Replicas)
-	if state.completed {
+	rolloutInProgress := false
+	if recErr == nil {
+		if deploy, err := r.getDeployment(ctx, m.Name, m.Namespace); err == nil {
+			rolloutInProgress = deploymentRolloutInProgress(m, deploy)
+		}
+	}
+	if rolloutInProgress {
+		m.Status.Status = privateaiv4.StatusUpdating
+	} else if state.completed {
 		m.Status.Status = privateaiv4.StatusReady
 		m.Status.ReleaseUpdate = "V2.0"
 	}
@@ -349,6 +358,59 @@ func (r *PrivateAiReconciler) validate(m *privateaiv4.PrivateAi, ctx context.Con
 
 }
 
+func (r *PrivateAiReconciler) populateTrafficManagerAccessStatus(ctx context.Context, namespace string, inst *privateaiv4.PrivateAi) {
+	ref := strings.TrimSpace(inst.Spec.TrafficManager.Ref)
+	if ref == "" {
+		inst.Status.TrafficManager.ServiceName = ""
+		inst.Status.TrafficManager.Endpoint = ""
+		inst.Status.TrafficManager.PublicURL = ""
+		return
+	}
+
+	trafficManager := &networkv4.TrafficManager{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: ref, Namespace: namespace}, trafficManager); err != nil {
+		inst.Status.TrafficManager.ServiceName = ""
+		inst.Status.TrafficManager.Endpoint = ""
+		inst.Status.TrafficManager.PublicURL = ""
+		return
+	}
+
+	serviceName := strings.TrimSpace(trafficManager.Status.ExternalService)
+	if serviceName == "" {
+		serviceName = strings.TrimSpace(trafficManager.Status.InternalService)
+	}
+	inst.Status.TrafficManager.ServiceName = serviceName
+	inst.Status.TrafficManager.Endpoint = normalizedTrafficManagerEndpoint(trafficManager)
+	inst.Status.TrafficManager.PublicURL = ""
+	if inst.Status.TrafficManager.Endpoint != "" {
+		inst.Status.TrafficManager.PublicURL = strings.TrimRight(inst.Status.TrafficManager.Endpoint, "/") + resolvedTrafficManagerRoutePath(inst)
+	}
+}
+
+func resolvedTrafficManagerRoutePath(inst *privateaiv4.PrivateAi) string {
+	if inst.Spec.TrafficManager != nil {
+		if path := strings.TrimSpace(inst.Spec.TrafficManager.RoutePath); path != "" {
+			return path
+		}
+	}
+	return fmt.Sprintf("/%s/v1/", strings.ToLower(strings.TrimSpace(inst.Name)))
+}
+
+func normalizedTrafficManagerEndpoint(trafficManager *networkv4.TrafficManager) string {
+	endpoint := strings.TrimSpace(trafficManager.Status.ExternalEndpoint)
+	if endpoint == "" {
+		return ""
+	}
+	if strings.Contains(endpoint, "://") {
+		return endpoint
+	}
+	scheme := "http"
+	if trafficManager.Spec.Security.TLS.Enabled {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s", scheme, endpoint)
+}
+
 func (r *PrivateAiReconciler) runPhase(
 	ctx context.Context,
 	log logr.Logger,
@@ -400,6 +462,7 @@ func (r *PrivateAiReconciler) reconcileDependencies(ctx context.Context, req ctr
 			return resultNq, err
 		}
 	} else {
+		privateAiInst.Status.ExternalService = ""
 		if err := r.deleteServiceIfExists(ctx, privateAiInst.Namespace, aicommons.GetSvcName(privateAiInst.Name, "external")); err != nil {
 			return resultNq, err
 		}
@@ -681,6 +744,9 @@ func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request
 	_ = aicommons.PatchSecret(secretName, privateAiInst, r.Client, r.Log)
 
 	privateAiInst.Status.PaiSecret.Name = secretName
+	privateAiInst.Status.PaiSecret.HasAPIKey = apiKey != "" && apiKey != "NONE"
+	privateAiInst.Status.PaiSecret.HasCertPem = certPem != "" && certPem != "NONE"
+	// Keep legacy fields populated for backward compatibility with existing consumers.
 	privateAiInst.Status.PaiSecret.APIKey = secretName
 	privateAiInst.Status.PaiSecret.Certpem = secretName
 
@@ -772,6 +838,7 @@ func (r *PrivateAiReconciler) ensureServices(ctx context.Context, privateAiInst 
 		return resultNq, err
 	}
 	if svcType == "external" {
+		privateAiInst.Status.ExternalService = pexlSvc.Name
 		if len(pexlSvc.Status.LoadBalancer.Ingress) > 0 {
 			ingress := pexlSvc.Status.LoadBalancer.Ingress[0]
 
@@ -786,6 +853,7 @@ func (r *PrivateAiReconciler) ensureServices(ctx context.Context, privateAiInst 
 		}
 		privateAiInst.Status.ClusterIP = ""
 	} else if svcType == "local" {
+		privateAiInst.Status.LocalService = pexlSvc.Name
 		privateAiInst.Status.ClusterIP = pexlSvc.Spec.ClusterIP
 	}
 	return ctrl.Result{}, nil
@@ -871,4 +939,31 @@ func requiresRolloutUpdate(inst *privateaiv4.PrivateAi, foundDeploy *appsv1.Depl
 		return true, "controller update lock: resource rollout in progress"
 	}
 	return false, ""
+}
+
+func deploymentRolloutInProgress(inst *privateaiv4.PrivateAi, deploy *appsv1.Deployment) bool {
+	if deploy == nil {
+		return false
+	}
+	desired := desiredPrivateAIReplicas(inst)
+	if deploy.Status.ObservedGeneration < deploy.Generation {
+		return true
+	}
+	if deploy.Status.UpdatedReplicas < desired {
+		return true
+	}
+	if deploy.Status.ReadyReplicas < desired {
+		return true
+	}
+	if deploy.Status.AvailableReplicas < desired {
+		return true
+	}
+	return false
+}
+
+func desiredPrivateAIReplicas(inst *privateaiv4.PrivateAi) int32 {
+	if inst == nil || inst.Spec.Replicas <= 0 {
+		return 1
+	}
+	return inst.Spec.Replicas
 }
