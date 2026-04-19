@@ -3981,12 +3981,18 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 			}
 
 			deployAs := strings.ToUpper(strings.TrimSpace(s.DeployAs))
-			switch deployAs {
-			case "PRIMARY":
-				primaryGroups[g]++
-			case "STANDBY", "ACTIVE_STANDBY":
-				standbyGroups[g]++
+			if replType == "DG" {
+				switch deployAs {
+				case "PRIMARY":
+					primaryGroups[g]++
+				case "STANDBY", "ACTIVE_STANDBY":
+					standbyGroups[g]++
+				}
 			}
+		}
+
+		if replType != "DG" {
+			return nil
 		}
 
 		if len(primaryGroups) != 1 {

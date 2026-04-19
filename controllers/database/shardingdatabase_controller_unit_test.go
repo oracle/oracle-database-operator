@@ -763,6 +763,45 @@ func TestShardingUnit_ValidatePrimaryTopologyConstraint_UserDGOrderIndependent(t
 	}
 }
 
+func TestShardingUnit_ValidatePrimaryTopologyConstraint_SystemNativeDoesNotRequireDeployAsPrimary(t *testing.T) {
+	r := &ShardingDatabaseReconciler{}
+	inst := &databasev4.ShardingDatabase{
+		Spec: databasev4.ShardingDatabaseSpec{
+			ShardingType:    "SYSTEM",
+			ReplicationType: "NATIVE",
+			Shard: []databasev4.ShardSpec{
+				{Name: "n1", ShardGroup: "sg1", ShardRegion: "phx"},
+				{Name: "n2", ShardGroup: "sg1", ShardRegion: "phx"},
+			},
+		},
+	}
+
+	if err := r.validatePrimaryTopologyConstraint(inst); err != nil {
+		t.Fatalf("expected system native without deployAs to pass, got %v", err)
+	}
+}
+
+func TestShardingUnit_ValidatePrimaryTopologyConstraint_SystemDGStillRequiresPrimaryShardGroup(t *testing.T) {
+	r := &ShardingDatabaseReconciler{}
+	inst := &databasev4.ShardingDatabase{
+		Spec: databasev4.ShardingDatabaseSpec{
+			ShardingType:    "SYSTEM",
+			ReplicationType: "DG",
+			Shard: []databasev4.ShardSpec{
+				{Name: "s1", ShardGroup: "sg1", ShardRegion: "phx"},
+			},
+		},
+	}
+
+	err := r.validatePrimaryTopologyConstraint(inst)
+	if err == nil {
+		t.Fatalf("expected DG system topology without PRIMARY shardgroup to fail")
+	}
+	if !strings.Contains(err.Error(), "requires exactly one PRIMARY shardgroup") {
+		t.Fatalf("expected PRIMARY shardgroup error, got %v", err)
+	}
+}
+
 func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *testing.T) {
 	tests := []struct {
 		name    string
