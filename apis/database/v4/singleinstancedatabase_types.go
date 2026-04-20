@@ -115,12 +115,13 @@ type SingleInstanceDatabaseSpec struct {
 	Image         SingleInstanceDatabaseImage         `json:"image"`
 	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
 	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
-	// Deprecated: use resourceRequirements for full Kubernetes resource support including hugepages.
-	Resources                     SingleInstanceDatabaseResources `json:"resources,omitempty"`
-	ResourceRequirements          *corev1.ResourceRequirements    `json:"resourceRequirements,omitempty" protobuf:"bytes,1,opt,name=resourceRequirements"`
-	DisableDefaultDiagVolumeClaim bool                            `json:"disableDefaultDiagVolumeClaim,omitempty"`
-	SecurityContext               *corev1.PodSecurityContext      `json:"securityContext,omitempty"`
-	Capabilities                  *corev1.Capabilities            `json:"capabilities,omitempty"`
+	// Resources configures standard Kubernetes container resource requests and limits.
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	// Deprecated: use resources.
+	ResourceRequirements          *corev1.ResourceRequirements `json:"resourceRequirements,omitempty" protobuf:"bytes,1,opt,name=resourceRequirements"`
+	DisableDefaultDiagVolumeClaim bool                         `json:"disableDefaultDiagVolumeClaim,omitempty"`
+	SecurityContext               *corev1.PodSecurityContext   `json:"securityContext,omitempty"`
+	Capabilities                  *corev1.Capabilities         `json:"capabilities,omitempty"`
 
 	ConvertToSnapshotStandby bool            `json:"convertToSnapshotStandby,omitempty"`
 	EnvVars                  []corev1.EnvVar `json:"envVars,omitempty"`
@@ -301,7 +302,8 @@ type SingleInstanceDatabaseTrueCacheSpec struct {
 	GenerateEnabled bool `json:"generateEnabled,omitempty"`
 
 	// Path inside the primary pod where the blob file is generated when generateEnabled=true
-	// (default: /tmp/tc_config_blob.tar.gz).
+	// (default: /tmp/tc_config_blob.tar.gz). When the path ends with .tar.gz, the operator
+	// materializes the generated DBCA blob back to that exact file path.
 	// +optional
 	GeneratePath string `json:"generatePath,omitempty"`
 
@@ -322,15 +324,6 @@ type SingleInstanceDatabaseTrueCacheSpec struct {
 	TrueCacheServices []string `json:"trueCacheServices,omitempty"`
 }
 
-type SingleInstanceDatabaseResource struct {
-	Cpu    string `json:"cpu,omitempty"`
-	Memory string `json:"memory,omitempty"`
-}
-
-type SingleInstanceDatabaseResources struct {
-	Requests *SingleInstanceDatabaseResource `json:"requests,omitempty"`
-	Limits   *SingleInstanceDatabaseResource `json:"limits,omitempty"`
-}
 type SingleInstanceDatabasePrimaryDetails struct {
 	Host    string `json:"host,omitempty"`
 	Port    int    `json:"port,omitempty"`
@@ -399,6 +392,8 @@ type SingleInstanceDatabaseImage struct {
 	PullFrom    string `json:"pullFrom"`
 	PullSecrets string `json:"pullSecrets,omitempty"`
 	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
+	ImagePullPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	// Deprecated: use imagePullPolicy.
 	PullPolicy *corev1.PullPolicy `json:"pullPolicy,omitempty"`
 	PrebuiltDB bool               `json:"prebuiltDB,omitempty"`
 }

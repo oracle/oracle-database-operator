@@ -26,6 +26,14 @@ spec:
   # - "FREEPDB1:sales2:sales2_tc" 
   # - "FREEPDB1:sales3:sales3_tc"
 
+  ## Optional static host-to-IP mappings added to the True Cache pod /etc/hosts
+  ## Useful when the primary database service name must resolve to a fixed IP
+  # hostAliases:
+  #   - ip: "10.2.1.241"
+  #     hostnames:
+  #       - "truecache-production.default.svc.cluster.local"
+  #       - "truecache-production"
+
   ## Secret containing SIDB password mapped to secretKey
   adminPassword:
     secretName: freedb-admin-secret
@@ -40,10 +48,11 @@ spec:
   ## storageClass is specified for automatic volume provisioning
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
-    size: 50Gi
-    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
-    storageClass: "oci-bv"
-    accessMode: "ReadWriteOnce"
+    oradata:
+      size: 50Gi
+      ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
 
   ## Count of Database Pods. Should be 1 for free edition.
   replicas: 1

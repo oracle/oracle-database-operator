@@ -19042,6 +19042,12 @@ spec:
                 type: array
               image:
                 properties:
+                  imagePullPolicy:
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
+                    type: string
                   prebuiltDB:
                     type: boolean
                   pullFrom:
@@ -19207,19 +19213,35 @@ spec:
                 type: object
               resources:
                 properties:
+                  claims:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        request:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
                   limits:
-                    properties:
-                      cpu:
-                        type: string
-                      memory:
-                        type: string
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
                     type: object
                   requests:
-                    properties:
-                      cpu:
-                        type: string
-                      memory:
-                        type: string
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
                     type: object
                 type: object
               restore:
@@ -21493,8 +21515,8 @@ spec:
         - /manager
         env:
         - name: WATCH_NAMESPACE
-          value: "oracle-database-operator-system,rac"
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
+          value: "oracle-database-operator-system,default"
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sidb-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

@@ -102,6 +102,7 @@ type SingleInstanceDatabaseResources struct {
 	Requests *SingleInstanceDatabaseResource `json:"requests,omitempty"`
 	Limits   *SingleInstanceDatabaseResource `json:"limits,omitempty"`
 }
+
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
 type SingleInstanceDatabasePersistence struct {
 	Size         string `json:"size,omitempty"`

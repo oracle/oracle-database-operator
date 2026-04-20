@@ -56,6 +56,7 @@ import (
 	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"go.uber.org/zap/zapcore"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -65,6 +66,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -204,6 +206,7 @@ func setupControllers(mgr ctrl.Manager, interval int64) error {
 	type controllerRegistration struct {
 		name     string
 		required bool
+		probe    client.Object
 		setup    controllerSetupFn
 	}
 
@@ -218,7 +221,7 @@ func setupControllers(mgr ctrl.Manager, interval int64) error {
 		{name: "OracleRestDataService", required: true, setup: setupOrdsController},
 		{name: "OracleRestart", required: true, setup: setupOracleRestartController},
 		{name: "PrivateAi", required: true, setup: setupPrivateAiController},
-		{name: "TrafficManager", required: true, setup: setupTrafficManagerController},
+		{name: "TrafficManager", required: true, probe: &networkv4.TrafficManager{}, setup: setupTrafficManagerController},
 		{name: "LRPDB", required: true, setup: setupLRPDBController},
 		{name: "LREST", required: true, setup: setupLRESTController},
 		{name: "DataguardBroker", required: true, setup: setupDataguardBrokerController},
@@ -230,6 +233,16 @@ func setupControllers(mgr ctrl.Manager, interval int64) error {
 	}
 
 	for _, controller := range controllers {
+		if controller.probe != nil {
+			available, err := isResourceInstalled(mgr, controller.probe)
+			if err != nil {
+				return annotate(controller.name, err)
+			}
+			if !available {
+				setupLog.Info("skipping controller because CRD is not installed", "controller", controller.name)
+				continue
+			}
+		}
 		if err := controller.setup(mgr, interval); err != nil {
 			if controller.required {
 				return annotate(controller.name, err)
@@ -408,6 +421,7 @@ func setupWebhooks(mgr ctrl.Manager) error {
 		name       string
 		apiVersion string
 		deprecated bool
+		probe      client.Object
 		setup      webhookSetupFn
 	}
 
@@ -437,12 +451,22 @@ func setupWebhooks(mgr ctrl.Manager) error {
 		{name: "OracleRestDataService", setup: setupV4OracleRestDataServiceWebhook},
 		{name: "OracleRestart", setup: setupV4OracleRestartWebhook},
 		{name: "PrivateAi", setup: setupV4PrivateAiWebhook},
-		{name: "TrafficManager", setup: setupV4TrafficManagerWebhook},
+		{name: "TrafficManager", probe: &networkv4.TrafficManager{}, setup: setupV4TrafficManagerWebhook},
 		{name: "RacDatabase", setup: setupV4RacDatabaseWebhook},
 	}
 
 	deprecatedRegistered := make([]string, 0)
 	for _, webhook := range webhooks {
+		if webhook.probe != nil {
+			available, err := isResourceInstalled(mgr, webhook.probe)
+			if err != nil {
+				return annotate(webhook.name, err)
+			}
+			if !available {
+				setupLog.Info("skipping webhook because CRD is not installed", "webhook", webhook.name)
+				continue
+			}
+		}
 		if webhook.deprecated {
 			deprecatedRegistered = append(deprecatedRegistered, webhook.name+"/"+webhook.apiVersion)
 		}
@@ -459,6 +483,21 @@ func setupWebhooks(mgr ctrl.Manager) error {
 	}
 
 	return nil
+}
+
+func isResourceInstalled(mgr ctrl.Manager, obj client.Object) (bool, error) {
+	gvk, err := apiutil.GVKForObject(obj, mgr.GetScheme())
+	if err != nil {
+		return false, err
+	}
+	_, err = mgr.GetRESTMapper().RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		if meta.IsNoMatchError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func setupV1Alpha1OracleRestDataServiceWebhook(mgr ctrl.Manager) error {

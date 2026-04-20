@@ -1,0 +1,29 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: truecache-nlb
+  namespace: default
+  annotations:
+    oci.oraclecloud.com/load-balancer-type: "nlb"
+    oci-network-load-balancer.oraclecloud.com/internal: "true"
+    oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaaazrdzcswz3ogz4sziyzcmcau3xql65lgvxfoq7rq5gvsmpcl3vba"
+    external-dns.alpha.kubernetes.io/hostname: "truecache-production.internal.example.com"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  ports:
+    - name: oracle
+      port: 1521
+      targetPort: 1521
+      protocol: TCP
+    - name: oracle-tcps
+      port: 2484
+      targetPort: 2484
+      protocol: TCP
+  selector:
+    app: truecache-production

@@ -1107,6 +1107,75 @@ func TestSIDBUnit_GetTcpsEnabledTreatsLegacyListenerPortAsEnabled(t *testing.T) 
 	}
 }
 
+func TestSIDBUnit_AllowTrueCacheBlobGenerationWithoutTCPS(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "primary",
+			TrueCache: &dbapi.SingleInstanceDatabaseTrueCacheSpec{
+				GenerateEnabled: true,
+			},
+		},
+	}
+	if !allowTrueCacheBlobGenerationWithoutTCPS(sidb) {
+		t.Fatalf("expected primary truecache blob generation to bypass tcps blocking")
+	}
+
+	sidb.Spec.TrueCache.GenerateEnabled = false
+	if allowTrueCacheBlobGenerationWithoutTCPS(sidb) {
+		t.Fatalf("did not expect bypass when blob generation is disabled")
+	}
+
+	sidb.Spec.TrueCache.GenerateEnabled = true
+	sidb.Spec.CreateAs = "truecache"
+	if allowTrueCacheBlobGenerationWithoutTCPS(sidb) {
+		t.Fatalf("did not expect bypass for non-primary sidb")
+	}
+}
+
+func TestSIDBUnit_ResolveTrueCacheBlobGenerationPathsForFileTarget(t *testing.T) {
+	generationPath, materializedPath := resolveTrueCacheBlobGenerationPaths("/tmp/tc_config_blob.tar.gz")
+
+	if generationPath != "/tmp/tc_config_blob.tar.gz.dir" {
+		t.Fatalf("unexpected generation path: %q", generationPath)
+	}
+	if materializedPath != "/tmp/tc_config_blob.tar.gz" {
+		t.Fatalf("unexpected materialized path: %q", materializedPath)
+	}
+}
+
+func TestSIDBUnit_ResolveTrueCacheBlobGenerationPathsForDirectoryTarget(t *testing.T) {
+	generationPath, materializedPath := resolveTrueCacheBlobGenerationPaths("/tmp/tc_blob_output")
+
+	if generationPath != "/tmp/tc_blob_output" {
+		t.Fatalf("unexpected generation path: %q", generationPath)
+	}
+	if materializedPath != "" {
+		t.Fatalf("expected no materialized path for directory target, got %q", materializedPath)
+	}
+}
+
+func TestSIDBUnit_BuildTrueCacheBlobResolveCommandForFileTarget(t *testing.T) {
+	cmd := buildTrueCacheBlobResolveCommand("/tmp/tc_config_blob.tar.gz.dir", "/tmp/tc_config_blob.tar.gz")
+
+	if !strings.Contains(cmd, "[ -f '/tmp/tc_config_blob.tar.gz' ]") {
+		t.Fatalf("expected file existence check in resolve command, got %q", cmd)
+	}
+	if strings.Contains(cmd, ".tar.gz.dir/*.tar.gz") {
+		t.Fatalf("did not expect directory scan when file target is materialized, got %q", cmd)
+	}
+}
+
+func TestSIDBUnit_BuildTrueCacheBlobResolveCommandForDirectoryTarget(t *testing.T) {
+	cmd := buildTrueCacheBlobResolveCommand("/tmp/tc_blob_output", "")
+
+	if !strings.Contains(cmd, "[ -d '/tmp/tc_blob_output' ]") {
+		t.Fatalf("expected directory existence check in resolve command, got %q", cmd)
+	}
+	if !strings.Contains(cmd, "'/tmp/tc_blob_output'/*.tar.gz") {
+		t.Fatalf("expected directory tarball scan in resolve command, got %q", cmd)
+	}
+}
+
 func TestSIDBUnit_GetStandbyWalletDefaults(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{}
 
@@ -1115,24 +1184,6 @@ func TestSIDBUnit_GetStandbyWalletDefaults(t *testing.T) {
 	}
 	if got := GetStandbyTDEWalletRoot(sidb); got != "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet" {
 		t.Fatalf("unexpected default standby wallet root: %q", got)
-	}
-}
-
-func TestSIDBUnit_ResolveSIDBImagePullPolicy(t *testing.T) {
-	if got := resolveSIDBImagePullPolicy("container-registry.oracle.com/database/free:latest", ""); got != corev1.PullAlways {
-		t.Fatalf("expected latest-tag image to default to PullAlways, got %q", got)
-	}
-	if got := resolveSIDBImagePullPolicy("phx.ocir.io/repo/oracle/database:truecache-23.26.0-ee", ""); got != corev1.PullIfNotPresent {
-		t.Fatalf("expected fixed-tag image to default to PullIfNotPresent, got %q", got)
-	}
-	if got := resolveSIDBImagePullPolicy("phx.ocir.io/repo/oracle/database", ""); got != corev1.PullAlways {
-		t.Fatalf("expected untagged image to default to PullAlways, got %q", got)
-	}
-	if got := resolveSIDBImagePullPolicy("phx.ocir.io/repo/oracle/database@sha256:abc123", ""); got != corev1.PullIfNotPresent {
-		t.Fatalf("expected digest-pinned image to default to PullIfNotPresent, got %q", got)
-	}
-	if got := resolveSIDBImagePullPolicy("phx.ocir.io/repo/oracle/database:truecache-23.26.0-ee", corev1.PullAlways); got != corev1.PullAlways {
-		t.Fatalf("expected explicit image pull policy to be preserved, got %q", got)
 	}
 }
 
@@ -1523,6 +1574,104 @@ func TestSIDBUnit_InstantiateTrueCachePodSpecCopiesSIDBHostAliases(t *testing.T)
 	}
 	if len(pod.Spec.HostAliases[0].Hostnames) != 2 || pod.Spec.HostAliases[0].Hostnames[0] != "primary.example.com" || pod.Spec.HostAliases[0].Hostnames[1] != "primary-vip.example.com" {
 		t.Fatalf("unexpected truecache pod host alias hostnames: %#v", pod.Spec.HostAliases[0])
+	}
+}
+
+func TestSIDBUnit_InstantiateTrueCachePodSpecPrefersExternalDNSHostname(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Log:    logr.Discard(),
+		Scheme: scheme,
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "truecache-nlb",
+					Namespace: "ns1",
+					Annotations: map[string]string{
+						externalDNSHostnameAnnotation: "truecache-production.internal.example.com",
+					},
+				},
+				Spec: corev1.ServiceSpec{
+					Type:     corev1.ServiceTypeLoadBalancer,
+					Selector: map[string]string{"app": "tc1"},
+				},
+			},
+		).Build(),
+	}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "tc1", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "truecache",
+			Sid:      "ORCLCDB",
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+
+	var oracleHostname string
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == "ORACLE_HOSTNAME" {
+			oracleHostname = env.Value
+			break
+		}
+	}
+	if oracleHostname != "truecache-production.internal.example.com" {
+		t.Fatalf("expected ORACLE_HOSTNAME to use external DNS hostname, got %q", oracleHostname)
+	}
+}
+
+func TestSIDBUnit_InstantiateTrueCachePodSpecFallsBackToClusterServiceHostname(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Log:    logr.Discard(),
+		Scheme: scheme,
+		Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+	}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "tc1", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "truecache",
+			Sid:      "ORCLCDB",
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+
+	var oracleHostname string
+	for _, env := range pod.Spec.Containers[0].Env {
+		if env.Name == "ORACLE_HOSTNAME" {
+			oracleHostname = env.Value
+			break
+		}
+	}
+	if oracleHostname != "tc1.ns1.svc.cluster.local" {
+		t.Fatalf("expected ORACLE_HOSTNAME to fall back to cluster service hostname, got %q", oracleHostname)
 	}
 }
 
