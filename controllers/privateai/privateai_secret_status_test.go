@@ -35,7 +35,9 @@ func TestEnsureSecretSetsStatusFields(t *testing.T) {
 	inst := &privateaiv4.PrivateAi{
 		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
 		Spec: privateaiv4.PrivateAiSpec{
-			PaiSecret: &privateaiv4.PaiSecretSpec{Name: "paisecret", MountLocation: "/privateai/ssl"},
+			Security: &privateaiv4.PrivateAiSecuritySpec{
+				Secret: &privateaiv4.PaiSecretSpec{Name: "paisecret", MountLocation: "/privateai/auth"},
+			},
 		},
 	}
 
@@ -59,6 +61,48 @@ func TestEnsureSecretSetsStatusFields(t *testing.T) {
 	}
 	if inst.Status.PaiSecret.APIKey != "paisecret" || inst.Status.PaiSecret.Certpem != "paisecret" {
 		t.Fatalf("expected deprecated compatibility fields to retain secret name")
+	}
+}
+
+func TestEnsureTLSSecretSetsStatusFields(t *testing.T) {
+	sch := runtime.NewScheme()
+	if err := privateaiv4.AddToScheme(sch); err != nil {
+		t.Fatalf("failed adding privateai scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(sch); err != nil {
+		t.Fatalf("failed adding core scheme: %v", err)
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample-tls", Namespace: "pai", ResourceVersion: "7"},
+		Data: map[string][]byte{
+			"tls.crt": []byte("crt"),
+			"tls.key": []byte("key"),
+		},
+	}
+	inst := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Security: &privateaiv4.PrivateAiSecuritySpec{
+				TLS: &privateaiv4.PaiTLSSpec{SecretName: "pai-sample-tls", MountLocation: "/privateai/tls"},
+			},
+		},
+	}
+
+	r := &PrivateAiReconciler{
+		Client: fake.NewClientBuilder().WithScheme(sch).WithObjects(secret).Build(),
+		Scheme: sch,
+	}
+
+	if _, err := r.ensureTLSSecret(context.Background(), ctrl.Request{}, inst); err != nil {
+		t.Fatalf("ensureTLSSecret returned error: %v", err)
+	}
+
+	if inst.Status.TLSSecret.Name != "pai-sample-tls" {
+		t.Fatalf("expected tls secret name to be recorded, got %q", inst.Status.TLSSecret.Name)
+	}
+	if inst.Status.TLSSecret.ResourceVersion != "7" {
+		t.Fatalf("expected tls secret resource version 7, got %q", inst.Status.TLSSecret.ResourceVersion)
 	}
 }
 

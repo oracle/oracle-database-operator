@@ -72,6 +72,12 @@ func (r *PrivateAi) Default(_ context.Context, obj *PrivateAi) error {
 	if privateai.Spec.PaiConfigFile != nil && privateai.Spec.PaiConfigFile.MountLocation == "" {
 		privateai.Spec.PaiConfigFile.MountLocation = "/privateai/config"
 	}
+	if privateai.Spec.Security != nil && privateai.Spec.Security.Secret != nil && privateai.Spec.Security.Secret.MountLocation == "" {
+		privateai.Spec.Security.Secret.MountLocation = "/privateai/auth"
+	}
+	if privateai.Spec.Security != nil && privateai.Spec.Security.TLS != nil && privateai.Spec.Security.TLS.MountLocation == "" {
+		privateai.Spec.Security.TLS.MountLocation = "/privateai/tls"
+	}
 	if privateai.Spec.PaiSecret != nil && privateai.Spec.PaiSecret.MountLocation == "" {
 		privateai.Spec.PaiSecret.MountLocation = "/privateai/ssl"
 	}
@@ -106,14 +112,34 @@ func (v *privateAiValidator) ValidateDelete(_ context.Context, obj *PrivateAi) (
 func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi) (admission.Warnings, error) {
 	privateailog.Info("Validation for PrivateAi", "name", privateai.GetName())
 	warnings := deprecatedPrivateAIFieldWarnings(&privateai.Spec)
+	authSecret := EffectiveAuthSecret(&privateai.Spec)
+	tls := EffectiveTLS(&privateai.Spec)
 
 	authEnabled, _ := strconv.ParseBool(privateai.Spec.PaiEnableAuthentication)
-	if authEnabled && (privateai.Spec.PaiSecret == nil || privateai.Spec.PaiSecret.Name == "") {
-		return warnings, fmt.Errorf("paiEnableAuthentication=true requires paiSecret.name to be set")
+	if authEnabled && (authSecret == nil || strings.TrimSpace(authSecret.Name) == "") {
+		return warnings, fmt.Errorf("paiEnableAuthentication=true requires spec.security.secret.name or deprecated paiSecret.name to be set")
+	}
+	if privateai.Spec.Security != nil && privateai.Spec.Security.Secret != nil &&
+		strings.TrimSpace(privateai.Spec.Security.Secret.MountLocation) != "" &&
+		!filepath.IsAbs(strings.TrimSpace(privateai.Spec.Security.Secret.MountLocation)) {
+		return warnings, fmt.Errorf("spec.security.secret.mountLocation must be an absolute path")
 	}
 	if privateai.Spec.PaiSecret != nil && strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation) != "" &&
 		!filepath.IsAbs(strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation)) {
 		return warnings, fmt.Errorf("paiSecret.mountLocation must be an absolute path")
+	}
+	if tls != nil {
+		if strings.TrimSpace(tls.SecretName) == "" {
+			return warnings, fmt.Errorf("spec.security.tls.secretName must be set when spec.security.tls is provided")
+		}
+		if strings.TrimSpace(tls.MountLocation) != "" && !filepath.IsAbs(strings.TrimSpace(tls.MountLocation)) {
+			return warnings, fmt.Errorf("spec.security.tls.mountLocation must be an absolute path")
+		}
+	}
+	if authSecret != nil && tls != nil &&
+		strings.TrimSpace(authSecret.MountLocation) != "" &&
+		strings.TrimSpace(authSecret.MountLocation) == strings.TrimSpace(tls.MountLocation) {
+		return warnings, fmt.Errorf("spec.security.secret.mountLocation and spec.security.tls.mountLocation must be different")
 	}
 	if privateai.Spec.PaiConfigFile != nil && strings.TrimSpace(privateai.Spec.PaiConfigFile.MountLocation) != "" &&
 		!filepath.IsAbs(strings.TrimSpace(privateai.Spec.PaiConfigFile.MountLocation)) {
@@ -177,6 +203,9 @@ func deprecatedPrivateAIFieldWarnings(spec *PrivateAiSpec) admission.Warnings {
 	}
 	if len(spec.PailbAnnotation) > 0 {
 		appendWarn("spec.pailbAnnotation is deprecated; use spec.paiService.external.annotations")
+	}
+	if spec.PaiSecret != nil {
+		appendWarn("spec.paiSecret is deprecated; use spec.security.secret")
 	}
 
 	return warnings

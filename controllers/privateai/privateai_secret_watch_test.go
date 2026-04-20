@@ -24,7 +24,10 @@ func TestPrivateAiRequestsForSecret(t *testing.T) {
 	referenced := &privateaiv4.PrivateAi{
 		ObjectMeta: metav1.ObjectMeta{Name: "pai-a", Namespace: "pai"},
 		Spec: privateaiv4.PrivateAiSpec{
-			PaiSecret: &privateaiv4.PaiSecretSpec{Name: "tls-secret", MountLocation: "/privateai/ssl"},
+			Security: &privateaiv4.PrivateAiSecuritySpec{
+				Secret: &privateaiv4.PaiSecretSpec{Name: "auth-secret", MountLocation: "/privateai/auth"},
+				TLS:    &privateaiv4.PaiTLSSpec{SecretName: "tls-secret", MountLocation: "/privateai/tls"},
+			},
 		},
 	}
 	otherSecret := &privateaiv4.PrivateAi{
@@ -58,5 +61,12 @@ func TestPrivateAiRequestsForSecret(t *testing.T) {
 	expected := types.NamespacedName{Name: "pai-a", Namespace: "pai"}
 	if requests[0].NamespacedName != expected {
 		t.Fatalf("expected request %v, got %v", expected, requests[0].NamespacedName)
+	}
+
+	authRequests := r.privateAiRequestsForSecret(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "auth-secret", Namespace: "pai"},
+	})
+	if len(authRequests) != 1 || authRequests[0].NamespacedName != expected {
+		t.Fatalf("expected auth secret request %v, got %#v", expected, authRequests)
 	}
 }

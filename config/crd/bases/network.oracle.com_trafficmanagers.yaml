@@ -139,6 +139,17 @@ spec:
                 type: object
               security:
                 properties:
+                  backendTLS:
+                    properties:
+                      mountLocation:
+                        type: string
+                      trustFileName:
+                        type: string
+                      trustSecretName:
+                        type: string
+                      verify:
+                        type: boolean
+                    type: object
                   tls:
                     properties:
                       enabled:
@@ -244,6 +255,10 @@ spec:
                   backendCount:
                     format: int32
                     type: integer
+                  backendTlsEnabled:
+                    type: boolean
+                  backendTrustSecret:
+                    type: string
                   configMapName:
                     type: string
                   configMode:

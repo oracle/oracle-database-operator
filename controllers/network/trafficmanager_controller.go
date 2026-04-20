@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path"
+	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -90,6 +92,12 @@ func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		_ = r.Status().Update(ctx, inst)
 		return trafficManagerRequeue, err
 	}
+	backendTLSChecksum, err := r.resolveBackendTLSSecretChecksum(ctx, inst)
+	if err != nil {
+		inst.Status.Status = privateaiv4.StatusError
+		_ = r.Status().Update(ctx, inst)
+		return trafficManagerRequeue, err
+	}
 
 	configMap := buildTrafficManagerConfigMap(inst, configData)
 	if err := controllerutil.SetControllerReference(inst, configMap, r.Scheme); err != nil {
@@ -99,11 +107,11 @@ func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return trafficManagerNoRequeue, err
 	}
 
-	deploy := buildTrafficManagerDeployment(inst, configChecksum, tlsChecksum)
+	deploy := buildTrafficManagerDeployment(inst, configChecksum, tlsChecksum, backendTLSChecksum)
 	if err := controllerutil.SetControllerReference(inst, deploy, r.Scheme); err != nil {
 		return trafficManagerNoRequeue, err
 	}
-	foundDeploy, depResult, err := k8sobjects.ReconcileDeployment(ctx, r.Client, inst.Namespace, deploy, nil)
+	foundDeploy, depResult, err := k8sobjects.ReconcileDeployment(ctx, r.Client, inst.Namespace, deploy, syncTrafficManagerDeployment)
 	if err != nil {
 		return trafficManagerNoRequeue, err
 	}
@@ -155,12 +163,17 @@ func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		ConfigMode:         trafficManagerConfigMode(inst),
 		TLSEnabled:         inst.Spec.Security.TLS.Enabled,
 		TLSSecretName:      strings.TrimSpace(inst.Spec.Security.TLS.SecretName),
+		BackendTLSEnabled:  backendTLSVerificationEnabled(inst),
+		BackendTrustSecret: backendTLSTrustSecretName(inst),
 		Routes:             buildNginxRouteStatuses(inst, backends, inst.Status.ExternalEndpoint),
 	}
 	if err := r.Status().Update(ctx, inst); err != nil {
 		return trafficManagerNoRequeue, err
 	}
 	if depResult.Created {
+		return trafficManagerRequeue, nil
+	}
+	if depResult.Updated {
 		return trafficManagerRequeue, nil
 	}
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -194,10 +207,11 @@ func (r *TrafficManagerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			requests := make([]reconcile.Request, 0)
 			for i := range list.Items {
 				item := &list.Items[i]
-				if item.Spec.Type != networkv4.TrafficManagerTypeNginx || !item.Spec.Security.TLS.Enabled {
+				if item.Spec.Type != networkv4.TrafficManagerTypeNginx {
 					continue
 				}
-				if strings.TrimSpace(item.Spec.Security.TLS.SecretName) != secret.Name {
+				if strings.TrimSpace(item.Spec.Security.TLS.SecretName) != secret.Name &&
+					backendTLSTrustSecretName(item) != secret.Name {
 					continue
 				}
 				requests = append(requests, reconcile.Request{
@@ -288,7 +302,7 @@ func buildManagedNginxConfig(inst *networkv4.TrafficManager, backends []associat
 		builder.WriteString("        location / { return 503; }\n")
 	} else {
 		for _, backend := range backends {
-			if err := appendBackendLocation(&builder, backend); err != nil {
+			if err := appendBackendLocation(&builder, inst, backend); err != nil {
 				return "", err
 			}
 		}
@@ -298,7 +312,7 @@ func buildManagedNginxConfig(inst *networkv4.TrafficManager, backends []associat
 	return builder.String(), nil
 }
 
-func appendBackendLocation(builder *strings.Builder, backend associatedBackend) error {
+func appendBackendLocation(builder *strings.Builder, inst *networkv4.TrafficManager, backend associatedBackend) error {
 	pathExpr := regexp.QuoteMeta(strings.TrimSpace(backend.Path))
 	if pathExpr == "" {
 		return fmt.Errorf("backend %s has empty route path", backend.Name)
@@ -313,7 +327,12 @@ func appendBackendLocation(builder *strings.Builder, backend associatedBackend) 
 	if backend.UseHTTPS {
 		builder.WriteString("            proxy_ssl_server_name on;\n")
 		builder.WriteString(fmt.Sprintf("            proxy_ssl_name %s;\n", backend.ServiceName))
-		builder.WriteString("            proxy_ssl_verify off;\n")
+		if backendTLSVerificationEnabled(inst) {
+			builder.WriteString(fmt.Sprintf("            proxy_ssl_trusted_certificate %s;\n", backendTLSFilePath(inst)))
+			builder.WriteString("            proxy_ssl_verify on;\n")
+		} else {
+			builder.WriteString("            proxy_ssl_verify off;\n")
+		}
 	}
 	builder.WriteString(fmt.Sprintf("            proxy_set_header Host %s;\n", backend.ServiceName))
 	builder.WriteString("            proxy_set_header Authorization $http_authorization;\n")
@@ -340,13 +359,16 @@ func buildTrafficManagerConfigMap(inst *networkv4.TrafficManager, config string)
 	}
 }
 
-func buildTrafficManagerDeployment(inst *networkv4.TrafficManager, configChecksum, tlsChecksum string) *appsv1.Deployment {
+func buildTrafficManagerDeployment(inst *networkv4.TrafficManager, configChecksum, tlsChecksum, backendTLSChecksum string) *appsv1.Deployment {
 	labels := trafficManagerLabels(inst)
 	configMountDir := trafficManagerConfigMountLocation(inst)
 	configMountPath := path.Join(configMountDir, "nginx.conf")
 	annotations := map[string]string{"network.oracle.com/config-hash": configChecksum}
 	if tlsChecksum != "" {
 		annotations["network.oracle.com/tls-secret-hash"] = tlsChecksum
+	}
+	if backendTLSChecksum != "" {
+		annotations["network.oracle.com/backend-tls-secret-hash"] = backendTLSChecksum
 	}
 	volumeMounts := []corev1.VolumeMount{{
 		Name:      "traffic-manager-config",
@@ -373,6 +395,19 @@ func buildTrafficManagerDeployment(inst *networkv4.TrafficManager, configChecksu
 			Name: "traffic-manager-tls",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{SecretName: inst.Spec.Security.TLS.SecretName},
+			},
+		})
+	}
+	if trustSecretName := backendTLSTrustSecretName(inst); trustSecretName != "" {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "traffic-manager-backend-tls",
+			MountPath: backendTLSMountLocation(inst),
+			ReadOnly:  true,
+		})
+		volumes = append(volumes, corev1.Volume{
+			Name: "traffic-manager-backend-tls",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{SecretName: trustSecretName},
 			},
 		})
 	}
@@ -422,6 +457,52 @@ func buildTrafficManagerDeployment(inst *networkv4.TrafficManager, configChecksu
 			},
 		},
 	}
+}
+
+func syncTrafficManagerDeployment(found, desired *appsv1.Deployment) bool {
+	if found == nil || desired == nil {
+		return false
+	}
+	updated := false
+
+	if !reflect.DeepEqual(found.Labels, desired.Labels) {
+		found.Labels = desired.Labels
+		updated = true
+	}
+	if !reflect.DeepEqual(found.OwnerReferences, desired.OwnerReferences) {
+		found.OwnerReferences = desired.OwnerReferences
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Spec.Replicas, desired.Spec.Replicas) {
+		found.Spec.Replicas = desired.Spec.Replicas
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Spec.Selector, desired.Spec.Selector) {
+		found.Spec.Selector = desired.Spec.Selector
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Spec.Template.Labels, desired.Spec.Template.Labels) {
+		found.Spec.Template.Labels = desired.Spec.Template.Labels
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Spec.Template.Annotations, desired.Spec.Template.Annotations) {
+		found.Spec.Template.Annotations = desired.Spec.Template.Annotations
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Spec.Template.Spec.Volumes, desired.Spec.Template.Spec.Volumes) {
+		found.Spec.Template.Spec.Volumes = desired.Spec.Template.Spec.Volumes
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Spec.Template.Spec.ImagePullSecrets, desired.Spec.Template.Spec.ImagePullSecrets) {
+		found.Spec.Template.Spec.ImagePullSecrets = desired.Spec.Template.Spec.ImagePullSecrets
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Spec.Template.Spec.Containers, desired.Spec.Template.Spec.Containers) {
+		found.Spec.Template.Spec.Containers = desired.Spec.Template.Spec.Containers
+		updated = true
+	}
+
+	return updated
 }
 
 func buildTrafficManagerService(inst *networkv4.TrafficManager, serviceKind string) *corev1.Service {
@@ -513,6 +594,41 @@ func buildTrafficManagerEnvVars(inst *networkv4.TrafficManager) []corev1.EnvVar 
 		out = append(out, corev1.EnvVar{Name: e.Name, Value: e.Value})
 	}
 	return out
+}
+
+func backendTLSTrustSecretName(inst *networkv4.TrafficManager) string {
+	if inst == nil || inst.Spec.Security.BackendTLS == nil {
+		return ""
+	}
+	return strings.TrimSpace(inst.Spec.Security.BackendTLS.TrustSecretName)
+}
+
+func backendTLSMountLocation(inst *networkv4.TrafficManager) string {
+	if inst == nil || inst.Spec.Security.BackendTLS == nil || strings.TrimSpace(inst.Spec.Security.BackendTLS.MountLocation) == "" {
+		return "/etc/nginx/backend-ca"
+	}
+	return strings.TrimSpace(inst.Spec.Security.BackendTLS.MountLocation)
+}
+
+func backendTLSTrustFileName(inst *networkv4.TrafficManager) string {
+	if inst == nil || inst.Spec.Security.BackendTLS == nil || strings.TrimSpace(inst.Spec.Security.BackendTLS.TrustFileName) == "" {
+		return "ca.crt"
+	}
+	return strings.TrimSpace(inst.Spec.Security.BackendTLS.TrustFileName)
+}
+
+func backendTLSFilePath(inst *networkv4.TrafficManager) string {
+	return filepath.Join(backendTLSMountLocation(inst), backendTLSTrustFileName(inst))
+}
+
+func backendTLSVerificationEnabled(inst *networkv4.TrafficManager) bool {
+	if inst == nil || inst.Spec.Security.BackendTLS == nil {
+		return false
+	}
+	if inst.Spec.Security.BackendTLS.Verify == nil {
+		return true
+	}
+	return *inst.Spec.Security.BackendTLS.Verify
 }
 
 func trafficManagerServiceEnabled(enabled *bool, defaultValue bool) bool {
@@ -608,6 +724,24 @@ func (r *TrafficManagerReconciler) resolveTLSSecretChecksum(ctx context.Context,
 	payload = append(payload, crt...)
 	payload = append(payload, key...)
 	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func (r *TrafficManagerReconciler) resolveBackendTLSSecretChecksum(ctx context.Context, inst *networkv4.TrafficManager) (string, error) {
+	secretName := backendTLSTrustSecretName(inst)
+	if secretName == "" {
+		return "", nil
+	}
+	secret := &corev1.Secret{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: secretName, Namespace: inst.Namespace}, secret); err != nil {
+		return "", fmt.Errorf("failed to get backend TLS trust secret %s: %w", secretName, err)
+	}
+	trustFileName := backendTLSTrustFileName(inst)
+	trustFile, ok := secret.Data[trustFileName]
+	if !ok || len(trustFile) == 0 {
+		return "", fmt.Errorf("backend TLS trust secret %s is missing %s", secretName, trustFileName)
+	}
+	sum := sha256.Sum256(trustFile)
 	return hex.EncodeToString(sum[:]), nil
 }
 

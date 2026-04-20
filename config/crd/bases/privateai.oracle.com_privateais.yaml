@@ -322,6 +322,23 @@ spec:
                       x-kubernetes-int-or-string: true
                     type: object
                 type: object
+              security:
+                properties:
+                  secret:
+                    properties:
+                      mountLocation:
+                        type: string
+                      name:
+                        type: string
+                    type: object
+                  tls:
+                    properties:
+                      mountLocation:
+                        type: string
+                      secretName:
+                        type: string
+                    type: object
+                type: object
               storageClass:
                 type: string
               storageSizeInGb:
@@ -429,6 +446,13 @@ spec:
                 type: integer
               status:
                 type: string
+              tlsSecret:
+                properties:
+                  name:
+                    type: string
+                  resourceVersion:
+                    type: string
+                type: object
               trafficManager:
                 properties:
                   endpoint:

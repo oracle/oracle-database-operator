@@ -295,12 +295,22 @@ func newHTTPProbe(path string, port int32, scheme corev1.URIScheme, base corev1.
 
 func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volume {
 	volumes := make([]corev1.Volume, 0, 4)
+	authSecret := privateaiv4.EffectiveAuthSecret(&instance.Spec)
+	tlsSecret := privateaiv4.EffectiveTLS(&instance.Spec)
 
-	if instance.Spec.PaiSecret != nil && instance.Spec.PaiSecret.Name != "" {
+	if authSecret != nil && authSecret.Name != "" {
 		volumes = append(volumes, corev1.Volume{
-			Name: fmt.Sprintf("%ssecret-vol", instance.Name),
+			Name: privateAIAuthSecretVolumeName(instance),
 			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: instance.Spec.PaiSecret.Name},
+				Secret: &corev1.SecretVolumeSource{SecretName: authSecret.Name},
+			},
+		})
+	}
+	if tlsSecret != nil && tlsSecret.SecretName != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: privateAITLSSecretVolumeName(instance),
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{SecretName: tlsSecret.SecretName},
 			},
 		})
 	}
@@ -342,6 +352,8 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 
 func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.VolumeMount {
 	var mounts []corev1.VolumeMount
+	authSecret := privateaiv4.EffectiveAuthSecret(&instance.Spec)
+	tlsSecret := privateaiv4.EffectiveTLS(&instance.Spec)
 
 	if instance.Spec.StorageClass != "" {
 		mounts = append(mounts, corev1.VolumeMount{
@@ -350,10 +362,18 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 		})
 	}
 
-	if instance.Spec.PaiSecret != nil && instance.Spec.PaiSecret.Name != "" {
+	if authSecret != nil && authSecret.Name != "" {
 		mounts = append(mounts, corev1.VolumeMount{
-			Name:      fmt.Sprintf("%ssecret-vol", instance.Name),
-			MountPath: instance.Spec.PaiSecret.MountLocation,
+			Name:      privateAIAuthSecretVolumeName(instance),
+			MountPath: authSecret.MountLocation,
+			ReadOnly:  true,
+		})
+	}
+
+	if tlsSecret != nil && tlsSecret.SecretName != "" {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      privateAITLSSecretVolumeName(instance),
+			MountPath: tlsSecret.MountLocation,
 			ReadOnly:  true,
 		})
 	}
@@ -425,8 +445,8 @@ func buildEnvVarsForPrivateAI(
 		ensureEnvVar(&envVars, seen, envConfigFile, instance.Spec.PaiConfigFile.MountLocation+"/config.json")
 	}
 
-	if instance.Spec.PaiSecret != nil && instance.Spec.PaiSecret.Name != "" && instance.Spec.PaiSecret.MountLocation != "" {
-		ensureEnvVar(&envVars, seen, envSecretsMount, instance.Spec.PaiSecret.MountLocation)
+	if authSecret := privateaiv4.EffectiveAuthSecret(&instance.Spec); authSecret != nil && authSecret.Name != "" && authSecret.MountLocation != "" {
+		ensureEnvVar(&envVars, seen, envSecretsMount, authSecret.MountLocation)
 	}
 
 	ensureEnvVar(&envVars, seen, envHTTPEnabled, strconv.FormatBool(httpEnabled))
@@ -442,6 +462,14 @@ func ensureEnvVar(envs *[]corev1.EnvVar, seen map[string]bool, name, value strin
 	}
 	*envs = append(*envs, corev1.EnvVar{Name: name, Value: value})
 	seen[name] = true
+}
+
+func privateAIAuthSecretVolumeName(instance *privateaiv4.PrivateAi) string {
+	return fmt.Sprintf("%s-auth-secret-vol", instance.Name)
+}
+
+func privateAITLSSecretVolumeName(instance *privateaiv4.PrivateAi) string {
+	return fmt.Sprintf("%s-tls-secret-vol", instance.Name)
 }
 
 type paiExternalServiceSettings struct {

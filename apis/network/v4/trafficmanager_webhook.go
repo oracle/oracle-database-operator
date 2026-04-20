@@ -65,6 +65,14 @@ func (r *TrafficManager) Default(_ context.Context, obj *TrafficManager) error {
 		if obj.Spec.Security.TLS.Enabled && strings.TrimSpace(obj.Spec.Security.TLS.MountLocation) == "" {
 			obj.Spec.Security.TLS.MountLocation = "/etc/nginx/tls"
 		}
+		if obj.Spec.Security.BackendTLS != nil {
+			if strings.TrimSpace(obj.Spec.Security.BackendTLS.MountLocation) == "" {
+				obj.Spec.Security.BackendTLS.MountLocation = "/etc/nginx/backend-ca"
+			}
+			if strings.TrimSpace(obj.Spec.Security.BackendTLS.TrustFileName) == "" {
+				obj.Spec.Security.BackendTLS.TrustFileName = "ca.crt"
+			}
+		}
 	}
 	return nil
 }
@@ -105,6 +113,21 @@ func validateTrafficManager(obj *TrafficManager) error {
 		}
 		if !filepath.IsAbs(strings.TrimSpace(obj.Spec.Security.TLS.MountLocation)) {
 			return fmt.Errorf("spec.security.tls.mountLocation must be an absolute path")
+		}
+	}
+	if obj.Spec.Security.BackendTLS != nil {
+		if strings.TrimSpace(obj.Spec.Security.BackendTLS.TrustSecretName) == "" {
+			return fmt.Errorf("spec.security.backendTLS.trustSecretName must be set when backendTLS is provided")
+		}
+		if strings.TrimSpace(obj.Spec.Security.BackendTLS.MountLocation) != "" &&
+			!filepath.IsAbs(strings.TrimSpace(obj.Spec.Security.BackendTLS.MountLocation)) {
+			return fmt.Errorf("spec.security.backendTLS.mountLocation must be an absolute path")
+		}
+		if strings.TrimSpace(obj.Spec.Security.BackendTLS.TrustFileName) == "" {
+			return fmt.Errorf("spec.security.backendTLS.trustFileName must be set when backendTLS is provided")
+		}
+		if strings.Contains(strings.TrimSpace(obj.Spec.Security.BackendTLS.TrustFileName), "/") {
+			return fmt.Errorf("spec.security.backendTLS.trustFileName must be a file name, not a path")
 		}
 	}
 	return nil

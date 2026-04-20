@@ -53,8 +53,10 @@ type PrivateAiSpec struct {
 	PaiConfigFile *PaiConfigMap `json:"paiConfigFile,omitempty"`
 	// +kubebuilder:validation:Enum="true";"false"
 	// +kubebuilder:default="false"
-	PaiEnableAuthentication string         `json:"paiEnableAuthentication,omitempty"`
-	PaiSecret               *PaiSecretSpec `json:"paiSecret,omitempty"`
+	PaiEnableAuthentication string                 `json:"paiEnableAuthentication,omitempty"`
+	Security                *PrivateAiSecuritySpec `json:"security,omitempty"`
+	// Deprecated: use spec.security.secret.
+	PaiSecret *PaiSecretSpec `json:"paiSecret,omitempty"`
 	// Deprecated: use spec.paiService.external.enabled.
 	// +kubebuilder:validation:Enum="true";"false"
 	IsExternalSvc        string                       `json:"isExternalSvc,omitempty"`
@@ -101,6 +103,18 @@ type PrivateAiSpec struct {
 // PaiSecretSpec stores secret reference and mount details for PrivateAI.
 type PaiSecretSpec struct {
 	Name          string `json:"name,omitempty"`
+	MountLocation string `json:"mountLocation,omitempty"`
+}
+
+// PrivateAiSecuritySpec groups auth secret and TLS settings for PrivateAI.
+type PrivateAiSecuritySpec struct {
+	Secret *PaiSecretSpec `json:"secret,omitempty"`
+	TLS    *PaiTLSSpec    `json:"tls,omitempty"`
+}
+
+// PaiTLSSpec stores TLS secret reference and mount details for PrivateAI HTTPS.
+type PaiTLSSpec struct {
+	SecretName    string `json:"secretName,omitempty"`
 	MountLocation string `json:"mountLocation,omitempty"`
 }
 
@@ -190,6 +204,7 @@ type PrivateAiStatus struct {
 	LocalService    string                  `json:"localService,omitempty"`
 	ExternalService string                  `json:"externalService,omitempty"`
 	PaiSecret       SecretStatus            `json:"paiSecret,omitempty"`
+	TLSSecret       TLSSecretStatus         `json:"tlsSecret,omitempty"`
 	PaiConfigMap    ConfigMapStatus         `json:"paiConfigMap,omitempty"`
 	Mode            string                  `json:"mode,omitempty"`
 	TrafficManager  TrafficManagerRefStatus `json:"trafficManager,omitempty"`
@@ -212,6 +227,12 @@ type SecretStatus struct {
 	APIKey string `json:"apiKey,omitempty"`
 	// Deprecated: retained for compatibility with older status consumers.
 	Certpem string `json:"certpem,omitempty"`
+}
+
+// TLSSecretStatus tracks observed status of the configured TLS secret resource.
+type TLSSecretStatus struct {
+	ResourceVersion string `json:"resourceVersion,omitempty" protobuf:"bytes,6,opt,name=resourceVersion"`
+	Name            string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 }
 
 // ConfigMapStatus tracks observed status of the configured ConfigMap.
@@ -259,6 +280,26 @@ type PrivateAi struct {
 
 	Spec   PrivateAiSpec   `json:"spec,omitempty"`
 	Status PrivateAiStatus `json:"status,omitempty"`
+}
+
+// EffectiveAuthSecret returns the preferred auth secret configuration, favoring
+// spec.security.secret over the deprecated spec.paiSecret field.
+func EffectiveAuthSecret(spec *PrivateAiSpec) *PaiSecretSpec {
+	if spec == nil {
+		return nil
+	}
+	if spec.Security != nil && spec.Security.Secret != nil {
+		return spec.Security.Secret
+	}
+	return spec.PaiSecret
+}
+
+// EffectiveTLS returns the configured TLS secret settings for PrivateAI HTTPS.
+func EffectiveTLS(spec *PrivateAiSpec) *PaiTLSSpec {
+	if spec == nil || spec.Security == nil {
+		return nil
+	}
+	return spec.Security.TLS
 }
 
 // ReconcileError indicates reconcile cycle failed.

@@ -135,6 +135,10 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	defer func() {
 		if statusErr := r.updateReconcileStatus(privateAiInst, ctx, result, err, state); statusErr != nil {
+			if apierrors.IsNotFound(statusErr) {
+				log.Info("skipping reconcile status update because resource no longer exists")
+				return
+			}
 			log.Error(statusErr, "failed to update reconcile status")
 			if err == nil {
 				err = statusErr
@@ -442,6 +446,11 @@ func (r *PrivateAiReconciler) reconcileDependencies(ctx context.Context, req ctr
 			return resultNq, err
 		}
 	}
+	if tls := privateaiv4.EffectiveTLS(&privateAiInst.Spec); tls != nil && strings.TrimSpace(tls.SecretName) != "" {
+		if _, err := r.ensureTLSSecret(ctx, req, privateAiInst); err != nil {
+			return resultNq, err
+		}
+	}
 	if privateAiInst.Spec.PaiConfigFile != nil &&
 		privateAiInst.Spec.PaiConfigFile.Name != "" &&
 		privateAiInst.Spec.PaiConfigFile.MountLocation != "" {
@@ -550,7 +559,10 @@ func (r *PrivateAiReconciler) privateAiRequestsForSecret(ctx context.Context, ob
 	requests := make([]reconcile.Request, 0)
 	for i := range list.Items {
 		item := &list.Items[i]
-		if item.Spec.PaiSecret == nil || strings.TrimSpace(item.Spec.PaiSecret.Name) != secret.Name {
+		authSecret := privateaiv4.EffectiveAuthSecret(&item.Spec)
+		tls := privateaiv4.EffectiveTLS(&item.Spec)
+		if (authSecret == nil || strings.TrimSpace(authSecret.Name) != secret.Name) &&
+			(tls == nil || strings.TrimSpace(tls.SecretName) != secret.Name) {
 			continue
 		}
 		requests = append(requests, reconcile.Request{
@@ -728,17 +740,21 @@ func (r *PrivateAiReconciler) ensureConfigMap(ctx context.Context, req ctrl.Requ
 }
 
 func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
-	secretName := privateAiInst.Spec.PaiSecret.Name
+	authSecret := privateaiv4.EffectiveAuthSecret(&privateAiInst.Spec)
+	if authSecret == nil {
+		return requeueN, fmt.Errorf("PaiAuthentication is enabled but no auth secret is defined")
+	}
+	secretName := strings.TrimSpace(authSecret.Name)
 	if secretName == "" {
-		return requeueN, fmt.Errorf("PaiAuthentication is enabled but no PaiSecret is defined")
+		return requeueN, fmt.Errorf("PaiAuthentication is enabled but no auth secret name is defined")
 	}
 
-	apiKey, certPem := aicommons.ReadSecret(secretName, privateAiInst, r.Client, r.Log)
-	if apiKey == "" || apiKey == "NONE" {
-		return requeueN, fmt.Errorf("PaiAuthentication is enabled but apikey is not found in secret")
+	if _, err := aicommons.CheckSecret(secretName, privateAiInst, r.Client, r.Log); err != nil {
+		return requeueN, err
 	}
+	apiKey, certPem := aicommons.ReadSecret(secretName, privateAiInst, r.Client, r.Log)
 	if certPem == "NONE" {
-		r.Log.Info("PaiAuthentication is enabled but cert.pem not found in secret")
+		r.Log.Info("Legacy cert.pem key not found in auth secret")
 	}
 
 	_ = aicommons.PatchSecret(secretName, privateAiInst, r.Client, r.Log)
@@ -776,6 +792,47 @@ func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request
 
 	privateAiInst.Status.PaiSecret.ResourceVersion = latestVersion
 
+	return ctrl.Result{}, nil
+}
+
+func (r *PrivateAiReconciler) ensureTLSSecret(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
+	tls := privateaiv4.EffectiveTLS(&privateAiInst.Spec)
+	if tls == nil {
+		return requeueN, nil
+	}
+	secretName := strings.TrimSpace(tls.SecretName)
+	if secretName == "" {
+		return requeueN, fmt.Errorf("PrivateAI TLS is configured but no TLS secret name is defined")
+	}
+
+	if _, err := aicommons.CheckSecret(secretName, privateAiInst, r.Client, r.Log); err != nil {
+		return requeueN, err
+	}
+
+	privateAiInst.Status.TLSSecret.Name = secretName
+	currentVersion := privateAiInst.Status.TLSSecret.ResourceVersion
+	latestVersion := aicommons.GetSecretResourceVersion(secretName, privateAiInst, r.Client, r.Log)
+
+	if currentVersion == "" {
+		privateAiInst.Status.TLSSecret.ResourceVersion = latestVersion
+		return ctrl.Result{}, nil
+	}
+	if currentVersion == latestVersion {
+		return ctrl.Result{}, nil
+	}
+
+	privateAiInst.Status.Status = privateaiv4.StatusUpdating
+	r.Log.Info("TLS secret change detected", "secret", secretName)
+
+	if deploy, err := r.getDeployment(ctx, privateAiInst.Name, privateAiInst.Namespace); err == nil {
+		if err := aicommons.UpdateRestartedAtAnnotation(ctx, r, privateAiInst, r.Client, r.Config, deploy, req, r.Log); err != nil {
+			privateAiInst.Status.Status = privateaiv4.StatusError
+			r.Log.Info("Error occurred while rolling out the deployments after detecting TLS secret change")
+			return ctrl.Result{}, err
+		}
+	}
+
+	privateAiInst.Status.TLSSecret.ResourceVersion = latestVersion
 	return ctrl.Result{}, nil
 }
 

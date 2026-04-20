@@ -48,13 +48,21 @@ type TrafficManagerServiceEndpointSpec struct {
 }
 
 type TrafficManagerSecuritySpec struct {
-	TLS TrafficManagerTLSSpec `json:"tls,omitempty"`
+	TLS        TrafficManagerTLSSpec         `json:"tls,omitempty"`
+	BackendTLS *TrafficManagerBackendTLSSpec `json:"backendTLS,omitempty"`
 }
 
 type TrafficManagerTLSSpec struct {
 	Enabled       bool   `json:"enabled,omitempty"`
 	SecretName    string `json:"secretName,omitempty"`
 	MountLocation string `json:"mountLocation,omitempty"`
+}
+
+type TrafficManagerBackendTLSSpec struct {
+	TrustSecretName string `json:"trustSecretName,omitempty"`
+	MountLocation   string `json:"mountLocation,omitempty"`
+	TrustFileName   string `json:"trustFileName,omitempty"`
+	Verify          *bool  `json:"verify,omitempty"`
 }
 
 type NginxTrafficManagerSpec struct {
@@ -84,6 +92,8 @@ type NginxTrafficManagerStatus struct {
 	ConfigMode         string             `json:"configMode,omitempty"`
 	TLSEnabled         bool               `json:"tlsEnabled,omitempty"`
 	TLSSecretName      string             `json:"tlsSecretName,omitempty"`
+	BackendTLSEnabled  bool               `json:"backendTlsEnabled,omitempty"`
+	BackendTrustSecret string             `json:"backendTrustSecret,omitempty"`
 	Routes             []NginxRouteStatus `json:"routes,omitempty"`
 }
 

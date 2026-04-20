@@ -10,11 +10,26 @@ func (in *TrafficManagerSpec) DeepCopyInto(out *TrafficManagerSpec) {
 	*out = *in
 	in.Runtime.DeepCopyInto(&out.Runtime)
 	in.Service.DeepCopyInto(&out.Service)
-	out.Security = in.Security
+	in.Security.DeepCopyInto(&out.Security)
 	if in.Nginx != nil {
 		in, out := &in.Nginx, &out.Nginx
 		*out = new(NginxTrafficManagerSpec)
 		(*in).DeepCopyInto(*out)
+	}
+}
+
+func (in *TrafficManagerSecuritySpec) DeepCopyInto(out *TrafficManagerSecuritySpec) {
+	*out = *in
+	out.TLS = in.TLS
+	if in.BackendTLS != nil {
+		in, out := &in.BackendTLS, &out.BackendTLS
+		*out = new(TrafficManagerBackendTLSSpec)
+		**out = **in
+		if (*in).Verify != nil {
+			verify := new(bool)
+			*verify = *(*in).Verify
+			(*out).Verify = verify
+		}
 	}
 }
 
