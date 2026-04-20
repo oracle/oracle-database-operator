@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	racdb "github.com/oracle/oracle-database-operator/apis/database/v4"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestAsmDiskGroupModeHelpers(t *testing.T) {
@@ -78,5 +79,26 @@ func TestHasAnyRawAsmDiskGroup_IgnoresDefaultedAliasGroupsWithoutDisks(t *testin
 
 	if hasAnyRawAsmDiskGroup(spec) {
 		t.Fatalf("expected empty defaulted alias groups to be ignored for raw disk detection")
+	}
+}
+
+func TestNormalizeRacStatusConditionsDeduplicatesByType(t *testing.T) {
+	t.Parallel()
+
+	conditions := []metav1.Condition{
+		{Type: string(racdb.RacCrdReconcileWaitingState), Message: "old"},
+		{Type: string(racdb.RacCrdReconcileErrorState), Message: "err"},
+		{Type: string(racdb.RacCrdReconcileWaitingState), Message: "new"},
+	}
+
+	got := normalizeRacStatusConditions(conditions)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 unique conditions, got %d: %#v", len(got), got)
+	}
+	if got[0].Type != string(racdb.RacCrdReconcileWaitingState) || got[0].Message != "new" {
+		t.Fatalf("expected last ReconcileWaiting condition to win, got %#v", got[0])
+	}
+	if got[1].Type != string(racdb.RacCrdReconcileErrorState) {
+		t.Fatalf("expected ReconcileError condition to be preserved, got %#v", got[1])
 	}
 }

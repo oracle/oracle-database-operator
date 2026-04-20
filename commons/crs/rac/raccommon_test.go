@@ -158,7 +158,7 @@ func TestVolumePVCForASMHonorsExplicitReadWriteOnceOverride(t *testing.T) {
 	}
 }
 
-func TestVolumePVCForASMUsesReadWriteOnceForRawDisks(t *testing.T) {
+func TestVolumePVCForASMDefaultsToReadWriteManyForRawDisks(t *testing.T) {
 	t.Parallel()
 
 	instance := &racdb.RacDatabase{
@@ -178,8 +178,8 @@ func TestVolumePVCForASMUsesReadWriteOnceForRawDisks(t *testing.T) {
 	}
 
 	pvc := VolumePVCForASM(instance, 0, 0, "/dev/asm-disk1", "DATA", "50Gi")
-	if len(pvc.Spec.AccessModes) != 1 || pvc.Spec.AccessModes[0] != corev1.ReadWriteOnce {
-		t.Fatalf("expected raw ASM PVC accessModes=[ReadWriteOnce], got %v", pvc.Spec.AccessModes)
+	if len(pvc.Spec.AccessModes) != 1 || pvc.Spec.AccessModes[0] != corev1.ReadWriteMany {
+		t.Fatalf("expected raw ASM PVC accessModes=[ReadWriteMany], got %v", pvc.Spec.AccessModes)
 	}
 	if pvc.Spec.Selector == nil {
 		t.Fatalf("expected selector for raw ASM PVC")

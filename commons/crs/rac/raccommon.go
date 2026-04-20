@@ -406,10 +406,7 @@ func effectiveAccessModeForAsmDiskGroup(racDatabase *racdb.RacDatabase, dg racdb
 	if mode := strings.TrimSpace(dg.AccessMode); mode != "" {
 		return corev1.PersistentVolumeAccessMode(mode)
 	}
-	if effectiveStorageClassForAsmDiskGroup(racDatabase, dg) != "" && racAsmNodeCount(racDatabase) > 1 {
-		return corev1.ReadWriteMany
-	}
-	return corev1.ReadWriteOnce
+	return corev1.ReadWriteMany
 }
 
 func racAsmNodeCount(racDatabase *racdb.RacDatabase) int {
