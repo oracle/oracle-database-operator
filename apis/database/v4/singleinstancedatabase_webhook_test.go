@@ -7,6 +7,7 @@ import (
 
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -170,12 +171,17 @@ func TestSIDBDeprecatedFieldWarnings(t *testing.T) {
 	sidb.Spec.AdminPassword = SingleInstanceDatabaseAdminPassword{
 		SecretName: "sidb-admin",
 	}
-	sidb.Spec.Resources = SingleInstanceDatabaseResources{
-		Requests: &SingleInstanceDatabaseResource{Cpu: "1", Memory: "1Gi"},
+	sidb.Spec.ResourceRequirements = &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1"),
+			corev1.ResourceMemory: resource.MustParse("1Gi"),
+		},
 	}
 	sidb.Spec.Persistence.Size = "100Gi"
 	sidb.Spec.Persistence.StorageClass = "oci-bv"
 	sidb.Spec.Persistence.AccessMode = "ReadWriteOnce"
+	validPolicy := corev1.PullAlways
+	sidb.Spec.Image.PullPolicy = &validPolicy
 
 	warnings := sidbDeprecatedFieldWarnings(sidb)
 	expectedWarnings := []string{
@@ -187,10 +193,11 @@ func TestSIDBDeprecatedFieldWarnings(t *testing.T) {
 		"spec.tcpsCertRenewInterval is deprecated; use spec.security.tcps.certRenewInterval",
 		"spec.tcpsTlsSecret is deprecated; use spec.security.tcps.tlsSecret",
 		"spec.adminPassword is deprecated; use spec.security.secrets.admin",
-		"spec.resources is deprecated; use spec.resourceRequirements",
+		"spec.resourceRequirements is deprecated; use spec.resources",
 		"spec.persistence.size is deprecated; use spec.persistence.oradata.size",
 		"spec.persistence.storageClass is deprecated; use spec.persistence.oradata.storageClass",
 		"spec.persistence.accessMode is deprecated; use spec.persistence.oradata.accessMode",
+		"spec.image.pullPolicy is deprecated; use spec.image.imagePullPolicy",
 	}
 	if len(warnings) != len(expectedWarnings) {
 		t.Fatalf("expected %d deprecation warnings, got %#v", len(expectedWarnings), warnings)
@@ -857,10 +864,10 @@ func TestSIDBWebhookRejectsInvalidPullPolicy(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	invalid := corev1.PullPolicy("Sometimes")
 	sidb.Spec.Image.PullFrom = "example.com/repo/image:tag"
-	sidb.Spec.Image.PullPolicy = &invalid
+	sidb.Spec.Image.ImagePullPolicy = &invalid
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
-		t.Fatalf("expected validation error for invalid pullPolicy")
+		t.Fatalf("expected validation error for invalid imagePullPolicy")
 	}
 }
 
@@ -868,10 +875,23 @@ func TestSIDBWebhookAcceptsValidPullPolicy(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	valid := corev1.PullAlways
 	sidb.Spec.Image.PullFrom = "example.com/repo/image:tag"
-	sidb.Spec.Image.PullPolicy = &valid
+	sidb.Spec.Image.ImagePullPolicy = &valid
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
-		t.Fatalf("expected no validation errors for valid pullPolicy, got: %v", errs)
+		t.Fatalf("expected no validation errors for valid imagePullPolicy, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookRejectsConflictingImagePullPolicyFields(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Image.PullFrom = "example.com/repo/image:tag"
+	std := corev1.PullAlways
+	legacy := corev1.PullNever
+	sidb.Spec.Image.ImagePullPolicy = &std
+	sidb.Spec.Image.PullPolicy = &legacy
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for conflicting image pull policy fields")
 	}
 }
 

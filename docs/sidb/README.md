@@ -11,6 +11,7 @@ For API migration guidance, see [SingleInstanceDatabase v4 Migration and Support
   * [SingleInstanceDatabase Resource](#singleinstancedatabase-resource)
     * [Create a Database](#create-a-database)
       * [New Database](#new-database)
+      * [Enable True Cache Blob Generation on a Primary Database](#enable-true-cache-blob-generation-on-a-primary-database)
       * [Pre-built Database](#pre-built-database)
       * [XE Database](#xe-database)
       * [Free Database](#free-database)
@@ -33,6 +34,7 @@ For API migration guidance, see [SingleInstanceDatabase v4 Migration and Support
       * [Setup Database with LoadBalancer](#setup-database-with-loadbalancer)
       * [Enabling TCPS Connections](#enabling-tcps-connections)
       * [Specifying Custom Ports](#specifying-custom-ports)
+      * [Host Aliases](#host-aliases)
       * [Setup Data Guard Configuration for a Single Instance Database](#setup-data-guard-configuration-for-a-single-instance-database)
         * [Create a Standby Database](#create-a-standby-database)
         * [Create a Data Guard Configuration](#create-a-data-guard-configuration)
@@ -268,6 +270,71 @@ To provision a new database instance on the Kubernetes cluster, use the example 
 - To pull the database image faster from the container registry, so that you can bring up the SIDB instance quickly, you can use the `container-registry mirror` of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, then you can use the `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, see: [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
 - To update the initialization (init) parameters, such as `sgaTarget` and `pgaAggregateTarget`, see the `initParams` section of the [`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
+#### Enable True Cache Blob Generation on a Primary Database
+
+For a primary `SingleInstanceDatabase`, you can enable operator-managed True Cache blob generation by setting `spec.trueCache.generateEnabled: true`. When enabled, the operator waits for the primary database to become ready, runs `dbca -prepareTrueCacheConfigFile` inside the primary pod, and stores the generated blob in a ConfigMap named `<primary-name>-truecache-blob`. The default key in that ConfigMap is `tc_config_blob.tar.gz`.
+
+If `spec.trueCache.generatePath` ends with `.tar.gz`, the operator guarantees that path is materialized as a tarball file in the primary pod even though DBCA may emit the actual blob into an intermediate directory with a timestamped filename.
+
+This workflow is intended for a primary database that will later be referenced by a `createAs: truecache` database. The generated ConfigMap is then consumed automatically by a True Cache database in the same namespace, unless you override it in the True Cache manifest.
+
+Requirements:
+
+- `spec.createAs` must be `primary`.
+- `spec.edition` must be `enterprise`.
+- `spec.archiveLog` must be `true`.
+- `spec.security.secrets.tde.secretName` and `spec.security.secrets.tde.secretKey` must be specified.
+
+Example:
+
+```yaml
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: orcl-production
+  namespace: default
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  createAs: primary
+  edition: enterprise
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+
+  archiveLog: true
+
+  image:
+    pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix
+    prebuiltDB: false
+    imagePullPolicy: Always
+
+  trueCache:
+    generateEnabled: true
+    generatePath: "/tmp/tc_config_blob.tar.gz"
+
+  hostAliases:
+    - ip: "10.2.1.241"
+      hostnames:
+        - "truecache-production.default.svc.cluster.local"
+        - "truecache-production"
+```
+
+Apply the primary database manifest:
+
+```sh
+kubectl apply -f singleinstancedatabase_create.yaml
+```
+
+After the primary becomes healthy, the operator creates the ConfigMap `<primary-name>-truecache-blob`. A True Cache database that references this primary can then use that generated blob.
+
 #### Pre-built Database
 
 To provision a new pre-built database instance, use the sample **[`config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
@@ -318,6 +385,119 @@ Oracle True Cache is an in-memory, consistent, and automatically managed cache f
 To provision a True Cache instance for Oracle Free Database in Kubernetes, use the sample **[`config/samples/sidb/singleinstancedatabase_free-truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_free-truecache.yaml)** file. For example
 
       kubectl apply -f singleinstancedatabase_free-truecache.yaml
+
+#### Oracle True Cache Across Clusters with External DNS
+
+When the primary and the True Cache database run in different Kubernetes clusters, the default in-cluster hostname `<truecache-name>.<namespace>.svc.cluster.local` is often not resolvable from the primary cluster. In that topology, expose the True Cache database through a `LoadBalancer` Service with an `external-dns.alpha.kubernetes.io/hostname` annotation.
+
+If a `LoadBalancer` Service in the same namespace:
+
+- selects the True Cache pods with `spec.selector.app=<truecache-name>`, and
+- sets `external-dns.alpha.kubernetes.io/hostname`,
+
+then the operator uses that external DNS hostname as the advertised True Cache hostname. If no such Service exists, the operator falls back to `<truecache-name>.<namespace>.svc.cluster.local`.
+
+Create the external Service before creating the True Cache `SingleInstanceDatabase`, so the True Cache pod gets the external hostname during initial provisioning. Use the sample files **[`config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml)** and **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)** as a starting point.
+
+Example `LoadBalancer` Service:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: truecache-nlb
+  namespace: default
+  annotations:
+    oci.oraclecloud.com/load-balancer-type: "nlb"
+    oci-network-load-balancer.oraclecloud.com/internal: "true"
+    oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaaazrdzcswz3ogz4sziyzcmcau3xql65lgvxfoq7rq5gvsmpcl3vba"
+    external-dns.alpha.kubernetes.io/hostname: "truecache-production.internal.example.com"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  ports:
+    - name: oracle
+      port: 1521
+      targetPort: 1521
+      protocol: TCP
+    - name: oracle-tcps
+      port: 2484
+      targetPort: 2484
+      protocol: TCP
+  selector:
+    app: truecache-production
+```
+
+Example True Cache manifest that uses an externally reachable primary database and a generated blob ConfigMap:
+
+```yaml
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: truecache-production
+  namespace: default
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  edition: enterprise
+  createAs: truecache
+
+  primarySource:
+    details:
+      host: "orcl-production.internal.example.com"
+      port: 1521
+      sid: "ORCLPRD"
+      pdbName: "APPPDB1"
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-standby-tcps-tls
+
+  tcpsListenerPort: 2484
+
+  image:
+    pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix-patchnew
+    prebuiltDB: false
+    imagePullPolicy: Always
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+
+  trueCache:
+    blobConfigMapRef: orcl-production-truecache-blob
+    blobConfigMapKey: tc_config_blob.tar.gz
+    blobMountPath: /stage/tc_config_blob.tar.gz
+    truedbUniqueName: "truecache_production_tc"
+    trueCacheServices:
+      - "APPPDB1:tpdb_primary:tpdb_cache"
+
+  hostAliases:
+    - ip: "10.0.2.137"
+      hostnames:
+        - "orcl-production.internal.example.com"
+        - "orcl-production"
+
+  replicas: 1
+```
+
+Apply the Service first, then create the True Cache database:
+
+```sh
+kubectl apply -f config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml
+kubectl apply -f config/samples/sidb/singleinstancedatabase_truecache_external.yaml
+```
 
 #### Additional Information
 You are required to specify the database administrative user (admin) password Secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [`singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml), [`singleinstancedatabase_prebuiltdb.yaml`](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml), [`singleinstancedatabase_express.yaml`](../../config/samples/sidb/singleinstancedatabase_express.yaml) and [`singleinstancedatabse_free.yaml`](../../config/samples/sidb/singleinstancedatabase_free.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, `xedb-admin-secret` and `free-admin-secret` respectively. You can create these Secrets manually by using the sample command mentioned in the [`Template YAML`](#template-yaml) section. Alternatively, you can create these Secrets by filling in the passwords in the **[`singleinstancedatabase_secrets.yaml`](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying them using the following command:
@@ -382,7 +562,7 @@ You can configure database persistence in the following two ways:
 - Static Persistence Provisioning
 
 #### Dynamic Persistence
-In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by mentioning a storage class. For example, **oci-bv** storage class is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)** file. This storage class facilitates dynamic provisioning of the OCI block volumes. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.
+In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by configuring `spec.persistence.oradata`. For example, the **oci-bv** storage class is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)** file under `spec.persistence.oradata.storageClass`. This storage class facilitates dynamic provisioning of the OCI block volumes. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.
                      
 **Note:** 
 - Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`. These volumes are deleted when their corresponding database deployment is deleted. To retain volumes, use static provisioning, as explained in the Block Volume Static Provisioning section.
@@ -391,7 +571,7 @@ In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by m
 #### Storage Expansion
 When using dynamic persistence, you can at any time scale up your persistent volumes by simply patching the singleinstancedatabase resource using the following command :
 ```sh
-$ kubectl patch singleinstancedatabase sidb-sample -p '{"spec":{"persistence":{"size":"100Gi"}}}' --type=merge
+$ kubectl patch singleinstancedatabase sidb-sample -p '{"spec":{"persistence":{"oradata":{"size":"100Gi"}}}}' --type=merge
 ```
 
 **Note:**
@@ -400,7 +580,7 @@ $ kubectl patch singleinstancedatabase sidb-sample -p '{"spec":{"persistence":{"
 - User can only scale up a volume/storage and not scale down
 
 #### Static Persistence
-In **Static Persistence Provisioning**, you must create a volume manually, and then use the name of this volume with the `<.spec.persistence.datafilesVolumeName>` field, which corresponds to the `datafilesVolumeName` field of the persistence section in the **[`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**. The `Reclaim Policy` of such volumes can be set to `Retain`. When this policy is set, the volume is not deleted when its corresponding deployment is deleted.
+In **Static Persistence Provisioning**, you must create a volume manually, and then use the name of this volume with the `<.spec.persistence.datafilesVolumeName>` field in the persistence section of the **[`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**. The `Reclaim Policy` of such volumes can be set to `Retain`. When this policy is set, the volume is not deleted when its corresponding deployment is deleted.
 For example in **Minikube**, a persistent volume can be provisioned using the following yaml file example:
 ```yaml
 apiVersion: v1
@@ -416,7 +596,7 @@ spec:
   hostPath:
     path: /data/oradata
 ```
-The persistent volume name (in this case, `db-vol`) can be mentioned in the `datafilesVolumeName` field of the **[`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**. `storageClass` field is not required in this case, and can be left empty.
+The persistent volume name (in this case, `db-vol`) can be mentioned in the `datafilesVolumeName` field of the **[`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**. When binding to an existing static volume, the dynamic provisioning fields under `persistence.oradata` are not required.
 
 Static Persistence Provisioning in Oracle Cloud Infrastructure (OCI) is explained in the following subsections:
 
@@ -650,7 +830,7 @@ The following table depicts the fail over matrix for any destructive operation t
 - If the `ReadWriteMany` access mode is used, then all the replicas will be distributed on different nodes. For this reason, Oracle recommends that you have replicas more than or equal to the number of the nodes, because the database image is downloaded on all those nodes. This is beneficial in quick cold fail-over scenario (when the active pod dies) as the image would already be available on that node.
 
 #### Database Pod Resource Management
-When creating a Single Instance Database you can specify the cpu and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod gets scheduled on one of the nodes that has the required resources available. To use database pod resource management specify values for the `resources` attributes in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
+When creating a Single Instance Database you can specify the cpu and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod gets scheduled on one of the nodes that has the required resources available. SIDB uses the standard Kubernetes `spec.resources` container resource shape with `requests` and `limits`, matching normal Pod container configuration. To use database pod resource management specify values for the `resources` attributes in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
 For Enterprise Edition, the recommended values are:
 cpu="2"
 memory="16Gi"
@@ -726,6 +906,26 @@ If the `NodePort` service is enabled, then the `listenerPort`, and `tcpsListener
 - `tcpsListenerPort` will come into effect only when TCPS connections are enabled (specifically, the `enableTCPS` field is set in [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file).
 - If TCPS connections are enabled, and `listenerPort` is commented or removed in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file, then only the TCPS endpoint will be exposed.
 - If LoadBalancer is enabled, and either `listenerPort` or `tcpsListenerPort` is changed, then it takes some time to complete the work requests (drain existing backend sets and create new ones). During this time, the database connectivity is broken, although `SingleInstanceDatabase` and `LoadBalancer` remain in a healthy state. To check the progress of the work requests, you can by log in to the Cloud provider's console and check the corresponding LoadBalancer.
+
+### Host Aliases
+You can use `.spec.hostAliases` to add static hostname-to-IP mappings to the database pod's `/etc/hosts` file. This is useful when the database pod must resolve specific hostnames without relying on cluster DNS, or when you want to override name resolution for a known endpoint.
+
+For `SingleInstanceDatabase` resources created as `truecache`, the same `hostAliases` entries are also applied to the True Cache pod. This can be used to map the primary database service name to a fixed IP address. For example:
+
+```yaml
+spec:
+  hostAliases:
+    - ip: "10.2.1.241"
+      hostnames:
+        - "truecache-production.default.svc.cluster.local"
+        - "truecache-production"
+```
+
+Specify `hostAliases` in the **[`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)** file, or in any other `SingleInstanceDatabase` manifest, and then apply the resource:
+
+```sh
+kubectl apply -f singleinstancedatabase.yaml
+```
 
 ### Setup Data Guard Configuration for a Single Instance Database
 

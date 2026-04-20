@@ -124,6 +124,37 @@ func copyStringMap(in map[string]string) map[string]string {
 	return out
 }
 
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+func resolveTrueCacheBlobGenerationPaths(blobPath string) (string, string) {
+	trimmed := strings.TrimSpace(blobPath)
+	if trimmed == "" {
+		trimmed = "/tmp/tc_config_blob.tar.gz"
+	}
+	cleaned := filepath.Clean(trimmed)
+	if strings.HasSuffix(strings.ToLower(cleaned), ".tar.gz") {
+		return cleaned + ".dir", cleaned
+	}
+	return cleaned, ""
+}
+
+func buildTrueCacheBlobResolveCommand(generationPath string, materializedBlobPath string) string {
+	if materializedBlobPath != "" {
+		return fmt.Sprintf("if [ -f %s ]; then printf %%s %s; fi",
+			shellSingleQuote(materializedBlobPath),
+			shellSingleQuote(materializedBlobPath),
+		)
+	}
+	return fmt.Sprintf("if [ -f %s ]; then printf %%s %s; elif [ -d %s ]; then ls -1t %s/*.tar.gz 2>/dev/null | head -n 1; fi",
+		shellSingleQuote(generationPath),
+		shellSingleQuote(generationPath),
+		shellSingleQuote(generationPath),
+		shellSingleQuote(generationPath),
+	)
+}
+
 func stringMapEqual(a map[string]string, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false
@@ -143,6 +174,7 @@ var requeueN ctrl.Result = ctrl.Result{}
 const singleInstanceDatabaseFinalizer = "database.oracle.com/singleinstancedatabasefinalizer"
 const sidbConditionDataguardPrereqsReady = "DataguardPrereqsReady"
 const sidbDataguardPrereqsRerunAnnotation = "database.oracle.com/dataguard-prereqs-rerun-token"
+const externalDNSHostnameAnnotation = "external-dns.alpha.kubernetes.io/hostname"
 
 // ErrNotPhysicalStandby indicates the database role is not PHYSICAL_STANDBY.
 var ErrNotPhysicalStandby error = errors.New("database not in PHYSICAL_STANDBY role")
@@ -285,6 +317,9 @@ func buildSetDBRecoveryDestSQL(location, size string) string {
 }
 
 func buildSIDBContainerResources(m *dbapi.SingleInstanceDatabase) corev1.ResourceRequirements {
+	if m.Spec.Resources != nil {
+		return *m.Spec.Resources.DeepCopy()
+	}
 	if m.Spec.ResourceRequirements != nil {
 		return *m.Spec.ResourceRequirements.DeepCopy()
 	}
@@ -476,6 +511,51 @@ func legacyPortIsNodePort(port int) bool {
 	return port >= 30000 && port <= 32767
 }
 
+func parseExternalDNSHostname(value string) string {
+	for _, part := range strings.Split(value, ",") {
+		hostname := strings.TrimSpace(part)
+		if hostname == "" {
+			continue
+		}
+		return strings.TrimSuffix(hostname, ".")
+	}
+	return ""
+}
+
+func defaultSIDBOracleHostname(m *dbapi.SingleInstanceDatabase) string {
+	return fmt.Sprintf("%s.%s.svc.cluster.local", m.Name, m.Namespace)
+}
+
+func (r *SingleInstanceDatabaseReconciler) getTrueCacheAdvertisedHostname(ctx context.Context, m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	if r == nil || r.Client == nil {
+		return defaultSIDBOracleHostname(m)
+	}
+
+	services := &corev1.ServiceList{}
+	if err := r.Client.List(ctx, services, client.InNamespace(m.Namespace)); err != nil {
+		r.Log.Error(err, "Failed to list services for truecache advertised hostname lookup", "namespace", m.Namespace, "sidb", m.Name)
+		return defaultSIDBOracleHostname(m)
+	}
+
+	for i := range services.Items {
+		svc := &services.Items[i]
+		if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
+			continue
+		}
+		if strings.TrimSpace(svc.Spec.Selector["app"]) != m.Name {
+			continue
+		}
+		if hostname := parseExternalDNSHostname(svc.Annotations[externalDNSHostnameAnnotation]); hostname != "" {
+			return hostname
+		}
+	}
+
+	return defaultSIDBOracleHostname(m)
+}
+
 func desiredSIDBClusterServicePorts(tcpsEnabled bool) []corev1.ServicePort {
 	ports := []corev1.ServicePort{{
 		Name:     "listener",
@@ -636,6 +716,13 @@ func getTcpsCertsLocation(m *dbapi.SingleInstanceDatabase) string {
 	return defaultLocation
 }
 
+func allowTrueCacheBlobGenerationWithoutTCPS(sidb *dbapi.SingleInstanceDatabase) bool {
+	return sidb != nil &&
+		sidb.Spec.CreateAs == "primary" &&
+		sidb.Spec.TrueCache != nil &&
+		sidb.Spec.TrueCache.GenerateEnabled
+}
+
 func getDataguardPrereqsEnabled(m *dbapi.SingleInstanceDatabase) bool {
 	if m == nil {
 		return false
@@ -716,6 +803,9 @@ func getSIDBImagePullPolicy(m *dbapi.SingleInstanceDatabase) corev1.PullPolicy {
 		return ""
 	}
 	var explicit corev1.PullPolicy
+	if m.Spec.Image.ImagePullPolicy != nil {
+		explicit = *m.Spec.Image.ImagePullPolicy
+	}
 	if m.Spec.Image.PullPolicy != nil {
 		explicit = *m.Spec.Image.PullPolicy
 	}
@@ -1289,7 +1379,13 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		}
 		result, err = r.configTcps(sidb, readyPod, ctx, req, phaseCtx)
 		if result.Requeue || err != nil {
-			return result, err
+			if !allowTrueCacheBlobGenerationWithoutTCPS(sidb) {
+				return result, err
+			}
+			r.Log.Info("TCPS reconcile will not block TrueCache blob generation for primary database",
+				"sidb", sidb.Name,
+				"requeue", result.Requeue,
+				"error", err)
 		}
 		if err := syncConfiguredTNSAliasesInPod(r, sidb, referredPrimaryDatabase, readyPod, ctx, req); err != nil {
 			return requeueY, err
@@ -1447,6 +1543,7 @@ func (r *SingleInstanceDatabaseReconciler) ensureTrueCacheBlob(
 	if sidb.Spec.TrueCache != nil && strings.TrimSpace(sidb.Spec.TrueCache.GeneratePath) != "" {
 		blobPath = strings.TrimSpace(sidb.Spec.TrueCache.GeneratePath)
 	}
+	blobGenerationPath, materializedBlobPath := resolveTrueCacheBlobGenerationPaths(blobPath)
 
 	pods := &corev1.PodList{}
 	if err := r.Client.List(ctx, pods, client.InNamespace(sidb.Namespace), client.MatchingLabels{"app": sidb.Name}); err != nil {
@@ -1487,12 +1584,18 @@ func (r *SingleInstanceDatabaseReconciler) ensureTrueCacheBlob(
 
 	tdePasswordFilePath := GetTDEPasswordSecretMountPath(sidb)
 	cmd := fmt.Sprintf(
-		"cat %q | $ORACLE_HOME/bin/dbca -configureDatabase -prepareTrueCacheConfigFile -sourceDB %[2]s -trueCacheBlobLocation %[3]s -tdeWalletPassword \"$(cat %q)\" -silent",
+		"rm -rf %[1]s && mkdir -p %[1]s && cat %[2]q | $ORACLE_HOME/bin/dbca -configureDatabase -prepareTrueCacheConfigFile -sourceDB %[3]s -trueCacheBlobLocation %[1]s -tdeWalletPassword \"$(cat %[2]q)\" -silent",
+		shellSingleQuote(blobGenerationPath),
 		tdePasswordFilePath,
 		sidb.Spec.Sid,
-		blobPath,
-		tdePasswordFilePath,
 	)
+	if materializedBlobPath != "" {
+		cmd = fmt.Sprintf("%s && latest=$(ls -1t %s/*.tar.gz 2>/dev/null | head -n 1) && [ -n \"$latest\" ] && cp \"$latest\" %s",
+			cmd,
+			shellSingleQuote(blobGenerationPath),
+			shellSingleQuote(materializedBlobPath),
+		)
+	}
 	if out, err := dbcommons.ExecCommand(r, r.Config, primaryPod.Name, primaryPod.Namespace, sidb.Name, ctx, req, false, "sh", "-c", cmd); err != nil {
 		logger.Error(err, "TrueCache blob DBCA command failed", "pod", primaryPod.Name, "output", strings.TrimSpace(out))
 		meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
@@ -1507,9 +1610,23 @@ func (r *SingleInstanceDatabaseReconciler) ensureTrueCacheBlob(
 		return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
 	}
 
-	blobContent, err := dbcommons.ExecCommand(r, r.Config, primaryPod.Name, primaryPod.Namespace, sidb.Name, ctx, req, false, "cat", blobPath)
+	resolvedBlobPath, err := dbcommons.ExecCommand(
+		r, r.Config, primaryPod.Name, primaryPod.Namespace, sidb.Name, ctx, req, false,
+		"sh", "-c", buildTrueCacheBlobResolveCommand(blobGenerationPath, materializedBlobPath),
+	)
 	if err != nil {
-		logger.Error(err, "Failed to read generated TrueCache blob", "pod", primaryPod.Name, "path", blobPath)
+		logger.Error(err, "Failed to resolve generated TrueCache blob path", "pod", primaryPod.Name, "generationPath", blobGenerationPath, "blobPath", blobPath)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	resolvedBlobPath = strings.TrimSpace(resolvedBlobPath)
+	if resolvedBlobPath == "" {
+		logger.Info("Generated TrueCache blob file not found yet", "pod", primaryPod.Name, "generationPath", blobGenerationPath, "blobPath", blobPath)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	blobContent, err := dbcommons.ExecCommand(r, r.Config, primaryPod.Name, primaryPod.Namespace, sidb.Name, ctx, req, false, "cat", resolvedBlobPath)
+	if err != nil {
+		logger.Error(err, "Failed to read generated TrueCache blob", "pod", primaryPod.Name, "path", resolvedBlobPath)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -2151,6 +2268,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	walletDir := GetWalletDirFromSid(m.Spec.Sid)
 	oradataCfg := getOradataPersistenceConfig(m)
 	containerResources := buildSIDBContainerResources(m)
+	trueCacheAdvertisedHostname := defaultSIDBOracleHostname(m)
+	if m != nil && m.Spec.CreateAs == "truecache" {
+		trueCacheAdvertisedHostname = r.getTrueCacheAdvertisedHostname(context.Background(), m)
+	}
 	podSecurityContext, err := buildSIDBPodSecurityContext(m, containerResources)
 	if err != nil {
 		return nil, err
@@ -2802,7 +2923,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "ORACLE_HOSTNAME",
-								Value: fmt.Sprintf("%s.%s.svc.cluster.local", m.Name, m.Namespace),
+								Value: trueCacheAdvertisedHostname,
 							},
 						}
 						if rp != nil && GetAdminPasswordSecretName(rp) != "" && GetAdminPasswordSecretFileName(rp) != "" {

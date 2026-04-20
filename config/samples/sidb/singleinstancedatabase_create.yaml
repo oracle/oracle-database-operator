@@ -31,6 +31,21 @@ spec:
   ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
   archiveLog: true
 
+  ## Optional grouped security settings.
+  ## Configure spec.security.secrets.tde when enabling trueCache.generateEnabled on a primary database.
+  # security:
+  #   secrets:
+  #     tde:
+  #       secretName: tde-wallet-secret
+  #       secretKey: tde_wallet_pwd
+
+  ## Optional True Cache blob generation for a primary database.
+  ## Requires edition=enterprise, archiveLog=true, and spec.security.secrets.tde to be set.
+  ## The generated ConfigMap name defaults to <database-name>-truecache-blob.
+  # trueCache:
+  #   generateEnabled: true
+  #   generatePath: /tmp/tc_config_blob.tar.gz
+
   ## Database image details
   image:
     pullFrom: container-registry.oracle.com/database/enterprise_ru:19
@@ -40,10 +55,11 @@ spec:
   ## storageClass is specified for automatic volume provisioning
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
-    size: 100Gi
-    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
-    storageClass: "oci-bv"
-    accessMode: "ReadWriteOnce"
+    oradata:
+      size: 100Gi
+      ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
 
   ## Count of Database Pods.
   replicas: 1

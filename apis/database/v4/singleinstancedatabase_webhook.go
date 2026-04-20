@@ -540,8 +540,8 @@ func sidbDeprecatedFieldWarnings(sidb *SingleInstanceDatabase) admission.Warning
 	if strings.TrimSpace(sidb.Spec.AdminPassword.SecretName) != "" {
 		warnings = append(warnings, "spec.adminPassword is deprecated; use spec.security.secrets.admin")
 	}
-	if sidb.Spec.Resources.Requests != nil || sidb.Spec.Resources.Limits != nil {
-		warnings = append(warnings, "spec.resources is deprecated; use spec.resourceRequirements")
+	if sidb.Spec.ResourceRequirements != nil {
+		warnings = append(warnings, "spec.resourceRequirements is deprecated; use spec.resources")
 	}
 	if strings.TrimSpace(sidb.Spec.Persistence.Size) != "" {
 		warnings = append(warnings, "spec.persistence.size is deprecated; use spec.persistence.oradata.size")
@@ -551,6 +551,9 @@ func sidbDeprecatedFieldWarnings(sidb *SingleInstanceDatabase) admission.Warning
 	}
 	if strings.TrimSpace(sidb.Spec.Persistence.AccessMode) != "" {
 		warnings = append(warnings, "spec.persistence.accessMode is deprecated; use spec.persistence.oradata.accessMode")
+	}
+	if sidb.Spec.Image.PullPolicy != nil {
+		warnings = append(warnings, "spec.image.pullPolicy is deprecated; use spec.image.imagePullPolicy")
 	}
 	return warnings
 }
@@ -694,17 +697,31 @@ func validateTNSAliases(sidb *SingleInstanceDatabase) field.ErrorList {
 
 func validateSIDBImageSpec(path *field.Path, image *SingleInstanceDatabaseImage) field.ErrorList {
 	var allErrs field.ErrorList
-	if image == nil || image.PullPolicy == nil {
+	if image == nil {
+		return allErrs
+	}
+	if image.ImagePullPolicy != nil && image.PullPolicy != nil && *image.ImagePullPolicy != *image.PullPolicy {
+		allErrs = append(allErrs, field.Forbidden(path.Child("pullPolicy"), "cannot be set together with spec.image.imagePullPolicy"))
 		return allErrs
 	}
 
-	switch *image.PullPolicy {
+	policy := image.ImagePullPolicy
+	policyPath := path.Child("imagePullPolicy")
+	if policy == nil {
+		policy = image.PullPolicy
+		policyPath = path.Child("pullPolicy")
+	}
+	if policy == nil {
+		return allErrs
+	}
+
+	switch *policy {
 	case corev1.PullAlways, corev1.PullIfNotPresent, corev1.PullNever:
 		return allErrs
 	default:
 		return append(allErrs, field.NotSupported(
-			path.Child("pullPolicy"),
-			*image.PullPolicy,
+			policyPath,
+			*policy,
 			[]string{string(corev1.PullAlways), string(corev1.PullIfNotPresent), string(corev1.PullNever)},
 		))
 	}
@@ -788,42 +805,27 @@ func validateSingleInstanceDatabaseResourceFields(sidb *SingleInstanceDatabase) 
 	var allErrs field.ErrorList
 	specPath := field.NewPath("spec")
 
-	validateLegacyQuantity := func(value string, fld *field.Path) {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
+	validateResourceRequirements := func(rr *corev1.ResourceRequirements, fld *field.Path) {
+		if rr == nil {
 			return
 		}
-		q, err := resource.ParseQuantity(trimmed)
-		if err != nil {
-			allErrs = append(allErrs, field.Invalid(fld, value, "invalid quantity"))
-			return
-		}
-		if q.Sign() < 0 {
-			allErrs = append(allErrs, field.Invalid(fld, value, "must be non-negative"))
-		}
-	}
-
-	if sidb.Spec.Resources.Requests != nil {
-		validateLegacyQuantity(sidb.Spec.Resources.Requests.Cpu, specPath.Child("resources").Child("requests").Child("cpu"))
-		validateLegacyQuantity(sidb.Spec.Resources.Requests.Memory, specPath.Child("resources").Child("requests").Child("memory"))
-	}
-	if sidb.Spec.Resources.Limits != nil {
-		validateLegacyQuantity(sidb.Spec.Resources.Limits.Cpu, specPath.Child("resources").Child("limits").Child("cpu"))
-		validateLegacyQuantity(sidb.Spec.Resources.Limits.Memory, specPath.Child("resources").Child("limits").Child("memory"))
-	}
-
-	if sidb.Spec.ResourceRequirements != nil {
-		for name, q := range sidb.Spec.ResourceRequirements.Requests {
+		for name, q := range rr.Requests {
 			if q.Sign() < 0 {
-				allErrs = append(allErrs, field.Invalid(specPath.Child("resourceRequirements").Child("requests").Child(string(name)), q.String(), "must be non-negative"))
+				allErrs = append(allErrs, field.Invalid(fld.Child("requests").Child(string(name)), q.String(), "must be non-negative"))
 			}
 		}
-		for name, q := range sidb.Spec.ResourceRequirements.Limits {
+		for name, q := range rr.Limits {
 			if q.Sign() < 0 {
-				allErrs = append(allErrs, field.Invalid(specPath.Child("resourceRequirements").Child("limits").Child(string(name)), q.String(), "must be non-negative"))
+				allErrs = append(allErrs, field.Invalid(fld.Child("limits").Child(string(name)), q.String(), "must be non-negative"))
 			}
 		}
 	}
+
+	if sidb.Spec.Resources != nil && sidb.Spec.ResourceRequirements != nil {
+		allErrs = append(allErrs, field.Forbidden(specPath.Child("resourceRequirements"), "cannot be set together with spec.resources"))
+	}
+	validateResourceRequirements(sidb.Spec.Resources, specPath.Child("resources"))
+	validateResourceRequirements(sidb.Spec.ResourceRequirements, specPath.Child("resourceRequirements"))
 
 	return allErrs
 }

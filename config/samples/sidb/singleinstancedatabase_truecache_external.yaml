@@ -1,0 +1,80 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: truecache-production
+  namespace: default
+spec:
+
+  ## DB edition
+  edition: enterprise
+
+  ## DB Type
+  createAs: truecache
+
+  ## Use the externally reachable primary endpoint when the primary runs in another cluster.
+  primarySource:
+    details:
+      host: "orcl-production.internal.example.com"
+      port: 1521
+      sid: "ORCLPRD"
+      pdbName: "APPPDB1"
+
+  ## Use only alphanumeric characters for sid
+  sid: ORCLPRD
+
+  ## PDB name
+  pdbName: APPPDB1
+
+  ## Grouped security settings.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-standby-tcps-tls
+
+  ## Optional TCPS listener exposure for clients.
+  tcpsListenerPort: 2484
+
+  ## Database image details
+  image:
+    pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix-patchnew
+    prebuiltDB: false
+    imagePullPolicy: Always
+
+  ## Storage details
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+
+  ## Generated blob ConfigMap from the primary database.
+  trueCache:
+    blobConfigMapRef: orcl-production-truecache-blob
+    blobConfigMapKey: tc_config_blob.tar.gz
+    blobMountPath: /stage/tc_config_blob.tar.gz
+    truedbUniqueName: "truecache_production_tc"
+    trueCacheServices:
+      - "APPPDB1:tpdb_primary:tpdb_cache"
+
+  ## Optional mapping for the external primary endpoint when cluster DNS cannot resolve it.
+  hostAliases:
+    - ip: "10.0.2.137"
+      hostnames:
+        - "orcl-production.internal.example.com"
+        - "orcl-production"
+
+  ## Count of Database Pods. Should be 1 for True Cache.
+  replicas: 1
