@@ -5856,10 +5856,14 @@ func ValidatePrimaryDatabaseAdminPassword(
 		return err
 	}
 
-	sqlCmd := fmt.Sprintf(`sqlplus -s "sys/%s as sysdba" <<'EOF'
+	// Connect through /nolog so special characters in the password are parsed by SQL*Plus
+	// as part of the password, not as command-line connect string delimiters.
+	escapedPassword := strings.ReplaceAll(adminPassword, `"`, `""`)
+	sqlCmd := fmt.Sprintf(`sqlplus -s /nolog <<'EOF'
+connect sys/"%s" as sysdba
 show user;
 exit;
-EOF`, adminPassword)
+EOF`, escapedPassword)
 
 	r.Log.Info(
 		"Validating primary database admin password",
