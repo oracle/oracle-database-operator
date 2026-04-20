@@ -4,11 +4,11 @@ Each pool can be configured to automatically install and upgrade the ORDS and/or
 
 ## ORDS autoUpgrade
 
-The ORDS version is determined by the ORDS image used for the RestDataServices resource.
+The ORDS version is determined by the ORDS image used for the OrdsSrvs resource.
 ORDS schema installation and upgrade can be activated at the pool level:  
 
 ```yaml
-apiVersion: database.oracle.com/v1
+apiVersion: database.oracle.com/v4
 kind: OrdsSrvs
 metadata:
     name: ordspoc-server
@@ -35,7 +35,7 @@ To download APEX installation files, the Kubernetes worker node must have intern
 The APEX download is defined globally, and upgrades can be enabled or disabled for each pool individually.
 
 ```yaml
-apiVersion: database.oracle.com/v1
+apiVersion: database.oracle.com/v4
 kind: OrdsSrvs
 metadata:
     name: ordspoc-server
@@ -118,7 +118,7 @@ As an additional requirement for `Pool: pdb1`, the `spec.poolSettings.db.adminUs
 must be provided.  If they are not, the `autoUpgrade` specification is ignored.
 
 ```yaml
-apiVersion: database.oracle.com/v1
+apiVersion: database.oracle.com/v4
 kind: OrdsSrvs
 metadata:
     name: ordspoc-server
