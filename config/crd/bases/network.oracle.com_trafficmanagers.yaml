@@ -241,8 +241,6 @@ spec:
                     items:
                       type: string
                     type: array
-                  configMapName:
-                    type: string
                   backendCount:
                     format: int32
                     type: integer

@@ -130,7 +130,9 @@ func (r *RacDatabase) Default(ctx context.Context, obj *RacDatabase) error {
 
 	}
 
-	defaultRacAsmAccessModes(cr)
+	if cr.CreationTimestamp.IsZero() {
+		defaultRacAsmAccessModes(cr)
+	}
 
 	return nil
 }
@@ -147,15 +149,8 @@ func defaultRacAsmAccessModes(cr *RacDatabase) {
 	}
 }
 
-func defaultRacAsmAccessMode(cr *RacDatabase, dg AsmDiskGroupDetails) string {
-	effectiveStorageClass := strings.TrimSpace(dg.StorageClass)
-	if effectiveStorageClass == "" {
-		effectiveStorageClass = strings.TrimSpace(cr.Spec.StorageClass)
-	}
-	if effectiveStorageClass != "" && racAsmNodeCount(cr) > 1 {
-		return string(corev1.ReadWriteMany)
-	}
-	return string(corev1.ReadWriteOnce)
+func defaultRacAsmAccessMode(_ *RacDatabase, _ AsmDiskGroupDetails) string {
+	return string(corev1.ReadWriteMany)
 }
 
 func racAsmNodeCount(cr *RacDatabase) int {
@@ -163,6 +158,13 @@ func racAsmNodeCount(cr *RacDatabase) int {
 		return 1
 	}
 	return cr.Spec.ClusterDetails.NodeCount
+}
+
+func resolvedRacAsmAccessMode(cr *RacDatabase, dg AsmDiskGroupDetails) string {
+	if mode := strings.TrimSpace(dg.AccessMode); mode != "" {
+		return mode
+	}
+	return defaultRacAsmAccessMode(cr, dg)
 }
 
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-racdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=racdatabases,versions=v4,name=vracdatabase.kb.io,admissionReviewVersions={v1}
@@ -472,6 +474,15 @@ func (cr *RacDatabase) validateAsmStorage() field.ErrorList {
 					dp.Child("accessMode"),
 					dg.AccessMode,
 					"accessMode must be ReadWriteOnce or ReadWriteMany",
+				),
+			)
+		}
+		if strings.TrimSpace(dg.AccessMode) == string(corev1.ReadWriteOnce) && racAsmNodeCount(cr) > 1 {
+			allErrs = append(allErrs,
+				field.Invalid(
+					dp.Child("accessMode"),
+					dg.AccessMode,
+					"accessMode ReadWriteOnce is allowed only for single-node RAC",
 				),
 			)
 		}
@@ -1439,8 +1450,10 @@ func (r *RacDatabase) validateUpdateAsmStorage(oldCr *RacDatabase) field.ErrorLi
 
 	var validationErrs field.ErrorList
 	// Map of old group names and types for lookup
+	oldGroups := make(map[string]AsmDiskGroupDetails)
 	oldGroupTypes := make(map[string]AsmDiskDGTypes)
 	for _, dg := range oldCr.Spec.AsmStorageDetails {
+		oldGroups[dg.Name] = dg
 		oldGroupTypes[dg.Name] = dg.Type
 	}
 
@@ -1456,6 +1469,18 @@ func (r *RacDatabase) validateUpdateAsmStorage(oldCr *RacDatabase) field.ErrorLi
 				field.Forbidden(
 					field.NewPath("spec").Child("asmDiskGroupDetails").Index(idx),
 					fmt.Sprintf("Addition of new disk group %q (type: %s) is not allowed except for groups of type OTHERS.", dg.Name, dg.Type)))
+		}
+		if existed {
+			oldMode := resolvedRacAsmAccessMode(oldCr, oldGroups[dg.Name])
+			newMode := resolvedRacAsmAccessMode(r, dg)
+			if oldMode != newMode {
+				validationErrs = append(validationErrs,
+					field.Forbidden(
+						field.NewPath("spec").Child("asmDiskGroupDetails").Index(idx).Child("accessMode"),
+						fmt.Sprintf("accessMode cannot be changed after creation (old: %s, new: %s)", oldMode, newMode),
+					),
+				)
+			}
 		}
 		// Types must be unique per group
 		if existingName, exists := seenTypes[dg.Type]; exists {

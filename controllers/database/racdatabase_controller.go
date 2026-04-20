@@ -1906,6 +1906,7 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 	// SET ONLY THE NEW CONDITION
 	// ---------------------------------------------
 	meta.SetStatusCondition(&racDatabase.Status.Conditions, condition)
+	racDatabase.Status.Conditions = normalizeRacStatusConditions(racDatabase.Status.Conditions)
 
 	if racDatabase.Status.State == string(racdb.RACPodAvailableState) && condition.Type == string(racdb.RacCrdReconcileCompeleteState) {
 		r.Log.Info("All validations and updation are completed. Changing State to AVAILABLE")
@@ -1932,6 +1933,7 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 			time.Sleep(retryDelay)
 			continue // Retry merging
 		}
+		racDatabase.Status.Conditions = normalizeRacStatusConditions(racDatabase.Status.Conditions)
 		// Skip status write when nothing changed.
 		if reflect.DeepEqual(racDatabase.Status, latestInstance.Status) {
 			r.Log.Info("No RAC status changes detected; skipping status patch", "Instance", racDatabase.Name)
@@ -2643,6 +2645,7 @@ func (r *RacDatabaseReconciler) updateDiskSizes(
 		if err := mergeRacInstancesFromLatest(racDatabase, latest); err != nil {
 			return nil, err
 		}
+		racDatabase.Status.Conditions = normalizeRacStatusConditions(racDatabase.Status.Conditions)
 
 		racDatabase.ResourceVersion = latest.ResourceVersion
 		if err := r.Client.Status().Update(ctx, racDatabase); err != nil {
@@ -3543,6 +3546,24 @@ func mergeRacInstancesFromLatest(instance, latestInstance *racdb.RacDatabase) er
 			SliceMode:   sharedstatusmerge.SliceMergeByIndex,
 		},
 	)
+}
+
+func normalizeRacStatusConditions(conditions []metav1.Condition) []metav1.Condition {
+	if len(conditions) < 2 {
+		return conditions
+	}
+
+	normalized := make([]metav1.Condition, 0, len(conditions))
+	indexByType := make(map[string]int, len(conditions))
+	for _, condition := range conditions {
+		if idx, exists := indexByType[condition.Type]; exists {
+			normalized[idx] = condition
+			continue
+		}
+		indexByType[condition.Type] = len(normalized)
+		normalized = append(normalized, condition)
+	}
+	return normalized
 }
 
 type racEnvAccumulator struct {
@@ -5427,6 +5448,7 @@ func (r *RacDatabaseReconciler) updateStatusWithRetry(
 
 		// Apply desired mutation on latest object
 		apply(latest)
+		latest.Status.Conditions = normalizeRacStatusConditions(latest.Status.Conditions)
 
 		err := r.Status().Update(ctx, latest)
 		if err == nil {

@@ -19053,10 +19053,6 @@ spec:
                   pullFrom:
                     type: string
                   pullPolicy:
-                    enum:
-                    - Always
-                    - IfNotPresent
-                    - Never
                     type: string
                   pullSecrets:
                     type: string
@@ -21499,7 +21495,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -21515,8 +21511,8 @@ spec:
         - /manager
         env:
         - name: WATCH_NAMESPACE
-          value: "oracle-database-operator-system,default"
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sidb-operator-sa
+          value: ""
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
         imagePullPolicy: Always
         name: manager
         ports:
