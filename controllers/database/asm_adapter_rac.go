@@ -26,6 +26,7 @@ func (a *racAsmAdapter) GetDiskGroups() []sharedasm.DiskGroup {
 			Disks:              dg.Disks,
 			AutoUpdate:         dg.AutoUpdate,
 			StorageClass:       dg.StorageClass,
+			AccessMode:         dg.AccessMode,
 			AsmStorageSizeInGb: dg.AsmStorageSizeInGb,
 		})
 	}
@@ -42,6 +43,7 @@ func (a *racAsmAdapter) SetDiskGroups(in []sharedasm.DiskGroup) {
 			Disks:              dg.Disks,
 			AutoUpdate:         dg.AutoUpdate,
 			StorageClass:       dg.StorageClass,
+			AccessMode:         dg.AccessMode,
 			AsmStorageSizeInGb: dg.AsmStorageSizeInGb,
 		})
 	}

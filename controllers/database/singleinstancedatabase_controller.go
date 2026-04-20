@@ -712,10 +712,42 @@ func getDataguardClientWalletSourceDir(m *dbapi.SingleInstanceDatabase) string {
 }
 
 func getSIDBImagePullPolicy(m *dbapi.SingleInstanceDatabase) corev1.PullPolicy {
-	if m == nil || m.Spec.Image.PullPolicy == nil {
+	if m == nil {
 		return ""
 	}
-	return *m.Spec.Image.PullPolicy
+	var explicit corev1.PullPolicy
+	if m.Spec.Image.PullPolicy != nil {
+		explicit = *m.Spec.Image.PullPolicy
+	}
+	return resolveSIDBImagePullPolicy(m.Spec.Image.PullFrom, explicit)
+}
+
+func resolveSIDBImagePullPolicy(image string, explicit corev1.PullPolicy) corev1.PullPolicy {
+	if explicit != "" {
+		return explicit
+	}
+
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return ""
+	}
+
+	if strings.Contains(image, "@sha256:") {
+		return corev1.PullIfNotPresent
+	}
+
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	hasTag := lastColon > lastSlash
+	if !hasTag {
+		return corev1.PullAlways
+	}
+
+	if strings.EqualFold(image[lastColon+1:], "latest") {
+		return corev1.PullAlways
+	}
+
+	return corev1.PullIfNotPresent
 }
 
 func buildSIDBPodSecurityContext(

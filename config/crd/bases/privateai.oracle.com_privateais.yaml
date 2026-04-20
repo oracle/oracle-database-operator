@@ -329,15 +329,9 @@ spec:
                 type: integer
               trafficManager:
                 properties:
-                  endpoint:
-                    type: string
-                  publicURL:
-                    type: string
                   ref:
                     type: string
                   routePath:
-                    type: string
-                  serviceName:
                     type: string
                 type: object
               workerNodes:
@@ -350,8 +344,6 @@ spec:
               NodeIP:
                 type: string
               clusterIP:
-                type: string
-              externalService:
                 type: string
               conditions:
                 items:
@@ -392,6 +384,8 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              externalService:
+                type: string
               loadBalancerIP:
                 type: string
               localService:
@@ -437,9 +431,15 @@ spec:
                 type: string
               trafficManager:
                 properties:
+                  endpoint:
+                    type: string
+                  publicURL:
+                    type: string
                   ref:
                     type: string
                   routePath:
+                    type: string
+                  serviceName:
                     type: string
                 type: object
             type: object

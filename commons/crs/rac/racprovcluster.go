@@ -198,6 +198,16 @@ func VolumeClaimTemplatesForRacCluster(
 	for _, dg := range instance.Spec.AsmStorageDetails {
 		for _, diskName := range dg.Disks {
 			pvcName := GetAsmPvcName(diskName, instance.Name)
+			accessMode := effectiveAccessModeForAsmDiskGroup(instance, dg)
+			storageClassName := effectiveStorageClassForAsmDiskGroup(instance, dg)
+			var storageClassNamePtr *string
+			if storageClassName != "" {
+				storageClassNamePtr = &storageClassName
+			}
+			sizeInGi := dg.AsmStorageSizeInGb
+			if sizeInGi <= 0 {
+				sizeInGi = 100
+			}
 			claims = append(claims, corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      pvcName,
@@ -206,12 +216,12 @@ func VolumeClaimTemplatesForRacCluster(
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
 					AccessModes: []corev1.PersistentVolumeAccessMode{
-						corev1.ReadWriteOnce,
+						accessMode,
 					},
-					StorageClassName: &instance.Spec.StorageClass,
+					StorageClassName: storageClassNamePtr,
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse("100Gi"),
+							corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", sizeInGi)),
 						},
 					},
 				},

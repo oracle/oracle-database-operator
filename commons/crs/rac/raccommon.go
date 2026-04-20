@@ -279,7 +279,7 @@ func VolumePVForASM(
 			Labels:    labels,
 		},
 		Spec: corev1.PersistentVolumeSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			AccessModes: []corev1.PersistentVolumeAccessMode{accessModeForAsmDiskGroup(instance, diskGroupName)},
 			VolumeMode:  &volumeBlock,
 			Capacity: corev1.ResourceList{
 				corev1.ResourceStorage: resource.MustParse(size),
@@ -312,7 +312,7 @@ func VolumePVCForASM(
 			Labels:    buildLabelsForAsmPv(instance, diskName),
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			AccessModes: []corev1.PersistentVolumeAccessMode{accessModeForAsmDiskGroup(instance, diskGroupName)},
 			VolumeMode:  &volumeBlock,
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
@@ -379,13 +379,44 @@ func storageClassForAsmDiskGroup(racDatabase *racdb.RacDatabase, diskGroupName s
 	for i := range racDatabase.Spec.AsmStorageDetails {
 		dg := &racDatabase.Spec.AsmStorageDetails[i]
 		if dg.Name == diskGroupName {
-			if dg.StorageClass != "" {
-				return dg.StorageClass
-			}
-			break
+			return effectiveStorageClassForAsmDiskGroup(racDatabase, *dg)
 		}
 	}
 	return strings.TrimSpace(racDatabase.Spec.StorageClass)
+}
+
+func effectiveStorageClassForAsmDiskGroup(racDatabase *racdb.RacDatabase, dg racdb.AsmDiskGroupDetails) string {
+	if sc := strings.TrimSpace(dg.StorageClass); sc != "" {
+		return sc
+	}
+	return strings.TrimSpace(racDatabase.Spec.StorageClass)
+}
+
+func accessModeForAsmDiskGroup(racDatabase *racdb.RacDatabase, diskGroupName string) corev1.PersistentVolumeAccessMode {
+	for i := range racDatabase.Spec.AsmStorageDetails {
+		dg := racDatabase.Spec.AsmStorageDetails[i]
+		if dg.Name == diskGroupName {
+			return effectiveAccessModeForAsmDiskGroup(racDatabase, dg)
+		}
+	}
+	return effectiveAccessModeForAsmDiskGroup(racDatabase, racdb.AsmDiskGroupDetails{})
+}
+
+func effectiveAccessModeForAsmDiskGroup(racDatabase *racdb.RacDatabase, dg racdb.AsmDiskGroupDetails) corev1.PersistentVolumeAccessMode {
+	if mode := strings.TrimSpace(dg.AccessMode); mode != "" {
+		return corev1.PersistentVolumeAccessMode(mode)
+	}
+	if effectiveStorageClassForAsmDiskGroup(racDatabase, dg) != "" && racAsmNodeCount(racDatabase) > 1 {
+		return corev1.ReadWriteMany
+	}
+	return corev1.ReadWriteOnce
+}
+
+func racAsmNodeCount(racDatabase *racdb.RacDatabase) int {
+	if racDatabase == nil || racDatabase.Spec.ClusterDetails == nil || racDatabase.Spec.ClusterDetails.NodeCount <= 0 {
+		return 1
+	}
+	return racDatabase.Spec.ClusterDetails.NodeCount
 }
 
 const maxNameLen = 63

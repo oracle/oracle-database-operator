@@ -130,7 +130,39 @@ func (r *RacDatabase) Default(ctx context.Context, obj *RacDatabase) error {
 
 	}
 
+	defaultRacAsmAccessModes(cr)
+
 	return nil
+}
+
+func defaultRacAsmAccessModes(cr *RacDatabase) {
+	if cr == nil {
+		return
+	}
+	for i := range cr.Spec.AsmStorageDetails {
+		if strings.TrimSpace(cr.Spec.AsmStorageDetails[i].AccessMode) != "" {
+			continue
+		}
+		cr.Spec.AsmStorageDetails[i].AccessMode = defaultRacAsmAccessMode(cr, cr.Spec.AsmStorageDetails[i])
+	}
+}
+
+func defaultRacAsmAccessMode(cr *RacDatabase, dg AsmDiskGroupDetails) string {
+	effectiveStorageClass := strings.TrimSpace(dg.StorageClass)
+	if effectiveStorageClass == "" {
+		effectiveStorageClass = strings.TrimSpace(cr.Spec.StorageClass)
+	}
+	if effectiveStorageClass != "" && racAsmNodeCount(cr) > 1 {
+		return string(corev1.ReadWriteMany)
+	}
+	return string(corev1.ReadWriteOnce)
+}
+
+func racAsmNodeCount(cr *RacDatabase) int {
+	if cr == nil || cr.Spec.ClusterDetails == nil || cr.Spec.ClusterDetails.NodeCount <= 0 {
+		return 1
+	}
+	return cr.Spec.ClusterDetails.NodeCount
 }
 
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-racdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=racdatabases,versions=v4,name=vracdatabase.kb.io,admissionReviewVersions={v1}
@@ -429,6 +461,17 @@ func (cr *RacDatabase) validateAsmStorage() field.ErrorList {
 					dp.Child("asmStorageSizeInGb"),
 					dg.AsmStorageSizeInGb,
 					"asmStorageSizeInGb must be greater than zero when storageClass is configured for this disk group",
+				),
+			)
+		}
+		if accessMode := strings.TrimSpace(dg.AccessMode); accessMode != "" &&
+			accessMode != string(corev1.ReadWriteOnce) &&
+			accessMode != string(corev1.ReadWriteMany) {
+			allErrs = append(allErrs,
+				field.Invalid(
+					dp.Child("accessMode"),
+					dg.AccessMode,
+					"accessMode must be ReadWriteOnce or ReadWriteMany",
 				),
 			)
 		}

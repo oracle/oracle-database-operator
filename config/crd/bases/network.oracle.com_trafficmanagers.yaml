@@ -244,9 +244,9 @@ spec:
                   backendCount:
                     format: int32
                     type: integer
-                  configMode:
-                    type: string
                   configMapName:
+                    type: string
+                  configMode:
                     type: string
                   routes:
                     items:
