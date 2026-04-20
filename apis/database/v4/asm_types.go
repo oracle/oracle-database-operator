@@ -69,13 +69,15 @@ package v4
 // API type names remain exported for CRD compatibility.
 
 type AsmDiskGroupDetails struct {
-	Name               string         `json:"name,omitempty"`
-	Redundancy         string         `json:"redundancy,omitempty"`
-	Type               AsmDiskDGTypes `json:"type,omitempty"`
-	Disks              []string       `json:"disks"`
-	AutoUpdate         string         `json:"autoUpdate,omitempty"`
-	StorageClass       string         `json:"storageClass,omitempty"`
-	AsmStorageSizeInGb int            `json:"asmStorageSizeInGb,omitempty"`
+	Name         string         `json:"name,omitempty"`
+	Redundancy   string         `json:"redundancy,omitempty"`
+	Type         AsmDiskDGTypes `json:"type,omitempty"`
+	Disks        []string       `json:"disks"`
+	AutoUpdate   string         `json:"autoUpdate,omitempty"`
+	StorageClass string         `json:"storageClass,omitempty"`
+	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
+	AccessMode         string `json:"accessMode,omitempty"`
+	AsmStorageSizeInGb int    `json:"asmStorageSizeInGb,omitempty"`
 }
 type AsmDiskDGTypes string
 

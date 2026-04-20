@@ -94,7 +94,7 @@ func TestPodListValidation(t *testing.T) {
 	}
 }
 
-func TestVolumePVCForASMUsesReadWriteOnceForStorageClass(t *testing.T) {
+func TestVolumePVCForASMDefaultsToReadWriteManyForMultiNodeStorageClass(t *testing.T) {
 	t.Parallel()
 
 	instance := &racdb.RacDatabase{
@@ -103,6 +103,9 @@ func TestVolumePVCForASMUsesReadWriteOnceForStorageClass(t *testing.T) {
 			Namespace: "rac",
 		},
 		Spec: racdb.RacDatabaseSpec{
+			ClusterDetails: &racdb.RacClusterDetailSpec{
+				NodeCount: 2,
+			},
 			AsmStorageDetails: []racdb.AsmDiskGroupDetails{
 				{
 					Name:               "DATA",
@@ -116,11 +119,42 @@ func TestVolumePVCForASMUsesReadWriteOnceForStorageClass(t *testing.T) {
 	}
 
 	pvc := VolumePVCForASM(instance, 0, 0, "/dev/asm-disk1", "DATA", "50Gi")
-	if len(pvc.Spec.AccessModes) != 1 || pvc.Spec.AccessModes[0] != corev1.ReadWriteOnce {
-		t.Fatalf("expected storageClass-backed ASM PVC accessModes=[ReadWriteOnce], got %v", pvc.Spec.AccessModes)
+	if len(pvc.Spec.AccessModes) != 1 || pvc.Spec.AccessModes[0] != corev1.ReadWriteMany {
+		t.Fatalf("expected storageClass-backed ASM PVC accessModes=[ReadWriteMany], got %v", pvc.Spec.AccessModes)
 	}
 	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != "oci-bv" {
 		t.Fatalf("expected storageClassName=oci-bv, got %v", pvc.Spec.StorageClassName)
+	}
+}
+
+func TestVolumePVCForASMHonorsExplicitReadWriteOnceOverride(t *testing.T) {
+	t.Parallel()
+
+	instance := &racdb.RacDatabase{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "racdb",
+			Namespace: "rac",
+		},
+		Spec: racdb.RacDatabaseSpec{
+			ClusterDetails: &racdb.RacClusterDetailSpec{
+				NodeCount: 3,
+			},
+			AsmStorageDetails: []racdb.AsmDiskGroupDetails{
+				{
+					Name:               "DATA",
+					Type:               racdb.CrsAsmDiskDg,
+					Disks:              []string{"/dev/asm-disk1"},
+					StorageClass:       "oci-bv",
+					AccessMode:         string(corev1.ReadWriteOnce),
+					AsmStorageSizeInGb: 50,
+				},
+			},
+		},
+	}
+
+	pvc := VolumePVCForASM(instance, 0, 0, "/dev/asm-disk1", "DATA", "50Gi")
+	if len(pvc.Spec.AccessModes) != 1 || pvc.Spec.AccessModes[0] != corev1.ReadWriteOnce {
+		t.Fatalf("expected explicit ASM PVC accessModes=[ReadWriteOnce], got %v", pvc.Spec.AccessModes)
 	}
 }
 

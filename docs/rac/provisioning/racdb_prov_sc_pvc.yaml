@@ -1,14 +1,20 @@
 ---
 # Sample scenario:
-# PVC-based software locations + Base64-encoded DB secret files
+# PVC-based software locations
 # Reference guide:
 # ./provisioning_oracle_rac_storageclass_pvc_softwares.md
 #
 # This sample uses:
 # - storage-class-backed ASM disks using asmDiskGroupDetails[].storageClass
+# - per disk-group ASM size using asmDiskGroupDetails[].asmStorageSizeInGb
+# - explicit ASM access mode using asmDiskGroupDetails[].accessMode
 # - a PVC-backed software home sized by swLocStorageSizeInGb
-# - encoded DB secret files referenced by dbSecret.keyFileName/pwdFileName
 # - a staged software PVC mounted from configParams.swStagePvc
+#
+# ASM access mode hint:
+# - ReadWriteOnce: use when the selected storage class supports single-writer block volumes
+# - ReadWriteMany: use when the selected storage class supports multi-node shared access
+# Always set accessMode to a mode supported by the selected storageClass.
 #
 ---
 apiVersion: database.oracle.com/v4
@@ -29,6 +35,11 @@ spec:
       raccluster: raccluster01
   swLocStorageSizeInGb: 300
   asmDiskGroupDetails:
+    # For storage-class-backed ASM provisioning:
+    # - disks[] lists the device paths exposed inside the RAC pod
+    # - asmStorageSizeInGb is the size of each dynamically provisioned ASM PVC
+    # - storageClass selects the backend used to provision those ASM PVCs
+    # - accessMode must match a mode supported by that storage class
     - name: DATA
       redundancy: EXTERNAL
       type: CRSDG
@@ -37,6 +48,9 @@ spec:
         - /dev/asm-disk2
       asmStorageSizeInGb: 50
       storageClass: "oci-bv"
+      # Supported values: "ReadWriteOnce" or "ReadWriteMany"
+      # Example: OCI Block Volume (oci-bv) supports "ReadWriteOnce"
+      accessMode: "ReadWriteOnce"
   sshKeySecret:
     name: ssh-key-secret
     privKeySecretName: ssh-privkey

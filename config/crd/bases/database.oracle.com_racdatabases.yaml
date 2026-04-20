@@ -48,6 +48,11 @@ spec:
               asmDiskGroupDetails:
                 items:
                   properties:
+                    accessMode:
+                      enum:
+                      - ReadWriteOnce
+                      - ReadWriteMany
+                      type: string
                     asmStorageSizeInGb:
                       type: integer
                     autoUpdate:

@@ -1,6 +1,9 @@
 package v4
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestValidateAsmStorageAllowsMixedRawAndStorageClassDGs(t *testing.T) {
 	t.Parallel()
@@ -77,5 +80,92 @@ func TestValidateAsmStorageRequiresSizeWhenStorageClassConfigured(t *testing.T) 
 				t.Fatalf("expected validation errors, got none")
 			}
 		})
+	}
+}
+
+func TestRacDatabaseDefaultSetsAsmAccessModeFromTopology(t *testing.T) {
+	t.Parallel()
+
+	cr := &RacDatabase{
+		Spec: RacDatabaseSpec{
+			ClusterDetails: &RacClusterDetailSpec{NodeCount: 2},
+			ConfigParams:   &RacInitParams{},
+			AsmStorageDetails: []AsmDiskGroupDetails{
+				{
+					Name:               "DATA",
+					Type:               DbDataDiskDg,
+					Disks:              []string{"data1"},
+					StorageClass:       "fast-sc",
+					AsmStorageSizeInGb: 50,
+				},
+				{
+					Name:  "RECO",
+					Type:  DbRecoveryDiskDg,
+					Disks: []string{"/dev/raw1"},
+				},
+			},
+		},
+	}
+
+	if err := (&RacDatabase{}).Default(context.Background(), cr); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+	if got := cr.Spec.AsmStorageDetails[0].AccessMode; got != "ReadWriteMany" {
+		t.Fatalf("expected storageClass-backed multi-node accessMode=ReadWriteMany, got %q", got)
+	}
+	if got := cr.Spec.AsmStorageDetails[1].AccessMode; got != "ReadWriteOnce" {
+		t.Fatalf("expected raw ASM accessMode=ReadWriteOnce, got %q", got)
+	}
+}
+
+func TestRacDatabaseDefaultPreservesExplicitAsmAccessMode(t *testing.T) {
+	t.Parallel()
+
+	cr := &RacDatabase{
+		Spec: RacDatabaseSpec{
+			ClusterDetails: &RacClusterDetailSpec{NodeCount: 3},
+			ConfigParams:   &RacInitParams{},
+			AsmStorageDetails: []AsmDiskGroupDetails{
+				{
+					Name:               "DATA",
+					Type:               DbDataDiskDg,
+					Disks:              []string{"data1"},
+					StorageClass:       "fast-sc",
+					AccessMode:         "ReadWriteOnce",
+					AsmStorageSizeInGb: 50,
+				},
+			},
+		},
+	}
+
+	if err := (&RacDatabase{}).Default(context.Background(), cr); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+	if got := cr.Spec.AsmStorageDetails[0].AccessMode; got != "ReadWriteOnce" {
+		t.Fatalf("expected explicit accessMode to be preserved, got %q", got)
+	}
+}
+
+func TestValidateAsmStorageRejectsInvalidAccessMode(t *testing.T) {
+	t.Parallel()
+
+	cr := &RacDatabase{
+		Spec: RacDatabaseSpec{
+			ConfigParams: &RacInitParams{},
+			AsmStorageDetails: []AsmDiskGroupDetails{
+				{
+					Name:               "DATA",
+					Type:               DbDataDiskDg,
+					Disks:              []string{"data1"},
+					StorageClass:       "fast-sc",
+					AccessMode:         "Nope",
+					AsmStorageSizeInGb: 50,
+				},
+			},
+		},
+	}
+
+	if errs := cr.validateAsmStorage(); len(errs) == 0 {
+		t.Fatalf("expected invalid accessMode to fail validation")
 	}
 }

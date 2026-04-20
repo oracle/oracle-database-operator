@@ -11,6 +11,7 @@ type DiskGroup struct {
 	Disks              []string
 	AutoUpdate         string
 	StorageClass       string
+	AccessMode         string
 	AsmStorageSizeInGb int
 }
 
