@@ -1,0 +1,29 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: orcl-db-service
+  namespace: default
+  annotations:
+    oci.oraclecloud.com/load-balancer-type: "nlb"
+    oci-network-load-balancer.oraclecloud.com/internal: "true"
+    oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.replace-me"
+    external-dns.alpha.kubernetes.io/hostname: "orcl-production.internal.example.com"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  ports:
+    - name: oracle
+      port: 1521
+      targetPort: 1521
+      protocol: TCP
+    - name: oracle-tcps
+      port: 2484
+      targetPort: 2484
+      protocol: TCP
+  selector:
+    app: orcl-production

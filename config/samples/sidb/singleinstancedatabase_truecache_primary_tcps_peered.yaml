@@ -1,0 +1,83 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: orcl-production
+  namespace: default
+spec:
+  ## Use only alphanumeric characters for sid
+  sid: ORCLPRD
+
+  ## PDB name
+  pdbName: APPPDB1
+
+  ## DB type and edition
+  createAs: primary
+  edition: enterprise
+
+  ## Grouped security settings
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-primary-tcps-tls
+
+  ## Enable ArchiveLog so the operator can generate the True Cache blob
+  archiveLog: true
+
+  ## Database image details
+  image:
+    pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix-patchnew
+    prebuiltDB: false
+    imagePullPolicy: Always
+
+  ## Optional init parameters
+  initParams:
+    sgaTarget: 2048
+    pgaAggregateTarget: 1024
+    cpuCount: 2
+    processes: 600
+
+  ## Database pod resource details
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "2"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  ## Storage details
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+    setWritePermissions: true
+
+  ## Generate the True Cache blob ConfigMap on the primary
+  trueCache:
+    generateEnabled: true
+    generatePath: "/tmp/tc_config_blob.tar.gz"
+
+  ## Use hostAliases when the remote True Cache hostname resolves over peered VCNs
+  ## but cross-region private DNS forwarding or association is not yet configured.
+  hostAliases:
+    - ip: "10.2.1.241"
+      hostnames:
+        - "truecache-production.internal.example.com"
+        - "truecache-production"
+
+  ## Count of Database Pods.
+  replicas: 1

@@ -18,9 +18,13 @@ spec:
   ## DB edition.
   edition: enterprise
 
-  ## Secret containing SIDB password mapped to secretKey 
-  adminPassword:
-    secretName: db-admin-secret
+  ## Grouped security settings.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
 
   ## DB character set
   charset: AL32UTF8
@@ -31,13 +35,16 @@ spec:
   ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
   archiveLog: true
 
-  ## Optional grouped security settings.
   ## Configure spec.security.secrets.tde when enabling trueCache.generateEnabled on a primary database.
-  # security:
-  #   secrets:
-  #     tde:
-  #       secretName: tde-wallet-secret
-  #       secretKey: tde_wallet_pwd
+  #  secrets:
+  #    tde:
+  #      secretName: tde-wallet-secret
+  #      secretKey: tde_wallet_pwd
+
+  ## Optional TCPS settings.
+  #  tcps:
+  #    enabled: true
+  #    tlsSecret: sidb-primary-tcps-tls
 
   ## Optional True Cache blob generation for a primary database.
   ## Requires edition=enterprise, archiveLog=true, and spec.security.secrets.tde to be set.
