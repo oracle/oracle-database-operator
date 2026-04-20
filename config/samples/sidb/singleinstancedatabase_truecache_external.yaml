@@ -16,7 +16,8 @@ spec:
   ## DB Type
   createAs: truecache
 
-  ## Use the externally reachable primary endpoint when the primary runs in another cluster.
+  ## Use a primary endpoint reachable from this cluster, for example through
+  ## peered VCNs, private DNS, or another cluster-private service endpoint.
   primarySource:
     details:
       host: "orcl-production.internal.example.com"
@@ -69,7 +70,8 @@ spec:
     trueCacheServices:
       - "APPPDB1:tpdb_primary:tpdb_cache"
 
-  ## Optional mapping for the external primary endpoint when cluster DNS cannot resolve it.
+  ## Optional mapping for the remote primary endpoint when cluster DNS or
+  ## private DNS forwarding is not available in this cluster.
   hostAliases:
     - ip: "10.0.2.137"
       hostnames:

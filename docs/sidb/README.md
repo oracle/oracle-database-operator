@@ -17,6 +17,8 @@ For API migration guidance, see [SingleInstanceDatabase v4 Migration and Support
       * [Free Database](#free-database)
       * [Free Lite Database](#free-lite-database)
       * [Oracle True Cache](#oracle-true-cache)
+      * [True Cache Related Sample Files](#true-cache-related-sample-files)
+      * [True Cache Peered VCN Setup](#true-cache-peered-vcn-setup)
     * [Connecting to Database](#connecting-to-database)
     * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
       * [Dynamic Persistence](#dynamic-persistence)
@@ -278,6 +280,8 @@ If `spec.trueCache.generatePath` ends with `.tar.gz`, the operator guarantees th
 
 This workflow is intended for a primary database that will later be referenced by a `createAs: truecache` database. The generated ConfigMap is then consumed automatically by a True Cache database in the same namespace, unless you override it in the True Cache manifest.
 
+If the primary also needs TCPS enabled and must resolve a remote True Cache hostname over peered VCNs, use the sample **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)** as the primary-side starting point. Pair it with **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)** on the True Cache side.
+
 Requirements:
 
 - `spec.createAs` must be `primary`.
@@ -385,6 +389,33 @@ Oracle True Cache is an in-memory, consistent, and automatically managed cache f
 To provision a True Cache instance for Oracle Free Database in Kubernetes, use the sample **[`config/samples/sidb/singleinstancedatabase_free-truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_free-truecache.yaml)** file. For example
 
       kubectl apply -f singleinstancedatabase_free-truecache.yaml
+
+#### True Cache Related Sample Files
+
+The following sample manifests are the main starting points for True Cache workflows:
+
+- **[`config/samples/sidb/singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml)**: primary SIDB sample. Use this as the starting point when enabling operator-managed True Cache blob generation on the primary database with `spec.trueCache.generateEnabled: true`.
+- **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)**: enterprise primary SIDB sample for True Cache blob generation with TCPS enabled and `hostAliases` configured for peered VCN or cross-region private connectivity scenarios.
+- **[`config/samples/sidb/singleinstancedatabase_primary_external_service.yaml`](../../config/samples/sidb/singleinstancedatabase_primary_external_service.yaml)**: internal NLB service for the primary database that publishes `orcl-production.internal.example.com` through ExternalDNS.
+- **[`config/samples/sidb/singleinstancedatabase_free-truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_free-truecache.yaml)**: basic Oracle Free True Cache sample that references a primary database in the same Kubernetes environment.
+- **[`config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml)**: example `LoadBalancer` Service for a True Cache deployment that must be reachable through an external DNS hostname, such as a private DNS record across clusters or regions.
+- **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)**: enterprise True Cache sample for the True Cache side of a cross-cluster, cross-region, or peered-VCN topology where the primary is reached through a private or externally resolvable endpoint and the blob is consumed from a ConfigMap.
+- **[`config/samples/sidb/singleinstancedatabase_tcps.yaml`](../../config/samples/sidb/singleinstancedatabase_tcps.yaml)**: TCPS enablement sample for `SingleInstanceDatabase`. Use it as the reference for TLS secret and certificate renewal settings when TCPS is required for the primary or the True Cache database.
+- **[`docs/sidb/external-dns`](./external-dns)**: reusable ExternalDNS workload-identity manifests for publishing OCI private DNS records from internal NLB Services.
+- **[`docs/sidb/tcps-cert-manager`](./tcps-cert-manager)**: reusable cert-manager scripts for issuing the primary and True Cache TCPS TLS secrets.
+- **[`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**: full SIDB template containing the generic `createAs: truecache`, `primarySource`, `trueCache`, `hostAliases`, TCPS, and listener port fields.
+
+#### True Cache Peered VCN Setup
+
+For the full workflow covering:
+
+- the primary SIDB manifest
+- the True Cache SIDB manifest
+- the primary and True Cache internal NLB Services
+- ExternalDNS on both clusters
+- cert-manager driven TCPS certificates
+
+see **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**.
 
 #### Oracle True Cache Across Clusters with External DNS
 
@@ -836,22 +867,24 @@ cpu="2"
 memory="16Gi"
 
 #### Setup Database with LoadBalancer
-For the Single Instance Database, the default service is the `NodePort` service. You can enable the `LoadBalancer` service by using the `kubectl patch` command.
+For the Single Instance Database, the default external service in the sample manifest is `NodePort`. You can switch to `LoadBalancer` by setting `spec.services.external.type: LoadBalancer`.
 
 For example:
 
 ```sh
-$ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstancedatabase sidb-sample 
+$ kubectl --type=merge -p '{"spec":{"services":{"external":{"type":"LoadBalancer","tcp":{"enabled":true}}}}}' patch singleinstancedatabase sidb-sample
 
   singleinstancedatabase.database.oracle.com/sidb-sample patched
 ```
 
+If TCPS is enabled for the database, you can also expose it through the external service by setting `spec.services.external.tcps.enabled: true`.
+
 ### Enabling TCPS Connections
-You can enable TCPS connections in the database by setting the `enableTCPS` field to `true` in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it.
+You can enable TCPS connections in the database by setting `spec.security.tcps.enabled: true` in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it.
 
 Alternatively, you can use the following command:
 ```bash
-kubectl patch --type=merge singleinstancedatabases.database.oracle.com sidb-sample -p '{"spec": {"enableTCPS": true}}'
+kubectl patch --type=merge singleinstancedatabases.database.oracle.com sidb-sample -p '{"spec":{"security":{"tcps":{"enabled":true}}}}'
 ```
 By default self signed certs are used for TCPS connections. The TCPS connections status can also be queried by the following command:
 ```bash
@@ -862,7 +895,7 @@ true
 **With Self Signed Certs**
 - When TCPS is enabled, a self-signed certificate is generated and stored in wallets. For users' convenience, a client-side wallet is generated in location `/opt/oracle/oradata/clientWallet/$ORACLE_SID` in the pod.
 - The self-signed certificate used with TCPS has validity for 1 year. After the certificate is expired, it will be renewed by the `OraOperator` automatically. Download the wallet again after auto-renewal.
-- You can set the certificate renew interval with the help of `tcpsCertRenewInterval` field in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 24h, and the maximum value is 8760h (1 year). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
+- You can set the certificate renew interval with the help of `spec.security.tcps.certRenewInterval` in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 24h, and the maximum value is 8760h (1 year). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
 - When the certificate gets created/renewed, the `.status.certCreationTimestamp` status variable gets updated accordingly. You can see this timestamp by using the following command:
   ```bash
   kubectl get singleinstancedatabase sidb-sample  -o "jsonpath={.status.certCreationTimestamp}"
@@ -875,7 +908,7 @@ true
   kubectl create secret tls my-tls-secret --cert=path/to/cert/tls.crt --key=path/to/key/tls.key
   ```
 - `tls.crt` is a certificate chain in the order of client, followed by intermediate and then root certificate and `tls.key` is client key.
-- Specify the secret created above (`my-tls-secret`) as the value for the attribute `tcpsTlsSecret` in the [config/samples/sidb/singleinstancedatabase_tcps.yaml](../../config/samples/sidb/singleinstancedatabase_tcps.yaml) file, and apply it.
+- Specify the secret created above (`my-tls-secret`) as the value for the attribute `spec.security.tcps.tlsSecret` in the [config/samples/sidb/singleinstancedatabase_tcps.yaml](../../config/samples/sidb/singleinstancedatabase_tcps.yaml) file, and apply it.
 
 **Connecting to the Database using TCPS**
 - Download the wallet from the Persistent Volume (PV) attached with the database pod. The location of the wallet inside the pod is as `/opt/oracle/oradata/clientWallet/$ORACLE_SID`. Let us assume the `ORACLE_SID` is `ORCL1`, and singleinstance database resource name is `sidb-sample` for the upcoming example command. You can copy the wallet to the destination directory by the following command:
@@ -893,19 +926,20 @@ true
   ```
 
 ### Specifying Custom Ports
-As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two kubernetes services possible for the database: NodePort and LoadBalancer. You can specify which port to use with these services by editing the `listenerPort` and `tcpsListenerPort` fields of the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file.
+As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two Kubernetes external service modes for the database: `NodePort` and `LoadBalancer`. You can specify which ports to use with these services by editing `spec.services.external.tcp` and `spec.services.external.tcps` in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
-`listenerPort` is intended for normal database connections. Similarly, `tcpsListenerPort` is intended for TCPS database connections.
+`spec.services.external.tcp` is intended for normal database connections. Similarly, `spec.services.external.tcps` is intended for TCPS database connections.
 
-If the `LoadBalancer` is enabled, then the `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Load Balancer for normal and TCPS database connections respectively. When the `LoadBalancer` is enabled, the default values of `listenerPort` and `tcpsListenerPort` are 1521 and 2484. 
+If `spec.services.external.type` is `LoadBalancer`, then `spec.services.external.tcp.port` and `spec.services.external.tcps.port` are the ports exposed on the load balancer for normal and TCPS database connections respectively. When those port values are omitted, the defaults are 1521 and 2484.
 
-If the `NodePort` service is enabled, then the `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Kubernetes nodes for for normal and TCPS database connections respectively. In this case, the allowed range for the `listenerPort`, and `tcpsListenerPort` is 30000-32767.
+If `spec.services.external.type` is `NodePort`, then `spec.services.external.tcp.nodePort` and `spec.services.external.tcps.nodePort` are the ports opened on the Kubernetes nodes for normal and TCPS database connections respectively. In this case, the allowed range for `nodePort` is 30000-32767.
 
 **Note:**
-- `listenerPort` and `tcpsListenerPort` cannot have same values.
-- `tcpsListenerPort` will come into effect only when TCPS connections are enabled (specifically, the `enableTCPS` field is set in [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file).
-- If TCPS connections are enabled, and `listenerPort` is commented or removed in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file, then only the TCPS endpoint will be exposed.
-- If LoadBalancer is enabled, and either `listenerPort` or `tcpsListenerPort` is changed, then it takes some time to complete the work requests (drain existing backend sets and create new ones). During this time, the database connectivity is broken, although `SingleInstanceDatabase` and `LoadBalancer` remain in a healthy state. To check the progress of the work requests, you can by log in to the Cloud provider's console and check the corresponding LoadBalancer.
+- `spec.services.external.tcps.enabled` is only valid when TCPS connections are enabled in the database spec with `spec.security.tcps.enabled: true`.
+- For `LoadBalancer`, `tcp.port` and `tcps.port` cannot have the same value.
+- For `NodePort`, `tcp.nodePort` and `tcps.nodePort` cannot have the same value.
+- If TCPS exposure is enabled and `spec.services.external.tcp.enabled` is omitted or set to `false`, then only the TCPS endpoint will be exposed externally.
+- If the `LoadBalancer` configuration is changed, it takes some time to complete the work requests (drain existing backend sets and create new ones). During this time, the database connectivity is broken, although `SingleInstanceDatabase` and `LoadBalancer` remain in a healthy state. To check the progress of the work requests, you can log in to the cloud provider console and inspect the corresponding load balancer.
 
 ### Host Aliases
 You can use `.spec.hostAliases` to add static hostname-to-IP mappings to the database pod's `/etc/hosts` file. This is useful when the database pod must resolve specific hostnames without relying on cluster DNS, or when you want to override name resolution for a known endpoint.

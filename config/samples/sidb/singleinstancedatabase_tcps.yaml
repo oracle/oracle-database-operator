@@ -18,9 +18,16 @@ spec:
   ## DB edition.
   edition: enterprise
 
-  ## Secret containing SIDB password mapped to secretKey 
-  adminPassword:
-    secretName: db-admin-secret
+  ## Grouped security settings
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+    tcps:
+      enabled: true
+      certRenewInterval: 8760h
 
   ## DB character set
   charset: AL32UTF8
@@ -31,19 +38,30 @@ spec:
   ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
   archiveLog: true
 
-  ## Enable TCPS
-  enableTCPS: true
-
   ## User specified TLS-Cert Secret
   ## The following specified TLS certs will be used instead of self-signed
-  tcpsTlsSecret: my-tls-secret
+  ## security.tcps.tlsSecret requires security.tcps.enabled=true
+  ## security:
+  ##   tcps:
+  ##     enabled: true
+  ##     tlsSecret: my-tls-secret
+  ## Uncomment the following lines to use a custom TLS secret:
+  # security:
+  #   secrets:
+  #     admin:
+  #       secretName: db-admin-secret
+  #       secretKey: oracle_pwd
+  #       keepSecret: true
+  #   tcps:
+  #     enabled: true
+  #     tlsSecret: my-tls-secret
 
   ## TCPS Certificate Renewal Interval: (Valid for Self-Signed Certificates)
   ## The time after which TCPS certificate will be renewed if TCPS connections are enabled.
-  ## tcpsCertRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 4380h, 8760h etc.
+  ## security.tcps.certRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 4380h, 8760h etc.
   ## Maximum value is 8760h (1 year), Minimum value is 24h; Default value is 8760h (1 year)
   ## If this field is commented out/removed from the yaml, it will disable the auto-renewal feature for TCPS certificate
-  tcpsCertRenewInterval: 8760h
+  ## This setting is only applicable when self-signed certificates are used.
 
   ## Database image details
   image:
