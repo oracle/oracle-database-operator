@@ -298,7 +298,27 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 	authSecret := privateaiv4.EffectiveAuthSecret(&instance.Spec)
 	tlsSecret := privateaiv4.EffectiveTLS(&instance.Spec)
 
-	if authSecret != nil && authSecret.Name != "" {
+	if useSharedSecretMount(authSecret, tlsSecret) {
+		volumes = append(volumes, corev1.Volume{
+			Name: privateAICombinedSecretVolumeName(instance),
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: []corev1.VolumeProjection{
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{Name: authSecret.Name},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{Name: tlsSecret.SecretName},
+							},
+						},
+					},
+				},
+			},
+		})
+	} else if authSecret != nil && authSecret.Name != "" {
 		volumes = append(volumes, corev1.Volume{
 			Name: privateAIAuthSecretVolumeName(instance),
 			VolumeSource: corev1.VolumeSource{
@@ -306,7 +326,7 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 			},
 		})
 	}
-	if tlsSecret != nil && tlsSecret.SecretName != "" {
+	if !useSharedSecretMount(authSecret, tlsSecret) && tlsSecret != nil && tlsSecret.SecretName != "" {
 		volumes = append(volumes, corev1.Volume{
 			Name: privateAITLSSecretVolumeName(instance),
 			VolumeSource: corev1.VolumeSource{
@@ -362,7 +382,13 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 		})
 	}
 
-	if authSecret != nil && authSecret.Name != "" {
+	if useSharedSecretMount(authSecret, tlsSecret) {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      privateAICombinedSecretVolumeName(instance),
+			MountPath: strings.TrimSpace(authSecret.MountLocation),
+			ReadOnly:  true,
+		})
+	} else if authSecret != nil && authSecret.Name != "" {
 		mounts = append(mounts, corev1.VolumeMount{
 			Name:      privateAIAuthSecretVolumeName(instance),
 			MountPath: authSecret.MountLocation,
@@ -370,7 +396,7 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 		})
 	}
 
-	if tlsSecret != nil && tlsSecret.SecretName != "" {
+	if !useSharedSecretMount(authSecret, tlsSecret) && tlsSecret != nil && tlsSecret.SecretName != "" {
 		mounts = append(mounts, corev1.VolumeMount{
 			Name:      privateAITLSSecretVolumeName(instance),
 			MountPath: tlsSecret.MountLocation,
@@ -468,8 +494,24 @@ func privateAIAuthSecretVolumeName(instance *privateaiv4.PrivateAi) string {
 	return fmt.Sprintf("%s-auth-secret-vol", instance.Name)
 }
 
+func privateAICombinedSecretVolumeName(instance *privateaiv4.PrivateAi) string {
+	return fmt.Sprintf("%s-secrets-vol", instance.Name)
+}
+
 func privateAITLSSecretVolumeName(instance *privateaiv4.PrivateAi) string {
 	return fmt.Sprintf("%s-tls-secret-vol", instance.Name)
+}
+
+func useSharedSecretMount(authSecret *privateaiv4.PaiSecretSpec, tlsSecret *privateaiv4.PaiTLSSpec) bool {
+	if authSecret == nil || tlsSecret == nil {
+		return false
+	}
+	if strings.TrimSpace(authSecret.Name) == "" || strings.TrimSpace(tlsSecret.SecretName) == "" {
+		return false
+	}
+	authMount := strings.TrimSpace(authSecret.MountLocation)
+	tlsMount := strings.TrimSpace(tlsSecret.MountLocation)
+	return authMount != "" && authMount == tlsMount
 }
 
 type paiExternalServiceSettings struct {

@@ -136,11 +136,6 @@ func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi)
 			return warnings, fmt.Errorf("spec.security.tls.mountLocation must be an absolute path")
 		}
 	}
-	if authSecret != nil && tls != nil &&
-		strings.TrimSpace(authSecret.MountLocation) != "" &&
-		strings.TrimSpace(authSecret.MountLocation) == strings.TrimSpace(tls.MountLocation) {
-		return warnings, fmt.Errorf("spec.security.secret.mountLocation and spec.security.tls.mountLocation must be different")
-	}
 	if privateai.Spec.PaiConfigFile != nil && strings.TrimSpace(privateai.Spec.PaiConfigFile.MountLocation) != "" &&
 		!filepath.IsAbs(strings.TrimSpace(privateai.Spec.PaiConfigFile.MountLocation)) {
 		return warnings, fmt.Errorf("paiConfigFile.mountLocation must be an absolute path")
