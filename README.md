@@ -169,7 +169,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
     This is the default mode, in which OraOperator is deployed to operate in a cluster, and to monitor all the namespaces in the cluster.
 
-  - Grant the `serviceaccount:oracle-database-operator-system:default` clusterwide access for the resources by applying [cluster-role-binding.yaml](./rbac/cluster-role-binding.yaml)
+  - Grant the `serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager` clusterwide access for the resources by applying [cluster-role-binding.yaml](./rbac/cluster-role-binding.yaml)
 
     ```sh
       kubectl apply -f rbac/cluster-role-binding.yaml
@@ -185,12 +185,12 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
    In this mode, `OraOperator` can be deployed to operate in a namespace, and to monitor one or many namespaces.
 
-  - Grant `serviceaccount:oracle-database-operator-system:default` service account with resource access in the required namespaces. For example, to monitor only the default namespace, apply the [`default-ns-role-binding.yaml`](./rbac/default-ns-role-binding.yaml)
+  - Grant `serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager` resource access in the required namespaces. For example, to monitor only the default namespace, apply the [`default-ns-role-binding.yaml`](./rbac/default-ns-role-binding.yaml)
 
     ```sh
       kubectl apply -f rbac/default-ns-role-binding.yaml
     ```
-    To watch additional namespaces, create different role binding files for each namespace, using [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml) as a template, and changing the `metadata.name` and `metadata.namespace` fields
+    To watch additional namespaces, create different role binding files for each namespace, using [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml) as a template, and changing the `metadata.name` and `metadata.namespace` fields. Ensure the operator deployment `WATCH_NAMESPACE` value lists the same namespaces.
 
   - Next, edit the [`oracle-database-operator.yaml`](./oracle-database-operator.yaml) to add the required namespaces under `WATCH_NAMESPACE`. Use comma-delimited values for multiple namespaces.
 

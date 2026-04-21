@@ -79,7 +79,8 @@ spec:
   image: phx.ocir.io/intsanjaysingh/oracle/database-rac:19.3.0-slim
   imagePullPolicy: Always
 
-  # Optional service account required in some Kubernetes environments
+  # Optional service account for security context permissions
+  # serviceAccountName: rac-prov-sa   # <-- Required for OpenShift; optional for vanilla Kubernetes
   serviceAccountName: rac-prov-sa
 
   # SCAN service configuration
