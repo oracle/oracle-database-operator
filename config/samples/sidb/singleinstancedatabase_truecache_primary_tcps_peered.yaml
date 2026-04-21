@@ -89,13 +89,13 @@ spec:
         enabled: true
         port: 2484
 
-  ## Use hostAliases when the remote True Cache hostname resolves over peered VCNs
-  ## but cross-region private DNS forwarding or association is not yet configured.
-  hostAliases:
-    - ip: "10.2.1.241"
-      hostnames:
-        - "truecache-production.internal.example.com"
-        - "truecache-production"
+  ## Optional fallback when the remote True Cache hostname is not resolvable
+  ## through shared private DNS yet.
+  # hostAliases:
+  #   - ip: "10.2.1.30"
+  #     hostnames:
+  #       - "truecache-production.internal.example.com"
+  #       - "truecache-production"
 
   ## Count of Database Pods.
   replicas: 1
