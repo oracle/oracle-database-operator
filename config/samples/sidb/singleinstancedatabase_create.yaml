@@ -35,19 +35,13 @@ spec:
   ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
   archiveLog: true
 
-  ## Configure spec.security.secrets.tde when enabling trueCache.generateEnabled on a primary database.
-  #  secrets:
-  #    tde:
-  #      secretName: tde-wallet-secret
-  #      secretKey: tde_wallet_pwd
-
   ## Optional TCPS settings.
   #  tcps:
   #    enabled: true
   #    tlsSecret: sidb-primary-tcps-tls
 
   ## Optional True Cache blob generation for a primary database.
-  ## Requires edition=enterprise, archiveLog=true, and spec.security.secrets.tde to be set.
+  ## Requires edition=enterprise and archiveLog=true.
   ## The generated ConfigMap name defaults to <database-name>-truecache-blob.
   # trueCache:
   #   generateEnabled: true

@@ -6,9 +6,11 @@
 apiVersion: database.oracle.com/v4
 kind: SingleInstanceDatabase
 metadata:
-  name: truecache-sample
+  name: truecache-production
   namespace: default
 spec:
+  ## Use only alphanumeric characters for sid
+  sid: ORCLPRD
 
   ## DB edition
   ## True Cache is supported only with enterprise edition.
@@ -17,15 +19,23 @@ spec:
   ## DB type
   createAs: truecache
 
+  ## PDB name
+  pdbName: APPPDB1
+
   ## Reference to the source primary database.
   primarySource:
     databaseRef: "orcl-production"
 
   ## True Cache options
   trueCache:
+    ## Explicitly reference the generated blob from the primary database.
+    blobConfigMapRef: orcl-production-truecache-blob
+    blobConfigMapKey: tc_config_blob.tar.gz
+    blobMountPath: /stage/tc_config_blob.tar.gz
+    truedbUniqueName: "truecache_production_tc"
     ## Accepts a semi colon separated list of `PRIMARY_PDB_SERIVCE_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
     trueCacheServices:
-    # - "APPPDB1:tpdb_primary:tpdb_cache"
+      - "APPPDB1:tpdb_primary:tpdb_cache"
 
   ## Optional static host-to-IP mappings added to the True Cache pod /etc/hosts
   ## Useful when the primary database service name must resolve to a fixed IP
@@ -47,16 +57,36 @@ spec:
   image:
     ## Oracle True Cache requires a True Cache capable image
     pullFrom: container-registry.oracle.com/database/enterprise:latest
+    prebuiltDB: false
+    imagePullPolicy: Always
 
   ## size is the required minimum size of the persistent volume
   ## storageClass is specified for automatic volume provisioning
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
     oradata:
-      size: 50Gi
+      size: 60Gi
       ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
       storageClass: "oci-bv"
       accessMode: "ReadWriteOnce"
+
+  ## Optional operator-managed external service for the True Cache database.
+  ## Enable this when the True Cache endpoint must be reachable outside the cluster.
+  # services:
+  #   external:
+  #     type: LoadBalancer
+  #     externalTrafficPolicy: Local
+  #     annotations:
+  #       oci.oraclecloud.com/load-balancer-type: "nlb"
+  #       oci-network-load-balancer.oraclecloud.com/internal: "true"
+  #       oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.replace-me"
+  #       external-dns.alpha.kubernetes.io/hostname: "truecache-production.internal.example.com"
+  #     tcp:
+  #       enabled: true
+  #       port: 1521
+  #     tcps:
+  #       enabled: true
+  #       port: 2484
 
   ## Count of Database Pods. Should be 1 for True Cache.
   replicas: 1
