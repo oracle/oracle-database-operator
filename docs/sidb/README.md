@@ -17,8 +17,8 @@ For API migration guidance, see [SingleInstanceDatabase v4 Migration and Support
       * [Free Database](#free-database)
       * [Free Lite Database](#free-lite-database)
       * [Oracle True Cache](#oracle-true-cache)
-      * [True Cache Related Sample Files](#true-cache-related-sample-files)
       * [True Cache Peered VCN Setup](#true-cache-peered-vcn-setup)
+      * [True Cache Related Sample Files](#true-cache-related-sample-files)
     * [Connecting to Database](#connecting-to-database)
     * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
       * [Dynamic Persistence](#dynamic-persistence)
@@ -319,7 +319,7 @@ spec:
   archiveLog: true
 
   image:
-    pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix-patchnew
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
     prebuiltDB: false
     imagePullPolicy: Always
 
@@ -432,16 +432,6 @@ To provision a True Cache instance in Kubernetes, use the sample **[`config/samp
 
       kubectl apply -f singleinstancedatabase_truecache.yaml
 
-#### True Cache Related Sample Files
-
-Follow these docs in order for a primary and True Cache setup:
-
-- **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**: set up OCI peered VCN connectivity first when the primary and True Cache run in different regions or clusters.
-- **[`docs/sidb/README.md`](./README.md#enable-true-cache-blob-generation-on-a-primary-database)**: create the primary SIDB and generate the True Cache blob.
-- **[`docs/sidb/README.md`](./README.md#oracle-true-cache-across-clusters-with-external-dns)**: create the True Cache SIDB for the cross-cluster or externally reachable flow.
-- **[`docs/sidb/external-dns/README.md`](./external-dns/README.md)**: configure shared private DNS publication for the operator-managed `*-ext` services.
-- **[`docs/sidb/tcps-cert-manager/README.md`](./tcps-cert-manager/README.md)**: issue and validate the TCPS certificates used by the primary and True Cache databases.
-
 #### True Cache Peered VCN Setup
 
 For the full workflow covering:
@@ -492,7 +482,7 @@ spec:
       tlsSecret: sidb-standby-tcps-tls
 
   image:
-    pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix-patchnew
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
     prebuiltDB: false
     imagePullPolicy: Always
 
@@ -550,6 +540,16 @@ oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain truecache
 kubectl exec -n default <primary-pod> -- nslookup truecache-production.internal.example.com
 kubectl exec -n default <truecache-pod> -- nslookup orcl-production.internal.example.com
 ```
+
+#### True Cache Related Sample Files
+
+Follow these docs in order for a primary and True Cache setup:
+
+- **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**: set up OCI peered VCN connectivity first when the primary and True Cache run in different regions or clusters.
+- **[`Enable True Cache Blob Generation on a Primary Database`](./README.md#enable-true-cache-blob-generation-on-a-primary-database)**: create the primary SIDB and generate the True Cache blob.
+- **[`Oracle True Cache Across Clusters with External DNS`](./README.md#oracle-true-cache-across-clusters-with-external-dns)**: create the True Cache SIDB for the cross-cluster or externally reachable flow.
+- **[`docs/sidb/external-dns/README.md`](./external-dns/README.md)**: configure shared private DNS publication for the operator-managed `*-ext` services.
+- **[`docs/sidb/tcps-cert-manager/README.md`](./tcps-cert-manager/README.md)**: issue and validate the TCPS certificates used by the primary and True Cache databases.
 
 #### Additional Information
 You are required to specify the database administrative user (admin) password Secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [`singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml), [`singleinstancedatabase_prebuiltdb.yaml`](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml), [`singleinstancedatabase_express.yaml`](../../config/samples/sidb/singleinstancedatabase_express.yaml) and [`singleinstancedatabse_free.yaml`](../../config/samples/sidb/singleinstancedatabase_free.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, `xedb-admin-secret` and `free-admin-secret` respectively. You can create these Secrets manually by using the sample command mentioned in the [`Template YAML`](#template-yaml) section. Alternatively, you can create these Secrets by filling in the passwords in the **[`singleinstancedatabase_secrets.yaml`](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying them using the following command:

@@ -38,7 +38,7 @@ spec:
 
   ## Database image details
   image:
-    pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix-patchnew
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
     prebuiltDB: false
     imagePullPolicy: Always
 
