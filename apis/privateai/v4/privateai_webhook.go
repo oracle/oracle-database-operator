@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	networkv4 "github.com/oracle/oracle-database-operator/apis/network/v4"
@@ -37,37 +36,61 @@ func (r *PrivateAi) Default(_ context.Context, obj *PrivateAi) error {
 	privateai := obj
 	privateailog.Info("Defaulting for PrivateAi", "name", privateai.GetName())
 
-	httpEnabled, _ := strconv.ParseBool(privateai.Spec.PaiHTTPEnabled)
-	httpsEnabled, _ := strconv.ParseBool(privateai.Spec.PaiHTTPSEnabled)
+	listeners := EffectiveListeners(&privateai.Spec)
+	httpEnabled := listeners.HTTP.Enabled
+	httpsEnabled := listeners.HTTPS.Enabled
 	if httpEnabled && httpsEnabled {
-		return fmt.Errorf("paiHTTPEnabled and paiHTTPSEnabled both cannot be true")
+		return fmt.Errorf("spec.networking.listeners.http.enabled and spec.networking.listeners.https.enabled cannot both be true (deprecated paiHTTPEnabled/paiHTTPSEnabled are also supported)")
 	}
 	if !httpEnabled {
+		httpsPort := listeners.HTTPS.Port
+		if httpsPort == 0 {
+			httpsPort = 8443
+		}
 		privateai.Spec.PaiHTTPEnabled = "false"
 		privateai.Spec.PaiHTTPPort = 0
 		privateai.Spec.PaiHTTPSEnabled = "true"
-		if privateai.Spec.PaiHTTPSPort == 0 {
-			privateai.Spec.PaiHTTPSPort = 8443
-		}
+		privateai.Spec.PaiHTTPSPort = httpsPort
+		setDefaultPrivateAIHTTPListener(privateai, false, 0)
+		setDefaultPrivateAIHTTPSListener(privateai, true, httpsPort)
 	} else {
-		privateai.Spec.PaiHTTPEnabled = "true"
-		if privateai.Spec.PaiHTTPPort == 0 {
-			privateai.Spec.PaiHTTPPort = 8080
+		httpPort := listeners.HTTP.Port
+		if httpPort == 0 {
+			httpPort = 8080
 		}
+		privateai.Spec.PaiHTTPEnabled = "true"
+		privateai.Spec.PaiHTTPPort = httpPort
 		privateai.Spec.PaiHTTPSEnabled = "false"
 		privateai.Spec.PaiHTTPSPort = 0
+		setDefaultPrivateAIHTTPListener(privateai, true, httpPort)
+		setDefaultPrivateAIHTTPSListener(privateai, false, 0)
 	}
 
-	if len(privateai.Spec.PaiService.PortMappings) == 0 {
+	service := EffectiveService(&privateai.Spec)
+	if service == nil || len(service.PortMappings) == 0 {
 		targetPort := privateai.Spec.PaiHTTPSPort
 		if httpEnabled {
 			targetPort = privateai.Spec.PaiHTTPPort
 		}
-		privateai.Spec.PaiService.PortMappings = []PaiPortMapping{{
+		defaultMappings := []PaiPortMapping{{
 			Port:       443,
 			TargetPort: targetPort,
 			Protocol:   "TCP",
 		}}
+		if privateai.Spec.Networking != nil && privateai.Spec.Networking.Service != nil {
+			privateai.Spec.Networking.Service.PortMappings = defaultMappings
+		} else {
+			privateai.Spec.PaiService.PortMappings = defaultMappings
+		}
+	}
+	if cfg := EffectiveConfigFile(&privateai.Spec); cfg != nil && cfg.MountLocation == "" {
+		cfg.MountLocation = "/privateai/config"
+		if privateai.Spec.Configuration != nil && privateai.Spec.Configuration.ConfigFile != nil {
+			privateai.Spec.Configuration.ConfigFile.MountLocation = cfg.MountLocation
+		}
+		if privateai.Spec.PaiConfigFile != nil {
+			privateai.Spec.PaiConfigFile.MountLocation = cfg.MountLocation
+		}
 	}
 	if privateai.Spec.PaiConfigFile != nil && privateai.Spec.PaiConfigFile.MountLocation == "" {
 		privateai.Spec.PaiConfigFile.MountLocation = "/privateai/config"
@@ -81,16 +104,29 @@ func (r *PrivateAi) Default(_ context.Context, obj *PrivateAi) error {
 	if privateai.Spec.PaiSecret != nil && privateai.Spec.PaiSecret.MountLocation == "" {
 		privateai.Spec.PaiSecret.MountLocation = "/privateai/ssl"
 	}
+	if privateai.Spec.Networking != nil && privateai.Spec.Networking.Service != nil &&
+		privateai.Spec.Networking.Service.External != nil && privateai.Spec.Networking.Service.External.ServiceType == "" {
+		privateai.Spec.Networking.Service.External.ServiceType = "LoadBalancer"
+	}
+	if privateai.Spec.Networking != nil && privateai.Spec.Networking.Service != nil &&
+		privateai.Spec.Networking.Service.External != nil && privateai.Spec.Networking.Service.External.ExternalTrafficPolicy == "" {
+		privateai.Spec.Networking.Service.External.ExternalTrafficPolicy = "Cluster"
+	}
 	if privateai.Spec.PaiService.External != nil && privateai.Spec.PaiService.External.ServiceType == "" {
 		privateai.Spec.PaiService.External.ServiceType = "LoadBalancer"
 	}
 	if privateai.Spec.PaiService.External != nil && privateai.Spec.PaiService.External.ExternalTrafficPolicy == "" {
 		privateai.Spec.PaiService.External.ExternalTrafficPolicy = "Cluster"
 	}
-	if privateai.Spec.TrafficManager != nil &&
-		strings.TrimSpace(privateai.Spec.TrafficManager.Ref) != "" &&
-		strings.TrimSpace(privateai.Spec.TrafficManager.RoutePath) == "" {
-		privateai.Spec.TrafficManager.RoutePath = fmt.Sprintf("/%s/v1/", strings.ToLower(strings.TrimSpace(privateai.Name)))
+	if tm := EffectiveTrafficManager(&privateai.Spec); tm != nil &&
+		strings.TrimSpace(tm.Ref) != "" &&
+		strings.TrimSpace(tm.RoutePath) == "" {
+		defaultRoute := fmt.Sprintf("/%s/v1/", strings.ToLower(strings.TrimSpace(privateai.Name)))
+		if privateai.Spec.Networking != nil && privateai.Spec.Networking.TrafficManager != nil {
+			privateai.Spec.Networking.TrafficManager.RoutePath = defaultRoute
+		} else if privateai.Spec.TrafficManager != nil {
+			privateai.Spec.TrafficManager.RoutePath = defaultRoute
+		}
 	}
 	return nil
 }
@@ -114,10 +150,14 @@ func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi)
 	warnings := deprecatedPrivateAIFieldWarnings(&privateai.Spec)
 	authSecret := EffectiveAuthSecret(&privateai.Spec)
 	tls := EffectiveTLS(&privateai.Spec)
+	configFile := EffectiveConfigFile(&privateai.Spec)
+	service := EffectiveService(&privateai.Spec)
+	trafficManager := EffectiveTrafficManager(&privateai.Spec)
+	authSecretItemsField := effectiveAuthSecretItemsField(&privateai.Spec)
 
-	authEnabled, _ := strconv.ParseBool(privateai.Spec.PaiEnableAuthentication)
+	authEnabled := EffectiveAuthEnabled(&privateai.Spec)
 	if authEnabled && (authSecret == nil || strings.TrimSpace(authSecret.Name) == "") {
-		return warnings, fmt.Errorf("paiEnableAuthentication=true requires spec.security.secret.name or deprecated paiSecret.name to be set")
+		return warnings, fmt.Errorf("spec.security.authEnabled=true requires spec.security.secret.name or deprecated paiSecret.name to be set")
 	}
 	if privateai.Spec.Security != nil && privateai.Spec.Security.Secret != nil &&
 		strings.TrimSpace(privateai.Spec.Security.Secret.MountLocation) != "" &&
@@ -125,17 +165,19 @@ func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi)
 		return warnings, fmt.Errorf("spec.security.secret.mountLocation must be an absolute path")
 	}
 	if authSecret != nil {
-		if err := validateSecretMountItems(authSecret.Items, "spec.security.secret.items"); err != nil {
+		if err := validateSecretMountItems(authSecret.Items, authSecretItemsField); err != nil {
 			return warnings, err
 		}
 	}
-	if privateai.Spec.PaiSecret != nil && strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation) != "" &&
-		!filepath.IsAbs(strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation)) {
-		return warnings, fmt.Errorf("paiSecret.mountLocation must be an absolute path")
-	}
-	if privateai.Spec.PaiSecret != nil {
-		if err := validateSecretMountItems(privateai.Spec.PaiSecret.Items, "paiSecret.items"); err != nil {
-			return warnings, err
+	if privateai.Spec.Security == nil || privateai.Spec.Security.Secret == nil {
+		if privateai.Spec.PaiSecret != nil && strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation) != "" &&
+			!filepath.IsAbs(strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation)) {
+			return warnings, fmt.Errorf("paiSecret.mountLocation must be an absolute path")
+		}
+		if privateai.Spec.PaiSecret != nil {
+			if err := validateSecretMountItems(privateai.Spec.PaiSecret.Items, "paiSecret.items"); err != nil {
+				return warnings, err
+			}
 		}
 	}
 	if tls != nil {
@@ -156,39 +198,39 @@ func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi)
 			return warnings, err
 		}
 	}
-	if privateai.Spec.PaiConfigFile != nil && strings.TrimSpace(privateai.Spec.PaiConfigFile.MountLocation) != "" &&
-		!filepath.IsAbs(strings.TrimSpace(privateai.Spec.PaiConfigFile.MountLocation)) {
-		return warnings, fmt.Errorf("paiConfigFile.mountLocation must be an absolute path")
+	if configFile != nil && strings.TrimSpace(configFile.MountLocation) != "" &&
+		!filepath.IsAbs(strings.TrimSpace(configFile.MountLocation)) {
+		return warnings, fmt.Errorf("spec.configuration.configFile.mountLocation or paiConfigFile.mountLocation must be an absolute path")
 	}
-	if privateai.Spec.PaiService.External != nil {
-		if policy := strings.TrimSpace(privateai.Spec.PaiService.External.ExternalTrafficPolicy); policy != "" &&
+	if service != nil && service.External != nil {
+		if policy := strings.TrimSpace(service.External.ExternalTrafficPolicy); policy != "" &&
 			!strings.EqualFold(policy, "Local") && !strings.EqualFold(policy, "Cluster") {
-			return warnings, fmt.Errorf("spec.paiService.external.externalTrafficPolicy must be Local or Cluster")
+			return warnings, fmt.Errorf("spec.networking.service.external.externalTrafficPolicy or spec.paiService.external.externalTrafficPolicy must be Local or Cluster")
 		}
 	}
-	if privateai.Spec.TrafficManager != nil {
-		if strings.TrimSpace(privateai.Spec.TrafficManager.Ref) == "" {
-			return warnings, fmt.Errorf("spec.trafficManager.ref must be set when spec.trafficManager is provided")
+	if trafficManager != nil {
+		if strings.TrimSpace(trafficManager.Ref) == "" {
+			return warnings, fmt.Errorf("spec.networking.trafficManager.ref or spec.trafficManager.ref must be set when traffic manager is provided")
 		}
 	}
-	if privateai.Spec.TrafficManager != nil && strings.TrimSpace(privateai.Spec.TrafficManager.Ref) != "" {
+	if trafficManager != nil && strings.TrimSpace(trafficManager.Ref) != "" {
 		if v.Client == nil {
 			return warnings, fmt.Errorf("traffic manager reference validation is not configured")
 		}
-		trafficManager := &networkv4.TrafficManager{}
-		ref := strings.TrimSpace(privateai.Spec.TrafficManager.Ref)
-		if err := v.Client.Get(ctx, types.NamespacedName{Name: ref, Namespace: privateai.Namespace}, trafficManager); err != nil {
+		trafficManagerObj := &networkv4.TrafficManager{}
+		ref := strings.TrimSpace(trafficManager.Ref)
+		if err := v.Client.Get(ctx, types.NamespacedName{Name: ref, Namespace: privateai.Namespace}, trafficManagerObj); err != nil {
 			if apierrors.IsNotFound(err) {
-				return warnings, fmt.Errorf("spec.trafficManager.ref %q not found", ref)
+				return warnings, fmt.Errorf("spec.networking.trafficManager.ref or deprecated spec.trafficManager.ref %q not found", ref)
 			}
 			return warnings, err
 		}
-		if trafficManager.Spec.Type != networkv4.TrafficManagerTypeNginx {
-			return warnings, fmt.Errorf("spec.trafficManager.ref %q points to unsupported TrafficManager type %q", ref, trafficManager.Spec.Type)
+		if trafficManagerObj.Spec.Type != networkv4.TrafficManagerTypeNginx {
+			return warnings, fmt.Errorf("spec.networking.trafficManager.ref or deprecated spec.trafficManager.ref %q points to unsupported TrafficManager type %q", ref, trafficManagerObj.Spec.Type)
 		}
-		if path := strings.TrimSpace(privateai.Spec.TrafficManager.RoutePath); path != "" {
+		if path := strings.TrimSpace(trafficManager.RoutePath); path != "" {
 			if !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/") {
-				return warnings, fmt.Errorf("spec.trafficManager.routePath must start and end with '/'")
+				return warnings, fmt.Errorf("spec.networking.trafficManager.routePath or deprecated spec.trafficManager.routePath must start and end with '/'")
 			}
 		}
 	}
@@ -202,28 +244,125 @@ func deprecatedPrivateAIFieldWarnings(spec *PrivateAiSpec) admission.Warnings {
 	}
 
 	if strings.TrimSpace(spec.IsExternalSvc) != "" {
-		appendWarn("spec.isExternalSvc is deprecated; use spec.paiService.external.enabled")
+		appendWarn("spec.isExternalSvc is deprecated; use spec.networking.service.external.enabled")
 	}
 	if spec.PaiLBPort != 0 {
-		appendWarn("spec.paiLBPort is deprecated; use spec.paiService.external.port")
+		appendWarn("spec.paiLBPort is deprecated; use spec.networking.service.external.port")
 	}
 	if strings.TrimSpace(spec.PaiLBIP) != "" {
-		appendWarn("spec.paiLBIP is deprecated; use spec.paiService.external.loadBalancerIP")
+		appendWarn("spec.paiLBIP is deprecated; use spec.networking.service.external.loadBalancerIP")
 	}
 	if strings.TrimSpace(spec.PaiLBExternalTrafficPolicy) != "" {
-		appendWarn("spec.paiLBExternalTrafficPolicy is deprecated; use spec.paiService.external.externalTrafficPolicy")
+		appendWarn("spec.paiLBExternalTrafficPolicy is deprecated; use spec.networking.service.external.externalTrafficPolicy")
 	}
 	if strings.TrimSpace(spec.PaiInternalLB) != "" {
-		appendWarn("spec.paiInternalLB is deprecated; use spec.paiService.external.internal")
+		appendWarn("spec.paiInternalLB is deprecated; use spec.networking.service.external.internal")
 	}
 	if len(spec.PailbAnnotation) > 0 {
-		appendWarn("spec.pailbAnnotation is deprecated; use spec.paiService.external.annotations")
+		appendWarn("spec.pailbAnnotation is deprecated; use spec.networking.service.external.annotations")
 	}
 	if spec.PaiSecret != nil {
 		appendWarn("spec.paiSecret is deprecated; use spec.security.secret")
 	}
+	if strings.TrimSpace(spec.PaiEnableAuthentication) != "" {
+		appendWarn("spec.paiEnableAuthentication is deprecated; use spec.security.authEnabled")
+	}
+	if spec.PaiConfigFile != nil {
+		appendWarn("spec.paiConfigFile is deprecated; use spec.configuration.configFile")
+	}
+	if strings.TrimSpace(spec.PaiImage) != "" {
+		appendWarn("spec.paiImage is deprecated; use spec.runtime.image.name")
+	}
+	if strings.TrimSpace(spec.PaiImagePullSecret) != "" {
+		appendWarn("spec.paiImagePullSecret is deprecated; use spec.runtime.image.pullSecret")
+	}
+	if spec.IsDebug {
+		appendWarn("spec.isDebug is deprecated; use spec.runtime.debug")
+	}
+	if spec.ReadinessCheckPeriod != 0 {
+		appendWarn("spec.readinessCheckPeriod is deprecated; use spec.runtime.readinessCheckPeriod")
+	}
+	if spec.LivenessCheckPeriod != 0 {
+		appendWarn("spec.livenessCheckPeriod is deprecated; use spec.runtime.livenessCheckPeriod")
+	}
+	if spec.IsDownloadScripts {
+		appendWarn("spec.isDownloadScripts is deprecated; use spec.runtime.downloadScripts")
+	}
+	if spec.StorageClass != "" {
+		appendWarn("spec.storageClass is deprecated; use spec.storage.storageClass")
+	}
+	if len(spec.PvcList) > 0 {
+		appendWarn("spec.pvcList is deprecated; use spec.storage.pvcList")
+	}
+	if spec.StorageSizeInGb != 0 {
+		appendWarn("spec.storageSizeInGb is deprecated; use spec.storage.sizeInGb")
+	}
+	if spec.IsDeleteOraPvc {
+		appendWarn("spec.isDeleteOraPvc is deprecated; use spec.storage.deletePvcOnDelete")
+	}
+	if strings.TrimSpace(spec.PaiLogLocation) != "" {
+		appendWarn("spec.paiLogLocation is deprecated; use spec.storage.logLocation")
+	}
+	if len(spec.EnvVars) > 0 {
+		appendWarn("spec.envVars is deprecated; use spec.runtime.env")
+	}
+	if spec.Replicas != 0 {
+		appendWarn("spec.replicas is deprecated; use spec.runtime.replicas")
+	}
+	if spec.Resources != nil {
+		appendWarn("spec.resources is deprecated; use spec.runtime.resources")
+	}
+	if len(spec.NodePortSvc) > 0 {
+		appendWarn("spec.nodePortSvc is deprecated; use spec.networking.nodePortServices")
+	}
+	if len(spec.PortMappings) > 0 {
+		appendWarn("spec.portMappings is deprecated; use spec.networking.service.portMappings")
+	}
+	if len(spec.WorkerNodes) > 0 {
+		appendWarn("spec.workerNodes is deprecated; use spec.runtime.workerNodes")
+	}
+	if spec.TrafficManager != nil {
+		appendWarn("spec.trafficManager is deprecated; use spec.networking.trafficManager")
+	}
 
 	return warnings
+}
+
+func setDefaultPrivateAIHTTPListener(privateai *PrivateAi, enabled bool, port int32) {
+	if privateai.Spec.Networking == nil || privateai.Spec.Networking.Listeners == nil {
+		return
+	}
+	if privateai.Spec.Networking.Listeners.HTTP == nil {
+		privateai.Spec.Networking.Listeners.HTTP = &PrivateAiListenerSpec{}
+	}
+	privateai.Spec.Networking.Listeners.HTTP.Enabled = boolPtr(enabled)
+	privateai.Spec.Networking.Listeners.HTTP.Port = int32Ptr(port)
+}
+
+func setDefaultPrivateAIHTTPSListener(privateai *PrivateAi, enabled bool, port int32) {
+	if privateai.Spec.Networking == nil || privateai.Spec.Networking.Listeners == nil {
+		return
+	}
+	if privateai.Spec.Networking.Listeners.HTTPS == nil {
+		privateai.Spec.Networking.Listeners.HTTPS = &PrivateAiListenerSpec{}
+	}
+	privateai.Spec.Networking.Listeners.HTTPS.Enabled = boolPtr(enabled)
+	privateai.Spec.Networking.Listeners.HTTPS.Port = int32Ptr(port)
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func int32Ptr(v int32) *int32 {
+	return &v
+}
+
+func effectiveAuthSecretItemsField(spec *PrivateAiSpec) string {
+	if spec != nil && spec.Security != nil && spec.Security.Secret != nil {
+		return "spec.security.secret.items"
+	}
+	return "paiSecret.items"
 }
 
 func validateSecretMountItems(items []SecretMountItem, field string) error {

@@ -63,7 +63,7 @@ func LogMessages(msgtype string, msg string, err error, instance *privateaiv4.Pr
 	//logrus.SetFormatter(&logrus.JSONFormatter{})
 	//logrus.SetOutput(os.Stdout)
 
-	if msgtype == "DEBUG" && instance.Spec.IsDebug {
+	if msgtype == "DEBUG" && privateaiv4.EffectiveDebug(&instance.Spec) {
 		if err != nil {
 			logger.Error(err, msg)
 		} else {
@@ -87,8 +87,8 @@ func getOwnerRef(instance *privateaiv4.PrivateAi,
 // FUnction to build the svc definition for catalog/shard and GSM
 func buildSvcPortsDef(instance *privateaiv4.PrivateAi, svcType string) []corev1.ServicePort {
 	var result []corev1.ServicePort
-	if len(instance.Spec.PaiService.PortMappings) > 0 {
-		for _, portMapping := range instance.Spec.PaiService.PortMappings {
+	if service := privateaiv4.EffectiveService(&instance.Spec); service != nil && len(service.PortMappings) > 0 {
+		for _, portMapping := range service.PortMappings {
 			servicePort :=
 				corev1.ServicePort{
 					Protocol: portMapping.Protocol,

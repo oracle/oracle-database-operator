@@ -70,7 +70,7 @@ func getComponentLabel(instance *privateaiv4.PrivateAi) string {
 }
 
 func buildDeploymentSpecForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.DeploymentSpec {
-	replicas := replicasOrDefault(instance.Spec.Replicas)
+	replicas := replicasOrDefault(privateaiv4.EffectiveReplicas(&instance.Spec))
 	strategy := appsv1.DeploymentStrategy{
 		Type: appsv1.RollingUpdateDeploymentStrategyType,
 		RollingUpdate: &appsv1.RollingUpdateDeployment{
@@ -109,6 +109,7 @@ func maxUnavailableFor(replicas int32) int32 {
 }
 
 func buildPodSpecForPrivateAI(instance *privateaiv4.PrivateAi) *corev1.PodSpec {
+	effective := privateaiv4.EffectivePrivateAiSpecFromSpec(&instance.Spec)
 	podSpec := &corev1.PodSpec{
 		SecurityContext: &corev1.PodSecurityContext{
 			FSGroup:    int64Ptr(2001),
@@ -120,13 +121,13 @@ func buildPodSpecForPrivateAI(instance *privateaiv4.PrivateAi) *corev1.PodSpec {
 		Volumes:        buildVolumeSpecForPrivateAI(instance),
 	}
 
-	if len(instance.Spec.WorkerNodes) > 0 {
+	if len(effective.Runtime.WorkerNodes) > 0 {
 		podSpec.Affinity = getNodeAffinity(instance)
 	}
 	podSpec.TopologySpreadConstraints = buildTopologySpreadConstraintsForPrivateAI(instance)
 
-	if instance.Spec.PaiImagePullSecret != "" {
-		podSpec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: instance.Spec.PaiImagePullSecret}}
+	if effective.Runtime.Image != nil && strings.TrimSpace(effective.Runtime.Image.PullSecret) != "" {
+		podSpec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: effective.Runtime.Image.PullSecret}}
 	}
 
 	return podSpec
@@ -134,7 +135,7 @@ func buildPodSpecForPrivateAI(instance *privateaiv4.PrivateAi) *corev1.PodSpec {
 
 // Init container: run as root, chown all pvcList mount paths
 func buildInitContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Container {
-	entries := orderedPVCEntries(instance.Spec.PvcList)
+	entries := orderedPVCEntries(privateaiv4.EffectivePVCList(&instance.Spec))
 	if len(entries) == 0 {
 		return nil
 	}
@@ -147,11 +148,16 @@ func buildInitContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev
 	privileged := true
 	rootUser := int64(0)
 
+	image := privateaiv4.EffectiveImage(&instance.Spec)
+	if image == nil || strings.TrimSpace(image.Name) == "" {
+		return nil
+	}
+
 	return []corev1.Container{ //nolint:mnd // explicit security context
 		{
 			Name:            fmt.Sprintf("%s-init", instance.Name),
-			Image:           instance.Spec.PaiImage,
-			ImagePullPolicy: corev1.PullIfNotPresent,
+			Image:           image.Name,
+			ImagePullPolicy: image.PullPolicy,
 			Command:         []string{"/bin/sh", "-c", strings.Join(cmds, " && ")},
 			SecurityContext: &corev1.SecurityContext{Privileged: &privileged, RunAsUser: &rootUser, RunAsGroup: &rootUser},
 			VolumeMounts:    pvcVolumeMounts(instance, true),
@@ -180,7 +186,7 @@ type pvcEntry struct {
 }
 
 func pvcVolumeMounts(instance *privateaiv4.PrivateAi, initContainer bool) []corev1.VolumeMount {
-	entries := orderedPVCEntries(instance.Spec.PvcList)
+	entries := orderedPVCEntries(privateaiv4.EffectivePVCList(&instance.Spec))
 	if len(entries) == 0 {
 		return nil
 	}
@@ -204,17 +210,19 @@ func pvcVolumeMounts(instance *privateaiv4.PrivateAi, initContainer bool) []core
 }
 
 func buildContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Container {
-	if instance.Spec.PaiImage == "" {
+	image := privateaiv4.EffectiveImage(&instance.Spec)
+	if image == nil || strings.TrimSpace(image.Name) == "" {
 		return nil
 	}
 
+	envVars := privateaiv4.EffectiveEnvVars(&instance.Spec)
 	port, scheme, httpEnabled, httpsEnabled := resolveServicePort(&instance.Spec)
 
 	container := corev1.Container{
 		Name:            instance.Name,
-		Image:           instance.Spec.PaiImage,
-		ImagePullPolicy: corev1.PullIfNotPresent,
-		Env:             buildEnvVarsForPrivateAI(instance, instance.Spec.EnvVars, httpEnabled, httpsEnabled),
+		Image:           image.Name,
+		ImagePullPolicy: image.PullPolicy,
+		Env:             buildEnvVarsForPrivateAI(instance, envVars, httpEnabled, httpsEnabled),
 		Resources:       corev1.ResourceRequirements{},
 		VolumeMounts:    buildVolumeMountSpecForPrivateAI(instance),
 		Ports: []corev1.ContainerPort{{
@@ -231,8 +239,8 @@ func buildContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Co
 		}),
 	}
 
-	if instance.Spec.Resources != nil {
-		container.Resources = *instance.Spec.Resources
+	if resources := privateaiv4.EffectiveResources(&instance.Spec); resources != nil {
+		container.Resources = *resources
 	}
 
 	containers := []corev1.Container{container}
@@ -243,8 +251,9 @@ func buildContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Co
 }
 
 func resolveServicePort(spec *privateaiv4.PrivateAiSpec) (int32, corev1.URIScheme, bool, bool) {
-	httpEnabled := boolFromString(spec.PaiHTTPEnabled)
-	httpsEnabled := boolFromString(spec.PaiHTTPSEnabled)
+	listeners := privateaiv4.EffectiveListeners(spec)
+	httpEnabled := listeners.HTTP.Enabled
+	httpsEnabled := listeners.HTTPS.Enabled
 
 	if !httpEnabled && !httpsEnabled {
 		// Mirror webhook defaulting: when HTTP is not explicitly enabled, default
@@ -253,7 +262,7 @@ func resolveServicePort(spec *privateaiv4.PrivateAiSpec) (int32, corev1.URISchem
 	}
 
 	if httpsEnabled {
-		port := spec.PaiHTTPSPort
+		port := listeners.HTTPS.Port
 		if port <= 0 {
 			port = 8443
 		}
@@ -261,7 +270,7 @@ func resolveServicePort(spec *privateaiv4.PrivateAiSpec) (int32, corev1.URISchem
 	}
 
 	if httpEnabled {
-		port := spec.PaiHTTPPort
+		port := listeners.HTTP.Port
 		if port <= 0 {
 			port = 8080
 		}
@@ -269,11 +278,11 @@ func resolveServicePort(spec *privateaiv4.PrivateAiSpec) (int32, corev1.URISchem
 	}
 
 	// Fall back to whichever port is set.
-	if spec.PaiHTTPSPort > 0 {
-		return spec.PaiHTTPSPort, corev1.URISchemeHTTPS, httpEnabled, true
+	if listeners.HTTPS.Port > 0 {
+		return listeners.HTTPS.Port, corev1.URISchemeHTTPS, httpEnabled, true
 	}
-	if spec.PaiHTTPPort > 0 {
-		return spec.PaiHTTPPort, corev1.URISchemeHTTP, true, httpsEnabled
+	if listeners.HTTP.Port > 0 {
+		return listeners.HTTP.Port, corev1.URISchemeHTTP, true, httpsEnabled
 	}
 
 	// Mirror webhook defaulting so reconciles remain valid even when mutation
@@ -298,6 +307,8 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 	authSecret := privateaiv4.EffectiveAuthSecret(&instance.Spec)
 	tlsSecret := privateaiv4.EffectiveTLS(&instance.Spec)
 	sharedSecretMount := useSharedSecretMount(authSecret, tlsSecret)
+	configFile := privateaiv4.EffectiveConfigFile(&instance.Spec)
+	storageClass := privateaiv4.EffectiveStorageClass(&instance.Spec)
 
 	if sharedSecretMount {
 		volumes = append(volumes, corev1.Volume{
@@ -344,16 +355,16 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 		})
 	}
 
-	if instance.Spec.PaiConfigFile != nil && instance.Spec.PaiConfigFile.Name != "" {
+	if configFile != nil && configFile.Name != "" {
 		volumes = append(volumes, corev1.Volume{
 			Name: fmt.Sprintf("%sconfigmap-vol", instance.Name),
 			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: instance.Spec.PaiConfigFile.Name}},
+				ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: configFile.Name}},
 			},
 		})
 	}
 
-	if instance.Spec.StorageClass != "" {
+	if storageClass != "" {
 		volumes = append(volumes, corev1.Volume{
 			Name: fmt.Sprintf("%s-oradata-vol4", instance.Name),
 			VolumeSource: corev1.VolumeSource{
@@ -362,7 +373,7 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 		})
 	}
 
-	for _, entry := range orderedPVCEntries(instance.Spec.PvcList) {
+	for _, entry := range orderedPVCEntries(privateaiv4.EffectivePVCList(&instance.Spec)) {
 		volumes = append(volumes, corev1.Volume{
 			Name: fmt.Sprintf("%s-%s-vol", instance.Name, entry.claimName),
 			VolumeSource: corev1.VolumeSource{
@@ -384,8 +395,9 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 	authSecret := privateaiv4.EffectiveAuthSecret(&instance.Spec)
 	tlsSecret := privateaiv4.EffectiveTLS(&instance.Spec)
 	sharedSecretMount := useSharedSecretMount(authSecret, tlsSecret)
+	configFile := privateaiv4.EffectiveConfigFile(&instance.Spec)
 
-	if instance.Spec.StorageClass != "" {
+	if privateaiv4.EffectiveStorageClass(&instance.Spec) != "" {
 		mounts = append(mounts, corev1.VolumeMount{
 			Name:      fmt.Sprintf("%s-oradata-vol4", instance.Name),
 			MountPath: piDataMount,
@@ -414,10 +426,10 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 		})
 	}
 
-	if instance.Spec.PaiConfigFile != nil && instance.Spec.PaiConfigFile.Name != "" {
+	if configFile != nil && configFile.Name != "" {
 		mounts = append(mounts, corev1.VolumeMount{
 			Name:      fmt.Sprintf("%sconfigmap-vol", instance.Name),
-			MountPath: instance.Spec.PaiConfigFile.MountLocation,
+			MountPath: configFile.MountLocation,
 			ReadOnly:  true,
 		})
 	}
@@ -435,11 +447,12 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 // VolumeClaimTemplatesForPrivateAi returns the PersistentVolumeClaim templates
 // required by the PrivateAi deployment when storage is requested.
 func VolumeClaimTemplatesForPrivateAi(instance *privateaiv4.PrivateAi) []corev1.PersistentVolumeClaim {
-	if instance.Spec.StorageClass == "" {
+	storageClass := privateaiv4.EffectiveStorageClass(&instance.Spec)
+	if storageClass == "" {
 		return nil
 	}
 
-	quantity := resource.MustParse(fmt.Sprintf("%dGi", instance.Spec.StorageSizeInGb))
+	quantity := resource.MustParse(fmt.Sprintf("%dGi", privateaiv4.EffectiveStorageSizeInGb(&instance.Spec)))
 
 	return []corev1.PersistentVolumeClaim{
 		{
@@ -451,7 +464,7 @@ func VolumeClaimTemplatesForPrivateAi(instance *privateaiv4.PrivateAi) []corev1.
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-				StorageClassName: ptr.To(instance.Spec.StorageClass),
+				StorageClassName: ptr.To(storageClass),
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{corev1.ResourceStorage: quantity},
 				},
@@ -477,8 +490,8 @@ func buildEnvVarsForPrivateAI(
 		seen[envVar.Name] = true
 	}
 
-	if instance.Spec.PaiConfigFile != nil && instance.Spec.PaiConfigFile.Name != "" && instance.Spec.PaiConfigFile.MountLocation != "" {
-		ensureEnvVar(&envVars, seen, envConfigFile, instance.Spec.PaiConfigFile.MountLocation+"/config.json")
+	if cfg := privateaiv4.EffectiveConfigFile(&instance.Spec); cfg != nil && cfg.Name != "" && cfg.MountLocation != "" {
+		ensureEnvVar(&envVars, seen, envConfigFile, cfg.MountLocation+"/config.json")
 	}
 
 	if authSecret := privateaiv4.EffectiveAuthSecret(&instance.Spec); authSecret != nil && authSecret.Name != "" && authSecret.MountLocation != "" {
@@ -487,7 +500,7 @@ func buildEnvVarsForPrivateAI(
 
 	ensureEnvVar(&envVars, seen, envHTTPEnabled, strconv.FormatBool(httpEnabled))
 	ensureEnvVar(&envVars, seen, envHTTPSEnabled, strconv.FormatBool(httpsEnabled))
-	ensureEnvVar(&envVars, seen, envAuthEnabled, strconv.FormatBool(boolFromString(instance.Spec.PaiEnableAuthentication)))
+	ensureEnvVar(&envVars, seen, envAuthEnabled, strconv.FormatBool(privateaiv4.EffectiveAuthEnabled(&instance.Spec)))
 
 	return envVars
 }
@@ -569,8 +582,8 @@ func resolvePaiExternalServiceSettings(instance *privateaiv4.PrivateAi) paiExter
 		ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyCluster,
 	}
 
-	if instance.Spec.PaiService.External != nil {
-		ext := instance.Spec.PaiService.External
+	if service := privateaiv4.EffectiveService(&instance.Spec); service != nil && service.External != nil {
+		ext := service.External
 		if ext.Enabled != nil {
 			settings.Enabled = *ext.Enabled
 		}
@@ -688,8 +701,8 @@ func privateAiLogMountPath(instance *privateaiv4.PrivateAi) string {
 	if instance.Spec.Logging != nil && strings.TrimSpace(instance.Spec.Logging.VolumeMount) != "" {
 		return instance.Spec.Logging.VolumeMount
 	}
-	if strings.TrimSpace(instance.Spec.PaiLogLocation) != "" {
-		return instance.Spec.PaiLogLocation
+	if logLocation := strings.TrimSpace(privateaiv4.EffectiveLogLocation(&instance.Spec)); logLocation != "" {
+		return logLocation
 	}
 	return defaultLogMount
 }
@@ -735,7 +748,7 @@ func ManageReplicas(
 	logger logr.Logger,
 ) (ctrl.Result, error) {
 	_ = ctx
-	desired := replicasOrDefault(instance.Spec.Replicas)
+	desired := replicasOrDefault(privateaiv4.EffectiveReplicas(&instance.Spec))
 
 	if deploy.Spec.Replicas != nil && *deploy.Spec.Replicas == desired {
 		return ctrl.Result{}, nil
@@ -815,8 +828,12 @@ func UpdateDeploySetForPrivateAI(
 		return ctrl.Result{}, nil
 	}
 
-	desiredResources := paiSpec.Resources
-	desiredImage := paiSpec.PaiImage
+	desiredResources := privateaiv4.EffectiveResources(&paiSpec)
+	desiredImageCfg := privateaiv4.EffectiveImage(&paiSpec)
+	desiredImage := ""
+	if desiredImageCfg != nil {
+		desiredImage = desiredImageCfg.Name
+	}
 	targetName := deploy.Name
 
 	var (
@@ -941,12 +958,13 @@ func buildTopologySpreadConstraintsForPrivateAI(instance *privateaiv4.PrivateAi)
 }
 
 func getNodeAffinity(instance *privateaiv4.PrivateAi) *corev1.Affinity {
+	workerNodes := privateaiv4.EffectiveWorkerNodes(&instance.Spec)
 	term := corev1.NodeSelectorTerm{
 		MatchExpressions: []corev1.NodeSelectorRequirement{
 			{
 				Key:      "kubernetes.io/hostname",
 				Operator: corev1.NodeSelectorOpIn,
-				Values:   instance.Spec.WorkerNodes,
+				Values:   workerNodes,
 			},
 		},
 	}
@@ -958,11 +976,11 @@ func getNodeAffinity(instance *privateaiv4.PrivateAi) *corev1.Affinity {
 	}
 }
 
+func int64Ptr(value int64) *int64 {
+	return &value
+}
+
 func boolFromString(value string) bool {
 	result, err := strconv.ParseBool(value)
 	return err == nil && result
-}
-
-func int64Ptr(value int64) *int64 {
-	return &value
 }

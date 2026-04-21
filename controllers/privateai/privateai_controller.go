@@ -43,7 +43,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -175,9 +174,9 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		privateAiInst.Status.Replicas = 0
 		privateAiInst.Status.ReleaseUpdate = privateaiv4.ValueUnavailable
 	}
-	if privateAiInst.Spec.TrafficManager != nil && strings.TrimSpace(privateAiInst.Spec.TrafficManager.Ref) != "" {
+	if trafficManager := privateaiv4.EffectiveTrafficManager(&privateAiInst.Spec); trafficManager != nil && strings.TrimSpace(trafficManager.Ref) != "" {
 		privateAiInst.Status.Mode = "traffic-managed"
-		privateAiInst.Status.TrafficManager.Ref = strings.TrimSpace(privateAiInst.Spec.TrafficManager.Ref)
+		privateAiInst.Status.TrafficManager.Ref = strings.TrimSpace(trafficManager.Ref)
 		privateAiInst.Status.TrafficManager.RoutePath = resolvedTrafficManagerRoutePath(privateAiInst)
 		r.populateTrafficManagerAccessStatus(ctx, req.Namespace, privateAiInst)
 	} else {
@@ -229,7 +228,7 @@ func (r *PrivateAiReconciler) updateReconcileStatus(
 	recErr error,
 	state *reconcileState,
 ) error {
-	m.Status.Replicas = int(m.Spec.Replicas)
+	m.Status.Replicas = int(privateaiv4.EffectiveReplicas(&m.Spec))
 	rolloutInProgress := false
 	if recErr == nil {
 		if deploy, err := r.getDeployment(ctx, m.Name, m.Namespace); err == nil {
@@ -341,16 +340,16 @@ func (r *PrivateAiReconciler) updateReconcileStatus(
 // #############################################################################
 func (r *PrivateAiReconciler) validate(m *privateaiv4.PrivateAi, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	r.Log.Info("Entering reconcile validation")
-	if m.Spec.TrafficManager != nil && strings.TrimSpace(m.Spec.TrafficManager.Ref) != "" {
+	if trafficManagerRef := privateaiv4.EffectiveTrafficManager(&m.Spec); trafficManagerRef != nil && strings.TrimSpace(trafficManagerRef.Ref) != "" {
 		trafficManager := &networkv4.TrafficManager{}
-		ref := strings.TrimSpace(m.Spec.TrafficManager.Ref)
+		ref := strings.TrimSpace(trafficManagerRef.Ref)
 		if err := r.Client.Get(ctx, types.NamespacedName{Name: ref, Namespace: req.Namespace}, trafficManager); err != nil {
 			return resultNq, err
 		}
 		if trafficManager.Spec.Type != networkv4.TrafficManagerTypeNginx {
 			return resultNq, fmt.Errorf("spec.trafficManager.ref %q points to unsupported TrafficManager type %q", ref, trafficManager.Spec.Type)
 		}
-		if path := strings.TrimSpace(m.Spec.TrafficManager.RoutePath); path != "" &&
+		if path := strings.TrimSpace(trafficManagerRef.RoutePath); path != "" &&
 			(!strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/")) {
 			return resultNq, fmt.Errorf("spec.trafficManager.routePath must start and end with '/'")
 		}
@@ -363,7 +362,11 @@ func (r *PrivateAiReconciler) validate(m *privateaiv4.PrivateAi, ctx context.Con
 }
 
 func (r *PrivateAiReconciler) populateTrafficManagerAccessStatus(ctx context.Context, namespace string, inst *privateaiv4.PrivateAi) {
-	ref := strings.TrimSpace(inst.Spec.TrafficManager.Ref)
+	trafficManagerRef := privateaiv4.EffectiveTrafficManager(&inst.Spec)
+	ref := ""
+	if trafficManagerRef != nil {
+		ref = strings.TrimSpace(trafficManagerRef.Ref)
+	}
 	if ref == "" {
 		inst.Status.TrafficManager.ServiceName = ""
 		inst.Status.TrafficManager.Endpoint = ""
@@ -392,8 +395,8 @@ func (r *PrivateAiReconciler) populateTrafficManagerAccessStatus(ctx context.Con
 }
 
 func resolvedTrafficManagerRoutePath(inst *privateaiv4.PrivateAi) string {
-	if inst.Spec.TrafficManager != nil {
-		if path := strings.TrimSpace(inst.Spec.TrafficManager.RoutePath); path != "" {
+	if trafficManager := privateaiv4.EffectiveTrafficManager(&inst.Spec); trafficManager != nil {
+		if path := strings.TrimSpace(trafficManager.RoutePath); path != "" {
 			return path
 		}
 	}
@@ -436,9 +439,10 @@ func (r *PrivateAiReconciler) runPhase(
 }
 
 func (r *PrivateAiReconciler) reconcileDependencies(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (ctrl.Result, error) {
-	authEnabled := parseBoolFlag(privateAiInst.Spec.PaiEnableAuthentication)
-	storageEnabled := privateAiInst.Spec.StorageClass != ""
-	trafficManaged := privateAiInst.Spec.TrafficManager != nil && strings.TrimSpace(privateAiInst.Spec.TrafficManager.Ref) != ""
+	authEnabled := privateaiv4.EffectiveAuthEnabled(&privateAiInst.Spec)
+	storageEnabled := privateaiv4.EffectiveStorageClass(&privateAiInst.Spec) != ""
+	trafficManager := privateaiv4.EffectiveTrafficManager(&privateAiInst.Spec)
+	trafficManaged := trafficManager != nil && strings.TrimSpace(trafficManager.Ref) != ""
 	externalSvcEnabled := aicommons.ExternalServiceEnabledForPrivateAI(privateAiInst) && !trafficManaged
 
 	if authEnabled {
@@ -451,9 +455,9 @@ func (r *PrivateAiReconciler) reconcileDependencies(ctx context.Context, req ctr
 			return resultNq, err
 		}
 	}
-	if privateAiInst.Spec.PaiConfigFile != nil &&
-		privateAiInst.Spec.PaiConfigFile.Name != "" &&
-		privateAiInst.Spec.PaiConfigFile.MountLocation != "" {
+	if cfg := privateaiv4.EffectiveConfigFile(&privateAiInst.Spec); cfg != nil &&
+		cfg.Name != "" &&
+		cfg.MountLocation != "" {
 		if _, err := r.ensureConfigMap(ctx, req, privateAiInst); err != nil {
 			return resultNq, err
 		}
@@ -642,7 +646,7 @@ func (r *PrivateAiReconciler) finalizePrivateAi(ctx context.Context, instance *p
 		}
 	}
 
-	if instance.Spec.IsDeleteOraPvc {
+	if privateaiv4.EffectiveDeletePvcOnDelete(&instance.Spec) {
 		claims := aicommons.VolumeClaimTemplatesForPrivateAi(instance)
 		for i := range claims {
 			pvc := &corev1.PersistentVolumeClaim{}
@@ -697,7 +701,10 @@ func (r *PrivateAiReconciler) waitForScheme() {
 }
 
 func (r *PrivateAiReconciler) ensureConfigMap(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
-	cfg := privateAiInst.Spec.PaiConfigFile
+	cfg := privateaiv4.EffectiveConfigFile(&privateAiInst.Spec)
+	if cfg == nil {
+		return ctrl.Result{}, nil
+	}
 	if cfg.Name == "" || cfg.MountLocation == "" {
 		return ctrl.Result{}, nil
 	}
@@ -916,14 +923,6 @@ func (r *PrivateAiReconciler) ensureServices(ctx context.Context, privateAiInst 
 	return ctrl.Result{}, nil
 }
 
-func parseBoolFlag(flag string) bool {
-	val, err := strconv.ParseBool(flag)
-	if err != nil {
-		return false
-	}
-	return val
-}
-
 func (r *PrivateAiReconciler) deleteServiceIfExists(ctx context.Context, namespace, name string) error {
 	if name == "" {
 		return nil
@@ -989,10 +988,10 @@ func requiresRolloutUpdate(inst *privateaiv4.PrivateAi, foundDeploy *appsv1.Depl
 		return false, ""
 	}
 
-	if desired := inst.Spec.PaiImage; desired != "" && desired != current.Image {
+	if desiredImage := privateaiv4.EffectiveImage(&inst.Spec); desiredImage != nil && desiredImage.Name != "" && desiredImage.Name != current.Image {
 		return true, "controller update lock: image rollout in progress"
 	}
-	if desired := inst.Spec.Resources; desired != nil && !reflect.DeepEqual(current.Resources, *desired) {
+	if desired := privateaiv4.EffectiveResources(&inst.Spec); desired != nil && !reflect.DeepEqual(current.Resources, *desired) {
 		return true, "controller update lock: resource rollout in progress"
 	}
 	return false, ""
@@ -1019,8 +1018,8 @@ func deploymentRolloutInProgress(inst *privateaiv4.PrivateAi, deploy *appsv1.Dep
 }
 
 func desiredPrivateAIReplicas(inst *privateaiv4.PrivateAi) int32 {
-	if inst == nil || inst.Spec.Replicas <= 0 {
+	if inst == nil || privateaiv4.EffectiveReplicas(&inst.Spec) <= 0 {
 		return 1
 	}
-	return inst.Spec.Replicas
+	return privateaiv4.EffectiveReplicas(&inst.Spec)
 }

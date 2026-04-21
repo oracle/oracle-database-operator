@@ -50,73 +50,158 @@ import (
 type PrivateAiSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Security      *PrivateAiSecuritySpec      `json:"security,omitempty"`
+	Runtime       *PrivateAiRuntimeSpec       `json:"runtime,omitempty"`
+	Configuration *PrivateAiConfigurationSpec `json:"configuration,omitempty"`
+	Storage       *PrivateAiStorageSpec       `json:"storage,omitempty"`
+	Networking    *PrivateAiNetworkingSpec    `json:"networking,omitempty"`
+	Logging       *LoggingSpec                `json:"logging,omitempty"`
+
+	// Deprecated: use spec.configuration.configFile.
 	PaiConfigFile *PaiConfigMap `json:"paiConfigFile,omitempty"`
 	// +kubebuilder:validation:Enum="true";"false"
 	// +kubebuilder:default="false"
-	PaiEnableAuthentication string                 `json:"paiEnableAuthentication,omitempty"`
-	Security                *PrivateAiSecuritySpec `json:"security,omitempty"`
+	// Deprecated: use spec.security.authEnabled.
+	PaiEnableAuthentication string `json:"paiEnableAuthentication,omitempty"`
 	// Deprecated: use spec.security.secret.
 	PaiSecret *PaiSecretSpec `json:"paiSecret,omitempty"`
-	// Deprecated: use spec.paiService.external.enabled.
+	// Deprecated: use spec.networking.service.external.enabled.
 	// +kubebuilder:validation:Enum="true";"false"
-	IsExternalSvc        string                       `json:"isExternalSvc,omitempty"`
-	StorageClass         string                       `json:"storageClass,omitempty"`
-	PvcList              map[string]string            `json:"pvcList,omitempty"`
-	PaiImage             string                       `json:"paiImage,omitempty"`
-	PaiImagePullSecret   string                       `json:"paiImagePullSecret,omitempty"`
-	IsDebug              bool                         `json:"isDebug,omitempty"`
-	ReadinessCheckPeriod int                          `json:"readinessCheckPeriod,omitempty"`
-	LivenessCheckPeriod  int                          `json:"livenessCheckPeriod,omitempty"`
-	IsDownloadScripts    bool                         `json:"isDownloadScripts,omitempty"`
-	PaiService           PaiServiceSpec               `json:"paiService,omitempty"`
-	StorageSizeInGb      int32                        `json:"storageSizeInGb,omitempty"`
-	EnvVars              []EnvironmentVariable        `json:"envVars,omitempty"`
-	Replicas             int32                        `json:"replicas,omitempty"`
-	Resources            *corev1.ResourceRequirements `json:"resources,omitempty"`
-	NodePortSvc          []PaiNodePortSvc             `json:"nodePortSvc,omitempty"`
-	PortMappings         []PaiPortMapping             `json:"portMappings,omitempty"`
-	IsDeleteOraPvc       bool                         `json:"isDeleteOraPvc,omitempty"`
-	PaiLogLocation       string                       `json:"paiLogLocation,omitempty"`
+	IsExternalSvc string `json:"isExternalSvc,omitempty"`
+	// Deprecated: use spec.storage.storageClass.
+	StorageClass string `json:"storageClass,omitempty"`
+	// Deprecated: use spec.storage.pvcList.
+	PvcList map[string]string `json:"pvcList,omitempty"`
+	// Deprecated: use spec.runtime.image.name.
+	PaiImage string `json:"paiImage,omitempty"`
+	// Deprecated: use spec.runtime.image.pullSecret.
+	PaiImagePullSecret string `json:"paiImagePullSecret,omitempty"`
+	// Deprecated: use spec.runtime.debug.
+	IsDebug bool `json:"isDebug,omitempty"`
+	// Deprecated: use spec.runtime.readinessCheckPeriod.
+	ReadinessCheckPeriod int `json:"readinessCheckPeriod,omitempty"`
+	// Deprecated: use spec.runtime.livenessCheckPeriod.
+	LivenessCheckPeriod int `json:"livenessCheckPeriod,omitempty"`
+	// Deprecated: use spec.runtime.downloadScripts.
+	IsDownloadScripts bool `json:"isDownloadScripts,omitempty"`
+	// Deprecated: use spec.networking.service.
+	PaiService PaiServiceSpec `json:"paiService,omitempty"`
+	// Deprecated: use spec.storage.sizeInGb.
+	StorageSizeInGb int32 `json:"storageSizeInGb,omitempty"`
+	// Deprecated: use spec.runtime.env.
+	EnvVars []EnvironmentVariable `json:"envVars,omitempty"`
+	// Deprecated: use spec.runtime.replicas.
+	Replicas int32 `json:"replicas,omitempty"`
+	// Deprecated: use spec.runtime.resources.
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+	// Deprecated: use spec.networking.nodePortServices.
+	NodePortSvc []PaiNodePortSvc `json:"nodePortSvc,omitempty"`
+	// Deprecated: use spec.networking.service.portMappings.
+	PortMappings []PaiPortMapping `json:"portMappings,omitempty"`
+	// Deprecated: use spec.storage.deletePvcOnDelete.
+	IsDeleteOraPvc bool `json:"isDeleteOraPvc,omitempty"`
+	// Deprecated: use spec.storage.logLocation.
+	PaiLogLocation string `json:"paiLogLocation,omitempty"`
 	// +kubebuilder:validation:Enum="true";"false"
+	// Deprecated: use spec.networking.listeners.http.enabled.
 	PaiHTTPEnabled string `json:"paiHTTPEnabled,omitempty"`
 	// +kubebuilder:validation:Enum="true";"false"
+	// Deprecated: use spec.networking.listeners.https.enabled.
 	PaiHTTPSEnabled string `json:"paiHTTPSEnabled,omitempty"`
-	PaiHTTPPort     int32  `json:"paiHTTPPort,omitempty"`
-	PaiHTTPSPort    int32  `json:"paiHTTPSPort,omitempty"`
-	// Deprecated: use spec.paiService.external.port.
+	// Deprecated: use spec.networking.listeners.http.port.
+	PaiHTTPPort int32 `json:"paiHTTPPort,omitempty"`
+	// Deprecated: use spec.networking.listeners.https.port.
+	PaiHTTPSPort int32 `json:"paiHTTPSPort,omitempty"`
+	// Deprecated: use spec.networking.service.external.port.
 	PaiLBPort int32 `json:"paiLBPort,omitempty"`
-	// Deprecated: use spec.paiService.external.loadBalancerIP.
+	// Deprecated: use spec.networking.service.external.loadBalancerIP.
 	PaiLBIP string `json:"paiLBIP,omitempty"`
-	// Deprecated: use spec.paiService.external.externalTrafficPolicy.
+	// Deprecated: use spec.networking.service.external.externalTrafficPolicy.
 	// +kubebuilder:validation:Enum="local";"cluster"
 	PaiLBExternalTrafficPolicy string `json:"paiLBExternalTrafficPolicy,omitempty"`
-	// Deprecated: use spec.paiService.external.internal.
+	// Deprecated: use spec.networking.service.external.internal.
 	// +kubebuilder:validation:Enum="true";"false"
 	PaiInternalLB string `json:"paiInternalLB,omitempty"`
-	// Deprecated: use spec.paiService.external.annotations.
-	PailbAnnotation map[string]string      `json:"pailbAnnotation,omitempty"`
-	WorkerNodes     []string               `json:"workerNodes,omitempty"`
-	TrafficManager  *TrafficManagerRefSpec `json:"trafficManager,omitempty"`
-	Logging         *LoggingSpec           `json:"logging,omitempty"`
+	// Deprecated: use spec.networking.service.external.annotations.
+	PailbAnnotation map[string]string `json:"pailbAnnotation,omitempty"`
+	// Deprecated: use spec.runtime.workerNodes.
+	WorkerNodes []string `json:"workerNodes,omitempty"`
+	// Deprecated: use spec.networking.trafficManager.
+	TrafficManager *TrafficManagerRefSpec `json:"trafficManager,omitempty"`
 }
 
 // PaiSecretSpec stores secret reference and mount details for PrivateAI.
 type PaiSecretSpec struct {
-	Name          string `json:"name,omitempty"`
-	MountLocation string `json:"mountLocation,omitempty"`
+	Name          string            `json:"name,omitempty"`
+	MountLocation string            `json:"mountLocation,omitempty"`
 	Items         []SecretMountItem `json:"items,omitempty"`
 }
 
 // PrivateAiSecuritySpec groups auth secret and TLS settings for PrivateAI.
 type PrivateAiSecuritySpec struct {
-	Secret *PaiSecretSpec `json:"secret,omitempty"`
-	TLS    *PaiTLSSpec    `json:"tls,omitempty"`
+	AuthEnabled *bool          `json:"authEnabled,omitempty"`
+	Secret      *PaiSecretSpec `json:"secret,omitempty"`
+	TLS         *PaiTLSSpec    `json:"tls,omitempty"`
+}
+
+// PrivateAiRuntimeSpec groups runtime image, scaling, and process settings.
+type PrivateAiRuntimeSpec struct {
+	Image                *PrivateAiImageSpec          `json:"image,omitempty"`
+	Replicas             *int32                       `json:"replicas,omitempty"`
+	Env                  []EnvironmentVariable        `json:"env,omitempty"`
+	Resources            *corev1.ResourceRequirements `json:"resources,omitempty"`
+	Debug                *bool                        `json:"debug,omitempty"`
+	ReadinessCheckPeriod *int                         `json:"readinessCheckPeriod,omitempty"`
+	LivenessCheckPeriod  *int                         `json:"livenessCheckPeriod,omitempty"`
+	DownloadScripts      *bool                        `json:"downloadScripts,omitempty"`
+	WorkerNodes          []string                     `json:"workerNodes,omitempty"`
+}
+
+// PrivateAiImageSpec defines the container image settings for PrivateAI.
+type PrivateAiImageSpec struct {
+	Name       string            `json:"name,omitempty"`
+	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
+	PullSecret string            `json:"pullSecret,omitempty"`
+}
+
+// PrivateAiConfigurationSpec groups config map based runtime configuration.
+type PrivateAiConfigurationSpec struct {
+	ConfigFile *PaiConfigMap `json:"configFile,omitempty"`
+}
+
+// PrivateAiStorageSpec groups storage-related options for PrivateAI.
+type PrivateAiStorageSpec struct {
+	StorageClass      string            `json:"storageClass,omitempty"`
+	PvcList           map[string]string `json:"pvcList,omitempty"`
+	SizeInGb          *int32            `json:"sizeInGb,omitempty"`
+	DeletePvcOnDelete *bool             `json:"deletePvcOnDelete,omitempty"`
+	LogLocation       string            `json:"logLocation,omitempty"`
+}
+
+// PrivateAiNetworkingSpec groups listeners, services, and TrafficManager integration.
+type PrivateAiNetworkingSpec struct {
+	Listeners        *PrivateAiListenersSpec `json:"listeners,omitempty"`
+	Service          *PaiServiceSpec         `json:"service,omitempty"`
+	NodePortServices []PaiNodePortSvc        `json:"nodePortServices,omitempty"`
+	TrafficManager   *TrafficManagerRefSpec  `json:"trafficManager,omitempty"`
+}
+
+// PrivateAiListenersSpec defines HTTP/HTTPS listener settings.
+type PrivateAiListenersSpec struct {
+	HTTP  *PrivateAiListenerSpec `json:"http,omitempty"`
+	HTTPS *PrivateAiListenerSpec `json:"https,omitempty"`
+}
+
+// PrivateAiListenerSpec defines one listener's enabled flag and port.
+type PrivateAiListenerSpec struct {
+	Enabled *bool  `json:"enabled,omitempty"`
+	Port    *int32 `json:"port,omitempty"`
 }
 
 // PaiTLSSpec stores TLS secret reference and mount details for PrivateAI HTTPS.
 type PaiTLSSpec struct {
-	SecretName    string `json:"secretName,omitempty"`
-	MountLocation string `json:"mountLocation,omitempty"`
+	SecretName    string            `json:"secretName,omitempty"`
+	MountLocation string            `json:"mountLocation,omitempty"`
 	Items         []SecretMountItem `json:"items,omitempty"`
 }
 
@@ -289,26 +374,6 @@ type PrivateAi struct {
 
 	Spec   PrivateAiSpec   `json:"spec,omitempty"`
 	Status PrivateAiStatus `json:"status,omitempty"`
-}
-
-// EffectiveAuthSecret returns the preferred auth secret configuration, favoring
-// spec.security.secret over the deprecated spec.paiSecret field.
-func EffectiveAuthSecret(spec *PrivateAiSpec) *PaiSecretSpec {
-	if spec == nil {
-		return nil
-	}
-	if spec.Security != nil && spec.Security.Secret != nil {
-		return spec.Security.Secret
-	}
-	return spec.PaiSecret
-}
-
-// EffectiveTLS returns the configured TLS secret settings for PrivateAI HTTPS.
-func EffectiveTLS(spec *PrivateAiSpec) *PaiTLSSpec {
-	if spec == nil || spec.Security == nil {
-		return nil
-	}
-	return spec.Security.TLS
 }
 
 // ReconcileError indicates reconcile cycle failed.
