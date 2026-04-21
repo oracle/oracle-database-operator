@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2024, Oracle and/or its affiliates.
+# Copyright (c) 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 
@@ -9,46 +9,44 @@ metadata:
   name: truecache-sample
   namespace: default
 spec:
-  
-  ## DB edition
-  edition: free
 
-  ## DB Type 
+  ## DB edition
+  ## True Cache is supported only with enterprise edition.
+  edition: enterprise
+
+  ## DB type
   createAs: truecache
 
   ## Reference to the source primary database.
   primarySource:
-    databaseRef: "freedb-sample"
-  
+    databaseRef: "orcl-production"
+
   ## True Cache options
   trueCache:
     ## Accepts a semi colon separated list of `PRIMARY_PDB_SERIVCE_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
     trueCacheServices:
-    # - "FREEPDB1:sales1:sales1_tc"
-    # - "FREEPDB1:sales2:sales2_tc"
-    # - "FREEPDB1:sales3:sales3_tc"
+    # - "APPPDB1:tpdb_primary:tpdb_cache"
 
   ## Optional static host-to-IP mappings added to the True Cache pod /etc/hosts
   ## Useful when the primary database service name must resolve to a fixed IP
   # hostAliases:
   #   - ip: "10.2.1.241"
   #     hostnames:
-  #       - "truecache-production.default.svc.cluster.local"
-  #       - "truecache-production"
+  #       - "orcl-production.internal.example.com"
+  #       - "orcl-production"
 
   ## Grouped security settings
   security:
     secrets:
       admin:
-        secretName: freedb-admin-secret
+        secretName: db-admin-secret
         secretKey: oracle_pwd
         keepSecret: true
 
   ## Database image details
   image:
-    ## Oracle True Cache is only supported with 23ai
-    pullFrom: container-registry.oracle.com/database/free:latest
-
+    ## Oracle True Cache requires a True Cache capable image
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
 
   ## size is the required minimum size of the persistent volume
   ## storageClass is specified for automatic volume provisioning
@@ -60,5 +58,5 @@ spec:
       storageClass: "oci-bv"
       accessMode: "ReadWriteOnce"
 
-  ## Count of Database Pods. Should be 1 for free edition.
+  ## Count of Database Pods. Should be 1 for True Cache.
   replicas: 1

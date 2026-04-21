@@ -55,7 +55,7 @@ export STANDBY_DNS_NAMES=truecache-production.internal.example.com,truecache-pro
 
 The leaf issuance steps use the first hostname in `PRIMARY_DNS_NAMES` or `STANDBY_DNS_NAMES` as the certificate common name and add every hostname in the list as a SAN.
 
-`10-copy-primary-ca-to-standby.sh` normalizes both TLS secrets so `ca.crt` contains the root CA bundle and then copies the primary trust bundle to the True Cache side.
+`10-copy-primary-ca-to-standby.sh` rewrites both TLS secrets so `tls.crt` carries the full `leaf + root` chain and `ca.crt` contains the `intermediate + root` CA bundle before copying the primary trust bundle to the True Cache side.
 
 ## Run
 

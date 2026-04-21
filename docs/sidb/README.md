@@ -386,22 +386,21 @@ This command pulls the Free lite image available in [Oracle Container Registry](
 
 #### Oracle True Cache
 Oracle True Cache is an in-memory, consistent, and automatically managed cache for Oracle Database.  
-To provision a True Cache instance for Oracle Free Database in Kubernetes, use the sample **[`config/samples/sidb/singleinstancedatabase_free-truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_free-truecache.yaml)** file. For example
+To provision a True Cache instance in Kubernetes, use the sample **[`config/samples/sidb/singleinstancedatabase_truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache.yaml)** file. True Cache requires `spec.edition: enterprise`. For example
 
-      kubectl apply -f singleinstancedatabase_free-truecache.yaml
+      kubectl apply -f singleinstancedatabase_truecache.yaml
 
 #### True Cache Related Sample Files
 
 The following sample manifests are the main starting points for True Cache workflows:
 
 - **[`config/samples/sidb/singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml)**: primary SIDB sample. Use this as the starting point when enabling operator-managed True Cache blob generation on the primary database with `spec.trueCache.generateEnabled: true`.
-- **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)**: enterprise primary SIDB sample for True Cache blob generation with TCPS enabled and `hostAliases` configured for peered VCN or cross-region private connectivity scenarios.
-- **[`config/samples/sidb/singleinstancedatabase_primary_external_service.yaml`](../../config/samples/sidb/singleinstancedatabase_primary_external_service.yaml)**: internal NLB service for the primary database that publishes `orcl-production.internal.example.com` through ExternalDNS.
-- **[`config/samples/sidb/singleinstancedatabase_free-truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_free-truecache.yaml)**: basic Oracle Free True Cache sample that references a primary database in the same Kubernetes environment.
-- **[`config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml)**: example `LoadBalancer` Service for a True Cache deployment that must be reachable through an external DNS hostname, such as a private DNS record across clusters or regions.
-- **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)**: enterprise True Cache sample for the True Cache side of a cross-cluster, cross-region, or peered-VCN topology where the primary is reached through a private or externally resolvable endpoint and the blob is consumed from a ConfigMap.
+- **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)**: enterprise primary SIDB sample for True Cache blob generation with TCPS enabled, operator-managed external NLB service exposure, and `hostAliases` fallback for peered VCN or cross-region private connectivity scenarios.
+- **[`config/samples/sidb/singleinstancedatabase_truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache.yaml)**: basic enterprise True Cache sample that references a primary database in the same Kubernetes environment.
+- **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)**: enterprise True Cache sample for the True Cache side of a cross-cluster, cross-region, or peered-VCN topology where the primary is reached through a private or externally resolvable endpoint, the blob is consumed from a ConfigMap, and the operator manages the True Cache internal NLB service.
 - **[`config/samples/sidb/singleinstancedatabase_tcps.yaml`](../../config/samples/sidb/singleinstancedatabase_tcps.yaml)**: TCPS enablement sample for `SingleInstanceDatabase`. Use it as the reference for TLS secret and certificate renewal settings when TCPS is required for the primary or the True Cache database.
-- **[`docs/sidb/external-dns`](./external-dns)**: reusable ExternalDNS workload-identity manifests for publishing OCI private DNS records from internal NLB Services.
+- **[`docs/sidb/external-dns`](./external-dns)**: reusable ExternalDNS workload-identity manifests for publishing OCI private DNS records from operator-managed internal NLB Services into a shared OCI private zone.
+- **[`docs/sidb/external-dns/cleanup-dns.sh`](/scratch/sauahuja/gobin/goprojects/src/github.com/user/dboper/sidb/oracle-database-operator/docs/sidb/external-dns/cleanup-dns.sh)**: helper script for checking or deleting stale shared-zone and legacy-zone DNS `A` and ExternalDNS `TXT` records during cleanup or migration.
 - **[`docs/sidb/tcps-cert-manager`](./tcps-cert-manager)**: reusable cert-manager scripts for issuing the primary and True Cache TCPS TLS secrets.
 - **[`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**: full SIDB template containing the generic `createAs: truecache`, `primarySource`, `trueCache`, `hostAliases`, TCPS, and listener port fields.
 
@@ -411,7 +410,7 @@ For the full workflow covering:
 
 - the primary SIDB manifest
 - the True Cache SIDB manifest
-- the primary and True Cache internal NLB Services
+- the operator-managed primary and True Cache internal NLB Services
 - ExternalDNS on both clusters
 - cert-manager driven TCPS certificates
 
@@ -419,45 +418,9 @@ see **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.m
 
 #### Oracle True Cache Across Clusters with External DNS
 
-When the primary and the True Cache database run in different Kubernetes clusters, the default in-cluster hostname `<truecache-name>.<namespace>.svc.cluster.local` is often not resolvable from the primary cluster. In that topology, expose the True Cache database through a `LoadBalancer` Service with an `external-dns.alpha.kubernetes.io/hostname` annotation.
+When the primary and the True Cache database run in different Kubernetes clusters, the default in-cluster hostname `<truecache-name>.<namespace>.svc.cluster.local` is often not resolvable from the primary cluster. In that topology, configure the operator-managed external service through `spec.services.external` so the generated `LoadBalancer` Service carries the `external-dns.alpha.kubernetes.io/hostname` annotation.
 
-If a `LoadBalancer` Service in the same namespace:
-
-- selects the True Cache pods with `spec.selector.app=<truecache-name>`, and
-- sets `external-dns.alpha.kubernetes.io/hostname`,
-
-then the operator uses that external DNS hostname as the advertised True Cache hostname. If no such Service exists, the operator falls back to `<truecache-name>.<namespace>.svc.cluster.local`.
-
-Create the external Service before creating the True Cache `SingleInstanceDatabase`, so the True Cache pod gets the external hostname during initial provisioning. Use the sample files **[`config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml)** and **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)** as a starting point.
-
-Example `LoadBalancer` Service:
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: truecache-nlb
-  namespace: default
-  annotations:
-    oci.oraclecloud.com/load-balancer-type: "nlb"
-    oci-network-load-balancer.oraclecloud.com/internal: "true"
-    oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaaazrdzcswz3ogz4sziyzcmcau3xql65lgvxfoq7rq5gvsmpcl3vba"
-    external-dns.alpha.kubernetes.io/hostname: "truecache-production.internal.example.com"
-spec:
-  type: LoadBalancer
-  externalTrafficPolicy: Local
-  ports:
-    - name: oracle
-      port: 1521
-      targetPort: 1521
-      protocol: TCP
-    - name: oracle-tcps
-      port: 2484
-      targetPort: 2484
-      protocol: TCP
-  selector:
-    app: truecache-production
-```
+When `spec.services.external` is enabled on the True Cache SIDB, the operator renders `truecache-production-ext`. If that Service sets `external-dns.alpha.kubernetes.io/hostname`, the operator uses that external DNS hostname as the advertised True Cache hostname. If no external service exists, the operator falls back to `<truecache-name>.<namespace>.svc.cluster.local`.
 
 Example True Cache manifest that uses an externally reachable primary database and a generated blob ConfigMap:
 
@@ -474,11 +437,8 @@ spec:
   createAs: truecache
 
   primarySource:
-    details:
-      host: "orcl-production.internal.example.com"
-      port: 1521
-      sid: "ORCLPRD"
-      pdbName: "APPPDB1"
+    connectString: "orcl-production.internal.example.com:1521/ORCLPRD"
+    pdbName: "APPPDB1"
 
   security:
     secrets:
@@ -492,8 +452,6 @@ spec:
     tcps:
       enabled: true
       tlsSecret: sidb-standby-tcps-tls
-
-  tcpsListenerPort: 2484
 
   image:
     pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix-patchnew
@@ -514,20 +472,45 @@ spec:
     trueCacheServices:
       - "APPPDB1:tpdb_primary:tpdb_cache"
 
-  hostAliases:
-    - ip: "10.0.2.137"
-      hostnames:
-        - "orcl-production.internal.example.com"
-        - "orcl-production"
+  services:
+    external:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.ap-mumbai-1.replace-me"
+        external-dns.alpha.kubernetes.io/hostname: "truecache-production.internal.example.com"
+      tcp:
+        enabled: true
+        port: 1521
+      tcps:
+        enabled: true
+        port: 2484
+
+  # hostAliases:
+  #   - ip: "10.0.2.108"
+  #     hostnames:
+  #       - "orcl-production.internal.example.com"
+  #       - "orcl-production"
 
   replicas: 1
 ```
 
-Apply the Service first, then create the True Cache database:
+Create the True Cache database directly; the operator renders the external service:
 
 ```sh
-kubectl apply -f config/samples/sidb/singleinstancedatabase_truecache_external_service.yaml
 kubectl apply -f config/samples/sidb/singleinstancedatabase_truecache_external.yaml
+```
+
+Validation:
+
+```sh
+kubectl get svc -n default orcl-production-ext truecache-production-ext
+oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain orcl-production.internal.example.com --rtype A --scope PRIVATE
+oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain truecache-production.internal.example.com --rtype A --scope PRIVATE
+kubectl exec -n default <primary-pod> -- nslookup truecache-production.internal.example.com
+kubectl exec -n default <truecache-pod> -- nslookup orcl-production.internal.example.com
 ```
 
 #### Additional Information
@@ -933,6 +916,8 @@ As mentioned in the section [Setup Database with LoadBalancer](#setup-database-w
 If `spec.services.external.type` is `LoadBalancer`, then `spec.services.external.tcp.port` and `spec.services.external.tcps.port` are the ports exposed on the load balancer for normal and TCPS database connections respectively. When those port values are omitted, the defaults are 1521 and 2484.
 
 If `spec.services.external.type` is `NodePort`, then `spec.services.external.tcp.nodePort` and `spec.services.external.tcps.nodePort` are the ports opened on the Kubernetes nodes for normal and TCPS database connections respectively. In this case, the allowed range for `nodePort` is 30000-32767.
+
+`spec.services.external.externalTrafficPolicy` can be set to `Cluster` or `Local` for operator-managed external services. When omitted, the default is `Cluster`.
 
 **Note:**
 - `spec.services.external.tcps.enabled` is only valid when TCPS connections are enabled in the database spec with `spec.security.tcps.enabled: true`.

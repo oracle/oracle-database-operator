@@ -3,6 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 resources:
+- service_account.yaml
 - role.yaml
 - role_binding.yaml
 - leader_election_role.yaml
@@ -21,5 +22,4 @@ resources:
 - privateai_privateai_admin_role.yaml
 - privateai_privateai_editor_role.yaml
 - privateai_privateai_viewer_role.yaml
-
 

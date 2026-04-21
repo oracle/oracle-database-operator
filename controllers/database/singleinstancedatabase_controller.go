@@ -102,15 +102,16 @@ type sidbPhaseContext struct {
 }
 
 type sidbResolvedExternalServiceConfig struct {
-	Defined         bool
-	Disabled        bool
-	Type            corev1.ServiceType
-	TCPEnabled      bool
-	TCPServicePort  int32
-	TCPNodePort     int32
-	TCPSEnabled     bool
-	TCPSServicePort int32
-	TCPSNodePort    int32
+	Defined               bool
+	Disabled              bool
+	Type                  corev1.ServiceType
+	ExternalTrafficPolicy corev1.ServiceExternalTrafficPolicyType
+	TCPEnabled            bool
+	TCPServicePort        int32
+	TCPNodePort           int32
+	TCPSEnabled           bool
+	TCPSServicePort       int32
+	TCPSNodePort          int32
 }
 
 func copyStringMap(in map[string]string) map[string]string {
@@ -423,7 +424,10 @@ func usesNewExternalServiceConfig(m *dbapi.SingleInstanceDatabase) bool {
 }
 
 func resolveExternalServiceConfig(m *dbapi.SingleInstanceDatabase) sidbResolvedExternalServiceConfig {
-	cfg := sidbResolvedExternalServiceConfig{Defined: true}
+	cfg := sidbResolvedExternalServiceConfig{
+		Defined:               true,
+		ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyCluster,
+	}
 	tcpsEnabled := getTcpsEnabled(m)
 	tcpsListenerPort := getTcpsListenerPort(m)
 
@@ -437,6 +441,9 @@ func resolveExternalServiceConfig(m *dbapi.SingleInstanceDatabase) sidbResolvedE
 			cfg.Type = corev1.ServiceTypeLoadBalancer
 		default:
 			cfg.Type = corev1.ServiceTypeNodePort
+		}
+		if external.ExternalTrafficPolicy != "" {
+			cfg.ExternalTrafficPolicy = external.ExternalTrafficPolicy
 		}
 
 		if external.TCP != nil && external.TCP.Enabled {
@@ -3271,7 +3278,7 @@ func applyPrimarySeparationPreference(pod *corev1.Pod, sidb *dbapi.SingleInstanc
 //
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleInstanceDatabase,
-	svcName string, ports []corev1.ServicePort, svcType corev1.ServiceType, publishNotReadyAddress bool, annotations map[string]string) *corev1.Service {
+	svcName string, ports []corev1.ServicePort, svcType corev1.ServiceType, publishNotReadyAddress bool, annotations map[string]string, externalTrafficPolicy corev1.ServiceExternalTrafficPolicyType) *corev1.Service {
 	svc := dbcommons.NewRealServiceBuilder().
 		SetName(svcName).
 		SetNamespace(m.Namespace).
@@ -3290,6 +3297,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 		SetPublishNotReadyAddresses(publishNotReadyAddress).
 		SetType(svcType).
 		Build()
+	if svcType != corev1.ServiceTypeClusterIP && externalTrafficPolicy != "" {
+		svc.Spec.ExternalTrafficPolicy = externalTrafficPolicy
+	}
 	_ = ctrl.SetControllerReference(m, &svc, r.Scheme)
 	return &svc
 }
@@ -3740,7 +3750,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			log.Error(err, "Error encountered in obtaining the service", clusterSvcName)
 			return requeueY, err
 		}
-		desiredClusterSvc := r.instantiateSVCSpec(m, clusterSvcName, desiredSIDBClusterServicePorts(tcpsEnabled), corev1.ServiceTypeClusterIP, true, desiredSIDBServiceAnnotations(m, false))
+		desiredClusterSvc := r.instantiateSVCSpec(m, clusterSvcName, desiredSIDBClusterServicePorts(tcpsEnabled), corev1.ServiceTypeClusterIP, true, desiredSIDBServiceAnnotations(m, false), "")
 		log.Info("Creating a new service", "Service.Namespace", desiredClusterSvc.Namespace, "Service.Name", desiredClusterSvc.Name)
 		if err = r.Create(ctx, desiredClusterSvc); err != nil {
 			log.Error(err, "Failed to create new service", "Service.Namespace", desiredClusterSvc.Namespace, "Service.Name", desiredClusterSvc.Name)
@@ -3788,7 +3798,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 			m.Status.TcpsConnectString = dbcommons.ValueUnavailable
 			m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
-			svc := r.instantiateSVCSpec(m, extSvcName, desiredExtPorts, externalCfg.Type, false, desiredSIDBServiceAnnotations(m, true))
+			svc := r.instantiateSVCSpec(m, extSvcName, desiredExtPorts, externalCfg.Type, false, desiredSIDBServiceAnnotations(m, true), externalCfg.ExternalTrafficPolicy)
 			log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 			if err := r.Create(ctx, svc); err != nil {
 				log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
@@ -3809,6 +3819,14 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
 			if err := r.Delete(ctx, extSvc); err != nil {
 				log.Error(err, "Failed to recreate external service", "Service.Namespace", extSvc.Namespace, "Service.Name", extSvc.Name)
+				return requeueY, err
+			}
+			return requeueY, nil
+		case extSvc.Spec.ExternalTrafficPolicy != externalCfg.ExternalTrafficPolicy:
+			m.Status.Status = dbcommons.StatusUpdating
+			extSvc.Spec.ExternalTrafficPolicy = externalCfg.ExternalTrafficPolicy
+			if err := r.Update(ctx, extSvc); err != nil {
+				log.Error(err, "Failed to update external service traffic policy", "Service.Namespace", extSvc.Namespace, "Service.Name", extSvc.Name)
 				return requeueY, err
 			}
 			return requeueY, nil
@@ -7149,6 +7167,7 @@ func SetupListenerForDGOnDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.
 type resolvedPrimaryDatabaseSource struct {
 	databaseRef   string
 	connectString string
+	pdbName       string
 	details       *dbapi.SingleInstanceDatabasePrimaryDetails
 }
 
@@ -7162,7 +7181,10 @@ func resolvePrimaryDatabaseSource(m *dbapi.SingleInstanceDatabase) resolvedPrima
 			return resolvedPrimaryDatabaseSource{databaseRef: ref}
 		}
 		if connectString := strings.TrimSpace(m.Spec.PrimarySource.ConnectString); connectString != "" {
-			return resolvedPrimaryDatabaseSource{connectString: connectString}
+			return resolvedPrimaryDatabaseSource{
+				connectString: connectString,
+				pdbName:       strings.TrimSpace(m.Spec.PrimarySource.Pdbname),
+			}
 		}
 		if m.Spec.PrimarySource.Details != nil {
 			return resolvedPrimaryDatabaseSource{details: m.Spec.PrimarySource.Details}
@@ -7310,6 +7332,9 @@ func GetPrimaryDatabaseSid(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInst
 // GetPrimaryDatabasePdbName returns primary PDB name from explicit details or referenced resource.
 func GetPrimaryDatabasePdbName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
 	source := resolvePrimaryDatabaseSource(m)
+	if strings.TrimSpace(source.pdbName) != "" {
+		return strings.ToUpper(strings.TrimSpace(source.pdbName))
+	}
 	if ref := source.details; ref != nil && strings.TrimSpace(ref.Pdbname) != "" {
 		return strings.ToUpper(strings.TrimSpace(ref.Pdbname))
 	}
@@ -7364,14 +7389,7 @@ func GetPrimaryDatabaseDisplayName(m *dbapi.SingleInstanceDatabase, rp *dbapi.Si
 
 // ShouldCreatePDBFromPrimary determines whether standby should create PDB metadata from primary.
 func ShouldCreatePDBFromPrimary(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	source := resolvePrimaryDatabaseSource(m)
-	if source.hasDetails() {
-		if strings.TrimSpace(GetPrimaryDatabasePdbName(m, rp)) != "" {
-			return "true"
-		}
-		return "false"
-	}
-	if rp != nil && rp.Spec.Pdbname != "" {
+	if strings.TrimSpace(GetPrimaryDatabasePdbName(m, rp)) != "" {
 		return "true"
 	}
 	return "false"

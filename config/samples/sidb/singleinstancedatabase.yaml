@@ -27,9 +27,11 @@ spec:
   ## Reference to a source primary database.
   ## Valid only when createAs is clone, standby or truecache.
   ## Set exactly one of primarySource.databaseRef, primarySource.connectString, or primarySource.details.
+  ## Optional: primarySource.pdbName may be set together with primarySource.connectString.
   primarySource:
   #   databaseRef: sidb-sample
   #   connectString: primary-host:1521/ORCL1
+  #   pdbName: ORCLPDB1
   #   details:
   #     host: primary-host
   #     port: 1521
@@ -161,6 +163,8 @@ spec:
       ## Cloud provider specific annotations, for example a private LoadBalancer service.
       # annotations:
       #   service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+      ## Optional traffic policy for NodePort/LoadBalancer services.
+      # externalTrafficPolicy: Local
       ## LoadBalancer example:
       # type: LoadBalancer
       # tcp:

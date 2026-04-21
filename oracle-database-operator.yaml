@@ -19220,6 +19220,8 @@ spec:
                       sid:
                         type: string
                     type: object
+                  pdbName:
+                    type: string
                 type: object
               readinessCheckPeriod:
                 type: integer
@@ -19552,6 +19554,11 @@ spec:
                         additionalProperties:
                           type: string
                         type: object
+                      externalTrafficPolicy:
+                        enum:
+                        - Cluster
+                        - Local
+                        type: string
                       tcp:
                         properties:
                           enabled:
@@ -20414,6 +20421,12 @@ spec:
     subresources:
       status: {}
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: oracle-database-operator-controller-manager
+  namespace: oracle-database-operator-system
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -20474,6 +20487,7 @@ rules:
   - endpoints
   - events
   - namespaces
+  - nodes
   - persistentvolumeclaim
   - persistentvolumeclaims
   - persistentvolumes
@@ -20844,21 +20858,20 @@ roleRef:
   name: oracle-database-operator-leader-election-role
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: oracle-database-operator-oracle-database-operator-manager-rolebinding
-  namespace: oracle-database-operator-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: oracle-database-operator-manager-role
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -20871,7 +20884,7 @@ roleRef:
   name: oracle-database-operator-oracle-database-operator-proxy-role
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 ---
 apiVersion: v1
@@ -21596,6 +21609,7 @@ spec:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
           readOnly: true
+      serviceAccountName: oracle-database-operator-controller-manager
       terminationGracePeriodSeconds: 10
       volumes:
       - name: cert
