@@ -82,7 +82,7 @@ spec:
   scanSvcTargetPort: 31521
 
   # Optional service account for security context permissions
-  # serviceAccountName: rac   # <-- optional for Vanilla Kubernetes
+  # serviceAccountName: rac   # <-- Required for OpenShift; optional for vanilla Kubernetes
 
   # Database service definition for application connections
   serviceDetails:
