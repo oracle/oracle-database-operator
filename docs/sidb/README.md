@@ -17,6 +17,8 @@ For API migration guidance, see [SingleInstanceDatabase v4 Migration and Support
       * [Free Database](#free-database)
       * [Free Lite Database](#free-lite-database)
       * [Oracle True Cache](#oracle-true-cache)
+      * [True Cache in Same Kubernetes Cluster](#true-cache-in-same-kubernetes-cluster)
+      * [True Cache Across Clusters with External DNS](#true-cache-across-clusters-with-external-dns)
       * [True Cache Peered VCN Setup](#true-cache-peered-vcn-setup)
       * [True Cache Related Sample Files](#true-cache-related-sample-files)
     * [Connecting to Database](#connecting-to-database)
@@ -427,24 +429,14 @@ This command pulls the Free lite image available in [Oracle Container Registry](
 - Oracle Enterprise Manager Express (OEM Express) is not supported in release 23.3.0 and later releases. 
 
 #### Oracle True Cache
-Oracle True Cache is an in-memory, consistent, and automatically managed cache for Oracle Database.  
+Oracle True Cache is an in-memory, consistent, and automatically managed cache for Oracle Database.
+
+##### True Cache in Same Kubernetes Cluster
 To provision a True Cache instance in Kubernetes, use the sample **[`config/samples/sidb/singleinstancedatabase_truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache.yaml)** file. True Cache requires `spec.edition: enterprise`. For example
 
       kubectl apply -f singleinstancedatabase_truecache.yaml
 
-#### True Cache Peered VCN Setup
-
-For the full workflow covering:
-
-- the primary SIDB manifest
-- the True Cache SIDB manifest
-- the operator-managed primary and True Cache internal NLB Services
-- ExternalDNS on both clusters
-- cert-manager driven TCPS certificates
-
-see **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**.
-
-#### Oracle True Cache Across Clusters with External DNS
+##### True Cache Across Clusters with External DNS
 
 When the primary and the True Cache database run in different Kubernetes clusters, the default in-cluster hostname `<truecache-name>.<namespace>.svc.cluster.local` is often not resolvable from the primary cluster. In that topology, configure the operator-managed external service through `spec.services.external` so the generated `LoadBalancer` Service carries the `external-dns.alpha.kubernetes.io/hostname` annotation.
 
@@ -541,13 +533,18 @@ kubectl exec -n default <primary-pod> -- nslookup truecache-production.internal.
 kubectl exec -n default <truecache-pod> -- nslookup orcl-production.internal.example.com
 ```
 
-#### True Cache Related Sample Files
+##### True Cache Peered VCN Setup
+
+For the OCI network setup required before a cross-region or cross-cluster private True Cache deployment, see **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**.
+
+##### True Cache Related Sample Files
 
 Follow these docs in order for a primary and True Cache setup:
 
-- **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**: set up OCI peered VCN connectivity first when the primary and True Cache run in different regions or clusters.
 - **[`Enable True Cache Blob Generation on a Primary Database`](./README.md#enable-true-cache-blob-generation-on-a-primary-database)**: create the primary SIDB and generate the True Cache blob.
-- **[`Oracle True Cache Across Clusters with External DNS`](./README.md#oracle-true-cache-across-clusters-with-external-dns)**: create the True Cache SIDB for the cross-cluster or externally reachable flow.
+- **[`True Cache in Same Kubernetes Cluster`](./README.md#true-cache-in-same-kubernetes-cluster)**: use the standard same-cluster True Cache flow.
+- **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**: set up OCI peered VCN connectivity first when the primary and True Cache run in different regions or clusters.
+- **[`True Cache Across Clusters with External DNS`](./README.md#true-cache-across-clusters-with-external-dns)**: create the True Cache SIDB for the cross-cluster or externally reachable flow.
 - **[`docs/sidb/external-dns/README.md`](./external-dns/README.md)**: configure shared private DNS publication for the operator-managed `*-ext` services.
 - **[`docs/sidb/tcps-cert-manager/README.md`](./tcps-cert-manager/README.md)**: issue and validate the TCPS certificates used by the primary and True Cache databases.
 
