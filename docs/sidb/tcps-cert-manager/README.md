@@ -81,6 +81,26 @@ Or execute individual steps:
 ./docs/sidb/tcps-cert-manager/11-verify-secrets.sh
 ```
 
+## Validation
+
+Verify that cert-manager issued both certificates and populated both TLS secrets:
+
+```bash
+kubectl -n default get certificate sidb-primary-tcps sidb-standby-tcps
+kubectl -n default describe certificate sidb-primary-tcps
+kubectl -n default describe certificate sidb-standby-tcps
+kubectl -n default get secret sidb-primary-tcps-tls sidb-standby-tcps-tls
+./docs/sidb/tcps-cert-manager/11-verify-secrets.sh
+```
+
+Expected results:
+
+- both `Certificate` resources report `READY=True`
+- `sidb-primary-tcps` points to `sidb-primary-tcps-tls`
+- `sidb-standby-tcps` points to `sidb-standby-tcps-tls`
+- each TLS secret exists with type `kubernetes.io/tls`
+- each TLS secret contains `tls.crt`, `tls.key`, and `ca.crt`
+
 ## SIDB Manifest Wiring
 
 Use the generated secrets like this:

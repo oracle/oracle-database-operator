@@ -1,17 +1,203 @@
 # True Cache Peered VCN Setup
 
-This document covers the missing infrastructure pieces around the SIDB True Cache samples when the primary and True Cache databases run in different OKE clusters or regions and communicate over peered VCNs with private DNS and TCPS.
+This document covers both parts of a cross-region True Cache deployment:
 
-It is based on the working `dns-working-files*` and `tcps-cert-manager` flows, but converted into reusable repo-native samples and scripts.
+1. OCI network peering between the primary VCN and the True Cache VCN.
+2. The Kubernetes-side SIDB, ExternalDNS, and TCPS setup after network reachability exists.
+
+Use this when the primary database runs in one OKE cluster or region and the True Cache database runs in another, and both sides must communicate over private IPs.
 
 ## Components
 
-The complete setup has four moving parts:
+The complete setup has five moving parts:
 
-1. Primary SIDB manifest with True Cache blob generation, TCPS enabled, and an operator-managed internal NLB.
-2. True Cache SIDB manifest with an operator-managed internal NLB.
-3. ExternalDNS on each cluster so both operator-managed NLB Services publish into the same authoritative OCI private DNS zone.
-4. cert-manager flow to issue the primary and True Cache TCPS certificates.
+1. OCI DRG and remote peering setup between the two VCNs.
+2. Primary SIDB manifest with True Cache blob generation, TCPS enabled, and an operator-managed internal NLB.
+3. True Cache SIDB manifest with an operator-managed internal NLB.
+4. ExternalDNS on each cluster so both operator-managed NLB Services publish into the same authoritative OCI private DNS zone.
+5. cert-manager flow to issue the primary and True Cache TCPS certificates.
+
+## OCI VCN Peering Setup
+
+At a minimum you need:
+
+1. A DRG in Ashburn for the primary side.
+2. The primary VCN attached to that DRG.
+3. A DRG in Mumbai for the True Cache side.
+4. One remote peering connection on the Ashburn DRG.
+5. One remote peering connection on the Mumbai DRG.
+6. The two RPCs connected to each other.
+
+Important OCI routing notes:
+
+- Associate the correct DRG route tables with both the VCN attachments and the RPC attachments. This is especially important with enhanced DRG.
+- Ensure the DRG import route distributions learn routes from the remote side.
+- Add VCN subnet route rules in each region so traffic for the remote VCN CIDR is sent to the local DRG.
+- Update Security Lists or NSGs to allow ingress and egress between the two VCN CIDRs on the required ports.
+
+Typical ports for this setup:
+
+- TCP `1521` for SQL*Net
+- TCP `2484` for TCPS
+- TCP `5500` if you need OEM Express
+- Any additional application or admin ports your environment requires
+
+## Sample OCI CLI Flow
+
+Set environment variables first:
+
+```sh
+export COMPARTMENT_ID=ocid1.compartment.oc1..replace-me
+
+export ASH_DRG=ocid1.drg.oc1.iad.replace-me
+export MUMBAI_DRG=ocid1.drg.oc1.ap-mumbai-1.replace-me
+
+export ASH_VCN=ocid1.vcn.oc1.iad.replace-me
+export MUMBAI_VCN=ocid1.vcn.oc1.ap-mumbai-1.replace-me
+
+export ASH_VCN_CIDR="10.0.0.0/16"
+export MUMBAI_VCN_CIDR="10.20.0.0/16"
+```
+
+Attach each VCN to its local DRG if that attachment does not already exist:
+
+```sh
+oci network drg-attachment create \
+  --compartment-id "${COMPARTMENT_ID}" \
+  --drg-id "${ASH_DRG}" \
+  --network-details "{\"id\":\"${ASH_VCN}\",\"type\":\"VCN\"}" \
+  --region us-ashburn-1
+
+oci network drg-attachment create \
+  --compartment-id "${COMPARTMENT_ID}" \
+  --drg-id "${MUMBAI_DRG}" \
+  --network-details "{\"id\":\"${MUMBAI_VCN}\",\"type\":\"VCN\"}" \
+  --region ap-mumbai-1
+```
+
+Create one RPC on each DRG:
+
+```sh
+export MUMBAI_RPC=$(oci network remote-peering-connection create \
+  --compartment-id "${COMPARTMENT_ID}" \
+  --drg-id "${MUMBAI_DRG}" \
+  --display-name mumbai-rpc \
+  --region ap-mumbai-1 \
+  --query 'data.id' --raw-output)
+
+export ASH_RPC=$(oci network remote-peering-connection create \
+  --compartment-id "${COMPARTMENT_ID}" \
+  --drg-id "${ASH_DRG}" \
+  --display-name ashburn-rpc \
+  --region us-ashburn-1 \
+  --query 'data.id' --raw-output)
+```
+
+Connect the RPCs:
+
+```sh
+oci network remote-peering-connection connect \
+  --remote-peering-connection-id "${MUMBAI_RPC}" \
+  --peer-id "${ASH_RPC}" \
+  --peer-region-name us-ashburn-1 \
+  --region ap-mumbai-1
+```
+
+Check peering status:
+
+```sh
+oci network remote-peering-connection get \
+  --remote-peering-connection-id "${MUMBAI_RPC}" \
+  --region ap-mumbai-1 \
+  --query 'data."peering-status"'
+
+oci network remote-peering-connection get \
+  --remote-peering-connection-id "${ASH_RPC}" \
+  --region us-ashburn-1 \
+  --query 'data."peering-status"'
+```
+
+Fetch DRG route tables and route distributions:
+
+```sh
+export MUMBAI_DRG_RT=$(oci network drg-route-table list \
+  --drg-id "${MUMBAI_DRG}" \
+  --region ap-mumbai-1 \
+  --query 'data[0].id' --raw-output)
+
+export ASH_DRG_RT=$(oci network drg-route-table list \
+  --drg-id "${ASH_DRG}" \
+  --region us-ashburn-1 \
+  --query 'data[0].id' --raw-output)
+
+export MUMBAI_RD=$(oci network drg-route-distribution list \
+  --drg-id "${MUMBAI_DRG}" \
+  --region ap-mumbai-1 \
+  --query 'data[0].id' --raw-output)
+
+export ASH_RD=$(oci network drg-route-distribution list \
+  --drg-id "${ASH_DRG}" \
+  --region us-ashburn-1 \
+  --query 'data[0].id' --raw-output)
+```
+
+Add subnet route rules so each VCN points the remote CIDR at its local DRG:
+
+```sh
+export ASH_SUBNET_RT=ocid1.routetable.oc1.iad.replace-me
+export MUMBAI_SUBNET_RT=ocid1.routetable.oc1.ap-mumbai-1.replace-me
+
+oci network route-table route-rule add \
+  --route-table-id "${ASH_SUBNET_RT}" \
+  --destination "${MUMBAI_VCN_CIDR}" \
+  --destination-type CIDR_BLOCK \
+  --network-entity-id "${ASH_DRG}" \
+  --region us-ashburn-1
+
+oci network route-table route-rule add \
+  --route-table-id "${MUMBAI_SUBNET_RT}" \
+  --destination "${ASH_VCN_CIDR}" \
+  --destination-type CIDR_BLOCK \
+  --network-entity-id "${MUMBAI_DRG}" \
+  --region ap-mumbai-1
+```
+
+Update Security Lists or NSGs to permit traffic between the two VCN CIDRs. Example for a Security List update:
+
+```sh
+export ASH_SECURITY_LIST=ocid1.securitylist.oc1.iad.replace-me
+export MUMBAI_SECURITY_LIST=ocid1.securitylist.oc1.ap-mumbai-1.replace-me
+
+oci network security-list update \
+  --security-list-id "${ASH_SECURITY_LIST}" \
+  --egress-security-rules "[{\"destination\":\"${MUMBAI_VCN_CIDR}\",\"destination-type\":\"CIDR_BLOCK\",\"protocol\":\"all\"}]" \
+  --region us-ashburn-1
+
+oci network security-list update \
+  --security-list-id "${MUMBAI_SECURITY_LIST}" \
+  --egress-security-rules "[{\"destination\":\"${ASH_VCN_CIDR}\",\"destination-type\":\"CIDR_BLOCK\",\"protocol\":\"all\"}]" \
+  --region ap-mumbai-1
+```
+
+Validate the network layer before touching SIDB:
+
+```sh
+oci network drg-route-rule list --drg-route-table-id "${ASH_DRG_RT}" --region us-ashburn-1
+oci network drg-route-rule list --drg-route-table-id "${MUMBAI_DRG_RT}" --region ap-mumbai-1
+```
+
+If you have test instances or nodes in both VCNs, verify private connectivity in both directions:
+
+```sh
+ping <remote-private-ip>
+```
+
+Do not proceed to the Kubernetes steps until:
+
+- both RPCs show `PEERED`
+- both DRGs have the expected remote VCN routes
+- both subnet route tables point remote CIDRs to the local DRG
+- security rules allow traffic between the two VCN CIDRs
 
 ## SIDB Samples
 
@@ -102,6 +288,10 @@ oci dns record rrset get --zone-name-or-id <zone-ocid> --domain truecache-produc
 TCPS secrets:
 
 ```sh
+kubectl -n default get certificate sidb-primary-tcps sidb-standby-tcps
+kubectl -n default describe certificate sidb-primary-tcps
+kubectl -n default describe certificate sidb-standby-tcps
+kubectl -n default get secret sidb-primary-tcps-tls sidb-standby-tcps-tls
 ./docs/sidb/tcps-cert-manager/11-verify-secrets.sh
 ```
 
