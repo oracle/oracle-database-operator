@@ -742,6 +742,8 @@ spec:
                       sid:
                         type: string
                     type: object
+                  pdbName:
+                    type: string
                 type: object
               readinessCheckPeriod:
                 type: integer
@@ -1074,6 +1076,11 @@ spec:
                         additionalProperties:
                           type: string
                         type: object
+                      externalTrafficPolicy:
+                        enum:
+                        - Cluster
+                        - Local
+                        type: string
                       tcp:
                         properties:
                           enabled:

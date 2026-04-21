@@ -77,6 +77,24 @@ func TestSIDBUnit_GetPrimaryDatabaseInfoFromConnectString(t *testing.T) {
 	}
 }
 
+func TestSIDBUnit_GetPrimaryDatabasePdbNameFromConnectStringSource(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				ConnectString: "primary-host:1522/primdb",
+				Pdbname:       "appPdb1",
+			},
+		},
+	}
+
+	if got := GetPrimaryDatabasePdbName(sidb, nil); got != "APPPDB1" {
+		t.Fatalf("expected primary pdb name from connect string source, got %q", got)
+	}
+	if got := ShouldCreatePDBFromPrimary(sidb, nil); got != "true" {
+		t.Fatalf("expected create_pdb to be true for connect string source with pdbName, got %q", got)
+	}
+}
+
 func TestSIDBUnit_IsLocalPrimaryDatabaseSource(t *testing.T) {
 	local := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{
@@ -958,11 +976,33 @@ func TestSIDBUnit_ResolveExternalServiceConfigUsesNewLoadBalancerDefaults(t *tes
 	if cfg.Type != corev1.ServiceTypeLoadBalancer {
 		t.Fatalf("expected load balancer type, got %q", cfg.Type)
 	}
+	if cfg.ExternalTrafficPolicy != corev1.ServiceExternalTrafficPolicyCluster {
+		t.Fatalf("expected default external traffic policy Cluster, got %q", cfg.ExternalTrafficPolicy)
+	}
 	if !cfg.TCPEnabled || cfg.TCPServicePort != dbcommons.CONTAINER_LISTENER_PORT {
 		t.Fatalf("expected default tcp load balancer port %d, got %#v", dbcommons.CONTAINER_LISTENER_PORT, cfg)
 	}
 	if !cfg.TCPSEnabled || cfg.TCPSServicePort != dbcommons.CONTAINER_TCPS_PORT {
 		t.Fatalf("expected default tcps load balancer port %d, got %#v", dbcommons.CONTAINER_TCPS_PORT, cfg)
+	}
+}
+
+func TestSIDBUnit_ResolveExternalServiceConfigUsesRequestedExternalTrafficPolicy(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Services: &dbapi.SingleInstanceDatabaseServices{
+				External: &dbapi.SingleInstanceDatabaseExternalService{
+					Type:                  dbapi.SingleInstanceDatabaseExternalServiceTypeLoadBalancer,
+					ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
+					TCP:                   &dbapi.SingleInstanceDatabaseExternalServicePort{Enabled: true},
+				},
+			},
+		},
+	}
+
+	cfg := resolveExternalServiceConfig(sidb)
+	if cfg.ExternalTrafficPolicy != corev1.ServiceExternalTrafficPolicyLocal {
+		t.Fatalf("expected external traffic policy Local, got %q", cfg.ExternalTrafficPolicy)
 	}
 }
 

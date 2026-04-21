@@ -230,9 +230,11 @@ type SingleInstanceDatabaseExternalService struct {
 	// +kubebuilder:validation:Enum=Disabled;NodePort;LoadBalancer
 	Type SingleInstanceDatabaseExternalServiceType `json:"type,omitempty"`
 	// Annotations are applied to the external Service regardless of whether it is rendered as NodePort or LoadBalancer.
-	Annotations map[string]string                          `json:"annotations,omitempty"`
-	TCP         *SingleInstanceDatabaseExternalServicePort `json:"tcp,omitempty"`
-	TCPS        *SingleInstanceDatabaseExternalServicePort `json:"tcps,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+	// +kubebuilder:validation:Enum=Cluster;Local
+	ExternalTrafficPolicy corev1.ServiceExternalTrafficPolicyType    `json:"externalTrafficPolicy,omitempty"`
+	TCP                   *SingleInstanceDatabaseExternalServicePort `json:"tcp,omitempty"`
+	TCPS                  *SingleInstanceDatabaseExternalServicePort `json:"tcps,omitempty"`
 }
 
 type SingleInstanceDatabaseExternalServicePort struct {
@@ -332,9 +334,11 @@ type SingleInstanceDatabasePrimaryDetails struct {
 }
 
 type SingleInstanceDatabasePrimarySource struct {
-	DatabaseRef   string                                `json:"databaseRef,omitempty"`
-	ConnectString string                                `json:"connectString,omitempty"`
-	Details       *SingleInstanceDatabasePrimaryDetails `json:"details,omitempty"`
+	DatabaseRef   string `json:"databaseRef,omitempty"`
+	ConnectString string `json:"connectString,omitempty"`
+	// Pdbname optionally supplies the primary PDB name when the source is expressed as connectString.
+	Pdbname string                                `json:"pdbName,omitempty"`
+	Details *SingleInstanceDatabasePrimaryDetails `json:"details,omitempty"`
 }
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC

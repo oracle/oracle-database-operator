@@ -71,6 +71,24 @@ spec:
     generateEnabled: true
     generatePath: "/tmp/tc_config_blob.tar.gz"
 
+  ## Optional external service managed by the operator.
+  ## This renders a Service named <sidb-name>-ext, for example orcl-production-ext.
+  services:
+    external:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.replace-me"
+        external-dns.alpha.kubernetes.io/hostname: "orcl-production.internal.example.com"
+      tcp:
+        enabled: true
+        port: 1521
+      tcps:
+        enabled: true
+        port: 2484
+
   ## Use hostAliases when the remote True Cache hostname resolves over peered VCNs
   ## but cross-region private DNS forwarding or association is not yet configured.
   hostAliases:

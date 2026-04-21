@@ -12,5 +12,5 @@ roleRef:
   name: leader-election-role
 subjects:
 - kind: ServiceAccount
-  name: default
-  namespace: oracle-db
+  name: controller-manager
+  namespace: oracle-database-operator-system

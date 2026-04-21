@@ -16,6 +16,7 @@ func sidbWebhookValidBaseSpec() *SingleInstanceDatabase {
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb-test", Namespace: "default"},
 		Spec: SingleInstanceDatabaseSpec{
 			CreateAs: "primary",
+			Edition:  "enterprise",
 			Image:    SingleInstanceDatabaseImage{},
 		},
 	}
@@ -127,7 +128,8 @@ func TestSIDBWebhookAllowsNewExternalNodePortConfig(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.Services = &SingleInstanceDatabaseServices{
 		External: &SingleInstanceDatabaseExternalService{
-			Type: SingleInstanceDatabaseExternalServiceTypeNodePort,
+			Type:                  SingleInstanceDatabaseExternalServiceTypeNodePort,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
 			Annotations: map[string]string{
 				"service.beta.kubernetes.io/oci-load-balancer-internal": "true",
 			},
@@ -137,6 +139,20 @@ func TestSIDBWebhookAllowsNewExternalNodePortConfig(t *testing.T) {
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
 		t.Fatalf("expected no validation errors for services.external nodeport config, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookRejectsExternalTrafficPolicyWhenDisabled(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Services = &SingleInstanceDatabaseServices{
+		External: &SingleInstanceDatabaseExternalService{
+			Type:                  SingleInstanceDatabaseExternalServiceTypeDisabled,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when externalTrafficPolicy is set for disabled external service")
 	}
 }
 
@@ -221,6 +237,83 @@ func TestSIDBDeprecatedFieldWarnings(t *testing.T) {
 	}
 }
 
+func TestSIDBWebhookDefaultAliasesLegacyResourceFields(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.ResourceRequirements = &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1"),
+			corev1.ResourceMemory: resource.MustParse("2Gi"),
+		},
+	}
+
+	if err := (&SingleInstanceDatabase{}).Default(context.Background(), sidb); err != nil {
+		t.Fatalf("expected default to succeed, got: %v", err)
+	}
+	if sidb.Spec.Resources == nil {
+		t.Fatalf("expected spec.resources to be defaulted from legacy spec.resourceRequirements")
+	}
+	if !sidb.Spec.Resources.Requests.Cpu().Equal(*sidb.Spec.ResourceRequirements.Requests.Cpu()) {
+		t.Fatalf("expected cpu requests to match after alias defaulting")
+	}
+	if !sidb.Spec.Resources.Requests.Memory().Equal(*sidb.Spec.ResourceRequirements.Requests.Memory()) {
+		t.Fatalf("expected memory requests to match after alias defaulting")
+	}
+}
+
+func TestSIDBWebhookAllowsEquivalentResourceAliases(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	rr := &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1"),
+			corev1.ResourceMemory: resource.MustParse("2Gi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2"),
+			corev1.ResourceMemory: resource.MustParse("4Gi"),
+		},
+	}
+	sidb.Spec.Resources = rr.DeepCopy()
+	sidb.Spec.ResourceRequirements = rr.DeepCopy()
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation errors for equivalent resource aliases, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookDefaultDoesNotBackfillDeprecatedResourceField(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Resources = &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU: resource.MustParse("1"),
+		},
+	}
+
+	if err := (&SingleInstanceDatabase{}).Default(context.Background(), sidb); err != nil {
+		t.Fatalf("expected default to succeed, got: %v", err)
+	}
+	if sidb.Spec.ResourceRequirements != nil {
+		t.Fatalf("expected deprecated spec.resourceRequirements to remain unset for new manifests")
+	}
+}
+
+func TestSIDBWebhookRejectsConflictingResourceAliases(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Resources = &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU: resource.MustParse("1"),
+		},
+	}
+	sidb.Spec.ResourceRequirements = &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU: resource.MustParse("2"),
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for conflicting resource alias values")
+	}
+}
+
 func TestSIDBWebhookAllowsLegacyTcpsListenerPortOutsideNodePortRange(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{
@@ -274,6 +367,36 @@ func TestSIDBWebhookValidateUpdateRejectsSpecChangeWhenLockedWithoutOverride(t *
 	}
 	if !strings.Contains(err.Error(), "spec updates are blocked while controller operation is in progress") {
 		t.Fatalf("expected lock rejection message, got: %v", err)
+	}
+}
+
+func TestSIDBWebhookValidateUpdateAllowsResourceAliasNormalizationWhenLocked(t *testing.T) {
+	oldObj := &SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb1", Namespace: "ns1", Generation: 3},
+		Spec: SingleInstanceDatabaseSpec{
+			ResourceRequirements: &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("2Gi"),
+				},
+			},
+		},
+		Status: SingleInstanceDatabaseStatus{
+			Conditions: []metav1.Condition{{
+				Type:               lockpolicy.DefaultReconcilingConditionType,
+				Status:             metav1.ConditionTrue,
+				Reason:             lockpolicy.DefaultUpdateLockReason,
+				ObservedGeneration: 2,
+				Message:            "controller operation in progress",
+			}},
+		},
+	}
+	newObj := oldObj.DeepCopy()
+	newObj.Spec.Resources = oldObj.Spec.ResourceRequirements.DeepCopy()
+	newObj.Spec.ResourceRequirements = nil
+
+	if _, err := (&SingleInstanceDatabase{}).ValidateUpdate(context.Background(), oldObj, newObj); err != nil {
+		t.Fatalf("expected alias-only normalization to be ignored for locked spec comparison, got: %v", err)
 	}
 }
 
@@ -749,6 +872,33 @@ func TestSIDBWebhookPrimarySourceRejectsMixedFields(t *testing.T) {
 	}
 }
 
+func TestSIDBWebhookPrimarySourceAllowsConnectStringWithPdbName(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.Edition = "enterprise"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		ConnectString: "primary-host:1521/PRIM",
+		Pdbname:       "PRIMPDB",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected no validation error when primarySource sets connectString with pdbName, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookPrimarySourceRejectsPdbNameWithoutConnectString(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "truecache"
+	sidb.Spec.Edition = "enterprise"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		Pdbname: "PRIMPDB",
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when primarySource.pdbName is set without connectString")
+	}
+}
+
 func TestSIDBWebhookPrimarySourceRejectsDeprecatedPrimaryDatabaseRefMix(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "standby"
@@ -768,6 +918,25 @@ func TestSIDBWebhookTrueCacheRequiresPrimarySource(t *testing.T) {
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
 		t.Fatalf("expected validation error when truecache omits primary source")
+	}
+}
+
+func TestSIDBWebhookTrueCacheRejectsNonEnterpriseEdition(t *testing.T) {
+	testCases := []string{"free", "standard", "express", ""}
+
+	for _, edition := range testCases {
+		t.Run(edition, func(t *testing.T) {
+			sidb := sidbWebhookValidBaseSpec()
+			sidb.Spec.CreateAs = "truecache"
+			sidb.Spec.Edition = edition
+			sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+				DatabaseRef: "primary-db",
+			}
+
+			if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+				t.Fatalf("expected validation error when truecache uses edition %q", edition)
+			}
+		})
 	}
 }
 

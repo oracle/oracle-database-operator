@@ -53,6 +53,7 @@ import (
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -84,6 +85,8 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 	sidb := obj
 
 	singleinstancedatabaselog.Info("default", "name", sidb.Name)
+
+	defaultSIDBResourceAliases(&sidb.Spec)
 
 	if sidb.Spec.LoadBalancer {
 		if sidb.Spec.ServiceAnnotations == nil {
@@ -261,7 +264,11 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 
 	allErrs := validateSingleInstanceDatabaseSpec(newSidb)
 	warnings := sidbDeprecatedFieldWarnings(newSidb)
-	specChanged := !reflect.DeepEqual(oldSidb.Spec, newSidb.Spec)
+	oldForCompare := oldSidb.DeepCopy()
+	newForCompare := newSidb.DeepCopy()
+	normalizeSIDBResourceAliases(&oldForCompare.Spec)
+	normalizeSIDBResourceAliases(&newForCompare.Spec)
+	specChanged := !reflect.DeepEqual(oldForCompare.Spec, newForCompare.Spec)
 	if specChanged {
 		if locked, lockGen, lockMsg := lockpolicy.IsControllerUpdateLocked(oldSidb.Status.Conditions, lockpolicy.DefaultReconcilingConditionType, lockpolicy.DefaultUpdateLockReason); locked {
 			if overrideEnabled, _ := lockpolicy.IsUpdateLockOverrideEnabled(newSidb.GetAnnotations(), lockpolicy.DefaultOverrideAnnotation); !overrideEnabled {
@@ -574,6 +581,20 @@ func validateSIDBExternalServices(path *field.Path, sidb *SingleInstanceDatabase
 		allErrs = append(allErrs, field.Required(typePath, "type must be set to Disabled, NodePort, or LoadBalancer"))
 		return allErrs
 	}
+	if external.ExternalTrafficPolicy != "" {
+		switch external.ExternalTrafficPolicy {
+		case corev1.ServiceExternalTrafficPolicyCluster, corev1.ServiceExternalTrafficPolicyLocal:
+		default:
+			allErrs = append(allErrs, field.NotSupported(
+				path.Child("externalTrafficPolicy"),
+				external.ExternalTrafficPolicy,
+				[]string{string(corev1.ServiceExternalTrafficPolicyCluster), string(corev1.ServiceExternalTrafficPolicyLocal)},
+			))
+		}
+		if external.Type == SingleInstanceDatabaseExternalServiceTypeDisabled {
+			allErrs = append(allErrs, field.Forbidden(path.Child("externalTrafficPolicy"), "externalTrafficPolicy is not used when external service type is Disabled"))
+		}
+	}
 
 	tcpEnabled := external.TCP != nil && external.TCP.Enabled
 	tcpsEnabled := external.TCPS != nil && external.TCPS.Enabled
@@ -801,6 +822,27 @@ func hasSIDBEnvVar(envs []corev1.EnvVar, name string) bool {
 	return false
 }
 
+func defaultSIDBResourceAliases(spec *SingleInstanceDatabaseSpec) {
+	if spec == nil {
+		return
+	}
+	if spec.Resources == nil && spec.ResourceRequirements != nil {
+		spec.Resources = spec.ResourceRequirements.DeepCopy()
+	}
+}
+
+func normalizeSIDBResourceAliases(spec *SingleInstanceDatabaseSpec) {
+	if spec == nil {
+		return
+	}
+	switch {
+	case spec.Resources == nil && spec.ResourceRequirements != nil:
+		spec.Resources = spec.ResourceRequirements.DeepCopy()
+	case spec.ResourceRequirements == nil && spec.Resources != nil:
+		spec.ResourceRequirements = spec.Resources.DeepCopy()
+	}
+}
+
 func validateSingleInstanceDatabaseResourceFields(sidb *SingleInstanceDatabase) field.ErrorList {
 	var allErrs field.ErrorList
 	specPath := field.NewPath("spec")
@@ -821,8 +863,9 @@ func validateSingleInstanceDatabaseResourceFields(sidb *SingleInstanceDatabase) 
 		}
 	}
 
-	if sidb.Spec.Resources != nil && sidb.Spec.ResourceRequirements != nil {
-		allErrs = append(allErrs, field.Forbidden(specPath.Child("resourceRequirements"), "cannot be set together with spec.resources"))
+	if sidb.Spec.Resources != nil && sidb.Spec.ResourceRequirements != nil &&
+		!apiequality.Semantic.DeepEqual(*sidb.Spec.Resources, *sidb.Spec.ResourceRequirements) {
+		allErrs = append(allErrs, field.Forbidden(specPath.Child("resourceRequirements"), "must match spec.resources when both fields are set"))
 	}
 	validateResourceRequirements(sidb.Spec.Resources, specPath.Child("resources"))
 	validateResourceRequirements(sidb.Spec.ResourceRequirements, specPath.Child("resourceRequirements"))
@@ -864,6 +907,9 @@ func validateSIDBTrueCacheByMode(sidb *SingleInstanceDatabase, mode string) fiel
 	}
 
 	if mode == "truecache" {
+		if strings.ToLower(strings.TrimSpace(sidb.Spec.Edition)) != "enterprise" {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("edition"), sidb.Spec.Edition, "truecache requires edition=enterprise"))
+		}
 		if tc == nil {
 			return allErrs
 		}
@@ -944,6 +990,15 @@ func resolvePrimarySourceConnectString(sidb *SingleInstanceDatabase) string {
 	return ""
 }
 
+func resolvePrimarySourcePdbName(sidb *SingleInstanceDatabase) string {
+	if sidb.Spec.PrimarySource != nil {
+		if pdbName := strings.TrimSpace(sidb.Spec.PrimarySource.Pdbname); pdbName != "" {
+			return pdbName
+		}
+	}
+	return ""
+}
+
 func resolvePrimarySourceDetails(sidb *SingleInstanceDatabase) *SingleInstanceDatabasePrimaryDetails {
 	if sidb.Spec.PrimarySource != nil && sidb.Spec.PrimarySource.Details != nil {
 		return sidb.Spec.PrimarySource.Details
@@ -969,7 +1024,7 @@ func resolveEffectivePrimarySource(sidb *SingleInstanceDatabase) string {
 		return "databaseRef:" + ref
 	}
 	if connectString := resolvePrimarySourceConnectString(sidb); connectString != "" {
-		return "connectString:" + connectString
+		return "connectString:" + connectString + "|pdbName:" + resolvePrimarySourcePdbName(sidb)
 	}
 	if details := resolvePrimarySourceDetails(sidb); details != nil {
 		return fmt.Sprintf("details:%s:%d/%s/%s",
@@ -1114,6 +1169,10 @@ func validatePrimarySourceSpec(sidb *SingleInstanceDatabase, mode string) field.
 		}
 		if selected > 1 {
 			allErrs = append(allErrs, field.Forbidden(sourcePath, "databaseRef, connectString, and details are mutually exclusive; set only one"))
+		}
+		if pdbName := strings.TrimSpace(sidb.Spec.PrimarySource.Pdbname); pdbName != "" &&
+			strings.TrimSpace(sidb.Spec.PrimarySource.ConnectString) == "" {
+			allErrs = append(allErrs, field.Forbidden(sourcePath.Child("pdbName"), "pdbName is supported only together with primarySource.connectString"))
 		}
 	}
 

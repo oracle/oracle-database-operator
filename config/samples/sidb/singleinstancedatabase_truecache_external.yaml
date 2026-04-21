@@ -19,11 +19,8 @@ spec:
   ## Use a primary endpoint reachable from this cluster, for example through
   ## peered VCNs, private DNS, or another cluster-private service endpoint.
   primarySource:
-    details:
-      host: "orcl-production.internal.example.com"
-      port: 1521
-      sid: "ORCLPRD"
-      pdbName: "APPPDB1"
+    connectString: "orcl-production.internal.example.com:1521/ORCLPRD"
+    pdbName: "APPPDB1"
 
   ## Use only alphanumeric characters for sid
   sid: ORCLPRD
@@ -44,9 +41,6 @@ spec:
     tcps:
       enabled: true
       tlsSecret: sidb-standby-tcps-tls
-
-  ## Optional TCPS listener exposure for clients.
-  tcpsListenerPort: 2484
 
   ## Database image details
   image:
@@ -70,13 +64,31 @@ spec:
     trueCacheServices:
       - "APPPDB1:tpdb_primary:tpdb_cache"
 
+  ## Optional operator-managed external service for the truecache database.
+  ## This renders a Service named <sidb-name>-ext, for example truecache-production-ext.
+  services:
+    external:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.ap-mumbai-1.replace-me"
+        external-dns.alpha.kubernetes.io/hostname: "truecache-production.internal.example.com"
+      tcp:
+        enabled: true
+        port: 1521
+      tcps:
+        enabled: true
+        port: 2484
+
   ## Optional mapping for the remote primary endpoint when cluster DNS or
-  ## private DNS forwarding is not available in this cluster.
-  hostAliases:
-    - ip: "10.0.2.137"
-      hostnames:
-        - "orcl-production.internal.example.com"
-        - "orcl-production"
+  ## shared-zone visibility is not available in this cluster.
+  # hostAliases:
+  #   - ip: "10.0.2.108"
+  #     hostnames:
+  #       - "orcl-production.internal.example.com"
+  #       - "orcl-production"
 
   ## Count of Database Pods. Should be 1 for True Cache.
   replicas: 1
