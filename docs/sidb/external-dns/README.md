@@ -34,7 +34,7 @@ kubectl apply -f docs/sidb/external-dns/04-external-dns-deployment-workload-iden
 
 DNS cleanup helper:
 
-- Use [`docs/sidb/external-dns/cleanup-dns.sh`](/scratch/sauahuja/gobin/goprojects/src/github.com/user/dboper/sidb/oracle-database-operator/docs/sidb/external-dns/cleanup-dns.sh) to inspect or delete stale `A` and ExternalDNS `TXT` records.
+- Use [`cleanup-dns.sh`](./cleanup-dns.sh) to inspect or delete stale `A` and ExternalDNS `TXT` records.
 - By default it checks the shared zone only. Set `LEGACY_ZONE_ID` if you also want to clean a previous local zone during migration from separate zones to a shared zone.
 
 Examples:

@@ -434,17 +434,13 @@ To provision a True Cache instance in Kubernetes, use the sample **[`config/samp
 
 #### True Cache Related Sample Files
 
-The following sample manifests are the main starting points for True Cache workflows:
+Follow these docs in order for a primary and True Cache setup:
 
-- **[`config/samples/sidb/singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml)**: primary SIDB starting point for generating the True Cache blob on the primary.
-- **[`config/samples/sidb/singleinstancedatabase_truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache.yaml)**: basic True Cache sample for a same-cluster setup.
-- **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)**: primary-side sample for peered or cross-cluster TCPS setups.
-- **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)**: True Cache-side sample for peered or cross-cluster setups with operator-managed external service exposure.
-- **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**: end-to-end peered VCN workflow covering the primary sample, the True Cache sample, ExternalDNS, and cert-manager TCPS setup.
-- **[`docs/sidb/external-dns`](./external-dns)**: shared-zone ExternalDNS manifests and cleanup helper for the operator-managed `*-ext` services.
-- **[`docs/sidb/tcps-cert-manager`](./tcps-cert-manager)**: cert-manager scripts for issuing the primary and True Cache TCPS secrets.
-- **[`config/samples/sidb/singleinstancedatabase_tcps.yaml`](../../config/samples/sidb/singleinstancedatabase_tcps.yaml)**: generic TCPS reference sample for `SingleInstanceDatabase`.
-- **[`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**: full SIDB template with all related fields, including `primarySource`, `trueCache`, `services`, and `hostAliases`.
+- **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**: set up OCI peered VCN connectivity first when the primary and True Cache run in different regions or clusters.
+- **[`docs/sidb/README.md`](./README.md#enable-true-cache-blob-generation-on-a-primary-database)**: create the primary SIDB and generate the True Cache blob.
+- **[`docs/sidb/README.md`](./README.md#oracle-true-cache-across-clusters-with-external-dns)**: create the True Cache SIDB for the cross-cluster or externally reachable flow.
+- **[`docs/sidb/external-dns/README.md`](./external-dns/README.md)**: configure shared private DNS publication for the operator-managed `*-ext` services.
+- **[`docs/sidb/tcps-cert-manager/README.md`](./tcps-cert-manager/README.md)**: issue and validate the TCPS certificates used by the primary and True Cache databases.
 
 #### True Cache Peered VCN Setup
 
