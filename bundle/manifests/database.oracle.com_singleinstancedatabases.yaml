@@ -670,7 +670,7 @@ spec:
                 type: integer
               replicas:
                 type: integer
-              resourceRequirements:
+              resources:
                 properties:
                   claims:
                     items:

@@ -20,7 +20,6 @@ spec:
   ## peered VCNs, private DNS, or another cluster-private service endpoint.
   primarySource:
     connectString: "orcl-production.internal.example.com:1521/ORCLPRD"
-    pdbName: "APPPDB1"
 
   ## Use only alphanumeric characters for sid
   sid: ORCLPRD

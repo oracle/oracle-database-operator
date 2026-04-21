@@ -53,7 +53,6 @@ import (
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 
 	corev1 "k8s.io/api/core/v1"
-	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -85,8 +84,6 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 	sidb := obj
 
 	singleinstancedatabaselog.Info("default", "name", sidb.Name)
-
-	defaultSIDBResourceAliases(&sidb.Spec)
 
 	if sidb.Spec.LoadBalancer {
 		if sidb.Spec.ServiceAnnotations == nil {
@@ -266,8 +263,6 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 	warnings := sidbDeprecatedFieldWarnings(newSidb)
 	oldForCompare := oldSidb.DeepCopy()
 	newForCompare := newSidb.DeepCopy()
-	normalizeSIDBResourceAliases(&oldForCompare.Spec)
-	normalizeSIDBResourceAliases(&newForCompare.Spec)
 	specChanged := !reflect.DeepEqual(oldForCompare.Spec, newForCompare.Spec)
 	if specChanged {
 		if locked, lockGen, lockMsg := lockpolicy.IsControllerUpdateLocked(oldSidb.Status.Conditions, lockpolicy.DefaultReconcilingConditionType, lockpolicy.DefaultUpdateLockReason); locked {
@@ -547,9 +542,6 @@ func sidbDeprecatedFieldWarnings(sidb *SingleInstanceDatabase) admission.Warning
 	if strings.TrimSpace(sidb.Spec.AdminPassword.SecretName) != "" {
 		warnings = append(warnings, "spec.adminPassword is deprecated; use spec.security.secrets.admin")
 	}
-	if sidb.Spec.ResourceRequirements != nil {
-		warnings = append(warnings, "spec.resourceRequirements is deprecated; use spec.resources")
-	}
 	if strings.TrimSpace(sidb.Spec.Persistence.Size) != "" {
 		warnings = append(warnings, "spec.persistence.size is deprecated; use spec.persistence.oradata.size")
 	}
@@ -822,27 +814,6 @@ func hasSIDBEnvVar(envs []corev1.EnvVar, name string) bool {
 	return false
 }
 
-func defaultSIDBResourceAliases(spec *SingleInstanceDatabaseSpec) {
-	if spec == nil {
-		return
-	}
-	if spec.Resources == nil && spec.ResourceRequirements != nil {
-		spec.Resources = spec.ResourceRequirements.DeepCopy()
-	}
-}
-
-func normalizeSIDBResourceAliases(spec *SingleInstanceDatabaseSpec) {
-	if spec == nil {
-		return
-	}
-	switch {
-	case spec.Resources == nil && spec.ResourceRequirements != nil:
-		spec.Resources = spec.ResourceRequirements.DeepCopy()
-	case spec.ResourceRequirements == nil && spec.Resources != nil:
-		spec.ResourceRequirements = spec.Resources.DeepCopy()
-	}
-}
-
 func validateSingleInstanceDatabaseResourceFields(sidb *SingleInstanceDatabase) field.ErrorList {
 	var allErrs field.ErrorList
 	specPath := field.NewPath("spec")
@@ -863,12 +834,7 @@ func validateSingleInstanceDatabaseResourceFields(sidb *SingleInstanceDatabase) 
 		}
 	}
 
-	if sidb.Spec.Resources != nil && sidb.Spec.ResourceRequirements != nil &&
-		!apiequality.Semantic.DeepEqual(*sidb.Spec.Resources, *sidb.Spec.ResourceRequirements) {
-		allErrs = append(allErrs, field.Forbidden(specPath.Child("resourceRequirements"), "must match spec.resources when both fields are set"))
-	}
 	validateResourceRequirements(sidb.Spec.Resources, specPath.Child("resources"))
-	validateResourceRequirements(sidb.Spec.ResourceRequirements, specPath.Child("resourceRequirements"))
 
 	return allErrs
 }

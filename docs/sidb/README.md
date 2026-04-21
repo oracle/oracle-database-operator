@@ -1280,7 +1280,6 @@ spec:
 
   primarySource:
     connectString: "orcl-production.internal.example.com:1521/ORCLPRD"
-    pdbName: "APPPDB1"
 
   security:
     secrets:
