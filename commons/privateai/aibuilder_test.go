@@ -111,3 +111,78 @@ func TestBuildVolumeMountSpecForPrivateAI_UsesSingleMountForSharedSecretMount(t 
 		t.Fatalf("expected shared mount path /run/secrets, got %q", mounts[0].MountPath)
 	}
 }
+
+func TestBuildVolumeSpecForPrivateAI_UsesItemMappings(t *testing.T) {
+	instance := &privateaiv4.PrivateAi{
+		Spec: privateaiv4.PrivateAiSpec{
+			Security: &privateaiv4.PrivateAiSecuritySpec{
+				Secret: &privateaiv4.PaiSecretSpec{
+					Name:          "auth-secret",
+					MountLocation: "/run/secrets",
+					Items: []privateaiv4.SecretMountItem{
+						{Key: "api-key"},
+						{Key: "privateai-ssl-pwd"},
+					},
+				},
+				TLS: &privateaiv4.PaiTLSSpec{
+					SecretName:    "tls-secret",
+					MountLocation: "/run/secrets",
+					Items: []privateaiv4.SecretMountItem{
+						{Key: "tls.crt", Path: "cert.pem"},
+						{Key: "tls.key", Path: "key.pem"},
+						{Key: "keystore.p12", Path: "keystore"},
+					},
+				},
+			},
+		},
+	}
+
+	volumes := buildVolumeSpecForPrivateAI(instance)
+	projected := volumes[0].Projected
+	if projected == nil {
+		t.Fatalf("expected projected volume")
+	}
+	if got := projected.Sources[0].Secret.Items[0].Path; got != "api-key" {
+		t.Fatalf("expected auth item path to default to key, got %q", got)
+	}
+	if got := projected.Sources[1].Secret.Items[0].Path; got != "cert.pem" {
+		t.Fatalf("expected tls item path cert.pem, got %q", got)
+	}
+	if got := projected.Sources[1].Secret.Items[2].Path; got != "keystore" {
+		t.Fatalf("expected keystore rename, got %q", got)
+	}
+}
+
+func TestBuildVolumeSpecForPrivateAI_UsesSecretItemsForSeparateMounts(t *testing.T) {
+	instance := &privateaiv4.PrivateAi{
+		Spec: privateaiv4.PrivateAiSpec{
+			Security: &privateaiv4.PrivateAiSecuritySpec{
+				Secret: &privateaiv4.PaiSecretSpec{
+					Name:          "auth-secret",
+					MountLocation: "/privateai/auth",
+					Items: []privateaiv4.SecretMountItem{
+						{Key: "api-key"},
+					},
+				},
+				TLS: &privateaiv4.PaiTLSSpec{
+					SecretName:    "tls-secret",
+					MountLocation: "/privateai/tls",
+					Items: []privateaiv4.SecretMountItem{
+						{Key: "tls.crt", Path: "cert.pem"},
+					},
+				},
+			},
+		},
+	}
+
+	volumes := buildVolumeSpecForPrivateAI(instance)
+	if volumes[0].Secret == nil || len(volumes[0].Secret.Items) != 1 {
+		t.Fatalf("expected auth secret volume items to be rendered")
+	}
+	if volumes[1].Secret == nil || len(volumes[1].Secret.Items) != 1 {
+		t.Fatalf("expected tls secret volume items to be rendered")
+	}
+	if volumes[1].Secret.Items[0].Path != "cert.pem" {
+		t.Fatalf("expected tls item path cert.pem, got %q", volumes[1].Secret.Items[0].Path)
+	}
+}

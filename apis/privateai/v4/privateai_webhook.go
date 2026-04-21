@@ -124,9 +124,19 @@ func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi)
 		!filepath.IsAbs(strings.TrimSpace(privateai.Spec.Security.Secret.MountLocation)) {
 		return warnings, fmt.Errorf("spec.security.secret.mountLocation must be an absolute path")
 	}
+	if authSecret != nil {
+		if err := validateSecretMountItems(authSecret.Items, "spec.security.secret.items"); err != nil {
+			return warnings, err
+		}
+	}
 	if privateai.Spec.PaiSecret != nil && strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation) != "" &&
 		!filepath.IsAbs(strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation)) {
 		return warnings, fmt.Errorf("paiSecret.mountLocation must be an absolute path")
+	}
+	if privateai.Spec.PaiSecret != nil {
+		if err := validateSecretMountItems(privateai.Spec.PaiSecret.Items, "paiSecret.items"); err != nil {
+			return warnings, err
+		}
 	}
 	if tls != nil {
 		if strings.TrimSpace(tls.SecretName) == "" {
@@ -134,6 +144,16 @@ func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi)
 		}
 		if strings.TrimSpace(tls.MountLocation) != "" && !filepath.IsAbs(strings.TrimSpace(tls.MountLocation)) {
 			return warnings, fmt.Errorf("spec.security.tls.mountLocation must be an absolute path")
+		}
+		if err := validateSecretMountItems(tls.Items, "spec.security.tls.items"); err != nil {
+			return warnings, err
+		}
+	}
+	if authSecret != nil && tls != nil &&
+		strings.TrimSpace(authSecret.MountLocation) != "" &&
+		strings.TrimSpace(authSecret.MountLocation) == strings.TrimSpace(tls.MountLocation) {
+		if err := validateSharedSecretMountItems(authSecret.Items, tls.Items); err != nil {
+			return warnings, err
 		}
 	}
 	if privateai.Spec.PaiConfigFile != nil && strings.TrimSpace(privateai.Spec.PaiConfigFile.MountLocation) != "" &&
@@ -204,4 +224,53 @@ func deprecatedPrivateAIFieldWarnings(spec *PrivateAiSpec) admission.Warnings {
 	}
 
 	return warnings
+}
+
+func validateSecretMountItems(items []SecretMountItem, field string) error {
+	seen := make(map[string]struct{}, len(items))
+	for i, item := range items {
+		key := strings.TrimSpace(item.Key)
+		if key == "" {
+			return fmt.Errorf("%s[%d].key must be set", field, i)
+		}
+		resolvedPath := strings.TrimSpace(item.Path)
+		if resolvedPath == "" {
+			resolvedPath = key
+		}
+		if filepath.IsAbs(resolvedPath) {
+			return fmt.Errorf("%s[%d].path must be a relative path", field, i)
+		}
+		if resolvedPath == "." || resolvedPath == ".." || strings.HasPrefix(resolvedPath, "../") || strings.Contains(resolvedPath, "/../") {
+			return fmt.Errorf("%s[%d].path must not contain parent directory segments", field, i)
+		}
+		if _, exists := seen[resolvedPath]; exists {
+			return fmt.Errorf("%s contains duplicate mounted path %q", field, resolvedPath)
+		}
+		seen[resolvedPath] = struct{}{}
+	}
+	return nil
+}
+
+func validateSharedSecretMountItems(authItems, tlsItems []SecretMountItem) error {
+	if len(authItems) == 0 || len(tlsItems) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(authItems))
+	for _, item := range authItems {
+		seen[resolvedSecretMountItemPath(item)] = struct{}{}
+	}
+	for i, item := range tlsItems {
+		resolvedPath := resolvedSecretMountItemPath(item)
+		if _, exists := seen[resolvedPath]; exists {
+			return fmt.Errorf("spec.security.secret.items and spec.security.tls.items cannot resolve to the same mounted path %q when mountLocation is shared (conflict at spec.security.tls.items[%d])", resolvedPath, i)
+		}
+	}
+	return nil
+}
+
+func resolvedSecretMountItemPath(item SecretMountItem) string {
+	if path := strings.TrimSpace(item.Path); path != "" {
+		return path
+	}
+	return strings.TrimSpace(item.Key)
 }

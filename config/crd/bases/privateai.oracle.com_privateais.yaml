@@ -196,6 +196,15 @@ spec:
                 type: string
               paiSecret:
                 properties:
+                  items:
+                    items:
+                      properties:
+                        key:
+                          type: string
+                        path:
+                          type: string
+                      type: object
+                    type: array
                   mountLocation:
                     type: string
                   name:
@@ -326,6 +335,15 @@ spec:
                 properties:
                   secret:
                     properties:
+                      items:
+                        items:
+                          properties:
+                            key:
+                              type: string
+                            path:
+                              type: string
+                          type: object
+                        type: array
                       mountLocation:
                         type: string
                       name:
@@ -333,6 +351,15 @@ spec:
                     type: object
                   tls:
                     properties:
+                      items:
+                        items:
+                          properties:
+                            key:
+                              type: string
+                            path:
+                              type: string
+                          type: object
+                        type: array
                       mountLocation:
                         type: string
                       secretName:

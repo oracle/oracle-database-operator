@@ -104,6 +104,7 @@ type PrivateAiSpec struct {
 type PaiSecretSpec struct {
 	Name          string `json:"name,omitempty"`
 	MountLocation string `json:"mountLocation,omitempty"`
+	Items         []SecretMountItem `json:"items,omitempty"`
 }
 
 // PrivateAiSecuritySpec groups auth secret and TLS settings for PrivateAI.
@@ -116,6 +117,14 @@ type PrivateAiSecuritySpec struct {
 type PaiTLSSpec struct {
 	SecretName    string `json:"secretName,omitempty"`
 	MountLocation string `json:"mountLocation,omitempty"`
+	Items         []SecretMountItem `json:"items,omitempty"`
+}
+
+// SecretMountItem maps a secret key into a mounted file path.
+// When path is omitted, the key name is used as the mounted filename.
+type SecretMountItem struct {
+	Key  string `json:"key,omitempty"`
+	Path string `json:"path,omitempty"`
 }
 
 // EnvironmentVariable defines a name/value environment variable pair.

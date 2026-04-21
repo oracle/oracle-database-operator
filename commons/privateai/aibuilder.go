@@ -297,8 +297,9 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 	volumes := make([]corev1.Volume, 0, 4)
 	authSecret := privateaiv4.EffectiveAuthSecret(&instance.Spec)
 	tlsSecret := privateaiv4.EffectiveTLS(&instance.Spec)
+	sharedSecretMount := useSharedSecretMount(authSecret, tlsSecret)
 
-	if useSharedSecretMount(authSecret, tlsSecret) {
+	if sharedSecretMount {
 		volumes = append(volumes, corev1.Volume{
 			Name: privateAICombinedSecretVolumeName(instance),
 			VolumeSource: corev1.VolumeSource{
@@ -307,11 +308,13 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 						{
 							Secret: &corev1.SecretProjection{
 								LocalObjectReference: corev1.LocalObjectReference{Name: authSecret.Name},
+								Items:                secretItemsToKeyToPaths(authSecret.Items),
 							},
 						},
 						{
 							Secret: &corev1.SecretProjection{
 								LocalObjectReference: corev1.LocalObjectReference{Name: tlsSecret.SecretName},
+								Items:                secretItemsToKeyToPaths(tlsSecret.Items),
 							},
 						},
 					},
@@ -322,15 +325,21 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 		volumes = append(volumes, corev1.Volume{
 			Name: privateAIAuthSecretVolumeName(instance),
 			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: authSecret.Name},
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: authSecret.Name,
+					Items:      secretItemsToKeyToPaths(authSecret.Items),
+				},
 			},
 		})
 	}
-	if !useSharedSecretMount(authSecret, tlsSecret) && tlsSecret != nil && tlsSecret.SecretName != "" {
+	if !sharedSecretMount && tlsSecret != nil && tlsSecret.SecretName != "" {
 		volumes = append(volumes, corev1.Volume{
 			Name: privateAITLSSecretVolumeName(instance),
 			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: tlsSecret.SecretName},
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: tlsSecret.SecretName,
+					Items:      secretItemsToKeyToPaths(tlsSecret.Items),
+				},
 			},
 		})
 	}
@@ -374,6 +383,7 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 	var mounts []corev1.VolumeMount
 	authSecret := privateaiv4.EffectiveAuthSecret(&instance.Spec)
 	tlsSecret := privateaiv4.EffectiveTLS(&instance.Spec)
+	sharedSecretMount := useSharedSecretMount(authSecret, tlsSecret)
 
 	if instance.Spec.StorageClass != "" {
 		mounts = append(mounts, corev1.VolumeMount{
@@ -382,7 +392,7 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 		})
 	}
 
-	if useSharedSecretMount(authSecret, tlsSecret) {
+	if sharedSecretMount {
 		mounts = append(mounts, corev1.VolumeMount{
 			Name:      privateAICombinedSecretVolumeName(instance),
 			MountPath: strings.TrimSpace(authSecret.MountLocation),
@@ -396,7 +406,7 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 		})
 	}
 
-	if !useSharedSecretMount(authSecret, tlsSecret) && tlsSecret != nil && tlsSecret.SecretName != "" {
+	if !sharedSecretMount && tlsSecret != nil && tlsSecret.SecretName != "" {
 		mounts = append(mounts, corev1.VolumeMount{
 			Name:      privateAITLSSecretVolumeName(instance),
 			MountPath: tlsSecret.MountLocation,
@@ -512,6 +522,28 @@ func useSharedSecretMount(authSecret *privateaiv4.PaiSecretSpec, tlsSecret *priv
 	authMount := strings.TrimSpace(authSecret.MountLocation)
 	tlsMount := strings.TrimSpace(tlsSecret.MountLocation)
 	return authMount != "" && authMount == tlsMount
+}
+
+func secretItemsToKeyToPaths(items []privateaiv4.SecretMountItem) []corev1.KeyToPath {
+	if len(items) == 0 {
+		return nil
+	}
+	paths := make([]corev1.KeyToPath, 0, len(items))
+	for _, item := range items {
+		key := strings.TrimSpace(item.Key)
+		if key == "" {
+			continue
+		}
+		path := strings.TrimSpace(item.Path)
+		if path == "" {
+			path = key
+		}
+		paths = append(paths, corev1.KeyToPath{
+			Key:  key,
+			Path: path,
+		})
+	}
+	return paths
 }
 
 type paiExternalServiceSettings struct {

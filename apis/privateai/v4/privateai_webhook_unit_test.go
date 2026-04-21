@@ -50,3 +50,58 @@ func TestPrivateAIValidate_RejectsRelativeTLSMountPath(t *testing.T) {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
 }
+
+func TestPrivateAIValidate_RejectsMissingItemKey(t *testing.T) {
+	validator := &privateAiValidator{}
+	obj := &PrivateAi{
+		Spec: PrivateAiSpec{
+			Security: &PrivateAiSecuritySpec{
+				Secret: &PaiSecretSpec{
+					Name:          "auth-secret",
+					MountLocation: "/run/secrets",
+					Items:         []SecretMountItem{{Path: "api-key"}},
+				},
+			},
+		},
+	}
+
+	_, err := validator.validate(context.Background(), obj)
+	if err == nil {
+		t.Fatalf("expected validation error for missing item key")
+	}
+	if !strings.Contains(err.Error(), "spec.security.secret.items[0].key must be set") {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestPrivateAIValidate_RejectsSharedMountItemPathCollision(t *testing.T) {
+	validator := &privateAiValidator{}
+	obj := &PrivateAi{
+		Spec: PrivateAiSpec{
+			Security: &PrivateAiSecuritySpec{
+				Secret: &PaiSecretSpec{
+					Name:          "auth-secret",
+					MountLocation: "/run/secrets",
+					Items: []SecretMountItem{
+						{Key: "keystore"},
+					},
+				},
+				TLS: &PaiTLSSpec{
+					SecretName:    "tls-secret",
+					MountLocation: "/run/secrets",
+					Items: []SecretMountItem{
+						{Key: "keystore.p12", Path: "keystore"},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := validator.validate(context.Background(), obj)
+	if err == nil {
+		t.Fatalf("expected validation error for shared-mount path collision")
+	}
+	if !strings.Contains(err.Error(), `cannot resolve to the same mounted path "keystore"`) {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
