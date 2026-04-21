@@ -13,7 +13,6 @@ rules:
   - endpoints
   - events
   - namespaces
-  - nodes
   - persistentvolumeclaim
   - persistentvolumeclaims
   - persistentvolumes

@@ -116,9 +116,7 @@ type SingleInstanceDatabaseSpec struct {
 	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
 	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
 	// Resources configures standard Kubernetes container resource requests and limits.
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
-	// Deprecated: use resources.
-	ResourceRequirements          *corev1.ResourceRequirements `json:"resourceRequirements,omitempty" protobuf:"bytes,1,opt,name=resourceRequirements"`
+	Resources                     *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
 	DisableDefaultDiagVolumeClaim bool                         `json:"disableDefaultDiagVolumeClaim,omitempty"`
 	SecurityContext               *corev1.PodSecurityContext   `json:"securityContext,omitempty"`
 	Capabilities                  *corev1.Capabilities         `json:"capabilities,omitempty"`

@@ -6536,11 +6536,6 @@ func (in *SingleInstanceDatabaseSpec) DeepCopyInto(out *SingleInstanceDatabaseSp
 		*out = new(corev1.ResourceRequirements)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.ResourceRequirements != nil {
-		in, out := &in.ResourceRequirements, &out.ResourceRequirements
-		*out = new(corev1.ResourceRequirements)
-		(*in).DeepCopyInto(*out)
-	}
 	if in.SecurityContext != nil {
 		in, out := &in.SecurityContext, &out.SecurityContext
 		*out = new(corev1.PodSecurityContext)

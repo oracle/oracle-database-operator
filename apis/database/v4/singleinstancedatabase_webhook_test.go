@@ -2,6 +2,7 @@ package v4
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -187,12 +188,6 @@ func TestSIDBDeprecatedFieldWarnings(t *testing.T) {
 	sidb.Spec.AdminPassword = SingleInstanceDatabaseAdminPassword{
 		SecretName: "sidb-admin",
 	}
-	sidb.Spec.ResourceRequirements = &corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("1Gi"),
-		},
-	}
 	sidb.Spec.Persistence.Size = "100Gi"
 	sidb.Spec.Persistence.StorageClass = "oci-bv"
 	sidb.Spec.Persistence.AccessMode = "ReadWriteOnce"
@@ -209,7 +204,6 @@ func TestSIDBDeprecatedFieldWarnings(t *testing.T) {
 		"spec.tcpsCertRenewInterval is deprecated; use spec.security.tcps.certRenewInterval",
 		"spec.tcpsTlsSecret is deprecated; use spec.security.tcps.tlsSecret",
 		"spec.adminPassword is deprecated; use spec.security.secrets.admin",
-		"spec.resourceRequirements is deprecated; use spec.resources",
 		"spec.persistence.size is deprecated; use spec.persistence.oradata.size",
 		"spec.persistence.storageClass is deprecated; use spec.persistence.oradata.storageClass",
 		"spec.persistence.accessMode is deprecated; use spec.persistence.oradata.accessMode",
@@ -237,80 +231,43 @@ func TestSIDBDeprecatedFieldWarnings(t *testing.T) {
 	}
 }
 
-func TestSIDBWebhookDefaultAliasesLegacyResourceFields(t *testing.T) {
-	sidb := sidbWebhookValidBaseSpec()
-	sidb.Spec.ResourceRequirements = &corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
-		},
-	}
+func TestSIDBResourcesBackwardCompatibleWithReleasedWireShape(t *testing.T) {
+	raw := []byte(`{
+		"spec": {
+			"createAs": "primary",
+			"edition": "enterprise",
+			"image": {},
+			"resources": {
+				"requests": {
+					"cpu": "1",
+					"memory": "2Gi"
+				},
+				"limits": {
+					"cpu": "2",
+					"memory": "4Gi"
+				}
+			}
+		}
+	}`)
 
-	if err := (&SingleInstanceDatabase{}).Default(context.Background(), sidb); err != nil {
-		t.Fatalf("expected default to succeed, got: %v", err)
+	var sidb SingleInstanceDatabase
+	if err := json.Unmarshal(raw, &sidb); err != nil {
+		t.Fatalf("expected released resources payload to unmarshal, got: %v", err)
 	}
 	if sidb.Spec.Resources == nil {
-		t.Fatalf("expected spec.resources to be defaulted from legacy spec.resourceRequirements")
+		t.Fatalf("expected resources to be populated from released wire shape")
 	}
-	if !sidb.Spec.Resources.Requests.Cpu().Equal(*sidb.Spec.ResourceRequirements.Requests.Cpu()) {
-		t.Fatalf("expected cpu requests to match after alias defaulting")
+	if got := sidb.Spec.Resources.Requests.Cpu(); got == nil || !got.Equal(resource.MustParse("1")) {
+		t.Fatalf("expected cpu request 1, got: %v", got)
 	}
-	if !sidb.Spec.Resources.Requests.Memory().Equal(*sidb.Spec.ResourceRequirements.Requests.Memory()) {
-		t.Fatalf("expected memory requests to match after alias defaulting")
+	if got := sidb.Spec.Resources.Requests.Memory(); got == nil || !got.Equal(resource.MustParse("2Gi")) {
+		t.Fatalf("expected memory request 2Gi, got: %v", got)
 	}
-}
-
-func TestSIDBWebhookAllowsEquivalentResourceAliases(t *testing.T) {
-	sidb := sidbWebhookValidBaseSpec()
-	rr := &corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
-		},
-		Limits: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("2"),
-			corev1.ResourceMemory: resource.MustParse("4Gi"),
-		},
+	if got := sidb.Spec.Resources.Limits.Cpu(); got == nil || !got.Equal(resource.MustParse("2")) {
+		t.Fatalf("expected cpu limit 2, got: %v", got)
 	}
-	sidb.Spec.Resources = rr.DeepCopy()
-	sidb.Spec.ResourceRequirements = rr.DeepCopy()
-
-	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
-		t.Fatalf("expected no validation errors for equivalent resource aliases, got: %v", errs)
-	}
-}
-
-func TestSIDBWebhookDefaultDoesNotBackfillDeprecatedResourceField(t *testing.T) {
-	sidb := sidbWebhookValidBaseSpec()
-	sidb.Spec.Resources = &corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU: resource.MustParse("1"),
-		},
-	}
-
-	if err := (&SingleInstanceDatabase{}).Default(context.Background(), sidb); err != nil {
-		t.Fatalf("expected default to succeed, got: %v", err)
-	}
-	if sidb.Spec.ResourceRequirements != nil {
-		t.Fatalf("expected deprecated spec.resourceRequirements to remain unset for new manifests")
-	}
-}
-
-func TestSIDBWebhookRejectsConflictingResourceAliases(t *testing.T) {
-	sidb := sidbWebhookValidBaseSpec()
-	sidb.Spec.Resources = &corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU: resource.MustParse("1"),
-		},
-	}
-	sidb.Spec.ResourceRequirements = &corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU: resource.MustParse("2"),
-		},
-	}
-
-	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
-		t.Fatalf("expected validation error for conflicting resource alias values")
+	if got := sidb.Spec.Resources.Limits.Memory(); got == nil || !got.Equal(resource.MustParse("4Gi")) {
+		t.Fatalf("expected memory limit 4Gi, got: %v", got)
 	}
 }
 
@@ -367,36 +324,6 @@ func TestSIDBWebhookValidateUpdateRejectsSpecChangeWhenLockedWithoutOverride(t *
 	}
 	if !strings.Contains(err.Error(), "spec updates are blocked while controller operation is in progress") {
 		t.Fatalf("expected lock rejection message, got: %v", err)
-	}
-}
-
-func TestSIDBWebhookValidateUpdateAllowsResourceAliasNormalizationWhenLocked(t *testing.T) {
-	oldObj := &SingleInstanceDatabase{
-		ObjectMeta: metav1.ObjectMeta{Name: "sidb1", Namespace: "ns1", Generation: 3},
-		Spec: SingleInstanceDatabaseSpec{
-			ResourceRequirements: &corev1.ResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("1"),
-					corev1.ResourceMemory: resource.MustParse("2Gi"),
-				},
-			},
-		},
-		Status: SingleInstanceDatabaseStatus{
-			Conditions: []metav1.Condition{{
-				Type:               lockpolicy.DefaultReconcilingConditionType,
-				Status:             metav1.ConditionTrue,
-				Reason:             lockpolicy.DefaultUpdateLockReason,
-				ObservedGeneration: 2,
-				Message:            "controller operation in progress",
-			}},
-		},
-	}
-	newObj := oldObj.DeepCopy()
-	newObj.Spec.Resources = oldObj.Spec.ResourceRequirements.DeepCopy()
-	newObj.Spec.ResourceRequirements = nil
-
-	if _, err := (&SingleInstanceDatabase{}).ValidateUpdate(context.Background(), oldObj, newObj); err != nil {
-		t.Fatalf("expected alias-only normalization to be ignored for locked spec comparison, got: %v", err)
 	}
 }
 

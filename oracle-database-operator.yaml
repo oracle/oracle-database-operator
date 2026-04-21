@@ -13359,6 +13359,16 @@ spec:
             type: object
           spec:
             properties:
+              configuration:
+                properties:
+                  configFile:
+                    properties:
+                      mountLocation:
+                        type: string
+                      name:
+                        type: string
+                    type: object
+                type: object
               envVars:
                 items:
                   properties:
@@ -13396,6 +13406,119 @@ spec:
                     type: string
                   volumeSizeLimit:
                     type: string
+                type: object
+              networking:
+                properties:
+                  listeners:
+                    properties:
+                      http:
+                        properties:
+                          enabled:
+                            type: boolean
+                          port:
+                            format: int32
+                            type: integer
+                        type: object
+                      https:
+                        properties:
+                          enabled:
+                            type: boolean
+                          port:
+                            format: int32
+                            type: integer
+                        type: object
+                    type: object
+                  nodePortServices:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        portMappings:
+                          items:
+                            properties:
+                              nodePort:
+                                format: int32
+                                type: integer
+                              port:
+                                format: int32
+                                type: integer
+                              protocol:
+                                type: string
+                              targetPort:
+                                format: int32
+                                type: integer
+                            required:
+                            - port
+                            - protocol
+                            - targetPort
+                            type: object
+                          type: array
+                        svcType:
+                          type: string
+                      type: object
+                    type: array
+                  service:
+                    properties:
+                      external:
+                        properties:
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          enabled:
+                            type: boolean
+                          externalTrafficPolicy:
+                            enum:
+                            - Local
+                            - Cluster
+                            - local
+                            - cluster
+                            type: string
+                          internal:
+                            type: boolean
+                          loadBalancerIP:
+                            type: string
+                          port:
+                            format: int32
+                            type: integer
+                          serviceType:
+                            type: string
+                          targetPort:
+                            format: int32
+                            type: integer
+                        type: object
+                      name:
+                        type: string
+                      portMappings:
+                        items:
+                          properties:
+                            nodePort:
+                              format: int32
+                              type: integer
+                            port:
+                              format: int32
+                              type: integer
+                            protocol:
+                              type: string
+                            targetPort:
+                              format: int32
+                              type: integer
+                          required:
+                          - port
+                          - protocol
+                          - targetPort
+                          type: object
+                        type: array
+                      svcType:
+                        type: string
+                    type: object
+                  trafficManager:
+                    properties:
+                      ref:
+                        type: string
+                      routePath:
+                        type: string
+                    type: object
                 type: object
               nodePortSvc:
                 items:
@@ -13613,8 +13736,82 @@ spec:
                       x-kubernetes-int-or-string: true
                     type: object
                 type: object
+              runtime:
+                properties:
+                  debug:
+                    type: boolean
+                  downloadScripts:
+                    type: boolean
+                  env:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        value:
+                          type: string
+                      required:
+                      - name
+                      - value
+                      type: object
+                    type: array
+                  image:
+                    properties:
+                      name:
+                        type: string
+                      pullPolicy:
+                        type: string
+                      pullSecret:
+                        type: string
+                    type: object
+                  livenessCheckPeriod:
+                    type: integer
+                  readinessCheckPeriod:
+                    type: integer
+                  replicas:
+                    format: int32
+                    type: integer
+                  resources:
+                    properties:
+                      claims:
+                        items:
+                          properties:
+                            name:
+                              type: string
+                            request:
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                    type: object
+                  workerNodes:
+                    items:
+                      type: string
+                    type: array
+                type: object
               security:
                 properties:
+                  authEnabled:
+                    type: boolean
                   secret:
                     properties:
                       items:
@@ -13647,6 +13844,22 @@ spec:
                       secretName:
                         type: string
                     type: object
+                type: object
+              storage:
+                properties:
+                  deletePvcOnDelete:
+                    type: boolean
+                  logLocation:
+                    type: string
+                  pvcList:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  sizeInGb:
+                    format: int32
+                    type: integer
+                  storageClass:
+                    type: string
                 type: object
               storageClass:
                 type: string
@@ -19227,39 +19440,6 @@ spec:
                 type: integer
               replicas:
                 type: integer
-              resourceRequirements:
-                properties:
-                  claims:
-                    items:
-                      properties:
-                        name:
-                          type: string
-                        request:
-                          type: string
-                      required:
-                      - name
-                      type: object
-                    type: array
-                    x-kubernetes-list-map-keys:
-                    - name
-                    x-kubernetes-list-type: map
-                  limits:
-                    additionalProperties:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                      x-kubernetes-int-or-string: true
-                    type: object
-                  requests:
-                    additionalProperties:
-                      anyOf:
-                      - type: integer
-                      - type: string
-                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                      x-kubernetes-int-or-string: true
-                    type: object
-                type: object
               resources:
                 properties:
                   claims:
@@ -20487,7 +20667,6 @@ rules:
   - endpoints
   - events
   - namespaces
-  - nodes
   - persistentvolumeclaim
   - persistentvolumeclaims
   - persistentvolumes
@@ -21574,7 +21753,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -21590,8 +21769,8 @@ spec:
         - /manager
         env:
         - name: WATCH_NAMESPACE
-          value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
+          value: "oracle-database-operator-system,default"
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sidb-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

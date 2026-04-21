@@ -321,9 +321,6 @@ func buildSIDBContainerResources(m *dbapi.SingleInstanceDatabase) corev1.Resourc
 	if m.Spec.Resources != nil {
 		return *m.Spec.Resources.DeepCopy()
 	}
-	if m.Spec.ResourceRequirements != nil {
-		return *m.Spec.ResourceRequirements.DeepCopy()
-	}
 	return corev1.ResourceRequirements{}
 }
 
