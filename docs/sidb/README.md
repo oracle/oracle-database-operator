@@ -312,29 +312,71 @@ spec:
       tde:
         secretName: tde-wallet-secret
         secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-primary-tcps-tls
 
   archiveLog: true
 
   image:
-    pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix
+    pullFrom: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.0-ee-truecachefix-patchnew
     prebuiltDB: false
     imagePullPolicy: Always
+
+  initParams:
+    sgaTarget: 2048
+    pgaAggregateTarget: 1024
+    cpuCount: 2
+    processes: 600
+
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "2"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+    setWritePermissions: true
 
   trueCache:
     generateEnabled: true
     generatePath: "/tmp/tc_config_blob.tar.gz"
 
-  hostAliases:
-    - ip: "10.2.1.241"
-      hostnames:
-        - "truecache-production.default.svc.cluster.local"
-        - "truecache-production"
+  services:
+    external:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.replace-me"
+        external-dns.alpha.kubernetes.io/hostname: "orcl-production.internal.example.com"
+      tcp:
+        enabled: true
+        port: 1521
+      tcps:
+        enabled: true
+        port: 2484
+
+  # hostAliases:
+  #   - ip: "10.2.1.30"
+  #     hostnames:
+  #       - "truecache-production.internal.example.com"
+  #       - "truecache-production"
+
+  replicas: 1
 ```
 
 Apply the primary database manifest:
 
 ```sh
-kubectl apply -f singleinstancedatabase_create.yaml
+kubectl apply -f config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml
 ```
 
 After the primary becomes healthy, the operator creates the ConfigMap `<primary-name>-truecache-blob`. A True Cache database that references this primary can then use that generated blob.
@@ -394,15 +436,15 @@ To provision a True Cache instance in Kubernetes, use the sample **[`config/samp
 
 The following sample manifests are the main starting points for True Cache workflows:
 
-- **[`config/samples/sidb/singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml)**: primary SIDB sample. Use this as the starting point when enabling operator-managed True Cache blob generation on the primary database with `spec.trueCache.generateEnabled: true`.
-- **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)**: enterprise primary SIDB sample for True Cache blob generation with TCPS enabled, operator-managed external NLB service exposure, and `hostAliases` fallback for peered VCN or cross-region private connectivity scenarios.
-- **[`config/samples/sidb/singleinstancedatabase_truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache.yaml)**: basic enterprise True Cache sample that references a primary database in the same Kubernetes environment.
-- **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)**: enterprise True Cache sample for the True Cache side of a cross-cluster, cross-region, or peered-VCN topology where the primary is reached through a private or externally resolvable endpoint, the blob is consumed from a ConfigMap, and the operator manages the True Cache internal NLB service.
-- **[`config/samples/sidb/singleinstancedatabase_tcps.yaml`](../../config/samples/sidb/singleinstancedatabase_tcps.yaml)**: TCPS enablement sample for `SingleInstanceDatabase`. Use it as the reference for TLS secret and certificate renewal settings when TCPS is required for the primary or the True Cache database.
-- **[`docs/sidb/external-dns`](./external-dns)**: reusable ExternalDNS workload-identity manifests for publishing OCI private DNS records from operator-managed internal NLB Services into a shared OCI private zone.
-- **[`docs/sidb/external-dns/cleanup-dns.sh`](/scratch/sauahuja/gobin/goprojects/src/github.com/user/dboper/sidb/oracle-database-operator/docs/sidb/external-dns/cleanup-dns.sh)**: helper script for checking or deleting stale shared-zone and legacy-zone DNS `A` and ExternalDNS `TXT` records during cleanup or migration.
-- **[`docs/sidb/tcps-cert-manager`](./tcps-cert-manager)**: reusable cert-manager scripts for issuing the primary and True Cache TCPS TLS secrets.
-- **[`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**: full SIDB template containing the generic `createAs: truecache`, `primarySource`, `trueCache`, `hostAliases`, TCPS, and listener port fields.
+- **[`config/samples/sidb/singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml)**: primary SIDB starting point for generating the True Cache blob on the primary.
+- **[`config/samples/sidb/singleinstancedatabase_truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache.yaml)**: basic True Cache sample for a same-cluster setup.
+- **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)**: primary-side sample for peered or cross-cluster TCPS setups.
+- **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)**: True Cache-side sample for peered or cross-cluster setups with operator-managed external service exposure.
+- **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**: end-to-end peered VCN workflow covering the primary sample, the True Cache sample, ExternalDNS, and cert-manager TCPS setup.
+- **[`docs/sidb/external-dns`](./external-dns)**: shared-zone ExternalDNS manifests and cleanup helper for the operator-managed `*-ext` services.
+- **[`docs/sidb/tcps-cert-manager`](./tcps-cert-manager)**: cert-manager scripts for issuing the primary and True Cache TCPS secrets.
+- **[`config/samples/sidb/singleinstancedatabase_tcps.yaml`](../../config/samples/sidb/singleinstancedatabase_tcps.yaml)**: generic TCPS reference sample for `SingleInstanceDatabase`.
+- **[`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**: full SIDB template with all related fields, including `primarySource`, `trueCache`, `services`, and `hostAliases`.
 
 #### True Cache Peered VCN Setup
 
