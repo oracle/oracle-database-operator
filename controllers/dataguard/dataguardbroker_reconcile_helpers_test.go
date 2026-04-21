@@ -12,6 +12,41 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+func TestParseDataguardBrokerConfigurationMembers(t *testing.T) {
+	out := `
+DATABASE
+----------
+PRIMARYA:PRIMARY
+STBYA:PHYSICAL STANDBY
+`
+
+	got, err := parseDataguardBrokerConfigurationMembers(out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 members, got %d (%v)", len(got), got)
+	}
+	if got[0] != "PRIMARYA:PRIMARY" {
+		t.Fatalf("unexpected primary member: %q", got[0])
+	}
+	if got[1] != "STBYA:PHYSICAL_STANDBY" {
+		t.Fatalf("unexpected standby member: %q", got[1])
+	}
+}
+
+func TestParseDataguardBrokerConfigurationMembersRejectsOracleErrors(t *testing.T) {
+	out := `
+DATABASE
+----------
+ORA-24314
+`
+
+	if _, err := parseDataguardBrokerConfigurationMembers(out); err == nil {
+		t.Fatalf("expected parse error for Oracle error output")
+	}
+}
+
 func TestResolveDataguardBrokerDesiredSpecLegacy(t *testing.T) {
 	broker := &dbapi.DataguardBroker{
 		Spec: dbapi.DataguardBrokerSpec{
@@ -321,6 +356,46 @@ func TestResolveDataguardBrokerExecutionRuntimeDefersAuthWalletSecretUntilInitia
 	}
 	if got == nil || got.AuthWalletSecretName != "dg-auth-wallet" {
 		t.Fatalf("expected initialized auth wallet secret name to be propagated, got %#v", got)
+	}
+}
+
+func TestResolveDataguardBrokerDatabaseBySIDFallsBackToDesiredRefs(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+
+	primary := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "primary-db", Namespace: "ns1"},
+		Spec:       dbapi.SingleInstanceDatabaseSpec{Sid: "PRIMARYA"},
+		Status:     dbapi.SingleInstanceDatabaseStatus{Sid: "PRIMARYA"},
+	}
+	standby := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "standby-db", Namespace: "ns1"},
+		Spec:       dbapi.SingleInstanceDatabaseSpec{Sid: "STBYA"},
+		Status:     dbapi.SingleInstanceDatabaseStatus{Sid: "STBYA"},
+	}
+	reconciler := &DataguardBrokerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(primary, standby).Build(),
+	}
+	broker := &dbapi.DataguardBroker{
+		ObjectMeta: metav1.ObjectMeta{Name: "dg", Namespace: "ns1"},
+		Spec: dbapi.DataguardBrokerSpec{
+			PrimaryDatabaseRef:  "primary-db",
+			StandbyDatabaseRefs: []string{"standby-db"},
+		},
+	}
+	desired := &dataguardBrokerDesiredSpec{
+		PrimaryDatabaseRef:  "primary-db",
+		StandbyDatabaseRefs: []string{"standby-db"},
+	}
+
+	got, err := resolveDataguardBrokerDatabaseBySID(context.Background(), reconciler, broker, desired, "STBYA")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || got.Name != "standby-db" {
+		t.Fatalf("expected standby-db, got %#v", got)
 	}
 }
 

@@ -194,8 +194,13 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerNormal(ctx context.C
 	if result, err := r.reconcileDataguardBrokerManualSwitchover(ctx, scope); err != nil || result.Requeue {
 		return result, err
 	}
-	if err := updateReconcileStatus(r, scope.broker, scope.desired, ctx, scope.req); err != nil {
+	ready, message, err := updateReconcileStatus(r, scope.broker, scope.desired, ctx, scope.req)
+	if err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, err
+	}
+	if !ready {
+		scope.markWaiting(dataguardBrokerPhaseReady, "RuntimeStatusPending", message)
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
 	}
 	scope.markReady(dataguardBrokerPhaseReady, "ReconcileComplete", "reconcile completed")
 	if scope.desired.FastStartFailover {
@@ -547,7 +552,7 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerValidation(ctx conte
 		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Spec Validation", fmt.Sprintf("singleInstanceDatabase %v not in primary role", sidb.Name))
 		log.Info(fmt.Sprintf("singleinstancedatabase %s expected to be in primary role", sidb.Name))
 		log.Info("updating database status to check for possible FSFO")
-		if err := updateReconcileStatus(r, broker, desired, ctx, req); err != nil {
+		if _, _, err := updateReconcileStatus(r, broker, desired, ctx, req); err != nil {
 			return ctrl.Result{Requeue: false}, err
 		}
 		return ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}, nil
@@ -560,7 +565,7 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerValidation(ctx conte
 			if broker.Status.Status != "" && strings.EqualFold(broker.Status.FastStartFailover, "true") {
 				r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Possible Failover", "Primary db not in ready state after setting up DG configuration")
 			}
-			if err := updateReconcileStatus(r, broker, desired, ctx, req); err != nil {
+			if _, _, err := updateReconcileStatus(r, broker, desired, ctx, req); err != nil {
 				log.Info("Error updating Dgbroker status")
 			}
 			r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Waiting", err.Error())

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	networkv4 "github.com/oracle/oracle-database-operator/apis/network/v4"
+	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -138,6 +139,58 @@ func TestBuildNginxRouteStatuses(t *testing.T) {
 	}
 	if got := trafficManagerConfigMode(inst); got != "Managed" {
 		t.Fatalf("expected config mode Managed, got %q", got)
+	}
+}
+
+func TestListAssociatedBackendsUsesEffectiveTrafficManagerSpec(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := networkv4.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add network scheme: %v", err)
+	}
+	if err := privateaiv4.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add privateai scheme: %v", err)
+	}
+
+	tm := &networkv4.TrafficManager{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-nginx", Namespace: "pai"},
+	}
+	privateAI := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Networking: &privateaiv4.PrivateAiNetworkingSpec{
+				TrafficManager: &privateaiv4.TrafficManagerRefSpec{
+					Ref:       "pai-nginx",
+					RoutePath: "/pai-sample/v1/",
+				},
+			},
+		},
+	}
+
+	r := &TrafficManagerReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(tm, privateAI).Build(),
+	}
+
+	backends, err := r.listAssociatedBackends(context.Background(), tm)
+	if err != nil {
+		t.Fatalf("listAssociatedBackends returned error: %v", err)
+	}
+	if len(backends) != 1 {
+		t.Fatalf("expected 1 backend, got %d", len(backends))
+	}
+	if backends[0].Name != "pai-sample" {
+		t.Fatalf("unexpected backend name %q", backends[0].Name)
+	}
+	if backends[0].Path != "/pai-sample/v1/" {
+		t.Fatalf("unexpected backend path %q", backends[0].Path)
+	}
+	if backends[0].ServiceName != "pai-sample.pai.svc.cluster.local" {
+		t.Fatalf("unexpected backend service %q", backends[0].ServiceName)
+	}
+	if backends[0].ServicePort != 8443 {
+		t.Fatalf("unexpected backend service port %d", backends[0].ServicePort)
+	}
+	if !backends[0].UseHTTPS {
+		t.Fatalf("expected backend to default to HTTPS")
 	}
 }
 

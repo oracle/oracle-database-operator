@@ -347,11 +347,11 @@ func (r *PrivateAiReconciler) validate(m *privateaiv4.PrivateAi, ctx context.Con
 			return resultNq, err
 		}
 		if trafficManager.Spec.Type != networkv4.TrafficManagerTypeNginx {
-			return resultNq, fmt.Errorf("spec.trafficManager.ref %q points to unsupported TrafficManager type %q", ref, trafficManager.Spec.Type)
+			return resultNq, fmt.Errorf("spec.networking.trafficManager.ref or deprecated spec.trafficManager.ref %q points to unsupported TrafficManager type %q", ref, trafficManager.Spec.Type)
 		}
 		if path := strings.TrimSpace(trafficManagerRef.RoutePath); path != "" &&
 			(!strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/")) {
-			return resultNq, fmt.Errorf("spec.trafficManager.routePath must start and end with '/'")
+			return resultNq, fmt.Errorf("spec.networking.trafficManager.routePath or deprecated spec.trafficManager.routePath must start and end with '/'")
 		}
 	}
 
@@ -542,11 +542,43 @@ func (r *PrivateAiReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
+		Watches(&corev1.ConfigMap{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+			return r.privateAiRequestsForConfigMap(ctx, obj)
+		})).
+		Watches(&networkv4.TrafficManager{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+			return r.privateAiRequestsForTrafficManager(ctx, obj)
+		})).
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 			return r.privateAiRequestsForSecret(ctx, obj)
 		})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
 		Complete(r)
+}
+
+func (r *PrivateAiReconciler) privateAiRequestsForConfigMap(ctx context.Context, obj client.Object) []reconcile.Request {
+	configMap, ok := obj.(*corev1.ConfigMap)
+	if !ok {
+		return nil
+	}
+
+	list := &privateaiv4.PrivateAiList{}
+	if err := r.List(ctx, list, client.InNamespace(configMap.Namespace)); err != nil {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0)
+	for i := range list.Items {
+		item := &list.Items[i]
+		cfg := privateaiv4.EffectiveConfigFile(&item.Spec)
+		if cfg == nil || strings.TrimSpace(cfg.Name) != configMap.Name {
+			continue
+		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: item.Name, Namespace: item.Namespace},
+		})
+	}
+
+	return requests
 }
 
 func (r *PrivateAiReconciler) privateAiRequestsForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
@@ -567,6 +599,32 @@ func (r *PrivateAiReconciler) privateAiRequestsForSecret(ctx context.Context, ob
 		tls := privateaiv4.EffectiveTLS(&item.Spec)
 		if (authSecret == nil || strings.TrimSpace(authSecret.Name) != secret.Name) &&
 			(tls == nil || strings.TrimSpace(tls.SecretName) != secret.Name) {
+			continue
+		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: item.Name, Namespace: item.Namespace},
+		})
+	}
+
+	return requests
+}
+
+func (r *PrivateAiReconciler) privateAiRequestsForTrafficManager(ctx context.Context, obj client.Object) []reconcile.Request {
+	trafficManager, ok := obj.(*networkv4.TrafficManager)
+	if !ok {
+		return nil
+	}
+
+	list := &privateaiv4.PrivateAiList{}
+	if err := r.List(ctx, list, client.InNamespace(trafficManager.Namespace)); err != nil {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0)
+	for i := range list.Items {
+		item := &list.Items[i]
+		tm := privateaiv4.EffectiveTrafficManager(&item.Spec)
+		if tm == nil || strings.TrimSpace(tm.Ref) != trafficManager.Name {
 			continue
 		}
 		requests = append(requests, reconcile.Request{

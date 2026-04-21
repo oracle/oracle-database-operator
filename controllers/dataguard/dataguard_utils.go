@@ -188,7 +188,7 @@ func validateSidbReadiness(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 			// Might suggest disconnect or pod/vm going down
 			log.Info("Dialing connection error")
 			desired := resolveDataguardBrokerDesiredSpec(broker)
-			if err := updateReconcileStatus(r, broker, &desired, ctx, req); err != nil {
+			if _, _, err := updateReconcileStatus(r, broker, &desired, ctx, req); err != nil {
 				return err
 			}
 		}
@@ -450,11 +450,14 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 		return err
 	}
 	primarySid := dbcommons.GetPrimaryDatabase(databases)
-
-	// If user adds a new standby to a dg config when failover happened to one ot the standbys, we need to have current primary connect string
-	primaryConnectString := n.Name + ":1521/" + primarySid
-	if !strings.EqualFold(primarySid, n.Spec.Sid) {
-		primaryConnectString = m.Status.DatabasesInDataguardConfig[strings.ToUpper(primarySid)] + ":1521/" + primarySid
+	currentPrimaryDatabase, err := resolveDataguardBrokerDatabaseBySID(ctx, r, m, desired, primarySid)
+	if err != nil {
+		log.Error(err, "failed to resolve current primary database for broker operation", "primarySID", primarySid)
+		return err
+	}
+	primaryConnectString := buildDataguardBrokerDatabaseConnectString(currentPrimaryDatabase)
+	if primaryConnectString == "" {
+		return fmt.Errorf("could not build a primary connect string for database %s", currentPrimaryDatabase.Name)
 	}
 
 	if desired.ProtectionMode == "MaxPerformance" {
@@ -575,33 +578,39 @@ func patchService(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, d
 //	Update Reconcile Status
 //
 // ###########################################################################################################
-func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, ctx context.Context, req ctrl.Request) (err error) {
+func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, ctx context.Context, req ctrl.Request) (ready bool, message string, err error) {
 
 	log := r.Log.WithValues("updateReconcileStatus", req.NamespacedName)
 	if desired != nil && desired.Path == dataguardBrokerPathTopology {
 		runtime, ready, message, runtimeErr := resolveDataguardBrokerExecutionRuntime(ctx, r, broker)
 		if runtimeErr != nil {
-			return runtimeErr
+			return false, "", runtimeErr
 		}
 		if !ready {
 			broker.Status.Status = dbcommons.StatusNotReady
 			log.Info("Topology execution runtime not ready", "message", message)
-			return nil
+			return false, message, nil
 		}
 		state, resolveErr := resolveDataguardTopologyState(ctx, r, broker, runtime, !runtime.usesAuthWallet())
 		if resolveErr != nil {
-			return resolveErr
+			return false, "", resolveErr
 		}
-		return updateDataguardTopologyReconcileStatus(ctx, r, broker, desired, req, state)
+		if err := updateDataguardTopologyReconcileStatus(ctx, r, broker, desired, req, state); err != nil {
+			return false, "", err
+		}
+		if broker.Status.Status != dbcommons.StatusReady {
+			return false, "waiting for Data Guard topology state to be reported by broker", nil
+		}
+		return true, "", nil
 	}
 
 	// fetch the singleinstancedatabase (database sid) and their role in the dataguard configuration
 	var databases []string
 	databases, err = GetDatabasesInDataGuardConfigurationWithRole(r, broker, desired, ctx, req)
 	if err != nil {
-		log.Info("Problem when retrieving the databases in dg config")
+		log.Info("Problem when retrieving the databases in dg config", "message", err.Error())
 		broker.Status.Status = dbcommons.StatusNotReady
-		return nil
+		return false, err.Error(), nil
 	}
 
 	// loop over all the databases to update the status of the dataguardbroker and the singleinstancedatabase
@@ -609,17 +618,29 @@ func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 	for i := 0; i < len(databases); i++ {
 		splitstr := strings.Split(databases[i], ":")
 		database := strings.ToUpper(splitstr[0])
-		var singleInstanceDatabase dbapi.SingleInstanceDatabase
-		err := r.Get(ctx, types.NamespacedName{Name: broker.Status.DatabasesInDataguardConfig[database], Namespace: req.Namespace}, &singleInstanceDatabase)
-		if err != nil {
-			return err
+		databaseRef := strings.TrimSpace(broker.Status.DatabasesInDataguardConfig[database])
+		if databaseRef == "" {
+			resolvedDatabase, resolveErr := resolveDataguardBrokerDatabaseBySID(ctx, r, broker, desired, database)
+			if resolveErr != nil {
+				return false, "", resolveErr
+			}
+			databaseRef = resolvedDatabase.Name
+			if broker.Status.DatabasesInDataguardConfig == nil {
+				broker.Status.DatabasesInDataguardConfig = map[string]string{}
+			}
+			broker.Status.DatabasesInDataguardConfig[database] = databaseRef
 		}
-		log.Info(fmt.Sprintf("Checking current role of %v is %v and its status is %v", broker.Status.DatabasesInDataguardConfig[database], strings.ToUpper(splitstr[1]), singleInstanceDatabase.Status.Role))
+		var singleInstanceDatabase dbapi.SingleInstanceDatabase
+		err := r.Get(ctx, types.NamespacedName{Name: databaseRef, Namespace: req.Namespace}, &singleInstanceDatabase)
+		if err != nil {
+			return false, "", err
+		}
+		log.Info(fmt.Sprintf("Checking current role of %v is %v and its status is %v", databaseRef, strings.ToUpper(splitstr[1]), singleInstanceDatabase.Status.Role))
 		if singleInstanceDatabase.Status.Role != strings.ToUpper(splitstr[1]) {
 			singleInstanceDatabase.Status.Role = strings.ToUpper(splitstr[1])
 			if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
 				log.Error(err, "failed to update singleInstanceDatabase status", "name", singleInstanceDatabase.Name)
-				return err
+				return false, "", err
 			}
 		}
 		if strings.ToUpper(splitstr[1]) == "PRIMARY" && strings.ToUpper(database) != strings.ToUpper(broker.Status.PrimaryDatabase) {
@@ -643,10 +664,10 @@ func updateReconcileStatus(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 
 	// patch the dataguardbroker resource service
 	if err := patchService(r, broker, desired, ctx, req); err != nil {
-		return err
+		return false, "", err
 	}
 
-	return nil
+	return true, "", nil
 }
 
 // #####################################################################################################
@@ -1069,38 +1090,145 @@ func GetDatabasesInDataGuardConfigurationWithRole(r *DataguardBrokerReconciler, 
 		databaseRefs = broker.GetDatabasesInDataGuardConfiguration()
 	}
 	r.Log.Info(fmt.Sprintf("GetDatabasesInDataGuardConfiguration are %v", databaseRefs))
+	attempts := make([]string, 0, len(databaseRefs))
 	for _, database := range databaseRefs {
 
 		var singleInstanceDatabase dbapi.SingleInstanceDatabase
 		if err := r.Get(context.TODO(), types.NamespacedName{Namespace: broker.Namespace, Name: database}, &singleInstanceDatabase); err != nil {
-			// log about the error while fetching the database
+			attempts = append(attempts, fmt.Sprintf("%s: database resource could not be fetched (%v)", database, err))
 			continue
 		}
 
 		// Fetch the primary database ready pod
 		sidbReadyPod, _, _, _, err := dbcommons.FindPods(r, singleInstanceDatabase.Spec.Image.Version,
 			singleInstanceDatabase.Spec.Image.PullFrom, singleInstanceDatabase.Name, singleInstanceDatabase.Namespace, ctx, req)
-		if err != nil || sidbReadyPod.Name == "" {
+		if err != nil {
+			attempts = append(attempts, fmt.Sprintf("%s: ready pod lookup failed (%v)", database, err))
+			continue
+		}
+		if sidbReadyPod.Name == "" {
+			attempts = append(attempts, fmt.Sprintf("%s: no ready pod available", database))
 			continue
 		}
 
-		// try out
 		out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 			fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba ", dbcommons.DataguardBrokerGetDatabaseCMD))
-		if err != nil || strings.Contains(out, "no rows selected") && strings.Contains(out, "ORA-") {
+		if err != nil {
+			attempts = append(attempts, fmt.Sprintf("%s: broker query failed on pod %s (%v)", database, sidbReadyPod.Name, err))
 			continue
 		}
-
-		r.Log.Info(fmt.Sprintf("sidbReadyPod is %v \n output of the exec is %v \n and output contains ORA- is %v", sidbReadyPod.Name, out, strings.Contains(out, "ORA-")))
-
-		out1 := strings.Replace(out, " ", "_", -1)
-		// filtering output and storing databses in dg configuration in  "databases" slice
-		databases := strings.Fields(out1)
-
-		// first 2 values in the slice will be column name(DATABASES) and a seperator(--------------) . so take the slice from position [2:]
-		databases = databases[2:]
+		databases, parseErr := parseDataguardBrokerConfigurationMembers(out)
+		if parseErr != nil {
+			attempts = append(attempts, fmt.Sprintf("%s: broker query output from pod %s was invalid (%v)", database, sidbReadyPod.Name, parseErr))
+			continue
+		}
+		r.Log.Info("Retrieved Data Guard configuration members", "pod", sidbReadyPod.Name, "members", databases)
 		return databases, nil
 	}
 
-	return []string{}, errors.New("cannot get databases in dataguard configuration")
+	if len(attempts) == 0 {
+		return []string{}, errors.New("cannot get databases in dataguard configuration: no broker database references were available")
+	}
+	return []string{}, fmt.Errorf("cannot get databases in dataguard configuration: %s", strings.Join(attempts, "; "))
+}
+
+func parseDataguardBrokerConfigurationMembers(out string) ([]string, error) {
+	normalized := strings.TrimSpace(strings.ReplaceAll(out, " ", "_"))
+	if normalized == "" {
+		return nil, errors.New("empty broker query output")
+	}
+	if strings.Contains(normalized, "ORA-") {
+		return nil, fmt.Errorf("broker query returned Oracle error output: %s", normalized)
+	}
+	if strings.Contains(strings.ToLower(normalized), "no_rows_selected") {
+		return nil, errors.New("broker query returned no rows")
+	}
+
+	fields := strings.Fields(normalized)
+	if len(fields) < 3 {
+		return nil, fmt.Errorf("expected broker member rows, got %q", normalized)
+	}
+
+	members := make([]string, 0, len(fields)-2)
+	for _, field := range fields[2:] {
+		parts := strings.Split(field, ":")
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+			return nil, fmt.Errorf("malformed broker member entry %q", field)
+		}
+		members = append(members, field)
+	}
+	if len(members) == 0 {
+		return nil, errors.New("broker query did not return any members")
+	}
+	return members, nil
+}
+
+func resolveDataguardBrokerDatabaseBySID(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, desired *dataguardBrokerDesiredSpec, primarySID string) (*dbapi.SingleInstanceDatabase, error) {
+	if r == nil || broker == nil {
+		return nil, errors.New("broker resolution context is incomplete")
+	}
+
+	candidateRefs := make([]string, 0, 1+len(broker.GetDatabasesInDataGuardConfiguration()))
+	if desired != nil {
+		if trimmed := strings.TrimSpace(desired.currentPrimaryDatabaseRef(broker)); trimmed != "" {
+			candidateRefs = append(candidateRefs, trimmed)
+		}
+	}
+	if trimmed := strings.TrimSpace(broker.GetCurrentPrimaryDatabase()); trimmed != "" {
+		candidateRefs = append(candidateRefs, trimmed)
+	}
+	candidateRefs = append(candidateRefs, broker.GetDatabasesInDataGuardConfiguration()...)
+
+	normalizedSID := strings.ToUpper(strings.TrimSpace(primarySID))
+	seen := map[string]struct{}{}
+	fallbackRef := ""
+	for _, ref := range candidateRefs {
+		trimmedRef := strings.TrimSpace(ref)
+		if trimmedRef == "" {
+			continue
+		}
+		if _, ok := seen[trimmedRef]; ok {
+			continue
+		}
+		seen[trimmedRef] = struct{}{}
+		if fallbackRef == "" {
+			fallbackRef = trimmedRef
+		}
+
+		var sidb dbapi.SingleInstanceDatabase
+		if err := r.Get(ctx, types.NamespacedName{Namespace: broker.Namespace, Name: trimmedRef}, &sidb); err != nil {
+			continue
+		}
+		if normalizedSID == "" {
+			return &sidb, nil
+		}
+		if strings.EqualFold(strings.TrimSpace(sidb.Status.Sid), normalizedSID) || strings.EqualFold(strings.TrimSpace(sidb.Spec.Sid), normalizedSID) {
+			return &sidb, nil
+		}
+	}
+
+	if fallbackRef != "" {
+		var sidb dbapi.SingleInstanceDatabase
+		if err := r.Get(ctx, types.NamespacedName{Namespace: broker.Namespace, Name: fallbackRef}, &sidb); err == nil && normalizedSID == "" {
+			return &sidb, nil
+		}
+	}
+	if normalizedSID != "" {
+		return nil, fmt.Errorf("could not resolve current primary database resource for SID %s", normalizedSID)
+	}
+	return nil, errors.New("could not resolve current primary database resource")
+}
+
+func buildDataguardBrokerDatabaseConnectString(database *dbapi.SingleInstanceDatabase) string {
+	if database == nil {
+		return ""
+	}
+	sid := strings.TrimSpace(database.Spec.Sid)
+	if sid == "" {
+		sid = strings.TrimSpace(database.Status.Sid)
+	}
+	if sid == "" {
+		return ""
+	}
+	return database.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + sid
 }

@@ -187,10 +187,14 @@ func (r *TrafficManagerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Watches(&privateaiv4.PrivateAi{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 			privateAi, ok := obj.(*privateaiv4.PrivateAi)
-			if !ok || privateAi.Spec.TrafficManager == nil {
+			if !ok {
 				return nil
 			}
-			if ref := strings.TrimSpace(privateAi.Spec.TrafficManager.Ref); ref != "" {
+			trafficManager := privateaiv4.EffectiveTrafficManager(&privateAi.Spec)
+			if trafficManager == nil {
+				return nil
+			}
+			if ref := strings.TrimSpace(trafficManager.Ref); ref != "" {
 				return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: ref, Namespace: privateAi.Namespace}}}
 			}
 			return nil
@@ -233,10 +237,11 @@ func (r *TrafficManagerReconciler) listAssociatedBackends(ctx context.Context, i
 	seenPaths := map[string]string{}
 	for i := range list.Items {
 		item := &list.Items[i]
-		if item.Spec.TrafficManager == nil || strings.TrimSpace(item.Spec.TrafficManager.Ref) != inst.Name {
+		trafficManager := privateaiv4.EffectiveTrafficManager(&item.Spec)
+		if trafficManager == nil || strings.TrimSpace(trafficManager.Ref) != inst.Name {
 			continue
 		}
-		path := strings.TrimSpace(item.Spec.TrafficManager.RoutePath)
+		path := strings.TrimSpace(trafficManager.RoutePath)
 		if path == "" {
 			path = fmt.Sprintf("/%s/v1/", strings.ToLower(strings.TrimSpace(item.Name)))
 		}
