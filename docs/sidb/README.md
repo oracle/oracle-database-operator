@@ -11,16 +11,13 @@ For API migration guidance, see [SingleInstanceDatabase v4 Migration and Support
   * [SingleInstanceDatabase Resource](#singleinstancedatabase-resource)
     * [Create a Database](#create-a-database)
       * [New Database](#new-database)
-      * [Enable True Cache Blob Generation on a Primary Database](#enable-true-cache-blob-generation-on-a-primary-database)
       * [Pre-built Database](#pre-built-database)
       * [XE Database](#xe-database)
       * [Free Database](#free-database)
       * [Free Lite Database](#free-lite-database)
       * [Oracle True Cache](#oracle-true-cache)
-      * [True Cache in Same Kubernetes Cluster](#true-cache-in-same-kubernetes-cluster)
-      * [True Cache Across Clusters with External DNS](#true-cache-across-clusters-with-external-dns)
-      * [True Cache Peered VCN Setup](#true-cache-peered-vcn-setup)
-      * [True Cache Related Sample Files](#true-cache-related-sample-files)
+        * [Enable True Cache Blob Generation on a Primary Database](#enable-true-cache-blob-generation-on-a-primary-database)
+        * [True Cache in Same Kubernetes Cluster](#true-cache-in-same-kubernetes-cluster)
     * [Connecting to Database](#connecting-to-database)
     * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
       * [Dynamic Persistence](#dynamic-persistence)
@@ -48,6 +45,17 @@ For API migration guidance, see [SingleInstanceDatabase v4 Migration and Support
         * [Static Data Guard Connect String](#static-data-guard-connect-string)
         * [Patch Primary and Standby databases](#patch-primary-and-standby-databases)
         * [Delete the Data Guard Configuration](#delete-the-data-guard-configuration)
+      * [Oracle True Cache Advanced Setup](#oracle-true-cache-advanced-setup)
+        * [True Cache Prerequisites](#true-cache-prerequisites)
+        * [TDE Wallet Secret](#tde-wallet-secret)
+        * [TCPS Secrets and Certificates](#tcps-secrets-and-certificates)
+        * [Export the Generated True Cache Blob to Another Cluster or Namespace](#export-the-generated-true-cache-blob-to-another-cluster-or-namespace)
+        * [True Cache Across Clusters with External DNS](#true-cache-across-clusters-with-external-dns)
+        * [True Cache Setup References](#true-cache-setup-references)
+          * [Primary and Blob Preparation](#primary-and-blob-preparation)
+          * [OCI Network Peering](#oci-network-peering)
+          * [External DNS](#external-dns)
+          * [Security and TCPS](#security-and-tcps)
       * [Execute Custom Scripts](#execute-custom-scripts)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
     * [REST Enable a Database](#rest-enable-a-database)
@@ -274,115 +282,6 @@ To provision a new database instance on the Kubernetes cluster, use the example 
 - To pull the database image faster from the container registry, so that you can bring up the SIDB instance quickly, you can use the `container-registry mirror` of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, then you can use the `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, see: [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
 - To update the initialization (init) parameters, such as `sgaTarget` and `pgaAggregateTarget`, see the `initParams` section of the [`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
-#### Enable True Cache Blob Generation on a Primary Database
-
-For a primary `SingleInstanceDatabase`, you can enable operator-managed True Cache blob generation by setting `spec.trueCache.generateEnabled: true`. When enabled, the operator waits for the primary database to become ready, runs `dbca -prepareTrueCacheConfigFile` inside the primary pod, and stores the generated blob in a ConfigMap named `<primary-name>-truecache-blob`. The default key in that ConfigMap is `tc_config_blob.tar.gz`.
-
-If `spec.trueCache.generatePath` ends with `.tar.gz`, the operator guarantees that path is materialized as a tarball file in the primary pod even though DBCA may emit the actual blob into an intermediate directory with a timestamped filename.
-
-This workflow is intended for a primary database that will later be referenced by a `createAs: truecache` database. The generated ConfigMap is then consumed automatically by a True Cache database in the same namespace, unless you override it in the True Cache manifest.
-
-If the primary also needs TCPS enabled and must resolve a remote True Cache hostname over peered VCNs, use the sample **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)** as the primary-side starting point. Pair it with **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)** on the True Cache side.
-
-Requirements:
-
-- `spec.createAs` must be `primary`.
-- `spec.edition` must be `enterprise`.
-- `spec.archiveLog` must be `true`.
-- `spec.security.secrets.tde.secretName` and `spec.security.secrets.tde.secretKey` must be specified.
-
-Example:
-
-```yaml
-apiVersion: database.oracle.com/v4
-kind: SingleInstanceDatabase
-metadata:
-  name: orcl-production
-  namespace: default
-spec:
-  sid: ORCLPRD
-  pdbName: APPPDB1
-  createAs: primary
-  edition: enterprise
-
-  security:
-    secrets:
-      admin:
-        secretName: db-admin-secret
-        secretKey: oracle_pwd
-        keepSecret: true
-      tde:
-        secretName: tde-wallet-secret
-        secretKey: tde_wallet_pwd
-    tcps:
-      enabled: true
-      tlsSecret: sidb-primary-tcps-tls
-
-  archiveLog: true
-
-  image:
-    pullFrom: container-registry.oracle.com/database/enterprise:latest
-    prebuiltDB: false
-    imagePullPolicy: Always
-
-  initParams:
-    sgaTarget: 2048
-    pgaAggregateTarget: 1024
-    cpuCount: 2
-    processes: 600
-
-  resources:
-    requests:
-      memory: "12Gi"
-      cpu: "2"
-    limits:
-      memory: "24Gi"
-      cpu: "4"
-
-  persistence:
-    oradata:
-      size: 60Gi
-      storageClass: "oci-bv"
-      accessMode: "ReadWriteOnce"
-    setWritePermissions: true
-
-  trueCache:
-    generateEnabled: true
-    generatePath: "/tmp/tc_config_blob.tar.gz"
-
-  services:
-    external:
-      type: LoadBalancer
-      externalTrafficPolicy: Local
-      annotations:
-        oci.oraclecloud.com/load-balancer-type: "nlb"
-        oci-network-load-balancer.oraclecloud.com/internal: "true"
-        oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.replace-me"
-        external-dns.alpha.kubernetes.io/hostname: "orcl-production.internal.example.com"
-      tcp:
-        enabled: true
-        port: 1521
-      tcps:
-        enabled: true
-        port: 2484
-
-  # hostAliases:
-  #   - ip: "10.2.1.30"
-  #     hostnames:
-  #       - "truecache-production.internal.example.com"
-  #       - "truecache-production"
-
-  replicas: 1
-```
-
-Apply the primary database manifest:
-
-```sh
-kubectl apply -f config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml
-```
-
-After the primary becomes healthy, the operator creates the ConfigMap `<primary-name>-truecache-blob`. A True Cache database that references this primary can then use that generated blob.
-
 #### Pre-built Database
 
 To provision a new pre-built database instance, use the sample **[`config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
@@ -392,7 +291,7 @@ $ kubectl apply -f singleinstancedatabase_prebuiltdb.yaml
   singleinstancedatabase.database.oracle.com/prebuiltdb-sample created
 ```
 
-This pre-built image includes the data files of the database inside the image itself. As a result, the database startup time of the container is reduced, down to a couple of seconds. The pre-built database image can be very useful in continuous integration/continuous delivery (CI/CD) scenarios, in which databases are used for conducting tests or experiments, and the workflow is simple. 
+This pre-built image includes the data files of the database inside the image itself. As a result, the database startup time of the container is reduced, down to a couple of seconds. The pre-built database image can be very useful in continuous integration/continuous delivery (CI/CD) scenarios, in which databases are used for conducting tests or experiments, and the workflow is simple.
 
 To build the pre-built database image for the Enterprise/Standard edition, follow these instructions: [Pre-built Database (prebuiltdb) Extension](https://github.com/oracle/docker-images/blob/main/OracleDatabase/SingleInstance/extensions/prebuiltdb/README.md).
 
@@ -426,23 +325,105 @@ This command pulls the Free lite image available in [Oracle Container Registry](
 - Provisioning Oracle Database Free is supported for release 23.3.0 and later releases.
 - For Free database, only single replica mode (such as `replicas: 1`) is supported.
 - For Free database, you **cannot change** the init parameters. These include parameters such as `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
-- Oracle Enterprise Manager Express (OEM Express) is not supported in release 23.3.0 and later releases. 
+- Oracle Enterprise Manager Express (OEM Express) is not supported in release 23.3.0 and later releases.
 
 #### Oracle True Cache
 Oracle True Cache is an in-memory, consistent, and automatically managed cache for Oracle Database.
 
+##### Enable True Cache Blob Generation on a Primary Database
+For a primary `SingleInstanceDatabase`, you can enable operator-managed True Cache blob generation by setting `spec.trueCache.generateEnabled: true`. When enabled, the operator waits for the primary database to become ready, runs `dbca -prepareTrueCacheConfigFile` inside the primary pod, and stores the generated blob in a ConfigMap named `<primary-name>-truecache-blob`. The default key in that ConfigMap is `tc_config_blob.tar.gz`.
+
+If `spec.trueCache.generatePath` ends with `.tar.gz`, the operator guarantees that path is materialized as a tarball file in the primary pod even though DBCA may emit the actual blob into an intermediate directory with a timestamped filename.
+
+This primary-side blob generation is required for both the basic same-cluster True Cache flow and the advanced cross-cluster flow.
+
+Requirements:
+
+- `spec.createAs` must be `primary`.
+- `spec.edition` must be `enterprise`.
+- `spec.archiveLog` must be `true`.
+
+Example:
+
+```yaml
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: orcl-production
+  namespace: default
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  createAs: primary
+  edition: enterprise
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+
+  archiveLog: true
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
+    prebuiltDB: false
+    imagePullPolicy: Always
+
+  initParams:
+    sgaTarget: 2048
+    pgaAggregateTarget: 1024
+    cpuCount: 2
+    processes: 600
+
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "2"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+    setWritePermissions: true
+
+  trueCache:
+    generateEnabled: true
+    generatePath: "/tmp/tc_config_blob.tar.gz"
+
+  replicas: 1
+```
+
+Apply the primary database manifest first:
+
+```sh
+kubectl apply -f config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml
+```
+
+After the primary becomes healthy, the operator creates the ConfigMap `<primary-name>-truecache-blob`. A True Cache database that references this primary can then use that generated blob.
+
 ##### True Cache in Same Kubernetes Cluster
-To provision a True Cache instance in Kubernetes, use the sample **[`config/samples/sidb/singleinstancedatabase_truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache.yaml)** file. True Cache requires `spec.edition: enterprise`. For example
+To provision a True Cache instance in Kubernetes, use the sample **[`config/samples/sidb/singleinstancedatabase_truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache.yaml)** file. True Cache requires `spec.edition: enterprise`.
+
+Basic same-cluster True Cache still requires these inputs before you create the True Cache SIDB:
+
+- A primary SIDB with `spec.createAs: primary`
+- `spec.archiveLog: true` on the primary
+- `spec.trueCache.generateEnabled: true` on the primary so the operator generates `<primary-name>-truecache-blob`
+- A database admin secret such as `db-admin-secret`
+
+TDE is not required for True Cache in general, and it is not required for this basic same-cluster flow. Use TDE only when the primary database is configured with TDE and the True Cache deployment must use the same wallet or encryption setup.
+
+Create the primary first so the blob ConfigMap exists, then create the True Cache SIDB that consumes that blob. For the primary-side blob generation details, see [Enable True Cache Blob Generation on a Primary Database](#enable-true-cache-blob-generation-on-a-primary-database). For example
 
       kubectl apply -f singleinstancedatabase_truecache.yaml
 
-##### True Cache Across Clusters with External DNS
-
-When the primary and the True Cache database run in different Kubernetes clusters, the default in-cluster hostname `<truecache-name>.<namespace>.svc.cluster.local` is often not resolvable from the primary cluster. In that topology, configure the operator-managed external service through `spec.services.external` so the generated `LoadBalancer` Service carries the `external-dns.alpha.kubernetes.io/hostname` annotation.
-
-When `spec.services.external` is enabled on the True Cache SIDB, the operator renders `truecache-production-ext`. If that Service sets `external-dns.alpha.kubernetes.io/hostname`, the operator uses that external DNS hostname as the advertised True Cache hostname. If no external service exists, the operator falls back to `<truecache-name>.<namespace>.svc.cluster.local`.
-
-Example True Cache manifest that uses an externally reachable primary database and a generated blob ConfigMap:
+Example same-cluster True Cache manifest:
 
 ```yaml
 apiVersion: database.oracle.com/v4
@@ -457,8 +438,15 @@ spec:
   createAs: truecache
 
   primarySource:
-    connectString: "orcl-production.internal.example.com:1521/ORCLPRD"
-    pdbName: "APPPDB1"
+    databaseRef: "orcl-production"
+
+  trueCache:
+    blobConfigMapRef: orcl-production-truecache-blob
+    blobConfigMapKey: tc_config_blob.tar.gz
+    blobMountPath: /stage/tc_config_blob.tar.gz
+    truedbUniqueName: "truecache_production_tc"
+    trueCacheServices:
+      - "APPPDB1:tpdb_primary:tpdb_cache"
 
   security:
     secrets:
@@ -466,12 +454,6 @@ spec:
         secretName: db-admin-secret
         secretKey: oracle_pwd
         keepSecret: true
-      tde:
-        secretName: tde-wallet-secret
-        secretKey: tde_wallet_pwd
-    tcps:
-      enabled: true
-      tlsSecret: sidb-standby-tcps-tls
 
   image:
     pullFrom: container-registry.oracle.com/database/enterprise:latest
@@ -484,69 +466,8 @@ spec:
       storageClass: "oci-bv"
       accessMode: "ReadWriteOnce"
 
-  trueCache:
-    blobConfigMapRef: orcl-production-truecache-blob
-    blobConfigMapKey: tc_config_blob.tar.gz
-    blobMountPath: /stage/tc_config_blob.tar.gz
-    truedbUniqueName: "truecache_production_tc"
-    trueCacheServices:
-      - "APPPDB1:tpdb_primary:tpdb_cache"
-
-  services:
-    external:
-      type: LoadBalancer
-      externalTrafficPolicy: Local
-      annotations:
-        oci.oraclecloud.com/load-balancer-type: "nlb"
-        oci-network-load-balancer.oraclecloud.com/internal: "true"
-        oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.ap-mumbai-1.replace-me"
-        external-dns.alpha.kubernetes.io/hostname: "truecache-production.internal.example.com"
-      tcp:
-        enabled: true
-        port: 1521
-      tcps:
-        enabled: true
-        port: 2484
-
-  # hostAliases:
-  #   - ip: "10.0.2.108"
-  #     hostnames:
-  #       - "orcl-production.internal.example.com"
-  #       - "orcl-production"
-
   replicas: 1
 ```
-
-Create the True Cache database directly; the operator renders the external service:
-
-```sh
-kubectl apply -f config/samples/sidb/singleinstancedatabase_truecache_external.yaml
-```
-
-Validation:
-
-```sh
-kubectl get svc -n default orcl-production-ext truecache-production-ext
-oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain orcl-production.internal.example.com --rtype A --scope PRIVATE
-oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain truecache-production.internal.example.com --rtype A --scope PRIVATE
-kubectl exec -n default <primary-pod> -- nslookup truecache-production.internal.example.com
-kubectl exec -n default <truecache-pod> -- nslookup orcl-production.internal.example.com
-```
-
-##### True Cache Peered VCN Setup
-
-For the OCI network setup required before a cross-region or cross-cluster private True Cache deployment, see **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**.
-
-##### True Cache Related Sample Files
-
-Follow these docs in order for a primary and True Cache setup:
-
-- **[`Enable True Cache Blob Generation on a Primary Database`](./README.md#enable-true-cache-blob-generation-on-a-primary-database)**: create the primary SIDB and generate the True Cache blob.
-- **[`True Cache in Same Kubernetes Cluster`](./README.md#true-cache-in-same-kubernetes-cluster)**: use the standard same-cluster True Cache flow.
-- **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**: set up OCI peered VCN connectivity first when the primary and True Cache run in different regions or clusters.
-- **[`True Cache Across Clusters with External DNS`](./README.md#true-cache-across-clusters-with-external-dns)**: create the True Cache SIDB for the cross-cluster or externally reachable flow.
-- **[`docs/sidb/external-dns/README.md`](./external-dns/README.md)**: configure shared private DNS publication for the operator-managed `*-ext` services.
-- **[`docs/sidb/tcps-cert-manager/README.md`](./tcps-cert-manager/README.md)**: issue and validate the TCPS certificates used by the primary and True Cache databases.
 
 #### Additional Information
 You are required to specify the database administrative user (admin) password Secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [`singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml), [`singleinstancedatabase_prebuiltdb.yaml`](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml), [`singleinstancedatabase_express.yaml`](../../config/samples/sidb/singleinstancedatabase_express.yaml) and [`singleinstancedatabse_free.yaml`](../../config/samples/sidb/singleinstancedatabase_free.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, `xedb-admin-secret` and `free-admin-secret` respectively. You can create these Secrets manually by using the sample command mentioned in the [`Template YAML`](#template-yaml) section. Alternatively, you can create these Secrets by filling in the passwords in the **[`singleinstancedatabase_secrets.yaml`](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying them using the following command:
@@ -1244,6 +1165,219 @@ $ kubectl delete singleinstancedatabase stdby-1
 
   singleinstancedatabase.database.oracle.com "stdby-1" deleted
 ```
+
+#### Oracle True Cache Advanced Setup
+
+##### True Cache Prerequisites
+Blob generation on the primary is required for both basic and advanced True Cache deployments. The basic primary-side setup is documented in [Enable True Cache Blob Generation on a Primary Database](#enable-true-cache-blob-generation-on-a-primary-database). The subsections below cover the remaining advanced pieces: optional TDE and TCPS wiring for the TCPS flow, and blob export when the True Cache database is created outside the primary namespace or cluster.
+
+For the standard SIDB password secret flow, see **[`singleinstancedatabase_secrets.yaml`](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)**.
+
+###### TDE Wallet Secret
+Use the TDE wallet secret only when the chosen primary or True Cache manifest includes TDE configuration. TDE is not a general True Cache requirement; it is needed only when the primary database is configured with TDE and the True Cache deployment must use the same wallet or encryption setup. This is separate from TCPS.
+
+Example TDE secret wiring:
+
+```yaml
+security:
+  secrets:
+    tde:
+      secretName: tde-wallet-secret
+      secretKey: tde_wallet_pwd
+```
+
+This is used in the TCPS-enabled primary and cross-cluster True Cache samples:
+
+- **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)**
+- **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)**
+
+The basic same-cluster True Cache flow does not require this TDE secret.
+
+###### TCPS Secrets and Certificates
+If the primary and True Cache deployment uses TCPS, keep the TLS secret references explicit in both manifests and generate the certificates with the cert-manager flow.
+
+Primary-side example:
+
+```yaml
+security:
+  secrets:
+    admin:
+      secretName: db-admin-secret
+      secretKey: oracle_pwd
+      keepSecret: true
+  tcps:
+    enabled: true
+    tlsSecret: sidb-primary-tcps-tls
+```
+
+True Cache-side example:
+
+```yaml
+security:
+  secrets:
+    admin:
+      secretName: db-admin-secret
+      secretKey: oracle_pwd
+      keepSecret: true
+  tcps:
+    enabled: true
+    tlsSecret: sidb-standby-tcps-tls
+```
+
+Use these as the concrete TCPS starting point for:
+
+- **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)** on the primary side
+- **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)** on the True Cache side
+- **[`docs/sidb/tcps-cert-manager/README.md`](./tcps-cert-manager/README.md)** for issuing and validating the TCPS secrets
+
+For a full TCPS-enabled pair, use:
+
+- **[`config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_primary_tcps_peered.yaml)** for the primary SIDB
+- **[`config/samples/sidb/singleinstancedatabase_truecache_external.yaml`](../../config/samples/sidb/singleinstancedatabase_truecache_external.yaml)** for the True Cache SIDB
+
+###### Export the Generated True Cache Blob to Another Cluster or Namespace
+If the True Cache database is created in another cluster or another namespace, export the generated blob from the primary side and recreate the blob ConfigMap on the target side.
+
+Example flow:
+
+```sh
+kubectl get configmap orcl-production-truecache-blob -n default
+kubectl get pod -n default -l app=orcl-production
+kubectl cp -n default <primary-pod>:/tmp/tc_config_blob.tar.gz ./tc_config_blob.tar.gz
+kubectl create configmap orcl-production-truecache-blob \
+  -n default \
+  --from-file=tc_config_blob.tar.gz=./tc_config_blob.tar.gz \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Use this exported ConfigMap with:
+
+- `spec.trueCache.blobConfigMapRef`
+- `spec.trueCache.blobConfigMapKey`
+- `spec.trueCache.blobMountPath`
+
+If the True Cache database is created in the same namespace as the primary, you usually do not need this manual copy step because the operator-created ConfigMap can be referenced directly.
+
+##### True Cache Across Clusters with External DNS
+
+When the primary and the True Cache database run in different Kubernetes clusters, the default in-cluster hostname `<truecache-name>.<namespace>.svc.cluster.local` is often not resolvable from the primary cluster. In that topology, configure the operator-managed external service through `spec.services.external` so the generated `LoadBalancer` Service carries the `external-dns.alpha.kubernetes.io/hostname` annotation.
+
+When `spec.services.external` is enabled on the True Cache SIDB, the operator renders `truecache-production-ext`. If that Service sets `external-dns.alpha.kubernetes.io/hostname`, the operator uses that external DNS hostname as the advertised True Cache hostname. If no external service exists, the operator falls back to `<truecache-name>.<namespace>.svc.cluster.local`.
+
+Example True Cache manifest that uses an externally reachable primary database and a generated blob ConfigMap:
+
+```yaml
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: truecache-production
+  namespace: default
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  edition: enterprise
+  createAs: truecache
+
+  primarySource:
+    connectString: "orcl-production.internal.example.com:1521/ORCLPRD"
+    pdbName: "APPPDB1"
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-standby-tcps-tls
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
+    prebuiltDB: false
+    imagePullPolicy: Always
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+
+  trueCache:
+    blobConfigMapRef: orcl-production-truecache-blob
+    blobConfigMapKey: tc_config_blob.tar.gz
+    blobMountPath: /stage/tc_config_blob.tar.gz
+    truedbUniqueName: "truecache_production_tc"
+    trueCacheServices:
+      - "APPPDB1:tpdb_primary:tpdb_cache"
+
+  services:
+    external:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.ap-mumbai-1.replace-me"
+        external-dns.alpha.kubernetes.io/hostname: "truecache-production.internal.example.com"
+      tcp:
+        enabled: true
+        port: 1521
+      tcps:
+        enabled: true
+        port: 2484
+
+  # hostAliases:
+  #   - ip: "10.0.2.108"
+  #     hostnames:
+  #       - "orcl-production.internal.example.com"
+  #       - "orcl-production"
+
+  replicas: 1
+```
+
+Create the True Cache database directly; the operator renders the external service:
+
+```sh
+kubectl apply -f config/samples/sidb/singleinstancedatabase_truecache_external.yaml
+```
+
+Validation:
+
+```sh
+kubectl get svc -n default orcl-production-ext truecache-production-ext
+oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain orcl-production.internal.example.com --rtype A --scope PRIVATE
+oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain truecache-production.internal.example.com --rtype A --scope PRIVATE
+kubectl exec -n default <primary-pod> -- nslookup truecache-production.internal.example.com
+kubectl exec -n default <truecache-pod> -- nslookup orcl-production.internal.example.com
+```
+
+##### True Cache Setup References
+
+Follow these docs in order for an advanced primary and True Cache setup:
+
+###### Primary and Blob Preparation
+
+- **[`True Cache Prerequisites`](./README.md#true-cache-prerequisites)**: prepare the primary blob generation, required database secrets, and blob ConfigMap before creating True Cache.
+- **[`Export the Generated True Cache Blob to Another Cluster or Namespace`](./README.md#export-the-generated-true-cache-blob-to-another-cluster-or-namespace)**: copy the already-generated blob only when the True Cache SIDB is created outside the primary namespace or cluster.
+- **[`True Cache Across Clusters with External DNS`](./README.md#true-cache-across-clusters-with-external-dns)**: create the True Cache SIDB for the cross-cluster or externally reachable flow.
+
+###### OCI Network Peering
+
+- **[`docs/sidb/TRUECACHE_PEERED_VCN_SETUP.md`](./TRUECACHE_PEERED_VCN_SETUP.md)**: set up OCI peered VCN connectivity first when the primary and True Cache run in different regions or clusters.
+
+###### External DNS
+
+- **[`docs/sidb/external-dns/README.md`](./external-dns/README.md)**: configure shared private DNS publication for the operator-managed `*-ext` services.
+
+###### Security and TCPS
+
+- **[`TDE Wallet Secret`](./README.md#tde-wallet-secret)**: use this only for the manifests that explicitly configure TDE.
+- **[`TCPS Secrets and Certificates`](./README.md#tcps-secrets-and-certificates)**: use this together with the External DNS flow when the primary and True Cache databases must connect over TCPS.
+- **[`docs/sidb/tcps-cert-manager/README.md`](./tcps-cert-manager/README.md)**: issue and validate the TCPS certificates used by the primary and True Cache databases.
 
 ### Execute Custom Scripts
 
