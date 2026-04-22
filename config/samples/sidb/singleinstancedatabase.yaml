@@ -188,8 +188,12 @@ spec:
   #       - "truecache-production.default.svc.cluster.local"
   #       - "truecache-production"
 
-  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
-  serviceAccountName: default
+  ## Use a dedicated SIDB service account instead of `default`.
+  ## If deploying on OpenShift, set this to `sidb-sa` after you run `$ oc apply -f openshift_rbac.yaml`
+  # serviceAccountName: sidb-sa
+
+  ## Defaults to false. Keep the Kubernetes API token unmounted in the SIDB pod unless explicitly needed.
+  # automountServiceAccountToken: false
 
   ## Count of Database Pods. Only one pod will have the DB mounted and open.
   ## The other replica pods will have instance up and will mount and open the DB if the primary pod dies

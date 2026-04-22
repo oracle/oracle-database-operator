@@ -2169,3 +2169,11 @@ func Int64Pointer(d int64) *int64 {
 func BoolPointer(d bool) *bool {
 	return &d
 }
+
+func shardingAutomountServiceAccountToken(instance *databasev4.ShardingDatabase) *bool {
+	disabled := false
+	if instance == nil || instance.Spec.AutomountServiceAccountToken == nil {
+		return &disabled
+	}
+	return instance.Spec.AutomountServiceAccountToken
+}

@@ -179,11 +179,12 @@ func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpe
 		return nil, err
 	}
 	spec := &corev1.PodSpec{
-		SecurityContext:    podSecurityContext,
-		HostAliases:        cloneHostAliases(instance.Spec.HostAliases),
-		Containers:         buildContainerSpecForCatalog(instance, OraCatalogSpex),
-		Volumes:            buildVolumeSpecForCatalog(instance, OraCatalogSpex),
-		ServiceAccountName: instance.Spec.SrvAccountName,
+		SecurityContext:              podSecurityContext,
+		HostAliases:                  cloneHostAliases(instance.Spec.HostAliases),
+		Containers:                   buildContainerSpecForCatalog(instance, OraCatalogSpex),
+		Volumes:                      buildVolumeSpecForCatalog(instance, OraCatalogSpex),
+		ServiceAccountName:           instance.Spec.SrvAccountName,
+		AutomountServiceAccountToken: shardingAutomountServiceAccountToken(instance),
 	}
 
 	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {

@@ -333,11 +333,12 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 		return nil, err
 	}
 	spec := &corev1.PodSpec{
-		SecurityContext:    podSecurityContext,
-		HostAliases:        cloneHostAliases(instance.Spec.HostAliases),
-		Containers:         buildContainerSpecForShard(instance, OraShardSpex),
-		Volumes:            buildVolumeSpecForShard(instance, OraShardSpex),
-		ServiceAccountName: instance.Spec.SrvAccountName,
+		SecurityContext:              podSecurityContext,
+		HostAliases:                  cloneHostAliases(instance.Spec.HostAliases),
+		Containers:                   buildContainerSpecForShard(instance, OraShardSpex),
+		Volumes:                      buildVolumeSpecForShard(instance, OraShardSpex),
+		ServiceAccountName:           instance.Spec.SrvAccountName,
+		AutomountServiceAccountToken: shardingAutomountServiceAccountToken(instance),
 	}
 
 	// Compose init containers in execution order.

@@ -109,13 +109,15 @@ type ShardingDatabaseSpec struct {
 	TdeWalletPvc    string `json:"tdeWalletPvc,omitempty"`
 	FssStorageClass string `json:"fssStorageClass,omitempty"`
 	// Deprecated: use tdeWallet.mountPath.
-	TdeWalletPvcMountLocation string                 `json:"tdeWalletPvcMountLocation,omitempty"`
-	TDEWallet                 *TDEWalletConfig       `json:"tdeWallet,omitempty"`
-	DbEdition                 string                 `json:"dbEdition,omitempty"`
-	TopicId                   string                 `json:"topicId,omitempty"`
-	SrvAccountName            string                 `json:"serviceAccountName,omitempty"`
-	ShardInfo                 []ShardingDetails      `json:"shardInfo,omitempty"`
-	Dataguard                 *DataguardProducerSpec `json:"dataguard,omitempty"`
+	TdeWalletPvcMountLocation string           `json:"tdeWalletPvcMountLocation,omitempty"`
+	TDEWallet                 *TDEWalletConfig `json:"tdeWallet,omitempty"`
+	DbEdition                 string           `json:"dbEdition,omitempty"`
+	TopicId                   string           `json:"topicId,omitempty"`
+	SrvAccountName            string           `json:"serviceAccountName,omitempty"`
+	// +kubebuilder:default:=false
+	AutomountServiceAccountToken *bool                  `json:"automountServiceAccountToken,omitempty"`
+	ShardInfo                    []ShardingDetails      `json:"shardInfo,omitempty"`
+	Dataguard                    *DataguardProducerSpec `json:"dataguard,omitempty"`
 	// New fields for GDD-style YAML
 	Region                []RegionSpec       `json:"region,omitempty"`
 	ShardGroup            []ShardGroupSpec   `json:"shardGroup,omitempty"`

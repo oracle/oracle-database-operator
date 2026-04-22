@@ -482,6 +482,11 @@ spec:
                 type: string
               topicId:
                 type: string
+              serviceAccountName:
+                type: string
+              automountServiceAccountToken:
+                default: false
+                type: boolean
             required:
             - catalog
             - dbImage
@@ -1921,6 +1926,9 @@ spec:
                 type: array
               serviceAccountName:
                 type: string
+              automountServiceAccountToken:
+                default: false
+                type: boolean
               shard:
                 items:
                   properties:

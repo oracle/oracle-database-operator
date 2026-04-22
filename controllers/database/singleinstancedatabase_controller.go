@@ -2688,7 +2688,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				Image:           m.Spec.Image.PullFrom,
 				ImagePullPolicy: getSIDBImagePullPolicy(m),
 				SecurityContext: &corev1.SecurityContext{
-					Capabilities: buildSIDBContainerCapabilities(m),
+					AllowPrivilegeEscalation: func() *bool { i := false; return &i }(),
+					Capabilities:             buildSIDBContainerCapabilities(m),
 				},
 				Lifecycle: &corev1.Lifecycle{
 					PreStop: &corev1.LifecycleHandler{
@@ -3220,7 +3221,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					Name: m.Spec.Image.PullSecrets,
 				},
 			},
-			ServiceAccountName: m.Spec.ServiceAccountName,
+			ServiceAccountName:           m.Spec.ServiceAccountName,
+			AutomountServiceAccountToken: sidbAutomountServiceAccountToken(m),
 		},
 	}
 
@@ -3233,6 +3235,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	}
 	return pod, nil
 
+}
+
+func sidbAutomountServiceAccountToken(m *dbapi.SingleInstanceDatabase) *bool {
+	disabled := false
+	if m == nil || m.Spec.AutomountServiceAccountToken == nil {
+		return &disabled
+	}
+	return m.Spec.AutomountServiceAccountToken
 }
 
 func applyPrimarySeparationPreference(pod *corev1.Pod, sidb *dbapi.SingleInstanceDatabase, primary *dbapi.SingleInstanceDatabase) {

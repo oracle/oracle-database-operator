@@ -95,6 +95,9 @@ type ShardingDatabaseSpec struct {
 	TdeWalletPvcMountLocation string              `json:"tdeWalletPvcMountLocation,omitempty"`
 	DbEdition                 string              `json:"dbEdition,omitempty"`
 	TopicId                   string              `json:"topicId,omitempty"`
+	SrvAccountName            string              `json:"serviceAccountName,omitempty"`
+	// +kubebuilder:default:=false
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
 }
 
 // ShardingDatabaseStatus defines the observed state of ShardingDatabase

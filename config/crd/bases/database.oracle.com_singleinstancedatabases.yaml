@@ -180,6 +180,9 @@ spec:
                 type: object
               serviceAccountName:
                 type: string
+              automountServiceAccountToken:
+                default: false
+                type: boolean
               serviceAnnotations:
                 additionalProperties:
                   type: string
@@ -1031,6 +1034,9 @@ spec:
                 type: object
               serviceAccountName:
                 type: string
+              automountServiceAccountToken:
+                default: false
+                type: boolean
               serviceAnnotations:
                 additionalProperties:
                   type: string

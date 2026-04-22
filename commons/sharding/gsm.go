@@ -171,10 +171,11 @@ func buildPodSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databa
 			RunAsGroup:   &group,
 			FSGroup:      &group,
 		}, OraGsmSpex.SecurityContext),
-		HostAliases:        cloneHostAliases(instance.Spec.HostAliases),
-		Containers:         buildContainerSpecForGsm(instance, OraGsmSpex),
-		Volumes:            buildVolumeSpecForGsm(instance, OraGsmSpex),
-		ServiceAccountName: instance.Spec.SrvAccountName,
+		HostAliases:                  cloneHostAliases(instance.Spec.HostAliases),
+		Containers:                   buildContainerSpecForGsm(instance, OraGsmSpex),
+		Volumes:                      buildVolumeSpecForGsm(instance, OraGsmSpex),
+		ServiceAccountName:           instance.Spec.SrvAccountName,
+		AutomountServiceAccountToken: shardingAutomountServiceAccountToken(instance),
 	}
 
 	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
