@@ -2170,6 +2170,66 @@ func BoolPointer(d bool) *bool {
 	return &d
 }
 
+func normalizePlacementNodes(nodes []string) []string {
+	if len(nodes) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		trimmed := strings.TrimSpace(node)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func applyPlacementPreferences(spec *corev1.PodSpec, selectorLabels map[string]string, nodes []string) {
+	if spec == nil {
+		return
+	}
+	normalizedNodes := normalizePlacementNodes(nodes)
+	if len(normalizedNodes) == 0 {
+		return
+	}
+	if spec.Affinity == nil {
+		spec.Affinity = &corev1.Affinity{}
+	}
+	spec.Affinity.NodeAffinity = &corev1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+				MatchExpressions: []corev1.NodeSelectorRequirement{{
+					Key:      corev1.LabelHostname,
+					Operator: corev1.NodeSelectorOpIn,
+					Values:   normalizedNodes,
+				}},
+			}},
+		},
+	}
+	if spec.Affinity.PodAntiAffinity == nil {
+		spec.Affinity.PodAntiAffinity = &corev1.PodAntiAffinity{}
+	}
+	spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(
+		spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution,
+		corev1.WeightedPodAffinityTerm{
+			Weight: 100,
+			PodAffinityTerm: corev1.PodAffinityTerm{
+				LabelSelector: &metav1.LabelSelector{MatchLabels: selectorLabels},
+				TopologyKey:   corev1.LabelHostname,
+			},
+		},
+	)
+}
+
 func shardingAutomountServiceAccountToken(instance *databasev4.ShardingDatabase) *bool {
 	disabled := false
 	if instance == nil || instance.Spec.AutomountServiceAccountToken == nil {

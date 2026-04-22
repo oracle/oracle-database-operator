@@ -68,6 +68,10 @@ spec:
                       additionalProperties:
                         type: string
                       type: object
+                    nodes:
+                      items:
+                        type: string
+                      type: array
                     pvAnnotations:
                       additionalProperties:
                         type: string
@@ -1304,6 +1308,10 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  nodes:
+                    items:
+                      type: string
+                    type: array
                   gsm:
                     items:
                       properties:
@@ -1390,6 +1398,10 @@ spec:
                           additionalProperties:
                             type: string
                           type: object
+                        nodes:
+                          items:
+                            type: string
+                          type: array
                         pvAnnotations:
                           additionalProperties:
                             type: string
@@ -2020,6 +2032,10 @@ spec:
                       additionalProperties:
                         type: string
                       type: object
+                    nodes:
+                      items:
+                        type: string
+                      type: array
                     pdbPreFix:
                       type: string
                     primaryDatabaseRef:
@@ -2345,6 +2361,10 @@ spec:
                       additionalProperties:
                         type: string
                       type: object
+                    nodes:
+                      items:
+                        type: string
+                      type: array
                     primaryDatabaseRef:
                       properties:
                         cdbName:

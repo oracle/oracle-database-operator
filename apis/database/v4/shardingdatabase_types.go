@@ -271,6 +271,7 @@ type ShardSpec struct {
 	// +kubebuilder:validation:Enum=enable;disable;failed;force
 	IsDelete     string            `json:"isDelete,omitempty"`     // Deletion flag
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"` // Node selector for scheduling
+	Nodes        []string          `json:"nodes,omitempty"`        // Allowed node hostnames used for preferred spreading
 	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
 	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"` // Annotations for PV
 	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
@@ -394,6 +395,7 @@ type GsmSpec struct {
 	Label        string            `json:"label,omitempty"`        // Optional label
 	IsDelete     string            `json:"isDelete,omitempty"`     // Deletion flag
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"` // Node selector for scheduling
+	Nodes        []string          `json:"nodes,omitempty"`        // Allowed node hostnames used for preferred spreading
 	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
 	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"` // Annotations for PV
 	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
@@ -439,6 +441,7 @@ type GsmInfo struct {
 	ImagePulllPolicy           *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
 	ServiceAnnotations         map[string]string            `json:"serviceAnnotations,omitempty"`
 	ExternalServiceAnnotations map[string]string            `json:"externalServiceAnnotations,omitempty"`
+	Nodes                      []string                     `json:"nodes,omitempty"`
 }
 
 // ShardGroupSpec is used both for top-level shardGroup[] and inside shardInfo.shardGroupDetails.
@@ -738,6 +741,7 @@ type ShardingDetails struct {
 	StandbyConfig              *StandbyConfig               `json:"standbyConfig,omitempty"`
 	EnvVars                    []EnvironmentVariable        `json:"envVars,omitempty"`
 	Resources                  *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	Nodes                      []string                     `json:"nodes,omitempty"`
 	AdditionalPVCs             []AdditionalPVCSpec          `json:"additionalPVCs,omitempty"`
 	ServiceAnnotations         map[string]string            `json:"serviceAnnotations,omitempty"`
 	ExternalServiceAnnotations map[string]string            `json:"externalServiceAnnotations,omitempty"`

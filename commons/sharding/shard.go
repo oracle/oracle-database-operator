@@ -370,6 +370,7 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 			spec.NodeSelector[key] = value
 		}
 	}
+	applyPlacementPreferences(spec, buildLabelsForShard(instance, "sharding", OraShardSpex.Name), OraShardSpex.Nodes)
 
 	return spec, nil
 }

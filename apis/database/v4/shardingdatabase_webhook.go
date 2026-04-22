@@ -259,6 +259,9 @@ func applyGsmInfoDefaults(spec *ShardingDatabaseSpec) {
 			p := *common.ImagePulllPolicy
 			item.ImagePulllPolicy = &p
 		}
+		if len(item.Nodes) == 0 && len(common.Nodes) > 0 {
+			item.Nodes = append([]string(nil), common.Nodes...)
+		}
 
 		item.EnvVars = upsertEnvVars(append([]EnvironmentVariable(nil), common.EnvVars...), item.EnvVars, true)
 		item.ServiceAnnotations = mergeStringMapLocal(common.ServiceAnnotations, item.ServiceAnnotations)
@@ -2475,6 +2478,9 @@ func (r *ShardingDatabase) initShardsSpec() error {
 			}
 			if r.Spec.ShardInfo[pindex].Resources != nil {
 				r.Spec.Shard[shardIndex].Resources = r.Spec.ShardInfo[pindex].Resources
+			}
+			if len(r.Spec.Shard[shardIndex].Nodes) == 0 && len(r.Spec.ShardInfo[pindex].Nodes) > 0 {
+				r.Spec.Shard[shardIndex].Nodes = append([]string(nil), r.Spec.ShardInfo[pindex].Nodes...)
 			}
 			if len(r.Spec.ShardInfo[pindex].AdditionalPVCs) > 0 {
 				r.Spec.Shard[shardIndex].AdditionalPVCs = append([]AdditionalPVCSpec(nil), r.Spec.ShardInfo[pindex].AdditionalPVCs...)

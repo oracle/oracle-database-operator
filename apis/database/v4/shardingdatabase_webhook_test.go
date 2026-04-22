@@ -1798,6 +1798,54 @@ func TestDefaultMaterializesGsmInfoWrapper(t *testing.T) {
 	}
 }
 
+func TestDefaultMaterializesGsmInfoNodes(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			GsmInfo: &GsmInfo{
+				Nodes: []string{"worker-a", "worker-b"},
+				Gsm: []GsmSpec{{
+					Name: "gsm1",
+				}},
+			},
+		},
+	}
+
+	if err := cr.Default(context.Background(), cr); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+	if len(cr.Spec.Gsm) != 1 {
+		t.Fatalf("expected one gsm entry, got %d", len(cr.Spec.Gsm))
+	}
+	if len(cr.Spec.Gsm[0].Nodes) != 2 || cr.Spec.Gsm[0].Nodes[0] != "worker-a" || cr.Spec.Gsm[0].Nodes[1] != "worker-b" {
+		t.Fatalf("expected gsm nodes to be materialized from gsmInfo, got %v", cr.Spec.Gsm[0].Nodes)
+	}
+}
+
+func TestDefaultMaterializesShardInfoNodes(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			ShardInfo: []ShardingDetails{{
+				ShardPreFixName: "sh",
+				ShardNum:        2,
+				Nodes:           []string{"worker-a", "worker-b"},
+			}},
+			Shard: make([]ShardSpec, 2),
+		},
+	}
+
+	if err := cr.Default(context.Background(), cr); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+	if len(cr.Spec.Shard) != 2 {
+		t.Fatalf("expected two shard entries, got %d", len(cr.Spec.Shard))
+	}
+	for i := range cr.Spec.Shard {
+		if len(cr.Spec.Shard[i].Nodes) != 2 || cr.Spec.Shard[i].Nodes[0] != "worker-a" || cr.Spec.Shard[i].Nodes[1] != "worker-b" {
+			t.Fatalf("expected shard nodes to be materialized from shardInfo, got %v", cr.Spec.Shard[i].Nodes)
+		}
+	}
+}
+
 func envVarValue(envs []EnvironmentVariable, key string) string {
 	for _, e := range envs {
 		if e.Name == key {

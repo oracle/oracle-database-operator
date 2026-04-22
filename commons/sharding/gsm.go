@@ -195,6 +195,7 @@ func buildPodSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databa
 			spec.NodeSelector[key] = value
 		}
 	}
+	applyPlacementPreferences(spec, buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name), OraGsmSpex.Nodes)
 	return spec
 }
 
