@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -64,25 +65,38 @@ type associatedBackend struct {
 // +kubebuilder:rbac:groups=privateai.oracle.com,resources=privateais,verbs=get;list;watch
 
 func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := logf.FromContext(ctx).WithValues("namespace", req.Namespace, "name", req.Name)
 	inst := &networkv4.TrafficManager{}
 	if err := r.Get(ctx, req.NamespacedName, inst); err != nil {
 		if apierrors.IsNotFound(err) {
+			log.Info("resource not found")
 			return trafficManagerNoRequeue, nil
 		}
+		log.Error(err, "failed to fetch TrafficManager")
 		return trafficManagerRequeue, err
 	}
+	log.Info("reconcile started", "type", inst.Spec.Type)
 
 	backends, err := r.listAssociatedBackends(ctx, inst)
 	if err != nil {
 		inst.Status.Status = privateaiv4.StatusError
 		_ = r.Status().Update(ctx, inst)
+		log.Error(err, "failed to discover associated backends")
 		return trafficManagerRequeue, err
 	}
+	log.Info("resolved associated backends",
+		"backendCount", len(backends),
+		"backends", describeAssociatedBackends(backends),
+		"frontendTLSEnabled", inst.Spec.Security.TLS.Enabled,
+		"backendTLSVerificationEnabled", backendTLSVerificationEnabled(inst),
+		"backendTrustSecret", backendTLSTrustSecretName(inst),
+	)
 
 	configData, err := buildManagedNginxConfig(inst, backends)
 	if err != nil {
 		inst.Status.Status = privateaiv4.StatusError
 		_ = r.Status().Update(ctx, inst)
+		log.Error(err, "failed to build managed nginx config")
 		return trafficManagerRequeue, err
 	}
 	configChecksum := checksumString(configData)
@@ -90,45 +104,75 @@ func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		inst.Status.Status = privateaiv4.StatusError
 		_ = r.Status().Update(ctx, inst)
+		log.Error(err, "failed to resolve frontend TLS secret checksum", "secretName", strings.TrimSpace(inst.Spec.Security.TLS.SecretName))
 		return trafficManagerRequeue, err
 	}
 	backendTLSChecksum, err := r.resolveBackendTLSSecretChecksum(ctx, inst)
 	if err != nil {
 		inst.Status.Status = privateaiv4.StatusError
 		_ = r.Status().Update(ctx, inst)
+		log.Error(err, "failed to resolve backend TLS trust secret checksum", "secretName", backendTLSTrustSecretName(inst))
 		return trafficManagerRequeue, err
 	}
+	log.Info("rendered managed nginx config",
+		"configMapName", trafficManagerConfigMapName(inst),
+		"configChecksum", configChecksum,
+		"frontendTLSChecksumPresent", tlsChecksum != "",
+		"backendTLSChecksumPresent", backendTLSChecksum != "",
+	)
 
 	configMap := buildTrafficManagerConfigMap(inst, configData)
 	if err := controllerutil.SetControllerReference(inst, configMap, r.Scheme); err != nil {
+		log.Error(err, "failed to set controller reference on configmap", "configMap", configMap.Name)
 		return trafficManagerNoRequeue, err
 	}
 	if err := r.applyConfigMap(ctx, configMap); err != nil {
+		log.Error(err, "failed to apply configmap", "configMap", configMap.Name)
 		return trafficManagerNoRequeue, err
 	}
+	log.Info("configmap reconciled", "configMap", configMap.Name)
 
 	deploy := buildTrafficManagerDeployment(inst, configChecksum, tlsChecksum, backendTLSChecksum)
 	if err := controllerutil.SetControllerReference(inst, deploy, r.Scheme); err != nil {
+		log.Error(err, "failed to set controller reference on deployment", "deployment", deploy.Name)
 		return trafficManagerNoRequeue, err
 	}
 	foundDeploy, depResult, err := k8sobjects.ReconcileDeployment(ctx, r.Client, inst.Namespace, deploy, syncTrafficManagerDeployment)
 	if err != nil {
+		log.Error(err, "failed to reconcile deployment", "deployment", deploy.Name)
 		return trafficManagerNoRequeue, err
 	}
+	log.Info("deployment reconciled",
+		"deployment", deploy.Name,
+		"created", depResult.Created,
+		"updated", depResult.Updated,
+		"readyReplicas", foundDeploy.Status.ReadyReplicas,
+		"desiredReplicas", ptr.Deref(deploy.Spec.Replicas, int32(0)),
+	)
 
 	if trafficManagerServiceEnabled(inst.Spec.Service.Internal.Enabled, true) {
 		if err := r.ensureService(ctx, inst, "internal"); err != nil {
+			log.Error(err, "failed to reconcile internal service", "service", trafficManagerInternalServiceName(inst))
 			return trafficManagerNoRequeue, err
 		}
+		log.Info("internal service reconciled", "service", trafficManagerInternalServiceName(inst))
 	} else if err := deleteServiceIfExists(ctx, r.Client, inst.Namespace, trafficManagerInternalServiceName(inst)); err != nil {
+		log.Error(err, "failed to delete internal service", "service", trafficManagerInternalServiceName(inst))
 		return trafficManagerNoRequeue, err
+	} else {
+		log.Info("internal service disabled", "service", trafficManagerInternalServiceName(inst))
 	}
 	if trafficManagerServiceEnabled(inst.Spec.Service.External.Enabled, false) {
 		if err := r.ensureService(ctx, inst, "external"); err != nil {
+			log.Error(err, "failed to reconcile external service", "service", trafficManagerExternalServiceName(inst))
 			return trafficManagerNoRequeue, err
 		}
+		log.Info("external service reconciled", "service", trafficManagerExternalServiceName(inst))
 	} else if err := deleteServiceIfExists(ctx, r.Client, inst.Namespace, trafficManagerExternalServiceName(inst)); err != nil {
+		log.Error(err, "failed to delete external service", "service", trafficManagerExternalServiceName(inst))
 		return trafficManagerNoRequeue, err
+	} else {
+		log.Info("external service disabled", "service", trafficManagerExternalServiceName(inst))
 	}
 
 	inst.Status.Status = privateaiv4.StatusReady
@@ -168,15 +212,28 @@ func (r *TrafficManagerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		Routes:             buildNginxRouteStatuses(inst, backends, inst.Status.ExternalEndpoint),
 	}
 	if err := r.Status().Update(ctx, inst); err != nil {
+		log.Error(err, "failed to update TrafficManager status")
 		return trafficManagerNoRequeue, err
 	}
+	log.Info("status updated",
+		"status", inst.Status.Status,
+		"readyReplicas", inst.Status.ReadyReplicas,
+		"internalService", inst.Status.InternalService,
+		"externalService", inst.Status.ExternalService,
+		"externalEndpoint", inst.Status.ExternalEndpoint,
+		"routeCount", len(inst.Status.Nginx.Routes),
+	)
 	if depResult.Created {
+		log.Info("reconcile completed", "requeueAfter", trafficManagerRequeue.RequeueAfter.String(), "reason", "deployment created")
 		return trafficManagerRequeue, nil
 	}
 	if depResult.Updated {
+		log.Info("reconcile completed", "requeueAfter", trafficManagerRequeue.RequeueAfter.String(), "reason", "deployment updated")
 		return trafficManagerRequeue, nil
 	}
-	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	result := ctrl.Result{RequeueAfter: 30 * time.Second}
+	log.Info("reconcile completed", "requeueAfter", result.RequeueAfter.String())
+	return result, nil
 }
 
 func (r *TrafficManagerReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -332,6 +389,7 @@ func appendBackendLocation(builder *strings.Builder, inst *networkv4.TrafficMana
 	if backend.UseHTTPS {
 		builder.WriteString("            proxy_ssl_server_name on;\n")
 		builder.WriteString(fmt.Sprintf("            proxy_ssl_name %s;\n", backend.ServiceName))
+		builder.WriteString("            proxy_ssl_protocols TLSv1.2 TLSv1.3;\n")
 		if backendTLSVerificationEnabled(inst) {
 			builder.WriteString(fmt.Sprintf("            proxy_ssl_trusted_certificate %s;\n", backendTLSFilePath(inst)))
 			builder.WriteString("            proxy_ssl_verify on;\n")
@@ -565,6 +623,20 @@ func backendNames(backends []associatedBackend) []string {
 	out := make([]string, 0, len(backends))
 	for _, backend := range backends {
 		out = append(out, backend.Name)
+	}
+	return out
+}
+
+func describeAssociatedBackends(backends []associatedBackend) []string {
+	out := make([]string, 0, len(backends))
+	for _, backend := range backends {
+		out = append(out, fmt.Sprintf("%s:%s->%s:%d(%s)",
+			backend.Name,
+			backend.Path,
+			backend.ServiceName,
+			backend.ServicePort,
+			backendScheme(backend.UseHTTPS),
+		))
 	}
 	return out
 }

@@ -221,6 +221,9 @@ func TestBuildManagedNginxConfigBackendTLSVerificationEnabled(t *testing.T) {
 	if !strings.Contains(cfg, "proxy_ssl_trusted_certificate /etc/nginx/backend-ca/ca.crt;") {
 		t.Fatalf("expected backend trust file reference in config, got:\n%s", cfg)
 	}
+	if !strings.Contains(cfg, "proxy_ssl_protocols TLSv1.2 TLSv1.3;") {
+		t.Fatalf("expected backend TLS protocols in config, got:\n%s", cfg)
+	}
 	if !strings.Contains(cfg, "proxy_ssl_verify on;") {
 		t.Fatalf("expected backend TLS verification on, got:\n%s", cfg)
 	}
@@ -241,6 +244,9 @@ func TestBuildManagedNginxConfigBackendTLSAbsentKeepsVerificationOff(t *testing.
 	cfg, err := buildManagedNginxConfig(inst, backends)
 	if err != nil {
 		t.Fatalf("buildManagedNginxConfig returned error: %v", err)
+	}
+	if !strings.Contains(cfg, "proxy_ssl_protocols TLSv1.2 TLSv1.3;") {
+		t.Fatalf("expected backend TLS protocols in config, got:\n%s", cfg)
 	}
 	if !strings.Contains(cfg, "proxy_ssl_verify off;") {
 		t.Fatalf("expected backend TLS verification off when backendTLS is absent, got:\n%s", cfg)
