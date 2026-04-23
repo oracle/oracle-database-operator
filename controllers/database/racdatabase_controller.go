@@ -4271,13 +4271,23 @@ func (r *RacDatabaseReconciler) ensureStatefulSetUpdated(ctx context.Context,
 // specific disk group is present, aiding add/remove workflows.
 func (r *RacDatabaseReconciler) diskGroupExists(podName, diskGroupName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *racdb.RacDatabase, logger logr.Logger) (bool, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	cmd := fmt.Sprintf("su - grid -c 'asmcmd lsdg | grep -w %s'", diskGroupName)
-	stdout, _, err := raccommon.ExecCommand(podName, []string{"bash", "-c", cmd}, r.kubeClient, r.kubeConfig, instance, reqLogger)
+	if !racdb.IsValidAsmDiskGroupName(diskGroupName) {
+		return false, fmt.Errorf("invalid ASM disk group name %q", diskGroupName)
+	}
+
+	stdout, _, err := raccommon.ExecCommand(podName, []string{"su", "-", "grid", "-c", "asmcmd lsdg"}, r.kubeClient, r.kubeConfig, instance, reqLogger)
 	if err != nil {
 		return false, err
 	}
-	if strings.Contains(stdout, diskGroupName) {
-		return true, nil
+
+	for _, line := range strings.Split(stdout, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if strings.TrimSuffix(fields[len(fields)-1], "/") == diskGroupName {
+			return true, nil
+		}
 	}
 	return false, nil
 }
@@ -4327,8 +4337,11 @@ func (r *RacDatabaseReconciler) addDisks(
 
 	// Add all disks ONCE
 	for _, disk := range deviceList {
-		cmd := fmt.Sprintf(
-			"python3 /opt/scripts/startup/scripts/main.py --updateasmdevices=\"diskname=%s;diskgroup=%s;processtype=addition\"",
+		if !racdb.IsValidAsmDiskPath(disk) {
+			return fmt.Errorf("invalid ASM disk path %q", disk)
+		}
+		cmdArg := fmt.Sprintf(
+			"--updateasmdevices=diskname=%s;diskgroup=%s;processtype=addition",
 			disk,
 			diskGroupName,
 		)
@@ -4341,7 +4354,7 @@ func (r *RacDatabaseReconciler) addDisks(
 
 		stdout, stderr, err := raccommon.ExecCommand(
 			podName,
-			[]string{"bash", "-c", cmd},
+			[]string{"python3", "/opt/scripts/startup/scripts/main.py", cmdArg},
 			r.kubeClient,
 			r.kubeConfig,
 			instance,

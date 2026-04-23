@@ -37,6 +37,16 @@
  */
 package v4
 
+import (
+	"regexp"
+	"strings"
+)
+
+var (
+	asmDiskGroupNamePattern = regexp.MustCompile(`^\+?[A-Za-z][A-Za-z0-9_]*$`)
+	asmDiskPathPattern      = regexp.MustCompile(`^/[A-Za-z0-9._/+:-]+$`)
+)
+
 type AsmDiskGroupDetails struct {
 	Name         string         `json:"name,omitempty"`
 	Redundancy   string         `json:"redundancy,omitempty"`
@@ -68,4 +78,20 @@ type AsmDiskGroupStatus struct {
 	AutoUpdate   string          `json:"autoUpdate,omitempty"`
 	StorageClass string          `json:"storageClass,omitempty"`
 	Disks        []AsmDiskStatus `json:"disks,omitempty"` // More detail than spec
+}
+
+// IsValidAsmDiskGroupName constrains disk group names to ASM-style identifiers.
+func IsValidAsmDiskGroupName(name string) bool {
+	if strings.TrimSpace(name) == "" {
+		return false
+	}
+	return asmDiskGroupNamePattern.MatchString(name)
+}
+
+// IsValidAsmDiskPath constrains disk paths to absolute paths with shell-safe characters.
+func IsValidAsmDiskPath(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	return asmDiskPathPattern.MatchString(path)
 }

@@ -401,6 +401,28 @@ func (cr *RacDatabase) validateAsmStorage() field.ErrorList {
 				continue
 			}
 		}
+
+		if dg.Name != "" && !IsValidAsmDiskGroupName(dg.Name) {
+			allErrs = append(allErrs,
+				field.Invalid(
+					dp.Child("name"),
+					dg.Name,
+					"ASM disk group name must start with a letter and contain only letters, digits, underscores, and an optional leading '+'",
+				),
+			)
+		}
+
+		for didx, disk := range dg.Disks {
+			if !IsValidAsmDiskPath(disk) {
+				allErrs = append(allErrs,
+					field.Invalid(
+						dp.Child("disks").Index(didx),
+						disk,
+						"ASM disk entry must be an absolute path and contain only letters, digits, '/', '.', '_', ':', '+', or '-'",
+					),
+				)
+			}
+		}
 	}
 	diskToGroup := make(map[string]string)
 	seenTypes := make(map[AsmDiskDGTypes]string)

@@ -3247,8 +3247,11 @@ func executeDiskGroupCommand(podName string, cmd []string, kubeClient kubernetes
 // within a pod.
 func (r *OracleRestartReconciler) diskGroupExists(podName, diskGroupName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (bool, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	cmd := "python3 /opt/scripts/startup/scripts/main.py --getasmdiskgroup=true"
-	stdout, _, err := oraclerestartcommon.ExecCommand(podName, []string{"bash", "-c", cmd}, r.kubeClient, r.kubeConfig, instance, reqLogger)
+	if !oraclerestartdb.IsValidAsmDiskGroupName(diskGroupName) {
+		return false, fmt.Errorf("invalid ASM disk group name %q", diskGroupName)
+	}
+
+	stdout, _, err := oraclerestartcommon.ExecCommand(podName, []string{"python3", "/opt/scripts/startup/scripts/main.py", "--getasmdiskgroup=true"}, r.kubeClient, r.kubeConfig, instance, reqLogger)
 	if err != nil {
 		return false, err
 	}
@@ -3283,12 +3286,15 @@ func (r *OracleRestartReconciler) addDisks(ctx context.Context, podList *corev1.
 		}
 
 		for _, disk := range deviceList {
-			cmd := fmt.Sprintf("python3 /opt/scripts/startup/scripts/main.py --updateasmdevices=\"diskname=%s;diskgroup=%s;processtype=addition\"", disk, diskGroupName)
-			reqLogger.Info("Executing command to add disk", "Pod.Name", podName, "Command", cmd)
-			stdout, stderr, err := oraclerestartcommon.ExecCommand(podName, []string{"bash", "-c", cmd}, r.kubeClient, r.kubeConfig, instance, reqLogger)
+			if !oraclerestartdb.IsValidAsmDiskPath(disk) {
+				return fmt.Errorf("invalid ASM disk path %q", disk)
+			}
+			cmdArg := fmt.Sprintf("--updateasmdevices=diskname=%s;diskgroup=%s;processtype=addition", disk, diskGroupName)
+			reqLogger.Info("Executing command to add disk", "Pod.Name", podName, "Disk", disk, "DiskGroup", diskGroupName)
+			stdout, stderr, err := oraclerestartcommon.ExecCommand(podName, []string{"python3", "/opt/scripts/startup/scripts/main.py", cmdArg}, r.kubeClient, r.kubeConfig, instance, reqLogger)
 			if err != nil {
 				instance.Spec.IsFailed = true
-				reqLogger.Error(err, "Failed to execute command", "Pod.Name", podName, "Command", cmd, "Stdout", stdout, "Stderr", stderr)
+				reqLogger.Error(err, "Failed to execute command", "Pod.Name", podName, "Disk", disk, "DiskGroup", diskGroupName, "Stdout", stdout, "Stderr", stderr)
 				return err
 			}
 		}
