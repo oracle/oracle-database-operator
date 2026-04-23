@@ -678,6 +678,32 @@ func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 			))
 	}
 
+	for idx, dg := range r.Spec.AsmStorageDetails {
+		dp := field.NewPath("spec").Child("asmDiskGroupDetails").Index(idx)
+
+		if dg.Name != "" && !IsValidAsmDiskGroupName(dg.Name) {
+			validationErrs = append(validationErrs,
+				field.Invalid(
+					dp.Child("name"),
+					dg.Name,
+					"ASM disk group name must start with a letter and contain only letters, digits, underscores, and an optional leading '+'",
+				),
+			)
+		}
+
+		for didx, disk := range dg.Disks {
+			if !IsValidAsmDiskPath(disk) {
+				validationErrs = append(validationErrs,
+					field.Invalid(
+						dp.Child("disks").Index(didx),
+						disk,
+						"ASM disk entry must be an absolute path and contain only letters, digits, '/', '.', '_', ':', '+', or '-'",
+					),
+				)
+			}
+		}
+	}
+
 	return validationErrs
 }
 
