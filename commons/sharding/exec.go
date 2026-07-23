@@ -40,8 +40,10 @@ package commons
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
@@ -54,16 +56,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/kubectl/pkg/cmd/cp"
 	"k8s.io/kubectl/pkg/cmd/util"
 )
 
-// ExecCMDInContainer execute command in first container of a pod
-func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasev4.ShardingDatabase, logger logr.Logger) (string, string, error) {
-
-	var err1 error = nil
+// ExecCommand executes a command in a pod and returns stdout/stderr text.
+func ExecCommand(podName string, cmd []string, kubeConfig *rest.Config, instance *databasev4.ShardingDatabase, logger logr.Logger) (string, string, error) {
 	var msg string
 	var (
 		execOut bytes.Buffer
@@ -78,18 +77,27 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 		}
 	}
 
-	if kubeClient == nil {
-		msg = "ExecCommand() : kubeClient is nil"
-		err1 = fmt.Errorf(msg)
-		return "Error:", "kubeClient is nil", err1
-	}
 	if kubeConfig == nil {
 		msg = "ExecCommand() : kubeConfig is nil"
-		err1 = fmt.Errorf(msg)
-		return "Error:", "kubeConfig is nil", err1
+		err := fmt.Errorf("%s", msg)
+		return "Error:", "kubeConfig is nil", err
 	}
 
-	msg = ""
+	config := rest.CopyConfig(kubeConfig)
+	if config == nil {
+		cfgErr := fmt.Errorf("nil rest config")
+		msg = "Error after copying kubeConfig"
+		LogMessages("Error", msg, cfgErr, instance, logger)
+		return "Error Occurred", "Error Occurred", cfgErr
+	}
+
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		msg = "Error creating kubeClient from kubeConfig"
+		LogMessages("Error", msg, err, instance, logger)
+		return "Error Occurred", "Error Occurred", err
+	}
+
 	req := kubeClient.CoreV1().RESTClient().
 		Post().
 		Namespace(instance.Namespace).
@@ -103,13 +111,6 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 			TTY:     true,
 		}, scheme.ParameterCodec)
 
-	config, err := kubeConfig.ClientConfig()
-	if err != nil {
-		msg = "Error after executing kubeConfig.ClientConfig"
-		LogMessages("Error", msg, err, instance, logger)
-		return "Error Occurred", "Error Occurred", err
-	}
-
 	// Connect to url (constructed from req) using SPDY (HTTP/2) protocol which allows bidirectional streams.
 	exec, err := remotecommand.NewSPDYExecutor(config, http.MethodPost, req.URL())
 	if err != nil {
@@ -118,19 +119,27 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 		return "Error Occurred", "Error Occurred", err
 	}
 
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(context.Background(), remotecommand.StreamOptions{
 		Stdout: &execOut,
 		Stderr: &execErr,
 		Tty:    true,
 	})
 	if err != nil {
-		msg = "Command execution failed inside the container!"
+		msg = "Command execution failed inside the container"
 		LogMessages("DEBUG", msg, err, instance, logger)
-		if len(execOut.String()) > 0 {
-			LogMessages("INFO", execOut.String(), nil, instance, logger)
+
+		outSnippet := summarizeForInfo(execOut.String(), 220)
+		errSnippet := summarizeForInfo(execErr.String(), 220)
+		if outSnippet != "" || errSnippet != "" {
+			LogMessages("INFO", fmt.Sprintf("ExecCommand failure summary: stdout=%q stderr=%q", outSnippet, errSnippet), nil, instance, logger)
 		}
-		if len(execErr.String()) > 0 {
-			LogMessages("INFO", execErr.String(), nil, instance, logger)
+		if instance != nil && instance.Spec.IsDebug {
+			if len(strings.TrimSpace(execOut.String())) > 0 {
+				LogMessages("DEBUG", "ExecCommand full stdout: "+execOut.String(), nil, instance, logger)
+			}
+			if len(strings.TrimSpace(execErr.String())) > 0 {
+				LogMessages("DEBUG", "ExecCommand full stderr: "+execErr.String(), nil, instance, logger)
+			}
 		}
 		return execOut.String(), execErr.String(), err
 	}
@@ -138,23 +147,101 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 	return execOut.String(), execErr.String(), nil
 }
 
-func GetPodCopyConfig(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasev4.ShardingDatabase, logger logr.Logger) (*rest.Config, *kubernetes.Clientset, error) {
+// ExecCommandWithInput executes a command in a pod, streams input to stdin, and returns stdout/stderr text.
+func ExecCommandWithInput(podName string, cmd []string, input string, kubeConfig *rest.Config, instance *databasev4.ShardingDatabase, logger logr.Logger) (string, string, error) {
+	var msg string
+	var (
+		execOut bytes.Buffer
+		execErr bytes.Buffer
+	)
+
+	for i := 0; i < 5; i++ {
+		if scheme.Scheme == nil {
+			time.Sleep(time.Second * 40)
+		} else {
+			break
+		}
+	}
+
+	if kubeConfig == nil {
+		msg = "ExecCommandWithInput() : kubeConfig is nil"
+		err := fmt.Errorf("%s", msg)
+		return "Error:", "kubeConfig is nil", err
+	}
+
+	config := rest.CopyConfig(kubeConfig)
+	if config == nil {
+		cfgErr := fmt.Errorf("nil rest config")
+		msg = "Error after copying kubeConfig"
+		LogMessages("Error", msg, cfgErr, instance, logger)
+		return "Error Occurred", "Error Occurred", cfgErr
+	}
+
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		msg = "Error creating kubeClient from kubeConfig"
+		LogMessages("Error", msg, err, instance, logger)
+		return "Error Occurred", "Error Occurred", err
+	}
+
+	req := kubeClient.CoreV1().RESTClient().
+		Post().
+		Namespace(instance.Namespace).
+		Resource("pods").
+		Name(podName).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Command: cmd,
+			Stdin:   true,
+			Stdout:  true,
+			Stderr:  true,
+			TTY:     false,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(config, http.MethodPost, req.URL())
+	if err != nil {
+		msg = "Error after executing remotecommand.NewSPDYExecutor"
+		LogMessages("Error", msg, err, instance, logger)
+		return "Error Occurred", "Error Occurred", err
+	}
+
+	err = exec.StreamWithContext(context.Background(), remotecommand.StreamOptions{
+		Stdin:  strings.NewReader(input),
+		Stdout: &execOut,
+		Stderr: &execErr,
+		Tty:    false,
+	})
+	if err != nil {
+		msg = "Command execution failed inside the container"
+		LogMessages("DEBUG", msg, err, instance, logger)
+		return execOut.String(), execErr.String(), err
+	}
+
+	return execOut.String(), execErr.String(), nil
+}
+
+// GetPodCopyConfig returns a copy-ready REST config and Kubernetes clientset.
+func GetPodCopyConfig(kubeConfig *rest.Config) (*rest.Config, *kubernetes.Clientset, error) {
 
 	var clientSet *kubernetes.Clientset
-	config, err := kubeConfig.ClientConfig()
-	if err != nil {
-		return config, clientSet, err
+	if kubeConfig == nil {
+		return nil, clientSet, fmt.Errorf("kubeConfig is nil")
 	}
+	config := rest.CopyConfig(kubeConfig)
+	if config == nil {
+		return nil, clientSet, fmt.Errorf("kubeConfig copy is nil")
+	}
+	var err error
 	clientSet, err = kubernetes.NewForConfig(config)
 	config.APIPath = "/api"
 	config.GroupVersion = &schema.GroupVersion{Version: "v1"}
 	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: scheme.Codecs}
 
 	return config, clientSet, err
-
 }
 
-func KctlCopyFile(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasev4.ShardingDatabase, restConfig *rest.Config, kclientset *kubernetes.Clientset, logger logr.Logger, src string, dst string, containername string) (*bytes.Buffer, *bytes.Buffer, *bytes.Buffer, error) {
+// KctlCopyFile copies a file between local and pod paths, with retry on transient backend EOF.
+func KctlCopyFile(restConfig *rest.Config, src string, dst string, containername string) (*bytes.Buffer, *bytes.Buffer, *bytes.Buffer, error) {
 
 	var in, out, errOut *bytes.Buffer
 	var ioStreams genericclioptions.IOStreams
@@ -193,7 +280,18 @@ func KctlCopyFile(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientCo
 		break
 	}
 	return in, out, errOut, nil
+}
 
+func summarizeForInfo(s string, maxLen int) string {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return ""
+	}
+	compact := strings.Join(strings.Fields(trimmed), " ")
+	if maxLen <= 0 || len(compact) <= maxLen {
+		return compact
+	}
+	return compact[:maxLen] + "...(truncated)"
 }
 
 func shouldRetry(count int, err error) bool {

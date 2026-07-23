@@ -40,14 +40,14 @@ package v4
 
 import (
 	"context"
+	"reflect"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -55,48 +55,129 @@ import (
 var databaseobserverlog = logf.Log.WithName("databaseobserver-resource")
 
 const (
-	AllowedExporterImage                       = "container-registry.oracle.com/database/observability-exporter"
-	ErrorSpecValidationMissingConnString       = "a required field for database connection string secret is missing or does not have a value"
-	ErrorSpecValidationMissingDBUser           = "a required field for database user secret is missing or does not have a value"
-	ErrorSpecValidationMissingVaultField       = "a field for configuring the vault has a value but the other required field(s) is missing or does not have a value"
-	ErrorSpecValidationMissingOCIConfig        = "a field(s) for the OCI Config is missing or does not have a value when fields for the OCI vault has values"
+	// AllowedExporterImage is the approved base image for exporter deployments.
+	AllowedExporterImage = "container-registry.oracle.com/database/observability-exporter"
+	// ErrorSpecValidationMissingConnString indicates required DB connection-string secret config is missing.
+	ErrorSpecValidationMissingConnString = "a required field for database connection string secret is missing or does not have a value"
+	// ErrorSpecValidationMissingDBUser indicates required DB user secret config is missing.
+	ErrorSpecValidationMissingDBUser = "a required field for database user secret is missing or does not have a value"
+	// ErrorSpecValidationMissingVaultField indicates incomplete vault field combinations in spec.
+	ErrorSpecValidationMissingVaultField = "a field for configuring the vault has a value but the other required field(s) is missing or does not have a value"
+	// ErrorSpecValidationMissingOCIConfig indicates OCI config values are missing when OCI vault is used.
+	ErrorSpecValidationMissingOCIConfig = "a field(s) for the OCI Config is missing or does not have a value when fields for the OCI vault has values"
+	// ErrorSpecValidationMissingDBPasswordSecret indicates required DB password secret config is missing.
 	ErrorSpecValidationMissingDBPasswordSecret = "a required field for the database password secret is missing or does not have a value"
-	ErrorSpecExporterImageNotAllowed           = "a different exporter image was found, only official database exporter container images are currently supported"
+	// ErrorSpecExporterImageNotAllowed indicates a non-approved exporter image was specified.
+	ErrorSpecExporterImageNotAllowed = "a different exporter image was found, only official database exporter container images are currently supported"
+	// ErrorSpecServiceMonitorFieldNotAllowed indicates an unsupported ServiceMonitor field was specified.
+	ErrorSpecServiceMonitorFieldNotAllowed = "unsupported ServiceMonitor field in DatabaseObserver"
 )
 
+// validateServiceMonitorAllowlist enforces the DatabaseObserver ServiceMonitor policy.
+// Only fields listed here are accepted from DatabaseObserver and projected to the child ServiceMonitor.
+func validateServiceMonitorAllowlist(sm ExporterServiceMonitor, fldPath *field.Path) field.ErrorList {
+	var e field.ErrorList
+
+	allowedServiceMonitorFields := map[string]struct{}{
+		"Labels":    {},
+		"Endpoints": {},
+	}
+	e = append(e, validateAllowlistedFields(sm, fldPath, allowedServiceMonitorFields)...)
+
+	allowedEndpointFields := map[string]struct{}{
+		"Port":                 {},
+		"Path":                 {},
+		"Scheme":               {},
+		"Params":               {},
+		"Interval":             {},
+		"ScrapeTimeout":        {},
+		"RelabelConfigs":       {},
+		"MetricRelabelConfigs": {},
+	}
+	endpointsPath := fldPath.Child("endpoints")
+	for i, endpoint := range sm.Endpoints {
+		e = append(e, validateAllowlistedFields(endpoint, endpointsPath.Index(i), allowedEndpointFields)...)
+	}
+
+	return e
+}
+
+// validateAllowlistedFields rejects any non-zero exported struct field that is not explicitly allowed.
+// This keeps future fields denied by default until they are intentionally added to the allowlist.
+func validateAllowlistedFields(obj interface{}, fldPath *field.Path, allowedFields map[string]struct{}) field.ErrorList {
+	var e field.ErrorList
+
+	val := reflect.ValueOf(obj)
+	if val.Kind() == reflect.Pointer {
+		if val.IsNil() {
+			return nil
+		}
+		val = val.Elem()
+	}
+	if val.Kind() != reflect.Struct {
+		return nil
+	}
+
+	typ := val.Type()
+	for i := 0; i < val.NumField(); i++ {
+		structField := typ.Field(i)
+		if structField.PkgPath != "" {
+			continue
+		}
+		if val.Field(i).IsZero() {
+			continue
+		}
+		if _, allowed := allowedFields[structField.Name]; allowed {
+			continue
+		}
+
+		e = append(e, field.Forbidden(fldPath.Child(structField.Name), ErrorSpecServiceMonitorFieldNotAllowed))
+	}
+
+	return e
+}
+
+// SetupWebhookWithManager sets up the webhook with the manager.
 func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	// 1. Add the generic type parameter [*DatabaseObserver] and pass (mgr, r)
+	return ctrl.NewWebhookManagedBy[*DatabaseObserver](mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-observability-oracle-com-v4-databaseobserver,mutating=true,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,verbs=create;update,versions=v4,name=mdatabaseobserver.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/mutate-observability-oracle-com-v4-databaseobserver,mutating=true,sideEffects=none,failurePolicy=fail,matchPolicy=Exact,groups=observability.oracle.com,resources=databaseobservers,verbs=create;update,versions=v4,name=mdatabaseobserverv4.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomDefaulter = &DatabaseObserver{}
+// 2. Update interface guards to use admission.CustomDefaulter and CustomValidator with generics
+var _ admission.Defaulter[*DatabaseObserver] = &DatabaseObserver{}
+var _ admission.Validator[*DatabaseObserver] = &DatabaseObserver{}
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// 3. Update Default: change runtime.Object to *DatabaseObserver
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the type
-func (r *DatabaseObserver) Default(ctx context.Context, obj runtime.Object) error {
-	obs := obj.(*DatabaseObserver)
-	databaseobserverlog.Info("default", "name", obs.Name)
+// Default sets default values for DatabaseObserver.
+func (r *DatabaseObserver) Default(_ context.Context, obj *DatabaseObserver) error {
+	obs := obj
+	databaseobserverlog.Info("DatabaseObserver defaulting (webhook v4)", "name", obs.Name)
 
 	return nil
 }
 
-//+kubebuilder:webhook:verbs=create;update,path=/validate-observability-oracle-com-v4-databaseobserver,mutating=false,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,versions=v4,name=vdatabaseobserver.kb.io,admissionReviewVersions=v1
-
-var _ webhook.CustomValidator = &DatabaseObserver{}
+//+kubebuilder:webhook:verbs=create;update,path=/validate-observability-oracle-com-v4-databaseobserver,mutating=false,sideEffects=none,failurePolicy=fail,matchPolicy=Exact,groups=observability.oracle.com,resources=databaseobservers,versions=v4,name=vdatabaseobserverv4.kb.io,admissionReviewVersions=v1
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	obs := obj.(*DatabaseObserver)
-	databaseobserverlog.Info("validate create", "name", obs.Name)
+func (r *DatabaseObserver) ValidateCreate(_ context.Context, obj *DatabaseObserver) (admission.Warnings, error) {
+	obs := obj
+	databaseobserverlog.Info("ServiceMonitor policy validation on create (webhook v4)", "name", obs.Name)
 
 	var e field.ErrorList
 	ns := dbcommons.GetWatchNamespaces()
+
+	// Reject unsupported ServiceMonitor customization before the controller projects it.
+	serviceMonitorErrs := validateServiceMonitorAllowlist(obs.Spec.ServiceMonitor, field.NewPath("spec").Child("serviceMonitor"))
+	if len(serviceMonitorErrs) > 0 {
+		databaseobserverlog.Info("ServiceMonitor policy validation failed (webhook v4)", "operation", "create", "name", obs.Name, "violations", len(serviceMonitorErrs))
+	}
+	e = append(e, serviceMonitorErrs...)
 
 	// Check for namespace/cluster scope access
 	if _, isDesiredNamespaceWithinScope := ns[obs.Namespace]; !isDesiredNamespaceWithinScope && len(ns) > 0 {
@@ -141,10 +222,17 @@ func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Objec
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	obs := newObj.(*DatabaseObserver)
-	databaseobserverlog.Info("validate update", "name", obs.Name)
+func (r *DatabaseObserver) ValidateUpdate(_ context.Context, _ *DatabaseObserver, newObj *DatabaseObserver) (admission.Warnings, error) {
+	obs := newObj
+	databaseobserverlog.Info("ServiceMonitor policy validation on update (webhook v4)", "name", obs.Name)
 	var e field.ErrorList
+
+	// Reject unsupported ServiceMonitor customization before the controller projects it.
+	serviceMonitorErrs := validateServiceMonitorAllowlist(obs.Spec.ServiceMonitor, field.NewPath("spec").Child("serviceMonitor"))
+	if len(serviceMonitorErrs) > 0 {
+		databaseobserverlog.Info("ServiceMonitor policy validation failed (webhook v4)", "operation", "update", "name", obs.Name, "violations", len(serviceMonitorErrs))
+	}
+	e = append(e, serviceMonitorErrs...)
 
 	// disallow usage of any other image than the observability-exporter
 	//if r.Spec.Deployment.ExporterImage != "" && !strings.HasPrefix(obs.Spec.Deployment.ExporterImage, AllowedExporterImage) {
@@ -160,9 +248,9 @@ func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj ru
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	obs := obj.(*DatabaseObserver)
-	databaseobserverlog.Info("validate delete", "name", obs.Name)
+func (r *DatabaseObserver) ValidateDelete(_ context.Context, obj *DatabaseObserver) (admission.Warnings, error) {
+	obs := obj
+	databaseobserverlog.Info("DatabaseObserver validate delete (webhook v4)", "name", obs.Name)
 
 	return nil, nil
 }

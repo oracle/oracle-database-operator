@@ -16,14 +16,14 @@
 * This use case will be deleting a Disk from `DATA` diskgroup of an existing Oracle RAC Database. 
 
 ### In this example, 
-  * The existing RAC Database was deployed using pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `dbocir/oracle/database-rac:19.3.0-slim`. 
+  * The existing RAC Database was deployed using pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim`. 
   * If you had built the image yourself using the files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image), you will need to change value of `image` with the image you had built in your enviornment in file `rac_prov_asm_disk_deletion.yaml`. 
   * The ASM diskgroup in the existing RAC Database was configured using the shared disks on the worker nodes i.e. `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2`. These disks are specified using parameter `asmDiskGroupDetails` in the YAML file. 
 
 
 **Note:** 
-* In case, the disk being deleted from the diskgroup is currently in use, the RAC Controller will wait for the disk to be manually dropped from the ASM Diskgroupneed and REBALANCE to complete before dropping the asm disk froms Kubernetes Pods. Corresponding, Kubernetes PV and PVC will also be deleted. The Kubernetes Pods will be recreated in a Rolling Manner. 
-* In case, the disk being deleted from the diskgroup is currently not in use, the RAC Controller will go ahead to drop the asm disk froms Kubernetes Pods. Corresponding, Kubernetes PV and PVC will also be deleted. The Kubernetes Pods will be recreated in a Rolling Manner. 
+* If the disk is still part of an ASM disk group, the RAC controller does not force the delete. You must remove the disk manually at the ASM level and allow rebalance to finish before the controller removes the device from the Kubernetes pods and deletes the corresponding PV and PVC.
+* If the disk is no longer part of an ASM disk group, the RAC controller removes the device from the Kubernetes pods, deletes the corresponding PV and PVC, and recreates the RAC pods in a rolling manner.
 
 Use the file: [rac_prov_asm_disk_deletion.yaml](./rac_prov_asm_disk_deletion.yaml) for this use case as below:
 

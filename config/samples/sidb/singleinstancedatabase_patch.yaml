@@ -17,9 +17,13 @@ spec:
   ## DB edition.
   edition: enterprise
 
-  ## Secret containing SIDB password mapped to secretKey 
-  adminPassword:
-    secretName: db-admin-secret
+  ## Grouped security settings.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
 
   ## DB character set
   charset: AL32UTF8
@@ -38,14 +42,20 @@ spec:
     pullFrom:
     pullSecrets:
 
+  ## Optional node selector to restrict the database pod to nodes having specific labels.
+  ## For a single exact node, kubernetes.io/hostname can be used.
+  # nodeSelector:
+  #   kubernetes.io/hostname: worker-node.example
+
   ## size is the required minimum size of the persistent volume
   ## storageClass is specified for automatic volume provisioning
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
-    size: 100Gi
-    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
-    storageClass: "oci-bv"
-    accessMode: "ReadWriteOnce"
+    oradata:
+      size: 100Gi
+      ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
 
   ## Count of Database Pods.
   replicas: 1

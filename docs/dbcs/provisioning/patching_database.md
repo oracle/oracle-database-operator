@@ -8,6 +8,11 @@ To patch OBDS to an existing OBDS system, obtain the OCID of the database system
 As step 1, first bind the existing DBCS System to DBCS Controller following [documentation](./../provisioning/bind_to_existing_dbcs_system.md). After successful binding, it will appear as follows:
 ```bash
 kubectl get dbcssystems
+```
+
+Example output:
+
+```text
 NAME                  AGE
 dbcssystem-existing   3m33s
 ```
@@ -25,7 +30,12 @@ Use the file: [patch_dbcs_system.yaml](./patch_dbcs_system.yaml) for this use ca
 
 1. Deploy the `.yaml` file:  
 ```sh
-[root@docker-test-server DBCS]# kubectl apply -f patch_dbcs_system.yaml
+kubectl apply -f patch_dbcs_system.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
@@ -33,13 +43,18 @@ dbcssystem.database.oracle.com/dbcssystem-existing configured
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 3. Check details of the Kubernetes object post patching to ensure that it is complete, and verify that the patched version is as expected:
 ```bash
 kubectl describe dbcssystems.database.oracle.com dbcssystem-existing
 
 kubectl get dbcssystems.database.oracle.com dbcssystem-existing -o jsonpath='{.status.dbVersion}'
+```
+
+Example output:
+
+```text
 19.28.0.0.0
 ```

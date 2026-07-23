@@ -196,13 +196,13 @@ After you create your Multus configuration file, apply it to the system. For exa
   ```
 Check the Multus network attachment definitions on the OCNE cluster:
   ```sh
-  $ kubectl get all -n kube-system -l app=multus
+  kubectl get all -n kube-system -l app=multus
   ```
 - Check the network attachment definitions as below:
   ```sh
-  $ kubectl get Network-Attachment-Definition -n rac
-  $ kubectl describe Network-Attachment-Definition macvlan-conf1 -n rac
-  $ kubectl describe Network-Attachment-Definition macvlan-conf2 -n rac
+  kubectl get Network-Attachment-Definition -n rac
+  kubectl describe Network-Attachment-Definition macvlan-conf1 -n rac
+  kubectl describe Network-Attachment-Definition macvlan-conf2 -n rac
   ```  
 
 ### Set Clock Source on the Worker Node 
@@ -406,7 +406,7 @@ For details, see: [Use the latest Cluster Verification Utility (CVU) (Doc ID 273
   kubectl create ns rac
 
   #### Check the created namespace 
-  kubectl get ns rac
+  kubectl get rac
   ```
 You can choose any name for the namespace to deploy Oracle RAC Database.
 
@@ -437,7 +437,7 @@ Apart from the default Role Bindings for access management mentioned in above se
 ## Deploy Oracle Database Operator
 
 After you have completed the prerequisite steps, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the previous step.
-```
+```bash
 kubectl apply -f oracle-database-operator.yaml
 ```
 
@@ -449,7 +449,7 @@ Choose one of the following deployment options:
   **Use Oracle-Supplied Container Images:**
    The Oracle RAC Database Controller uses Oracle RAC Database Slim Image to provision the Oracle RAC Database.
 
-   You can also download the pre-built Oracle RAC Database Slim Image `dbocir/oracle/database-rac:19.3.0-slim`. This image is functionally tested and evaluated with various use cases of Oracle RAC Database on an OCNE Kubernetes Cluster.
+   You can also download the pre-built Oracle RAC Database Slim Image `phx.ocir.io/intsanjaysingh/db-repo/oracle/database:19.3.0-slim`. This image is functionally tested and evaluated with various use cases of Oracle RAC Database on an OCNE Kubernetes Cluster.
 
    You can either download this image and push it to your Container Images Repository, or, if your Kubernetes cluster can reach OCR, you can download this image directly from OCR.
    
@@ -461,17 +461,46 @@ Choose one of the following deployment options:
 
 After the image is ready, push it to your Container Images Repository, so that you can pull this image during Oracle RAC Database provisioning..
 
-**Note**: In the Oracle RAC Database provisioning sample .yaml files, we are using this RAC Database slim image `dbocir/oracle/database-rac:19.3.0-slim`.
+**Note**: In the Oracle RAC Database provisioning sample .yaml files, we are using this RAC Database slim image `phx.ocir.io/intsanjaysingh/db-repo/oracle/database:19.3.0-slim`.
 
 ## Create Kubernetes secrets for the Oracle RAC Database
 
-Create Kubernetes secrets for the Oracle RAC Database deployed using Oracle RAC Controller. This includes a secret containing the Oracle Database Password and another secret containing an ssh key pair which will be used for setting up the ssh user equivalence.
+Create Kubernetes secrets for the Oracle RAC Database deployed using Oracle RAC Controller. This includes:
+
+* a secret containing the Oracle Database password referenced by `spec.dbSecret`
+* a secret containing an SSH key pair referenced by `spec.sshKeySecret`
+* an optional TDE wallet password secret referenced by `spec.tdeWalletSecret` when Transparent Data Encryption (TDE) is configured for the RAC database
 
 Create a Kubernetes secret named `db-user-pass` in `rac` namespace using these steps: [Create Kubernetes Secret](./create_kubernetes_secret_for_db_user.md)
 
-Create a Kubernete secret named `ssh-key-secret` in `rac` namespace using these steps: [Create Kubernetes Secret for SSH Key](./create_kubernetes_secret_for_ssh_setup.md)
+Create a Kubernetes secret named `ssh-key-secret` in `rac` namespace using these steps: [Create Kubernetes Secret for SSH Key](./create_kubernetes_secret_for_ssh_setup.md)
 
-After you have the above prerequsites completed, you can proceed to the next section for your environment to provision the Oracle RAC Database.
+If your RAC YAML includes a `tdeWalletSecret` block, create that Kubernetes secret before provisioning the RAC database. The TDE wallet secret supports the same layouts as `dbSecret`: an OpenSSL encrypted password file with a key file, or a Base64 password file referenced only by `spec.tdeWalletSecret.pwdFileName`.
+
+For example, if your RAC YAML includes:
+
+```yaml
+spec:
+  tdeWalletSecret:
+    name: tde-user-pass
+    keyFileName: key.pem
+    pwdFileName: pwdfile.enc
+    encryptionType: pkeyutl
+    pkeyopt: rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256
+```
+
+then create the OpenSSL encrypted secret in the `rac` namespace by following the same steps described in [Create Kubernetes Secret](./create_kubernetes_secret_for_db_user.md), but use the TDE secret name from your RAC YAML:
+
+```sh
+kubectl create secret generic tde-user-pass \
+  --from-file=/tmp/.secrets/pwdfile.enc \
+  --from-file=/tmp/.secrets/key.pem \
+  -n rac
+```
+
+For a Base64 TDE password file, omit `spec.tdeWalletSecret.keyFileName` and set `spec.tdeWalletSecret.pwdFileName: pwdfile`; the secret only needs the `pwdfile` entry. Use `tdeWalletSecret` only when your RAC deployment is intended to configure TDE. If your YAML does not include `spec.tdeWalletSecret`, you do not need to create this secret.
+
+After you have the above prerequisites completed, you can proceed to the next section for your environment to provision the Oracle RAC Database.
 
 ## Create required directories on worker nodes
 Before deploying your Oracle RAC Database using RAC Controller, create directory paths on the worker nodes for each RAC Database node(a pod) as follows:
@@ -517,7 +546,7 @@ kubectl get nodes --show-labels | grep raccluster
 ```
 
 Expected output:
-```
+```text
 qck-ocne19-w1   ... raccluster=raccluster01
 qck-ocne19-w2   ... raccluster=raccluster01
 ```
@@ -533,11 +562,10 @@ kubectl apply -f rbac/multus-rbac.yaml
 ```
 ## ClusterRole and ClusterRoleBinding for PersistentVolume Access
 
-The operator creates ASM Persistent Volumes (PV) at the cluster scope.  
-To allow this, Kubernetes requires cluster-level permissions for managing `PersistentVolume` resources.
+The operator creates and deletes ASM Persistent Volumes (PV) at the cluster scope. To allow this, Kubernetes requires cluster-level permissions for `PersistentVolume` resources.
 
 Apply the RBAC configuration provided in [`pv-rbac.yaml`](./../rbac/pv-rbac.yaml):
 
 ```sh
-kubectl apply -f rbac/pv-rbac.yaml
+kubectl apply -f docs/rac/rbac/pv-rbac.yaml
 ```

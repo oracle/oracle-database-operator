@@ -29,12 +29,20 @@ For example:
         - /dev/asm-disk1  # ASM disk device path 1
         - /dev/asm-disk2  # ASM disk device path 2
 ```
+* If you later increase `asmStorageSizeInGb` for storage-class-backed ASM, resize of the backing ASM PVCs is separate from the add-disk workflow.
+* After the larger PVC size is available inside the pod, you must manually grow or rebalance ASM inside the pod to use the additional capacity.
+* Resizing the software-home PVC is a separate supported flow described in [Change the size of Software Storage Location for an existing Oracle Restart Database](./change_sw_storage_size_for_oracle_restart_db.md).
   
 ### Steps: Deploy Oracle Restart Database
 * Use the file: [oraclerestart_prov_storage_class.yaml](./oraclerestart_prov_storage_class.yaml) for this use case as below:
 * Deploy the `oraclerestart_prov_storage_class.yaml` file:
     ```sh
     kubectl apply -f oraclerestart_prov_storage_class.yaml
+    ```
+
+    Example output:
+
+    ```text
     oraclerestart.database.oracle.com/oraclerestart-sample created
     ```
 * Check the status of the deployment:
@@ -44,6 +52,11 @@ For example:
 
     # Check the logs of a particular pod. For example, to check status of pod "dbmc1-0":    
     kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===============================
       ORACLE DATABASE IS READY TO USE
     ===============================

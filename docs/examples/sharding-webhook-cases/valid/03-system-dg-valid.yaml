@@ -1,0 +1,29 @@
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: case-system-dg-ok
+  namespace: default
+spec:
+  dbImage: container-registry.oracle.com/database/enterprise:21.3.0.0
+  gsmImage: container-registry.oracle.com/database/gsm:21.3.0.0
+  dbSecret:
+    name: db-secret
+    pwdFileName: dbpwd
+    encryptionType: base64
+  catalog:
+  - name: cat3
+    sharding: SYSTEM
+    repl: DG
+    autoVncr: OFF
+    agentPort: 8080
+  gsm:
+  - name: gsm1
+  shardingType: SYSTEM
+  replicationType: DG
+  shardGroup:
+  - name: sg1
+    region: primary
+    deployAs: PRIMARY
+  shard:
+  - name: shd1
+    shardGroup: sg1

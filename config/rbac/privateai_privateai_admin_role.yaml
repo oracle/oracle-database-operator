@@ -18,7 +18,13 @@ rules:
   resources:
   - privateais
   verbs:
-  - '*'
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - privateai.oracle.com
   resources:

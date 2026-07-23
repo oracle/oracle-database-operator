@@ -36,11 +36,11 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,unused,revive // legacy Oracle Restart reconciliation helpers/signatures are retained for compatibility.
 package controllers
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -55,8 +55,15 @@ import (
 	"github.com/go-logr/logr"
 	oraclerestartdb "github.com/oracle/oracle-database-operator/apis/database/v4"
 	v4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	oraclerestartcommon "github.com/oracle/oracle-database-operator/commons/oraclerestart"
-	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
+	sharedasm "github.com/oracle/oracle-database-operator/commons/crs/asm"
+	oraclerestartcommon "github.com/oracle/oracle-database-operator/commons/crs/restart"
+	utils "github.com/oracle/oracle-database-operator/commons/crs/restart/utils"
+	shareddiskcheck "github.com/oracle/oracle-database-operator/commons/crs/shared/diskcheck"
+	sharedenvfile "github.com/oracle/oracle-database-operator/commons/crs/shared/envfile"
+	sharedorautil "github.com/oracle/oracle-database-operator/commons/crs/shared/orautil"
+	sharedspecguard "github.com/oracle/oracle-database-operator/commons/crs/shared/specguard"
+	sharedstatusmerge "github.com/oracle/oracle-database-operator/commons/crs/shared/statusmerge"
+	sharedk8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -70,6 +77,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -87,7 +95,41 @@ type OracleRestartReconciler struct {
 	Recorder   record.EventRecorder
 }
 
+func (r *OracleRestartReconciler) phaseLogger(req ctrl.Request, phase oracleRestartReconcilePhase) logr.Logger {
+	return r.Log.WithValues("oraclerestart", req.NamespacedName, "phase", string(phase))
+}
+
+func (r *OracleRestartReconciler) phaseInfo(req ctrl.Request, phase oracleRestartReconcilePhase, msg string, keysAndValues ...interface{}) {
+	r.phaseLogger(req, phase).Info(msg, keysAndValues...)
+}
+
+func (r *OracleRestartReconciler) phaseError(req ctrl.Request, phase oracleRestartReconcilePhase, err error, msg string, keysAndValues ...interface{}) {
+	r.phaseLogger(req, phase).Error(err, msg, keysAndValues...)
+}
+
 const oracleRestartFinalizer = "database.oracle.com/oraclerestartfinalizer"
+
+const (
+	oracleRestartLockHolderAnnotation     = "database.oracle.com/oraclerestart-lock-holder"
+	oracleRestartLockPhaseAnnotation      = "database.oracle.com/oraclerestart-lock-phase"
+	oracleRestartLockAcquiredAtAnnotation = "database.oracle.com/oraclerestart-lock-acquired-at"
+	oracleRestartLockGenerationAnnotation = "database.oracle.com/oraclerestart-lock-generation"
+	oracleRestartBreakGlassAnnotation     = "database.oracle.com/breakglass-override"
+	oracleRestartBreakGlassReason         = "database.oracle.com/breakglass-reason" // optional, audit context
+	oracleRestartBreakGlassActor          = "database.oracle.com/breakglass-actor"  // optional, audit context
+)
+
+type oracleRestartReconcilePhase string
+
+const (
+	orPhaseInitAndFetch       oracleRestartReconcilePhase = "InitAndFetch"
+	orPhaseDeletionAndGuards  oracleRestartReconcilePhase = "DeletionAndGuards"
+	orPhaseValidationDefaults oracleRestartReconcilePhase = "ValidationAndDefaults"
+	orPhaseServiceSync        oracleRestartReconcilePhase = "ServiceSync"
+	orPhaseStorageSync        oracleRestartReconcilePhase = "StorageSync"
+	orPhaseWorkloadSync       oracleRestartReconcilePhase = "WorkloadSync"
+	orPhaseFinalize           oracleRestartReconcilePhase = "Finalize"
+)
 
 //+kubebuilder:rbac:groups="database.oracle.com",resources=oraclerestarts,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="database.oracle.com",resources=oraclerestarts/status,verbs=get;update;patch
@@ -124,12 +166,12 @@ const oracleRestartFinalizer = "database.oracle.com/oraclerestartfinalizer"
 func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	//ctx := context.Background()
-	_ = r.Log.WithValues("oraclerestart", req.NamespacedName)
-	r.Log.Info("Reconcile requested")
+	r.phaseInfo(req, orPhaseInitAndFetch, "Reconcile requested")
 	var result ctrl.Result
 	var err error
 	completed := false
 	blocked := false
+	lockAcquired := false
 	// var svcType string
 	var nilErr error = nil
 
@@ -137,10 +179,16 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}
 
 	oracleRestart := &oraclerestartdb.OracleRestart{}
-	configMapData := make(map[string]string)
 	// time.Sleep(50000 * time.Second)
 	// Execute for every reconcile
 	defer r.updateReconcileStatus(oracleRestart, ctx, req, &result, &err, &blocked, &completed)
+	defer func() {
+		if lockAcquired {
+			if lErr := r.releaseOracleRestartReconcileLock(ctx, req); lErr != nil {
+				r.phaseError(req, orPhaseFinalize, lErr, "Failed to release reconcile lock")
+			}
+		}
+	}()
 
 	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, oracleRestart)
 	if err != nil {
@@ -180,7 +228,9 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		oracleRestart.Status.ReleaseUpdate = string(oraclerestartdb.OracleRestartFieldNotDefined)
 		oracleRestart.Status.ConfigParams.DbHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
 		oracleRestart.Status.ConfigParams.GridHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
-		r.Status().Update(ctx, oracleRestart)
+		if err := r.Status().Update(ctx, oracleRestart); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	// Kube Client Config Setup
@@ -192,6 +242,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Manage OracleRestart Deletion , if delete topology is called
+	r.phaseInfo(req, orPhaseDeletionAndGuards, "Running deletion and guard checks")
 	err = r.manageOracleRestartDeletion(req, ctx, oracleRestart)
 	if err != nil {
 		result = resultNq
@@ -217,106 +268,151 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return result, nilErr
 		}
 	}
-	// set defaults
-	var cName, fName string
+	lockAcquired, err = r.acquireOracleRestartReconcileLock(ctx, req, oracleRestart, oldSpec, orPhaseValidationDefaults)
+	if err != nil {
+		blocked = true
+		r.phaseInfo(req, orPhaseDeletionAndGuards, "Reconcile lock held by another cycle; requeueing", "error", err.Error())
+		return resultQ, nil
+	}
 
+	result, completed, err = r.runOracleRestartProvisionPhases(ctx, req, oracleRestart, oldSpec, webhooksEnabled)
+	return result, err
+}
+
+func (r *OracleRestartReconciler) runOracleRestartProvisionPhases(
+	ctx context.Context,
+	req ctrl.Request,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	oldSpec *oraclerestartdb.OracleRestartSpec,
+	webhooksEnabled bool,
+) (ctrl.Result, bool, error) {
+	resultNq := ctrl.Result{Requeue: false}
+	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}
+
+	cName, fName, earlyResult, earlyErr, earlyExit := r.oracleRestartPhaseValidationAndDefaults(
+		ctx, req, oracleRestart, oldSpec, webhooksEnabled, resultQ,
+	)
+	if earlyExit {
+		return earlyResult, false, earlyErr
+	}
+
+	earlyResult, earlyErr, earlyExit = r.oracleRestartPhaseServiceSync(ctx, req, oracleRestart, resultNq)
+	if earlyExit {
+		return earlyResult, false, earlyErr
+	}
+
+	storageState, earlyResult, earlyErr, earlyExit := r.oracleRestartPhaseStorageSync(
+		ctx, req, oracleRestart, oldSpec, cName, fName, resultNq, resultQ,
+	)
+	if earlyExit {
+		return earlyResult, false, earlyErr
+	}
+
+	earlyResult, earlyErr, earlyExit = r.oracleRestartPhaseWorkloadSync(
+		ctx, req, oracleRestart, oldSpec, storageState, resultNq, resultQ,
+	)
+	if earlyExit {
+		return earlyResult, false, earlyErr
+	}
+
+	return r.oracleRestartPhaseFinalize(ctx, req, oracleRestart, resultQ)
+}
+
+type oracleRestartStoragePhaseState struct {
+	isNewSetup          bool
+	isDiskChanged       bool
+	discoverySuccessful bool
+	addedAsmDisks       []string
+	removedAsmDisks     []string
+	configMapData       map[string]string
+}
+
+func (r *OracleRestartReconciler) oracleRestartPhaseValidationAndDefaults(
+	ctx context.Context,
+	req ctrl.Request,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	oldSpec *oraclerestartdb.OracleRestartSpec,
+	webhooksEnabled bool,
+	resultQ ctrl.Result,
+) (string, string, ctrl.Result, error, bool) {
+	var cName, fName string
+	var nilErr error = nil
+
+	r.phaseInfo(req, orPhaseValidationDefaults, "Applying defaults and validation")
 	if oracleRestart.Spec.ConfigParams.GridResponseFile.ConfigMapName != "" {
 		cName = oracleRestart.Spec.ConfigParams.GridResponseFile.ConfigMapName
 	}
 	if oracleRestart.Spec.ConfigParams.GridResponseFile.Name != "" {
 		fName = oracleRestart.Spec.ConfigParams.GridResponseFile.Name
 	}
-
-	err = setRacDgFromStatusAndSpecWithMinimumDefaults(oracleRestart, r.Client, cName, fName)
-	if err != nil {
-		r.Log.Info("Failed to set disk group defaults")
-		return ctrl.Result{}, err
+	if err := setRacDgFromStatusAndSpecWithMinimumDefaults(oracleRestart, r.Client, cName, fName); err != nil {
+		return cName, fName, ctrl.Result{}, err, true
 	}
-
 	if webhooksEnabled {
-
-		err = checkOracleRestartState(oracleRestart)
-		if err != nil {
-			result = resultQ
-			r.Log.Info("Oracle Restart object is in restricted state, returning back")
-			return result, nilErr
+		if err := checkOracleRestartState(oracleRestart); err != nil {
+			return cName, fName, resultQ, nilErr, true
 		}
 	}
-	// First Validate
-	err = r.validateSpex(oracleRestart, oldSpec, ctx, req)
-	if err != nil {
-		r.Log.Info("Spec validation failed")
-		result = resultQ
-		r.Log.Info(err.Error())
-		return result, nilErr
+	if err := r.validateSpex(oracleRestart, oldSpec, ctx, req); err != nil {
+		return cName, fName, resultQ, nilErr, true
 	}
-
-	err = r.setDefaults(oracleRestart)
-	if err != nil {
-		//	time.Sleep(30 * time.Second)
-		result = resultQ
-		r.Log.Info(err.Error())
-		return result, nilErr
+	if err := r.setDefaults(oracleRestart); err != nil {
+		return cName, fName, resultQ, nilErr, true
 	}
-
-	// Update RAC ConfigParams
-	err = r.updateGiConfigParamStatus(oracleRestart)
-	if err != nil {
-		//	time.Sleep(30 * time.Second)
-		result = resultQ
-		r.Log.Info(err.Error())
-		return result, nilErr
+	if err := r.updateGiConfigParamStatus(oracleRestart); err != nil {
+		return cName, fName, resultQ, nilErr, true
 	}
-
-	err = r.updateDbConfigParamStatus(oracleRestart)
-	if err != nil {
-		//	time.Sleep(30 * time.Second)
-		result = resultQ
-		r.Log.Info(err.Error())
-		err = nilErr
-		return result, err
+	if err := r.updateDbConfigParamStatus(oracleRestart); err != nil {
+		return cName, fName, resultQ, nilErr, true
 	}
+	return cName, fName, ctrl.Result{}, nil, false
+}
 
+func (r *OracleRestartReconciler) oracleRestartPhaseServiceSync(
+	ctx context.Context,
+	req ctrl.Request,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	resultNq ctrl.Result,
+) (ctrl.Result, error, bool) {
+	r.phaseInfo(req, orPhaseServiceSync, "Reconciling services")
 	var svcType string
-
-	result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, "local"))
-	if err != nil {
-		result = resultNq
-		return result, err
+	if _, err := r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, "local")); err != nil {
+		return resultNq, err, true
 	}
-
 	if len(oracleRestart.Spec.NodePortSvc.PortMappings) != 0 {
-		result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, svcType, "nodeport"))
-		if err != nil {
-			result = resultNq
-			return result, err
+		if _, err := r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, svcType, "nodeport")); err != nil {
+			return resultNq, err, true
 		}
 	}
-
 	if len(oracleRestart.Spec.LbService.PortMappings) != 0 {
-		result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, svcType, "lbservice"))
-		if err != nil {
-			result = resultNq
-			return result, err
+		if _, err := r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, svcType, "lbservice")); err != nil {
+			return resultNq, err, true
 		}
 	}
+	return ctrl.Result{}, nil, false
+}
 
-	r.ensureAsmStorageStatus(
-		ctx,
-		oracleRestart,
-		req,
-	)
+func (r *OracleRestartReconciler) oracleRestartPhaseStorageSync(
+	ctx context.Context,
+	req ctrl.Request,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	oldSpec *oraclerestartdb.OracleRestartSpec,
+	cName string,
+	fName string,
+	resultNq ctrl.Result,
+	resultQ ctrl.Result,
+) (oracleRestartStoragePhaseState, ctrl.Result, error, bool) {
+	var nilErr error = nil
+	state := oracleRestartStoragePhaseState{configMapData: make(map[string]string)}
 
+	r.ensureAsmStorageStatus(ctx, oracleRestart, req)
+	r.phaseInfo(req, orPhaseStorageSync, "Reconciling ASM storage state")
 	isNewSetup := true
 	upgradeSetup := false
-
-	// Detect upgrade scenario — if old spec has no ASM storage details
 	if oldSpec != nil && oldSpec.AsmStorageDetailsOld != nil {
 		upgradeSetup = true
-		isNewSetup = false // explicitly not a new install
-		r.Log.Info("Detected upgrade scenario — marking upgradeSetup = true")
+		isNewSetup = false
 	} else {
-		// Normal check for new setups
 		for _, diskgroup := range oracleRestart.Status.AsmDiskGroups {
 			if len(diskgroup.Disks) > 0 && diskgroup.Name != "Pending" {
 				isNewSetup = false
@@ -324,82 +420,46 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 		}
 	}
+	state.isNewSetup = isNewSetup
 
-	isDiskChanged := false
 	addedAsmDisks := []string{}
 	removedAsmDisks := []string{}
-
+	isDiskChanged := false
 	if !isNewSetup && oldSpec != nil {
+		var err error
 		addedAsmDisks, removedAsmDisks, err = r.computeDiskChanges(oracleRestart, oldSpec)
 		if err != nil {
-			return ctrl.Result{}, err
+			return state, ctrl.Result{}, err, true
 		}
-
-		// Cannot process add & remove together
 		if len(addedAsmDisks) > 0 && len(removedAsmDisks) > 0 {
-			r.Log.Info("Detected addition as well as deletion; cannot process both together",
-				"addedAsmDisks", addedAsmDisks, "removedAsmDisks", removedAsmDisks)
-			return resultQ, fmt.Errorf("cannot add and remove ASM disks in the same step")
+			return state, resultQ, fmt.Errorf("cannot add and remove ASM disks in the same step"), true
 		}
-
-		// Set change flags and log
-		if len(addedAsmDisks) > 0 {
-			r.Log.Info("Detected addition of ASM disks", "addedAsmDisks", addedAsmDisks)
+		if len(addedAsmDisks) > 0 || len(removedAsmDisks) > 0 {
 			isDiskChanged = true
 		}
-		if len(removedAsmDisks) > 0 {
-			r.Log.Info("Detected removal of ASM disks", "removedAsmDisks", removedAsmDisks)
-			isDiskChanged = true
-		}
-
-		//asm auto update change detection
-
 		oldMap := make(map[string]v4.AsmDiskGroupDetails)
-
-		if oldSpec != nil {
-			for _, dg := range oldSpec.AsmStorageDetails {
-				oldMap[dgKey(dg.Name, dg.Type)] = dg
-			}
+		for _, dg := range oldSpec.AsmStorageDetails {
+			oldMap[dgKey(dg.Name, dg.Type)] = dg
 		}
-
-		// autoUpdateToggled := false
-
 		for _, newDG := range oracleRestart.Spec.AsmStorageDetails {
-
-			// skip groups without disks in new spec
 			if len(normalizeDisks(newDG.Disks)) == 0 {
 				continue
 			}
-
 			key := dgKey(newDG.Name, newDG.Type)
-
 			oldDG, exists := oldMap[key]
-			if !exists {
+			if !exists || len(normalizeDisks(oldDG.Disks)) == 0 {
 				continue
 			}
-
-			// skip if old also had no disks
-			if len(normalizeDisks(oldDG.Disks)) == 0 {
-				continue
-			}
-
-			// ONLY CHECK AutoUpdate toggle
 			if !strings.EqualFold(oldDG.AutoUpdate, newDG.AutoUpdate) {
-
-				r.Log.Info("ASM AutoUpdate toggled",
-					"diskgroup", newDG.Name,
-					"old", oldDG.AutoUpdate,
-					"new", newDG.AutoUpdate,
-				)
-
-				// autoUpdateToggled = true
 				isDiskChanged = true
 				break
 			}
 		}
-
 	}
-	// Check if any ASM disk has missing/zero size
+	state.isDiskChanged = isDiskChanged
+	state.addedAsmDisks = addedAsmDisks
+	state.removedAsmDisks = removedAsmDisks
+
 	missingSize := false
 	for _, dg := range oracleRestart.Status.AsmDiskGroups {
 		for _, disk := range dg.Disks {
@@ -413,81 +473,45 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 	discoverySuccessful := false
-
-	shouldRunDiscovery :=
-		oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" &&
-			(len(removedAsmDisks) == 0) && (isNewSetup ||
-			upgradeSetup ||
-			missingSize ||
-			len(addedAsmDisks) > 0 ||
-			len(oracleRestart.Status.AsmDiskGroups) == 0)
-
+	shouldRunDiscovery := oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" &&
+		(len(removedAsmDisks) == 0) && (isNewSetup || upgradeSetup || missingSize || len(addedAsmDisks) > 0 || len(oracleRestart.Status.AsmDiskGroups) == 0)
 	if shouldRunDiscovery {
 		if err := r.createDaemonSet(oracleRestart, ctx); err != nil {
-			r.Log.Error(err, "failed to create disk-check daemonset")
-			return ctrl.Result{}, err // Return error to requeue on failure
+			return state, ctrl.Result{}, err, true
 		}
-
 		ready, err := checkRacDaemonSetStatus(ctx, r, oracleRestart)
 		if err != nil || !ready {
-			if err != nil {
-				r.Log.Error(err, "ASM disk-check daemonset status error, will requeue")
-			} else {
-				r.Log.Info("ASM disks not ready yet. Waiting for disk-check daemonset to complete discovery.")
-			}
-			// Requeue until daemonset is ready
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			return state, ctrl.Result{RequeueAfter: 10 * time.Second}, nil, true
 		}
-
-		// Update disk sizes into Status
-		if err := r.updateDiskSizes(ctx, oracleRestart); err != nil {
-			r.Log.Error(err, "failed updating ASM disk sizes")
-			// Continue reconcile, do not block on this failure
-		}
-		if len(oracleRestart.Status.AsmDiskGroups) > 0 {
+		if err := r.updateDiskSizes(ctx, oracleRestart); err == nil && len(oracleRestart.Status.AsmDiskGroups) > 0 {
 			discoverySuccessful = true
 		}
 	}
+	state.discoverySuccessful = discoverySuccessful
 
-	// PV/PVC creation using discovered sizes
 	if len(oracleRestart.Status.AsmDiskGroups) == 0 && oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
-		return resultNq, fmt.Errorf("no ASM disk group status available")
+		return state, resultNq, fmt.Errorf("no ASM disk group status available"), true
 	}
-
-	err = setRacDgFromStatusAndSpecWithMinimumDefaults(oracleRestart, r.Client, cName, fName)
-	if err != nil {
-		r.Log.Info("Failed to set disk group defaults")
-		return ctrl.Result{}, err
+	if err := setRacDgFromStatusAndSpecWithMinimumDefaults(oracleRestart, r.Client, cName, fName); err != nil {
+		return state, ctrl.Result{}, err, true
 	}
 
 	for dgIndex, dgSpec := range oracleRestart.Spec.AsmStorageDetails {
 		groupName := dgSpec.Name
 		dgType := dgSpec.Type
-
 		var dgStatus *oraclerestartdb.AsmDiskGroupStatus
-
-		// Find matching group in status
 		for i, dgSt := range oracleRestart.Status.AsmDiskGroups {
 			if dgSt.Name == groupName {
 				dgStatus = &oracleRestart.Status.AsmDiskGroups[i]
 				break
 			}
 		}
-
 		if dgStatus == nil && oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
-			r.Log.Info("Disk group and +DATA not present in ASM status, skipping", "diskGroup", dgSpec.Name)
 			continue
 		}
-
-		// Decide provisioning mode once
 		isStatic := oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC"
-
-		// For each disk in the spec'd disk group...
 		for diskIdx, diskName := range dgSpec.Disks {
-
 			var diskStatus *oraclerestartdb.AsmDiskStatus
-
-			// Only relevant for static provisioning
 			if isStatic {
 				for i, d := range dgStatus.Disks {
 					if d.Name == diskName {
@@ -495,258 +519,175 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 						break
 					}
 				}
-
-				if diskStatus == nil {
-					r.Log.Info("Disk not present in ASM status for group, skipping",
-						"disk", diskName, "diskGroup", groupName)
-					continue
-				}
-
-				if diskStatus.SizeInGb == 0 || !diskStatus.Valid {
-					r.Log.Info("Invalid or missing size for disk in ASM status, skipping",
-						"disk", diskName, "diskGroup", groupName)
+				if diskStatus == nil || diskStatus.SizeInGb == 0 || !diskStatus.Valid {
 					continue
 				}
 			}
-
-			// Determine size
-			var sizeStr string
+			sizeStr := fmt.Sprintf("%dGi", oracleRestart.Spec.AsmStorageSizeInGb)
 			if isStatic {
 				sizeStr = fmt.Sprintf("%dGi", diskStatus.SizeInGb)
-			} else {
-				sizeStr = fmt.Sprintf("%dGi", oracleRestart.Spec.AsmStorageSizeInGb)
 			}
-
-			// --------------------------------------------------
-			// STATIC MODE → create PV + PVC
-			// --------------------------------------------------
 			if isStatic {
-
-				pvVolume := oraclerestartcommon.VolumePVForASM(
-					oracleRestart,
-					dgIndex,
-					diskIdx,
-					diskName,
-					groupName,
-					sizeStr,
-					r.Client,
-				)
-
-				if _, result, err = r.createOrReplaceAsmPv(
-					ctx, oracleRestart, pvVolume, string(dgType)); err != nil {
-					return resultNq, err
+				pvVolume := oraclerestartcommon.VolumePVForASM(oracleRestart, dgIndex, diskIdx, diskName, groupName, sizeStr, r.Client)
+				if _, _, err := r.createOrReplaceAsmPv(ctx, oracleRestart, pvVolume, string(dgType)); err != nil {
+					return state, resultNq, err, true
 				}
 			}
-
-			// --------------------------------------------------
-			// BOTH MODES → create PVC
-			// --------------------------------------------------
-			pvcVolume := oraclerestartcommon.VolumePVCForASM(
-				oracleRestart,
-				dgIndex,
-				diskIdx,
-				diskName,
-				groupName,
-				sizeStr,
-				string(dgType),
-				r.Client,
-			)
-
-			if _, result, err = r.createOrReplaceAsmPvC(
-				ctx, oracleRestart, pvcVolume, string(dgType)); err != nil {
-				return resultNq, err
+			pvcVolume := oraclerestartcommon.VolumePVCForASM(oracleRestart, dgIndex, diskIdx, diskName, groupName, sizeStr, string(dgType), r.Client)
+			if _, _, err := r.createOrReplaceAsmPvC(ctx, oracleRestart, pvcVolume, string(dgType)); err != nil {
+				return state, resultNq, err, true
 			}
 		}
-
 	}
 
 	if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
-		err = r.cleanupDaemonSet(oracleRestart, ctx)
-		if err != nil {
-			result = resultQ
-			// r.Log.Info(err.Error())
-			err = nilErr
-			return result, err
+		if err := r.cleanupDaemonSet(oracleRestart, ctx); err != nil {
+			return state, resultQ, nilErr, true
 		}
 	}
 
 	if oracleRestart.Spec.ConfigParams != nil {
-		configMapData, err = r.generateConfigMap(oracleRestart)
+		configMapData, err := r.generateConfigMap(oracleRestart)
 		if err != nil {
-			result = resultNq
-			return result, err
+			return state, resultNq, err, true
 		}
+		state.configMapData = configMapData
 	}
 
+	return state, ctrl.Result{}, nil, false
+}
+
+func (r *OracleRestartReconciler) oracleRestartPhaseWorkloadSync(
+	ctx context.Context,
+	req ctrl.Request,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	oldSpec *oraclerestartdb.OracleRestartSpec,
+	storageState oracleRestartStoragePhaseState,
+	resultNq ctrl.Result,
+	resultQ ctrl.Result,
+) (ctrl.Result, error, bool) {
+	var nilErr error = nil
 	index := 0
 	isLast := true
 	oldState := oracleRestart.Status.State
-	// time.Sleep(15 * time.Minute)
+	r.phaseInfo(req, orPhaseWorkloadSync, "Reconciling workload objects")
 	if !utils.CheckStatusFlag(oracleRestart.Spec.InstDetails.IsDelete) {
 		switch {
-		case !isDiskChanged:
+		case !storageState.isDiskChanged:
 			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
-			cm := oraclerestartcommon.ConfigMapSpecs(oracleRestart, configMapData, cmName)
-			result, configmapEnvKeyChanged, err := r.createConfigMap(ctx, *oracleRestart, cm)
+			cm := oraclerestartcommon.ConfigMapSpecs(oracleRestart, storageState.configMapData, cmName)
+			_, configmapEnvKeyChanged, err := r.createConfigMap(ctx, *oracleRestart, cm)
 			if err != nil {
-				result = resultNq
-				return result, err
+				return resultNq, err, true
 			}
-			err = oraclerestartcommon.CreateServiceAccountIfNotExists(oracleRestart, r.Client)
-			if err != nil {
-				result = resultNq
-				return result, err
+			if err = oraclerestartcommon.CreateServiceAccountIfNotExists(oracleRestart, r.Client); err != nil {
+				return resultNq, err, true
 			}
-
 			oracleRestart.Spec.InstDetails.EnvFile = cmName
 			dep, err := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
 			if err != nil {
-				result = resultNq
-				return result, err
+				return resultNq, err, true
 			}
-			result, err = r.createOrReplaceSfs(ctx, req, *oracleRestart, dep, index, isLast, oldState, configmapEnvKeyChanged)
-			if err != nil {
-				result = resultNq
-				return result, err
+			if _, err = r.createOrReplaceSfs(ctx, req, *oracleRestart, dep, index, isLast, oldState, configmapEnvKeyChanged); err != nil {
+				return resultNq, err, true
 			}
-
-		case isDiskChanged && !isNewSetup:
-			if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
-
-				if !discoverySuccessful && len(removedAsmDisks) == 0 {
-					msg := "Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy."
-					r.Log.Info(msg)
-					err = r.cleanupDaemonSet(oracleRestart, ctx)
-					if err != nil {
-						result = resultQ
-						r.Log.Info(err.Error())
-						err = nilErr
-						return result, err
-					}
-					addedAsmDisksMap := make(map[string]bool)
-					for _, disk := range addedAsmDisks {
-						addedAsmDisksMap[disk] = true
-					}
-					for pindex, dgSpec := range oracleRestart.Spec.AsmStorageDetails {
-						for cindex, diskName := range dgSpec.Disks {
-							if _, ok := addedAsmDisksMap[diskName]; ok {
-								// r.Log.Info("Found disk at index", "index", index)
-
-								err = oraclerestartcommon.DelORestartPVC(oracleRestart, pindex, cindex, diskName, r.Client, r.Log)
-								if err != nil {
-									return resultQ, err
-								}
-
-								err = oraclerestartcommon.DelORestartPv(oracleRestart, pindex, cindex, diskName, r.Client, r.Log)
-								if err != nil {
-									return resultQ, err
-								}
+		case storageState.isDiskChanged && !storageState.isNewSetup:
+			if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" && !storageState.discoverySuccessful && len(storageState.removedAsmDisks) == 0 {
+				msg := "Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy."
+				if err := r.cleanupDaemonSet(oracleRestart, ctx); err != nil {
+					return resultQ, nilErr, true
+				}
+				addedAsmDisksMap := make(map[string]bool)
+				for _, disk := range storageState.addedAsmDisks {
+					addedAsmDisksMap[disk] = true
+				}
+				for pindex, dgSpec := range oracleRestart.Spec.AsmStorageDetails {
+					for cindex, diskName := range dgSpec.Disks {
+						if _, ok := addedAsmDisksMap[diskName]; ok {
+							if err := oraclerestartcommon.DelORestartPVC(oracleRestart, pindex, cindex, diskName, r.Client, r.Log); err != nil {
+								return resultQ, err, true
+							}
+							if err := oraclerestartcommon.DelORestartPv(oracleRestart, pindex, cindex, diskName, r.Client, r.Log); err != nil {
+								return resultQ, err, true
 							}
 						}
 					}
-
-					if err = r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
-						r.Log.Error(err, "Failed to set current spec annotation")
-						oracleRestart.Spec.IsFailed = true
-						return resultQ, err
-					}
-					return result, errors.New(msg)
-				} else {
-					r.Log.Info("Provided ASM Disks are valid, proceeding further")
 				}
-
+				if err := r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
+					return resultQ, err, true
+				}
+				return resultQ, errors.New(msg), true
 			}
 			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
-			// configMapDataAutoUpdate, err := r.generateConfigMapAutoUpdate(ctx, oracleRestart, cmName)
-			// if err != nil {
-			// 	result = resultNq
-			// 	return result, err
-			// }
-			cm := oraclerestartcommon.ConfigMapSpecs(oracleRestart, configMapData, cmName)
-			result, configmapEnvKeyChanged, err := r.createConfigMap(ctx, *oracleRestart, cm)
+			cm := oraclerestartcommon.ConfigMapSpecs(oracleRestart, storageState.configMapData, cmName)
+			_, configmapEnvKeyChanged, err := r.createConfigMap(ctx, *oracleRestart, cm)
 			if err != nil {
-				result = resultNq
-				return result, err
+				return resultNq, err, true
 			}
-			r.Log.Info("Config Map updated successfully with new asm details")
 			oracleRestart.Spec.InstDetails.EnvFile = cmName
-			// result, err = r.createOrReplaceSfsAsm(ctx, req, oracleRestart, oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client), index, isLast, oldSpec)
-			dep, err := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
-			result, err = r.createOrReplaceSfsAsm(ctx, req, oracleRestart, dep, index, isLast, oldSpec, discoverySuccessful, configmapEnvKeyChanged)
-			if err != nil {
-				result = resultNq
-				return result, err
+			dep, buildErr := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
+			if buildErr != nil {
+				return resultNq, buildErr, true
+			}
+			if _, err = r.createOrReplaceSfsAsm(ctx, req, oracleRestart, dep, index, isLast, oldSpec, storageState.discoverySuccessful, configmapEnvKeyChanged); err != nil {
+				return resultNq, err, true
 			}
 		}
 	}
-
-	err = r.expandStorageClassSWVolume(ctx, oracleRestart, oldSpec)
-	if err != nil {
-		return ctrl.Result{}, err
+	if err := r.expandStorageClassSWVolume(ctx, oracleRestart, oldSpec); err != nil {
+		return ctrl.Result{}, err, true
 	}
+	return ctrl.Result{}, nil, false
+}
 
-	completed = true
-	// // Update the current spec after successful reconciliation
-	if err = r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
-		r.Log.Error(err, "Failed to set current spec annotation")
-		oracleRestart.Spec.IsFailed = true
-		return resultQ, err
+func (r *OracleRestartReconciler) oracleRestartPhaseFinalize(
+	ctx context.Context,
+	req ctrl.Request,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	resultQ ctrl.Result,
+) (ctrl.Result, bool, error) {
+	r.phaseInfo(req, orPhaseFinalize, "Finalizing reconcile state")
+	if err := r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
+		return resultQ, false, err
 	}
 	OraRestartSpex := oracleRestart.Spec.InstDetails
 	orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
-
 	if err != nil {
-		//msg := "Unable to find Oracle Restart statefulset " + oraclerestartcommon.GetFmtStr(OraRestartSpex.Name) + "."
-		//oraclerestartcommon.LogMessages("INFO", msg, nil, instance, r.Log)
 		r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
-		return ctrl.Result{}, err
+		return ctrl.Result{}, false, err
 	}
-
 	podList, err := oraclerestartcommon.GetPodList(orestartSfSet.Name, oracleRestart, r.Client, OraRestartSpex)
 	if err != nil {
-		msg := "Unable to find any pod in statefulset " + oraclerestartcommon.GetFmtStr(orestartSfSet.Name) + "."
-		oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
 		r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.PodNotFound), r.Client, false)
-		return ctrl.Result{}, err
+		return ctrl.Result{}, false, err
 	}
 	isPodExist, _, notReadyPod := oraclerestartcommon.PodListValidation(podList, orestartSfSet.Name, oracleRestart, r.Client)
-	// Check if the pod is ready
-	if isPodExist {
-		msg := ""
-		if notReadyPod == nil {
-			if oracleRestart.Spec.EnableOns == "enable" || oracleRestart.Spec.EnableOns == "disable" {
-				OraRestartSpex := oracleRestart.Spec.InstDetails
-				orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
-				if err != nil {
-					r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
-					return ctrl.Result{}, err
-				}
-
-				podList, err := oraclerestartcommon.GetPodList(orestartSfSet.Name, oracleRestart, r.Client, oracleRestart.Spec.InstDetails)
-				if err != nil {
-					r.Log.Error(err, "Failed to list pods")
-					return ctrl.Result{}, err
-				}
-				// default is to start
-				onsOp := "start"
-				if oracleRestart.Spec.EnableOns == "disable" {
-					onsOp = "stop"
-				}
-
-				err = r.updateONS(ctx, podList, oracleRestart, onsOp)
-				if err != nil {
-					return ctrl.Result{}, err
-				}
+	if isPodExist && notReadyPod == nil {
+		if oracleRestart.Spec.EnableOns == "enable" || oracleRestart.Spec.EnableOns == "disable" {
+			orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
+			if err != nil {
+				r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
+				return ctrl.Result{}, false, err
 			}
-			r.Log.Info(msg)
+			podList, err := oraclerestartcommon.GetPodList(orestartSfSet.Name, oracleRestart, r.Client, oracleRestart.Spec.InstDetails)
+			if err != nil {
+				return ctrl.Result{}, false, err
+			}
+			onsOp := "start"
+			if oracleRestart.Spec.EnableOns == "disable" {
+				onsOp = "stop"
+			}
+			if err = r.updateONS(ctx, podList, oracleRestart, onsOp); err != nil {
+				return ctrl.Result{}, false, err
+			}
 		}
 	}
 
 	r.Log.Info("Reconcile completed. Requeuing....")
-	// time.Sleep(1 * time.Minute)
-	return resultQ, nil
+	return resultQ, true, nil
 }
 
+// normalizeDisks trims whitespace and sorts disk lists for stable comparison
 func normalizeDisks(disks []string) []string {
 	var cleaned []string
 
@@ -760,12 +701,15 @@ func normalizeDisks(disks []string) []string {
 	sort.Strings(cleaned) // IMPORTANT for stable comparison
 	return cleaned
 }
+
+// dgKey generates a unique key for a disk group based on its name and type, used for mapping old vs new disk groups during change detection.
 func dgKey(name string, t v4.AsmDiskDGTypes) string {
 	return name + "|" + string(t)
 }
 
 // checkRacDaemonSetStatus checks daemonset progress by polling for readiness
 // and scanning pod logs. It returns true when the disk-check job completes.
+// checkRacDaemonSetStatus verifies the ASM discovery daemonset for Oracle Restart has succeeded before continuing reconciliation.
 func checkRacDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracleRestart *oraclerestartdb.OracleRestart) (bool, error) {
 	timeout := time.After(2 * time.Minute)
 	tick := time.NewTicker(10 * time.Second) // Poll every 10 seconds
@@ -776,41 +720,18 @@ func checkRacDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, or
 	for {
 		select {
 		case <-timeout:
-			// Timeout reached
-			ds := &appsv1.DaemonSet{}
-			err := r.Client.Get(ctx, types.NamespacedName{
-				Name:      "disk-check-daemonset",
-				Namespace: oracleRestart.Namespace,
-			}, ds)
+			ready, invalidDevice, err := shareddiskcheck.CheckDaemonSetReadyAndDiskValidation(
+				ctx, r.Client, r.kubeClient, oracleRestart.Namespace, "disk-check-daemonset",
+				shareddiskcheck.LabelSelectorForDaemonSet(oracleRestart, "disk-check"),
+			)
 			if err != nil {
 				return false, err
 			}
-
-			// Fetch the list of Pods managed by the DaemonSet
-			pods, err := r.kubeClient.CoreV1().Pods(oracleRestart.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "app=disk-check",
-			})
-			if err != nil {
-				return false, err
+			if ready {
+				return true, nil
 			}
-
-			// Check logs from each Pod
-			for _, pod := range pods.Items {
-				if pod.Status.Phase != corev1.PodRunning {
-					// Pod is not running, check for logs and errors
-					logs, err := r.kubeClient.CoreV1().Pods(oracleRestart.Namespace).GetLogs(
-						pod.Name,
-						&corev1.PodLogOptions{},
-					).DoRaw(ctx)
-					if err != nil {
-						return false, err
-					}
-
-					if bytes.Contains(logs, []byte("not a valid block device")) {
-						// Disk validation failed
-						return false, nil
-					}
-				}
+			if invalidDevice {
+				return false, nil
 			}
 
 			// DaemonSet did not become ready or running within the timeout
@@ -820,46 +741,18 @@ func checkRacDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, or
 			return false, nil
 
 		case <-tick.C:
-			// Check DaemonSet status
-			ds := &appsv1.DaemonSet{}
-			err := r.Client.Get(ctx, types.NamespacedName{
-				Name:      "disk-check-daemonset",
-				Namespace: oracleRestart.Namespace,
-			}, ds)
+			ready, invalidDevice, err := shareddiskcheck.CheckDaemonSetReadyAndDiskValidation(
+				ctx, r.Client, r.kubeClient, oracleRestart.Namespace, "disk-check-daemonset",
+				shareddiskcheck.LabelSelectorForDaemonSet(oracleRestart, "disk-check"),
+			)
 			if err != nil {
 				return false, err
 			}
-
-			// Check DaemonSet readiness
-			if ds.Status.NumberReady == ds.Status.DesiredNumberScheduled && ds.Status.NumberReady > 0 {
-				// DaemonSet is running and ready
+			if ready {
 				return true, nil
 			}
-
-			// If DaemonSet is not ready, fetch the list of Pods managed by the DaemonSet
-			pods, err := r.kubeClient.CoreV1().Pods(oracleRestart.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "app=disk-check",
-			})
-			if err != nil {
-				return false, err
-			}
-
-			// Check logs from each Pod
-			for _, pod := range pods.Items {
-				// Pod is not running, check for logs and errors
-				logs, err := r.kubeClient.CoreV1().Pods(oracleRestart.Namespace).GetLogs(
-					pod.Name,
-					&corev1.PodLogOptions{},
-				).DoRaw(ctx)
-				if err != nil {
-					return false, err
-				}
-
-				if bytes.Contains(logs, []byte("not a valid block device")) {
-					// Disk validation failed
-					return false, nil
-				}
-
+			if invalidDevice {
+				return false, nil
 			}
 		}
 	}
@@ -897,9 +790,7 @@ func (r *OracleRestartReconciler) computeDiskChanges(
 	return addedAsmDisks, removedAsmDisks, nil
 }
 
-// checkOracleRestartState blocks reconcile progress when the Oracle Restart
-// resource is in restricted states such as provisioning, updates, or manual
-// operations, returning an error for requeue.
+// checkOracleRestartState blocks reconciliation when Oracle Restart enters restricted lifecycle states.
 func checkOracleRestartState(oracleRestart *oraclerestartdb.OracleRestart) error {
 	if oracleRestart.Status.State == string(oraclerestartdb.OracleRestartProvisionState) ||
 		oracleRestart.Status.State == string(oraclerestartdb.OracleRestartUpdateState) ||
@@ -915,6 +806,221 @@ func checkOracleRestartState(oracleRestart *oraclerestartdb.OracleRestart) error
 	return nil
 }
 
+func parseOracleRestartBreakGlassOverride(meta metav1.Object) (bool, string, string) {
+	annotations := meta.GetAnnotations()
+	if len(annotations) == 0 {
+		return false, "", ""
+	}
+	if !strings.EqualFold(strings.TrimSpace(annotations[oracleRestartBreakGlassAnnotation]), "true") {
+		return false, "", ""
+	}
+	reason := strings.TrimSpace(annotations[oracleRestartBreakGlassReason])
+	actor := strings.TrimSpace(annotations[oracleRestartBreakGlassActor])
+	return true, reason, actor
+}
+
+func diffORJSONPaths(prefix string, oldVal interface{}, newVal interface{}, out map[string]struct{}) {
+	if reflect.DeepEqual(oldVal, newVal) {
+		return
+	}
+	oldMap, oldMapOK := oldVal.(map[string]interface{})
+	newMap, newMapOK := newVal.(map[string]interface{})
+	if oldMapOK && newMapOK {
+		keys := map[string]struct{}{}
+		for k := range oldMap {
+			keys[k] = struct{}{}
+		}
+		for k := range newMap {
+			keys[k] = struct{}{}
+		}
+		for k := range keys {
+			diffORJSONPaths(prefix+"."+k, oldMap[k], newMap[k], out)
+		}
+		return
+	}
+	_, oldSliceOK := oldVal.([]interface{})
+	_, newSliceOK := newVal.([]interface{})
+	if oldSliceOK || newSliceOK {
+		out[prefix] = struct{}{}
+		return
+	}
+	out[prefix] = struct{}{}
+}
+
+func changedOracleRestartSpecPaths(oldSpec *oraclerestartdb.OracleRestartSpec, newSpec oraclerestartdb.OracleRestartSpec) ([]string, error) {
+	if oldSpec == nil {
+		return nil, nil
+	}
+	oldBytes, err := json.Marshal(oldSpec)
+	if err != nil {
+		return nil, err
+	}
+	newBytes, err := json.Marshal(newSpec)
+	if err != nil {
+		return nil, err
+	}
+	var oldObj map[string]interface{}
+	var newObj map[string]interface{}
+	if err := json.Unmarshal(oldBytes, &oldObj); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(newBytes, &newObj); err != nil {
+		return nil, err
+	}
+	outSet := map[string]struct{}{}
+	diffORJSONPaths("spec", oldObj, newObj, outSet)
+	out := make([]string, 0, len(outSet))
+	for k := range outSet {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func oracleRestartControllerLevelLockBypassAllowedFields() map[string]struct{} {
+	// Maintain this allowlist in code when specific field-level lock bypasses are safe.
+	// Example:
+	// return map[string]struct{}{
+	//   "spec.details.someNonDisruptiveField": {},
+	// }
+	return map[string]struct{}{}
+}
+
+func shouldBypassOracleRestartReconcileLockBySpecDelta(latest *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec) (bool, []string, error) {
+	if latest == nil || oldSpec == nil {
+		return false, nil, nil
+	}
+	allowed := oracleRestartControllerLevelLockBypassAllowedFields()
+	if len(allowed) == 0 {
+		return false, nil, nil
+	}
+	changed, err := changedOracleRestartSpecPaths(oldSpec, latest.Spec)
+	if err != nil {
+		return false, nil, err
+	}
+	if len(changed) == 0 {
+		return false, nil, nil
+	}
+	for _, path := range changed {
+		if _, ok := allowed[path]; !ok {
+			return false, changed, nil
+		}
+	}
+	return true, changed, nil
+}
+
+func (r *OracleRestartReconciler) acquireOracleRestartReconcileLock(
+	ctx context.Context,
+	req ctrl.Request,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	oldSpec *oraclerestartdb.OracleRestartSpec,
+	phase oracleRestartReconcilePhase,
+) (bool, error) {
+	const (
+		maxRetries = 5
+		retryDelay = 200 * time.Millisecond
+		lockTTL    = 20 * time.Minute
+	)
+	holder := req.NamespacedName.String()
+	var lastErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		latest := &oraclerestartdb.OracleRestart{}
+		if err := r.Get(ctx, req.NamespacedName, latest); err != nil {
+			lastErr = err
+			time.Sleep(retryDelay)
+			continue
+		}
+
+		if latest.Annotations == nil {
+			latest.Annotations = map[string]string{}
+		}
+		breakGlassEnabled, reason, actor := parseOracleRestartBreakGlassOverride(latest)
+		if breakGlassEnabled {
+			original := latest.DeepCopy()
+			delete(latest.Annotations, oracleRestartLockHolderAnnotation)
+			delete(latest.Annotations, oracleRestartLockPhaseAnnotation)
+			delete(latest.Annotations, oracleRestartLockAcquiredAtAnnotation)
+			delete(latest.Annotations, oracleRestartLockGenerationAnnotation)
+			if err := r.Patch(ctx, latest, client.MergeFrom(original)); err != nil {
+				if apierrors.IsConflict(err) {
+					lastErr = err
+					time.Sleep(retryDelay)
+					continue
+				}
+				return false, err
+			}
+			r.phaseInfo(req, orPhaseDeletionAndGuards, "Break-glass lock override enabled; skipping controller-level reconcile lock",
+				"annotation", oracleRestartBreakGlassAnnotation, "reason", reason, "actor", actor)
+			return false, nil
+		}
+
+		bypassLock, changedPaths, bypassErr := shouldBypassOracleRestartReconcileLockBySpecDelta(latest, oldSpec)
+		if bypassErr != nil {
+			return false, bypassErr
+		}
+		if bypassLock {
+			r.phaseInfo(req, orPhaseDeletionAndGuards, "Bypassing Oracle Restart reconcile lock based on function-level spec-delta allowlist",
+				"changedPaths", strings.Join(changedPaths, ","))
+			return false, nil
+		}
+
+		existingHolder := latest.Annotations[oracleRestartLockHolderAnnotation]
+		existingAt := latest.Annotations[oracleRestartLockAcquiredAtAnnotation]
+
+		lockExpired := false
+		if existingAt != "" {
+			if ts, err := time.Parse(time.RFC3339Nano, existingAt); err == nil {
+				lockExpired = time.Since(ts) > lockTTL
+			}
+		}
+		if existingHolder != "" && existingHolder != holder && !lockExpired {
+			return false, fmt.Errorf("reconcile lock held by %s", existingHolder)
+		}
+
+		original := latest.DeepCopy()
+		latest.Annotations[oracleRestartLockHolderAnnotation] = holder
+		latest.Annotations[oracleRestartLockPhaseAnnotation] = string(phase)
+		latest.Annotations[oracleRestartLockGenerationAnnotation] = strconv.FormatInt(latest.Generation, 10)
+		latest.Annotations[oracleRestartLockAcquiredAtAnnotation] = time.Now().UTC().Format(time.RFC3339Nano)
+
+		if err := r.Patch(ctx, latest, client.MergeFrom(original)); err != nil {
+			if apierrors.IsConflict(err) {
+				lastErr = err
+				time.Sleep(retryDelay)
+				continue
+			}
+			return false, err
+		}
+		return true, nil
+	}
+	return false, fmt.Errorf("failed to acquire reconcile lock after retries: %w", lastErr)
+}
+
+func (r *OracleRestartReconciler) releaseOracleRestartReconcileLock(
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+	holder := req.NamespacedName.String()
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &oraclerestartdb.OracleRestart{}
+		if err := r.Get(ctx, req.NamespacedName, latest); err != nil {
+			return err
+		}
+		if latest.Annotations == nil {
+			return nil
+		}
+		if existing := latest.Annotations[oracleRestartLockHolderAnnotation]; existing != "" && existing != holder {
+			return nil
+		}
+		original := latest.DeepCopy()
+		delete(latest.Annotations, oracleRestartLockHolderAnnotation)
+		delete(latest.Annotations, oracleRestartLockPhaseAnnotation)
+		delete(latest.Annotations, oracleRestartLockAcquiredAtAnnotation)
+		delete(latest.Annotations, oracleRestartLockGenerationAnnotation)
+		return r.Patch(ctx, latest, client.MergeFrom(original))
+	})
+}
+
 // generateConfigMapAutoUpdate refreshes the envfile data in an existing
 // ConfigMap with current configuration values pulled from status and spec.
 func (r *OracleRestartReconciler) generateConfigMapAutoUpdate(ctx context.Context, instance *oraclerestartdb.OracleRestart, cmName string) (map[string]string, error) {
@@ -928,23 +1034,8 @@ func (r *OracleRestartReconciler) generateConfigMapAutoUpdate(ctx context.Contex
 	// Get the existing config map data
 	configMapData := cm.Data
 	envFileData := configMapData["envfile"]
-	envVars := make(map[string]string)
-
-	// Parse the envfile into a map
-	lines := strings.Split(envFileData, "\r\n")
-	for _, line := range lines {
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			envVars[parts[0]] = parts[1]
-		}
-	}
-
-	// Convert the envVars map back to a single string
-	var updatedData []string
-	for key, value := range envVars {
-		updatedData = append(updatedData, fmt.Sprintf("%s=%s", key, value))
-	}
-	configMapData["envfile"] = strings.Join(updatedData, "\r\n")
+	envVars := sharedenvfile.ParseMap(envFileData)
+	configMapData["envfile"] = sharedenvfile.SerializeMap(envVars)
 
 	return configMapData, nil
 }
@@ -1012,7 +1103,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 
 	if *completed {
 		condition = metav1.Condition{
-			Type:               string(oraclerestartdb.CrdReconcileCompeleteState),
+			Type:               string(oraclerestartdb.OracleRestartCrdReconcileCompeleteState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
 			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileCompleteReason),
@@ -1021,7 +1112,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 		}
 	} else if *blocked {
 		condition = metav1.Condition{
-			Type:               string(oraclerestartdb.CrdReconcileWaitingState),
+			Type:               string(oraclerestartdb.OracleRestartCrdReconcileWaitingState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
 			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileWaitingReason),
@@ -1030,24 +1121,32 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 		}
 	} else if result.Requeue {
 		condition = metav1.Condition{
-			Type:               string(oraclerestartdb.CrdReconcileQueuedState),
+			Type:               string(oraclerestartdb.OracleRestartCrdReconcileQueuedState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
-			Reason:             string(oraclerestartdb.CrdReconcileQueuedReason),
+			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileQueuedReason),
 			Message:            "reconcile has been queued", // neutral message
 			Status:             metav1.ConditionTrue,
 		}
 	} else if err != nil && *err != nil {
 		condition = metav1.Condition{
-			Type:               string(oraclerestartdb.CrdReconcileErrorState),
+			Type:               string(oraclerestartdb.OracleRestartCrdReconcileErrorState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
-			Reason:             string(oraclerestartdb.CrdReconcileErrorReason),
+			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileErrorReason),
 			Message:            (*err).Error(), // show actual error only here
 			Status:             metav1.ConditionTrue,
 		}
 	} else {
 		return
+	}
+	// Preserve transition time when condition semantics did not change.
+	if prev := meta.FindStatusCondition(oracleRestart.Status.Conditions, condition.Type); prev != nil &&
+		prev.Status == condition.Status &&
+		prev.Reason == condition.Reason &&
+		prev.Message == condition.Message &&
+		prev.ObservedGeneration == condition.ObservedGeneration {
+		condition.LastTransitionTime = prev.LastTransitionTime
 	}
 
 	if len(oracleRestart.Status.Conditions) > 0 {
@@ -1056,7 +1155,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 	meta.SetStatusCondition(&oracleRestart.Status.Conditions, condition)
 
 	if oracleRestart.Status.State == string(oraclerestartdb.OracleRestartPodAvailableState) &&
-		condition.Type == string(oraclerestartdb.CrdReconcileCompeleteState) {
+		condition.Type == string(oraclerestartdb.OracleRestartCrdReconcileCompeleteState) {
 		r.Log.Info("All validations and updation are completed. Changing State to AVAILABLE")
 		oracleRestart.Status.State = string(oraclerestartdb.OracleRestartAvailableState)
 	}
@@ -1077,6 +1176,11 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 			r.Log.Error(err, "Failed to merge instances, retrying...")
 			time.Sleep(retryDelay)
 			continue // Retry merging
+		}
+		// Avoid noisy status writes when no effective status change exists.
+		if reflect.DeepEqual(oracleRestart.Status, latestInstance.Status) {
+			r.Log.Info("No Oracle Restart status changes detected; skipping status patch", "Instance", oracleRestart.Name)
+			return
 		}
 
 		// Update the ResourceVersion of instance from latestInstance to avoid conflict
@@ -1123,7 +1227,7 @@ func (r *OracleRestartReconciler) validateSpex(oracleRestart *oraclerestartdb.Or
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				// Secret not found
-				r.Recorder.Eventf(oracleRestart, corev1.EventTypeWarning, eventReason, err.Error())
+				r.Recorder.Eventf(oracleRestart, corev1.EventTypeWarning, eventReason, "%s", err.Error())
 				r.Log.Info(err.Error())
 				return err
 			}
@@ -1271,6 +1375,7 @@ func flattenDisksBySize(spec *oraclerestartdb.OracleRestartSpec) []string {
 	return all
 }
 
+// findDisksToRemove identifies disks that are present in the runtime status but missing from the new spec, indicating they should be removed. It returns a list of disks to remove and any validation errors encountered during the comparison.
 func findDisksToRemove(
 	specDisks []string,
 	statusDisks []string,
@@ -1305,6 +1410,8 @@ func findDisksToRemove(
 
 	return toRemove, nil
 }
+
+// findDisksToAdd identifies disks that are present in the new spec but missing from the runtime status, indicating they should be added. It also checks for duplicates in the new spec and returns any validation errors encountered during the comparison.
 func findDisksToAdd(
 	newSpecDisks []string,
 	statusDisks []string,
@@ -1498,7 +1605,11 @@ func (r *OracleRestartReconciler) updateDiskSizes(
 			continue
 		}
 		func() { // Scope for defer
-			defer logs.Close()
+			defer func() {
+				if closeErr := logs.Close(); closeErr != nil {
+					r.Log.Error(closeErr, "Failed to close logs stream", "pod", pod.Name)
+				}
+			}()
 			scanner := bufio.NewScanner(logs)
 			for scanner.Scan() {
 				var entry struct {
@@ -1674,7 +1785,7 @@ func (r *OracleRestartReconciler) setDefaults(oracleRestart *oraclerestartdb.Ora
 
 	if oracleRestart.Spec.SshKeySecret != nil {
 		if oracleRestart.Spec.SshKeySecret.KeyMountLocation == "" {
-			oracleRestart.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+			oracleRestart.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 		}
 	}
 
@@ -1778,9 +1889,8 @@ func (r *OracleRestartReconciler) updateGiConfigParamStatus(oracleRestart *oracl
 				if err != nil {
 					oracleRestart.Spec.IsFailed = true
 					return errors.New(("error in responsefile, unable to read inventory_location"))
-				} else {
-					oracleRestart.Status.ConfigParams.Inventory = invlocation
 				}
+				oracleRestart.Status.ConfigParams.Inventory = invlocation
 			}
 		}
 
@@ -1792,9 +1902,8 @@ func (r *OracleRestartReconciler) updateGiConfigParamStatus(oracleRestart *oracl
 				if err != nil {
 					oracleRestart.Spec.IsFailed = true
 					return errors.New(("error in responsefile, unable to read oracle_base"))
-				} else {
-					oracleRestart.Status.ConfigParams.GridBase = gibase
 				}
+				oracleRestart.Status.ConfigParams.GridBase = gibase
 			}
 		}
 		if oracleRestart.Status.ConfigParams.GridHome == "NOT_DEFINED" {
@@ -1805,9 +1914,8 @@ func (r *OracleRestartReconciler) updateGiConfigParamStatus(oracleRestart *oracl
 				if err != nil {
 					oracleRestart.Spec.IsFailed = true
 					return errors.New(("error in responsefile, unable to read oracle_base"))
-				} else {
-					oracleRestart.Status.ConfigParams.GridHome = gihome
 				}
+				oracleRestart.Status.ConfigParams.GridHome = gihome
 			}
 		}
 
@@ -1982,9 +2090,8 @@ func (r *OracleRestartReconciler) updateOracleRestartInstTopologyStatus(oracleRe
 	if len(podNames) == 0 || len(nodeDetails) == 0 {
 		oracleRestart.Spec.IsFailed = true
 		return podNames, nodeDetails, errors.New("error occurred while collecting Oracle Restart pod or node details")
-	} else {
-		oracleRestart.Spec.IsFailed = false
 	}
+	oracleRestart.Spec.IsFailed = false
 
 	return podNames, nodeDetails, nil
 }
@@ -2076,10 +2183,10 @@ func (r *OracleRestartReconciler) validateoraclerestartdb(oracleRestart *oracler
 
 // validateOracleRestartInst validates a single Oracle Restart instance,
 // inspecting associated StatefulSet and pods to drive status updates.
-func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, OraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, specId int) (*appsv1.StatefulSet, *corev1.Pod, error) {
+func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, OraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, specID int) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
 	var err error
-	orestartSfSet := &appsv1.StatefulSet{}
+	var orestartSfSet *appsv1.StatefulSet
 	orestartPod := &corev1.Pod{}
 
 	orestartSfSet, err = oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
@@ -2109,13 +2216,12 @@ func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oracl
 			// Log the name of the first not ready pod
 			msg = "unable to validate Oracle Restart pod. The  pod not ready  is: " + notReadyPod.Name
 			oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
-			return orestartSfSet, orestartPod, fmt.Errorf(msg)
-		} else {
-			// Handle the case where no pods were found at all
-			msg = "unable to validate Oracle Restart pod. No pods matching the criteria were found"
-			oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
-			return orestartSfSet, orestartPod, fmt.Errorf(msg)
+			return orestartSfSet, orestartPod, errors.New(msg)
 		}
+		// Handle the case where no pods were found at all
+		msg = "unable to validate Oracle Restart pod. No pods matching the criteria were found"
+		oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
+		return orestartSfSet, orestartPod, errors.New(msg)
 
 	}
 	// Update status when PODs are ready
@@ -2226,142 +2332,33 @@ func (r *OracleRestartReconciler) updateOracleRestartInstStatus(
 
 // GetRestrictedFields returns a set of field names that are restricted from being updated.
 func GetRestrictedFields() map[string]struct{} {
-	return map[string]struct{}{
-		"ConfigParams.DbName":                         {},
-		"ConfigParams.GridBase":                       {},
-		"ConfigParams.GridHome":                       {},
-		"ConfigParams.DbBase":                         {},
-		"ConfigParams.DbHome":                         {},
-		"ConfigParams.CrsAsmDiskDg":                   {},
-		"ConfigParams.CrsAsmDiskDgRedundancy":         {},
-		"ConfigParams.DBAsmDiskDgRedundancy":          {},
-		"ConfigParams.DbCharSet":                      {},
-		"ConfigParams.DbConfigType":                   {},
-		"ConfigParams.DbDataFileDestDg":               {},
-		"ConfigParams.DbUniqueName":                   {},
-		"ConfigParams.DbRecoveryFileDest":             {},
-		"ConfigParams.DbRedoFileSize":                 {},
-		"ConfigParams.DbStorageType":                  {},
-		"ConfigParams.DbSwZipFile":                    {},
-		"ConfigParams.GridSwZipFile":                  {},
-		"ConfigParams.GridResponseFile.ConfigMapName": {},
-		"ConfigParams.GridResponseFile.Name":          {},
-		"ConfigParams.DbResponseFile.ConfigMapName":   {},
-		"ConfigParams.DbResponseFile.Name":            {},
-	}
+	return sharedspecguard.RestrictedConfigParamFields()
 }
 
 // mergeInstancesFromLatest copies relevant fields from the latest object into
 // the working instance to avoid clobbering concurrent status updates.
+// mergeInstancesFromLatest copies exported fields from the latest Oracle Restart object into the reconcile instance.
 func mergeInstancesFromLatest(instance, latestInstance *oraclerestartdb.OracleRestart) error {
-	instanceVal := reflect.ValueOf(instance).Elem()
-	latestVal := reflect.ValueOf(latestInstance).Elem()
-
-	// Assuming `Status` is a field in `OracleRestart`
-	instanceStatus := instanceVal.FieldByName("Status")
-	latestStatus := latestVal.FieldByName("Status")
-
-	if !instanceStatus.IsValid() || !latestStatus.IsValid() {
-		return fmt.Errorf("status field is not valid in one of the instances")
-	}
-
-	// Merge the Status field
-	return mergeStructFields(instanceStatus, latestStatus)
-}
-
-// mergeStructFields recursively merges exported struct fields so only blank
-// fields are filled from the latest object.
-func mergeStructFields(instanceField, latestField reflect.Value) error {
-
-	if instanceField.Kind() != reflect.Struct || latestField.Kind() != reflect.Struct {
-		return fmt.Errorf("fields to be merged must be struct")
-	}
-
-	for i := 0; i < instanceField.NumField(); i++ {
-
-		subField := instanceField.Type().Field(i)
-		dst := instanceField.Field(i)
-		src := latestField.Field(i)
-
-		if !isExported(subField) || !dst.CanSet() {
-			continue
-		}
-
-		switch src.Kind() {
-
-		// ---------------------------
-		// POINTER
-		// ---------------------------
-		case reflect.Ptr:
-			if !src.IsNil() && dst.IsNil() {
-				dst.Set(src)
-			}
-
-		// ---------------------------
-		// STRING
-		// ---------------------------
-		case reflect.String:
-			if src.String() != "" &&
-				src.String() != "NOT_DEFINED" &&
-				dst.String() == "" {
-
-				dst.Set(src)
-			}
-
-		// ---------------------------
-		// STRUCT → recurse
-		// ---------------------------
-		case reflect.Struct:
-			if err := mergeStructFields(dst, src); err != nil {
-				return err
-			}
-
-		// ---------------------------
-		// SLICE
-		// ---------------------------
-		case reflect.Slice:
-			fieldName := subField.Name
-
-			if fieldName == "AsmDiskGroups" {
-				continue
-			}
-
-			// If latest has items → ALWAYS use it
-			// (status slices must reflect latest reality)
-
-			if src.Len() > 0 {
-				dst.Set(src)
-			}
-
-		// ---------------------------
-		// DEFAULT
-		// ---------------------------
-		default:
-
-			if reflect.DeepEqual(
-				dst.Interface(),
-				reflect.Zero(dst.Type()).Interface(),
-			) {
-				dst.Set(src)
-			}
-		}
-	}
-
-	return nil
-}
-
-// isExported reports whether a struct field is exported; merge logic ignores
-// unexported fields.
-func isExported(field reflect.StructField) bool {
-	return field.PkgPath == ""
+	return sharedstatusmerge.MergeNamedStructField(
+		instance,
+		latestInstance,
+		"Status",
+		sharedstatusmerge.Options{
+			PointerMode: sharedstatusmerge.PointerCopyIfNil,
+			SliceMode:   sharedstatusmerge.SliceReplace,
+			SkipSliceFields: map[string]struct{}{
+				"AsmDiskGroups": {},
+			},
+		},
+	)
 }
 
 // generateConfigMap builds the primary envfile ConfigMap for Oracle Restart
 // deployments, assembling data based on the current spec.
 func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.OracleRestart) (map[string]string, error) {
 	configMapData := make(map[string]string, 0)
-	// new_crs_nodes, existing_crs_nodes_healthy, existing_crs_nodes_not_healthy, install_node, new_crs_nodes_list := oraclerestartcommon.GetCrsNodes(instance, r.kubeClient, r.kubeConfig, r.Log, r.Client)
-	install_node := instance.Spec.InstDetails.Name + "-0"
+	// new_crs_nodes, existing_crs_nodes_healthy, existing_crs_nodes_not_healthy, installNode, new_crs_nodes_list := oraclerestartcommon.GetCrsNodes(instance, r.kubeClient, r.kubeConfig, r.Log, r.Client)
+	installNode := instance.Spec.InstDetails.Name + "-0"
 	// asm_devices := oraclerestartcommon.GetAsmDevices(instance)
 	var data []string
 	var addnodeFlag bool
@@ -2374,7 +2371,7 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 
 	if instance.Spec.SshKeySecret != nil {
 		if instance.Spec.SshKeySecret.KeyMountLocation == "" {
-			instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+			instance.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 		}
 	}
 
@@ -2482,10 +2479,14 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	if instance.Spec.DbSecret != nil {
 		if instance.Spec.DbSecret.Name != "" {
 			data = append(data, "SECRET_VOLUME="+instance.Spec.DbSecret.PwdFileMountLocation)
+			keyFile := instance.Spec.DbSecret.KeyFileName
+			if keyFile == "" {
+				keyFile = instance.Spec.DbSecret.SecretKey
+			}
 			commonpassflag, pwdkeyflag, _ := oraclerestartcommon.GetDbSecret(instance, instance.Spec.DbSecret.Name, r.Client)
 			if commonpassflag && pwdkeyflag {
 				data = append(data, "DB_PWD_FILE="+instance.Spec.DbSecret.PwdFileName)
-				data = append(data, "PWD_KEY="+instance.Spec.DbSecret.KeyFileName)
+				data = append(data, "PWD_KEY="+keyFile)
 			} else {
 				data = append(data, "PASSWORD_FILE=pwdfile")
 			}
@@ -2496,10 +2497,14 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 		if instance.Spec.TdeWalletSecret.Name != "" {
 			data = append(data, "TDE_SECRET_VOLUME="+instance.Spec.TdeWalletSecret.PwdFileMountLocation)
 			data = append(data, "SETUP_TDE_WALLET=true")
+			tdeKeyFile := instance.Spec.TdeWalletSecret.KeyFileName
+			if tdeKeyFile == "" {
+				tdeKeyFile = instance.Spec.TdeWalletSecret.SecretKey
+			}
 			tdepassflag, tdepwdkeyflag, _ := oraclerestartcommon.GetTdeWalletSecret(instance, instance.Spec.TdeWalletSecret.Name, r.Client)
 			if tdepassflag && tdepwdkeyflag {
 				data = append(data, "TDE_PWD_FILE="+instance.Spec.TdeWalletSecret.PwdFileName)
-				data = append(data, "TDE_PWD_KEY="+instance.Spec.TdeWalletSecret.KeyFileName)
+				data = append(data, "TDE_PWD_KEY="+tdeKeyFile)
 			} else {
 				data = append(data, "PASSWORD_FILE=tdepwdfile")
 			}
@@ -2509,7 +2514,7 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	data = append(data, "PROFILE_FLAG=true")
 	// data = append(data, "SCAN_NAME="+scan_name)
 
-	data = append(data, "INSTALL_NODE="+install_node)
+	data = append(data, "INSTALL_NODE="+installNode)
 
 	if instance.Spec.ConfigParams.DbName != "" {
 		data = append(data, "DB_NAME="+instance.Spec.ConfigParams.DbName)
@@ -2787,22 +2792,14 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 
 // ensurePlusPrefix ensures ASM disk group names include the '+' prefix.
 func ensurePlusPrefix(name string) string {
-	if name == "" {
-		return ""
-	}
-	if !strings.HasPrefix(name, "+") {
-		return "+" + name
-	}
-	return name
+	return sharedorautil.EnsurePlusPrefix(name)
 }
 
 // normalizeOracleMemoryUnit converts "Gi"/"Mi" suffixes into Oracle DBCA
 // compatible units like "G" and "M".
+// normalizeOracleMemoryUnit ensures Oracle memory values include canonical units for downstream comparisons.
 func normalizeOracleMemoryUnit(s string) string {
-	s = strings.TrimSpace(strings.ToUpper(s))
-	s = strings.ReplaceAll(s, "GI", "G")
-	s = strings.ReplaceAll(s, "MI", "M")
-	return s
+	return sharedorautil.NormalizeOracleMemoryUnit(s)
 }
 
 // createConfigMap ensures the configuration ConfigMap exists and updates its
@@ -2813,39 +2810,14 @@ func (r *OracleRestartReconciler) createConfigMap(
 	cm *corev1.ConfigMap,
 ) (ctrl.Result, bool, error) { // Added `bool` return
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-
-	found := &corev1.ConfigMap{}
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      cm.Name,
-		Namespace: instance.Namespace,
-	}, found)
-	if err != nil && apierrors.IsNotFound(err) {
-		// ConfigMap does not exist - create it
-		reqLogger.Info("Creating Configmap Normally")
-		if err = r.Create(ctx, cm); err != nil {
-			reqLogger.Error(err, "failed to create configmap", "namespace", instance.Namespace)
-			return ctrl.Result{}, false, err
-		}
-		return ctrl.Result{Requeue: true}, true, nil // Indicate configmap was created
-	} else if err != nil {
-		// Error getting ConfigMap
-		reqLogger.Error(err, "failed to find the configmap details")
+	changed, err := sharedk8sobjects.EnsureConfigMapEnvfile(ctx, r.Client, instance.Namespace, cm)
+	if err != nil {
+		reqLogger.Error(err, "failed to reconcile configmap", "namespace", instance.Namespace)
 		return ctrl.Result{}, false, err
 	}
-
-	// At this point, ConfigMap exists: found
-	// Compare data and update if needed only for environment variables changes
-	if found.Data["envfile"] != cm.Data["envfile"] {
-		reqLogger.Info("ConfigMap env key changed, updating")
-		found.Data["envfile"] = cm.Data["envfile"]
-		if err := r.Update(ctx, found); err != nil {
-			reqLogger.Error(err, "failed to update configmap", "namespace", instance.Namespace)
-			return ctrl.Result{}, false, err
-		}
-		return ctrl.Result{Requeue: true}, true, nil // Indicate data was changed
+	if changed {
+		return ctrl.Result{Requeue: true}, true, nil
 	}
-
-	// No changes needed
 	return ctrl.Result{}, false, nil
 }
 
@@ -2855,37 +2827,26 @@ func (r *OracleRestartReconciler) createOrReplaceService(ctx context.Context, in
 	dep *corev1.Service,
 ) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	// See if Service already exists and create if it doesn't
-
-	found := &corev1.Service{}
-
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      dep.Name,
-		Namespace: instance.Namespace,
-	}, found)
-
-	jsn, _ := json.Marshal(dep)
-	oraclerestartcommon.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
-	if err != nil && apierrors.IsNotFound(err) {
-		// Create the Service
-		reqLogger.Info("Creating a service")
-		err = r.Create(ctx, dep)
-		if err != nil {
-			// Service creation failed
-			instance.Spec.IsFailed = true
-			reqLogger.Error(err, "Failed to create Service", "Service.Namespace", dep.Namespace, "Service.Name", dep.Name)
-			return ctrl.Result{}, nil
-		} else {
-			// Service creation was successful
-			return ctrl.Result{Requeue: true}, nil
-		}
-	} else if err != nil {
-		// Error that isn't due to the Service not existing
-		reqLogger.Error(err, "Failed to find the  Service details")
+	changed, err := sharedk8sobjects.EnsureService(ctx, r.Client, instance.Namespace, dep, sharedk8sobjects.ServiceSyncOptions{
+		NodePortMerge:           sharedk8sobjects.NodePortMergeByName,
+		SyncPublishNotReady:     true,
+		SyncLoadBalancerFields:  true,
+		SyncHealthCheckNodePort: true,
+	})
+	if err != nil {
+		instance.Spec.IsFailed = true
+		reqLogger.Error(err, "Failed to reconcile Service", "Service.Namespace", dep.Namespace, "Service.Name", dep.Name)
 		return ctrl.Result{}, err
 	}
-
+	if changed {
+		reqLogger.Info("Service reconciled to desired state", "service", dep.Name)
+		return ctrl.Result{Requeue: true}, nil
+	}
 	return ctrl.Result{}, nil
+}
+
+func mergeOracleRestartServicePortsWithAssignedNodePorts(existing []corev1.ServicePort, desired []corev1.ServicePort) []corev1.ServicePort {
+	return sharedk8sobjects.MergeServicePortsWithAssignedNodePortByName(existing, desired)
 }
 
 // createOrReplaceAsmPv reconciles PersistentVolumes for ASM disk devices,
@@ -2897,43 +2858,27 @@ func (r *OracleRestartReconciler) createOrReplaceAsmPv(
 	dgType string,
 ) (string, ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	found := &corev1.PersistentVolume{}
-
-	// Fetch the existing PV
-	err := r.Get(context.TODO(), types.NamespacedName{
-		Name: dep.Name,
-	}, found)
 
 	jsn, _ := json.Marshal(dep)
 	oraclerestartcommon.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
 
-	if err != nil && apierrors.IsNotFound(err) {
-		// PV does not exist, create it
-		reqLogger.Info("Creating a new PV", "dep.Name", dep.Name)
-		err = r.Create(context.TODO(), dep)
-		if err != nil {
-			// PV creation failed
-			instance.Spec.IsFailed = true
-			reqLogger.Error(err, "Failed to create Persistent Volume", "PV.Name", dep.Name)
-			return "", ctrl.Result{}, err
+	name, created, err := sharedk8sobjects.EnsurePersistentVolume(context.TODO(), r.Client, dep)
+	if err != nil {
+		instance.Spec.IsFailed = true
+		if strings.Contains(err.Error(), "different disk configuration") {
+			reqLogger.Info("Detected existing PV with different disk details and as the configuration has changed, setup cannot continue", "dep.Name", dep.Name)
+		} else {
+			reqLogger.Error(err, "Failed to reconcile Persistent Volume", "PV.Name", dep.Name)
 		}
-		return dep.Name, ctrl.Result{}, nil
-	} else if err != nil {
-		// Other errors fetching the PV
-		reqLogger.Error(err, "Failed to get Persistent Volume details")
 		return "", ctrl.Result{}, err
 	}
-
-	// Check if the disk path or configuration differs from the existing PV
-	if !reflect.DeepEqual(dep.Spec.PersistentVolumeSource.Local, found.Spec.PersistentVolumeSource.Local) {
-		// Disk configuration has changed, delete the old PV and create a new one
-		reqLogger.Info("Detected existing PV with different disk details and as the configuration has changed, setup cannot continue", "dep.Name", dep.Name)
-		return "", ctrl.Result{}, fmt.Errorf("persistent volume %s has a different disk configuration. Please delete or update the existing PV to proceed", dep.Name)
+	if created {
+		reqLogger.Info("Creating a new PV", "dep.Name", dep.Name)
+		return dep.Name, ctrl.Result{}, nil
 	}
 
 	reqLogger.Info("PV Found", "dep.Name", dep.Name, "dgType", dgType)
-
-	return found.Name, ctrl.Result{}, nil
+	return name, ctrl.Result{}, nil
 
 }
 
@@ -2944,38 +2889,25 @@ func (r *OracleRestartReconciler) createOrReplaceAsmPvC(ctx context.Context, ins
 	dgType string,
 ) (string, ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	found := &corev1.PersistentVolumeClaim{}
-
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      dep.Name,
-		Namespace: instance.Namespace,
-	}, found)
 
 	jsn, _ := json.Marshal(dep)
 	oraclerestartcommon.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
-	if err != nil && apierrors.IsNotFound(err) {
-		// Create the Service
-		reqLogger.Info("Creating a PVC")
-		err = r.Create(ctx, dep)
-		if err != nil {
-			// Service creation failed
-			instance.Spec.IsFailed = true
-			reqLogger.Error(err, "Failed to create Persistent Volume", "PVC.Namespace", dep.Namespace, "PersistentVolume.Name", dep.Name)
-			return "", ctrl.Result{}, err
-		} else {
-			// Service creation was successful
-			return dep.Name, ctrl.Result{}, nil
-		}
-	} else if err != nil {
-		// Error that isn't due to the Service not existing
-		reqLogger.Error(err, "Failed to find the persistent volume Claim details")
+	name, created, err := sharedk8sobjects.EnsurePersistentVolumeClaim(ctx, r.Client, dep)
+	if err != nil {
+		instance.Spec.IsFailed = true
+		reqLogger.Error(err, "Failed to reconcile Persistent Volume Claim", "PVC.Namespace", dep.Namespace, "PersistentVolume.Name", dep.Name)
 		return "", ctrl.Result{}, err
 	}
+	if created {
+		reqLogger.Info("Creating a PVC")
+		return dep.Name, ctrl.Result{}, nil
+	}
 	reqLogger.Info("PVC Found", "dep.Name", dep.Name, "dgType", dgType)
-
-	return found.Name, ctrl.Result{}, nil
+	return name, ctrl.Result{}, nil
 
 }
+
+// ensureAsmStorageStatus updates the Oracle Restart status with the current state of ASM disk groups,
 func (r *OracleRestartReconciler) ensureAsmStorageStatus(
 	ctx context.Context,
 	oracleRestart *oraclerestartdb.OracleRestart,
@@ -3239,8 +3171,15 @@ func (r *OracleRestartReconciler) ensureStatefulSetUpdated(ctx context.Context,
 
 // executeDiskGroupCommand runs a command inside the specified pod to inspect
 // or manipulate ASM disk groups.
+// executeDiskGroupCommand runs an ASM disk management command on the target pod and returns stdout and stderr.
 func executeDiskGroupCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (string, string, error) {
-	return oraclerestartcommon.ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
+	return oraclerestartcommon.ExecCommand(
+		podName,
+		cmd,
+		oraclerestartcommon.NewExecCommandResp(kubeClient, kubeConfig),
+		instance,
+		logger,
+	)
 }
 
 // diskGroupExists checks if a disk group is present by querying the ASM state
@@ -3248,7 +3187,13 @@ func executeDiskGroupCommand(podName string, cmd []string, kubeClient kubernetes
 func (r *OracleRestartReconciler) diskGroupExists(podName, diskGroupName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (bool, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	cmd := "python3 /opt/scripts/startup/scripts/main.py --getasmdiskgroup=true"
-	stdout, _, err := oraclerestartcommon.ExecCommand(podName, []string{"bash", "-c", cmd}, r.kubeClient, r.kubeConfig, instance, reqLogger)
+	stdout, _, err := oraclerestartcommon.ExecCommand(
+		podName,
+		[]string{"bash", "-c", cmd},
+		oraclerestartcommon.NewExecCommandResp(r.kubeClient, r.kubeConfig),
+		instance,
+		reqLogger,
+	)
 	if err != nil {
 		return false, err
 	}
@@ -3285,7 +3230,13 @@ func (r *OracleRestartReconciler) addDisks(ctx context.Context, podList *corev1.
 		for _, disk := range deviceList {
 			cmd := fmt.Sprintf("python3 /opt/scripts/startup/scripts/main.py --updateasmdevices=\"diskname=%s;diskgroup=%s;processtype=addition\"", disk, diskGroupName)
 			reqLogger.Info("Executing command to add disk", "Pod.Name", podName, "Command", cmd)
-			stdout, stderr, err := oraclerestartcommon.ExecCommand(podName, []string{"bash", "-c", cmd}, r.kubeClient, r.kubeConfig, instance, reqLogger)
+			stdout, stderr, err := oraclerestartcommon.ExecCommand(
+				podName,
+				[]string{"bash", "-c", cmd},
+				oraclerestartcommon.NewExecCommandResp(r.kubeClient, r.kubeConfig),
+				instance,
+				reqLogger,
+			)
 			if err != nil {
 				instance.Spec.IsFailed = true
 				reqLogger.Error(err, "Failed to execute command", "Pod.Name", podName, "Command", cmd, "Stdout", stdout, "Stderr", stderr)
@@ -3298,6 +3249,7 @@ func (r *OracleRestartReconciler) addDisks(ctx context.Context, podList *corev1.
 
 // checkDaemonSetStatus monitors the disk-check DaemonSet until all pods
 // complete successfully, returning readiness or timeout errors.
+// checkDaemonSetStatus inspects the Oracle Restart daemonset and reports success once all pods complete.
 func checkDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracleRestart *oraclerestartdb.OracleRestart) (bool, error) {
 	timeout := time.After(2 * time.Minute)
 	tick := time.NewTicker(10 * time.Second) // Poll every 10 seconds
@@ -3306,87 +3258,36 @@ func checkDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracl
 	for {
 		select {
 		case <-timeout:
-			// Timeout reached
-			ds := &appsv1.DaemonSet{}
-			err := r.Client.Get(ctx, types.NamespacedName{
-				Name:      "disk-check-daemonset",
-				Namespace: oracleRestart.Namespace,
-			}, ds)
+			ready, invalidDevice, err := shareddiskcheck.CheckDaemonSetReadyAndDiskValidation(
+				ctx, r.Client, r.kubeClient, oracleRestart.Namespace, "disk-check-daemonset",
+				shareddiskcheck.LabelSelectorForDaemonSet(oracleRestart, "disk-check"),
+			)
 			if err != nil {
 				return false, err
 			}
-
-			// Fetch the list of Pods managed by the DaemonSet
-			pods, err := r.kubeClient.CoreV1().Pods(oracleRestart.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "app=disk-check",
-			})
-			if err != nil {
-				return false, err
+			if ready {
+				return true, nil
 			}
-
-			// Check logs from each Pod
-			for _, pod := range pods.Items {
-				if pod.Status.Phase != corev1.PodRunning {
-					// Pod is not running, check for logs and errors
-					logs, err := r.kubeClient.CoreV1().Pods(oracleRestart.Namespace).GetLogs(
-						pod.Name,
-						&corev1.PodLogOptions{},
-					).DoRaw(ctx)
-					if err != nil {
-						return false, err
-					}
-
-					if bytes.Contains(logs, []byte("not a valid block device")) {
-						// Disk validation failed
-						return false, nil
-					}
-				}
+			if invalidDevice {
+				return false, nil
 			}
 
 			// DaemonSet did not become ready or running within the timeout
 			return false, fmt.Errorf("DaemonSet %s/%s did not become ready or running within 5 minutes", oracleRestart.Namespace, "disk-check-daemonset")
 
 		case <-tick.C:
-			// Check DaemonSet status
-			ds := &appsv1.DaemonSet{}
-			err := r.Client.Get(ctx, types.NamespacedName{
-				Name:      "disk-check-daemonset",
-				Namespace: oracleRestart.Namespace,
-			}, ds)
+			ready, invalidDevice, err := shareddiskcheck.CheckDaemonSetReadyAndDiskValidation(
+				ctx, r.Client, r.kubeClient, oracleRestart.Namespace, "disk-check-daemonset",
+				shareddiskcheck.LabelSelectorForDaemonSet(oracleRestart, "disk-check"),
+			)
 			if err != nil {
 				return false, err
 			}
-
-			// Check DaemonSet readiness
-			if ds.Status.NumberReady == ds.Status.DesiredNumberScheduled && ds.Status.NumberReady > 0 {
-				// DaemonSet is running and ready
+			if ready {
 				return true, nil
 			}
-
-			// If DaemonSet is not ready, fetch the list of Pods managed by the DaemonSet
-			pods, err := r.kubeClient.CoreV1().Pods(oracleRestart.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: "app=disk-check",
-			})
-			if err != nil {
-				return false, err
-			}
-
-			// Check logs from each Pod
-			for _, pod := range pods.Items {
-				// Pod is not running, check for logs and errors
-				logs, err := r.kubeClient.CoreV1().Pods(oracleRestart.Namespace).GetLogs(
-					pod.Name,
-					&corev1.PodLogOptions{},
-				).DoRaw(ctx)
-				if err != nil {
-					return false, err
-				}
-
-				if bytes.Contains(logs, []byte("not a valid block device")) {
-					// Disk validation failed
-					return false, nil
-				}
-
+			if invalidDevice {
+				return false, nil
 			}
 		}
 	}
@@ -3405,68 +3306,55 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(
 	configmapChanged bool,
 ) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", oracleRestart.Namespace, "Instance.Name", oracleRestart.Name)
-	found := &appsv1.StatefulSet{}
-
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      dep.Name,
-		Namespace: oracleRestart.Namespace,
-	}, found)
-
-	if err != nil && apierrors.IsNotFound(err) {
-		// CREATE
+	updateReason := ""
+	result, err := sharedk8sobjects.ReconcileStatefulSet(ctx, r.Client, oracleRestart.Namespace, dep, func(found, desired *appsv1.StatefulSet) bool {
+		foundRes := found.Spec.Template.Spec.Containers[0].Resources
+		depRes := desired.Spec.Template.Spec.Containers[0].Resources
+		resourcesChanged := !reflect.DeepEqual(foundRes, depRes)
+		if !(resourcesChanged || configmapChanged) {
+			return false
+		}
+		switch {
+		case resourcesChanged && configmapChanged:
+			updateReason = "resource and configmap change"
+		case resourcesChanged:
+			updateReason = "resource change"
+		case configmapChanged:
+			updateReason = "configmap change"
+		default:
+			updateReason = "unknown"
+		}
+		// Preserve existing metadata/status while applying desired spec/template.
+		found.Labels = desired.Labels
+		found.Annotations = desired.Annotations
+		found.Spec = desired.Spec
+		return true
+	})
+	if err != nil {
+		oracleRestart.Spec.IsFailed = true
+		reqLogger.Error(err, "Failed to reconcile StatefulSet", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
+		return ctrl.Result{}, err
+	}
+	if result.Created {
 		r.updateOracleRestartInstStatus(&oracleRestart, ctx, req, oracleRestart.Spec.InstDetails,
 			string(oraclerestartdb.OracleRestartProvisionState), r.Client, true)
 		reqLogger.Info("Creating a StatefulSet Normally", "StatefulSetName", dep.Name)
-		err = r.Create(ctx, dep)
-		if err != nil {
-			oracleRestart.Spec.IsFailed = true
-			reqLogger.Error(err, "Failed to create StatefulSet", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
-			return ctrl.Result{}, err
-		} else if !isLast {
-			// StatefulSet creation was successful
+		if !isLast {
 			return ctrl.Result{}, nil
 		}
-	} else if err != nil {
-		// Any other Get error
-		reqLogger.Error(err, "Failed to find the StatefulSet details")
-		return ctrl.Result{}, err
-	} else {
-		// Compare resource requirements
-		foundRes := found.Spec.Template.Spec.Containers[0].Resources
-		depRes := dep.Spec.Template.Spec.Containers[0].Resources
-		resourcesChanged := !reflect.DeepEqual(foundRes, depRes)
-
-		// Compare configMap relevant data (example: pass in variable configmapChanged)
-		if resourcesChanged || configmapChanged {
-			// Copy metadata fields that must be preserved
-			dep.ResourceVersion = found.ResourceVersion
-			dep.UID = found.UID
-			dep.CreationTimestamp = found.CreationTimestamp
-			dep.ManagedFields = found.ManagedFields
-			dep.Status = found.Status
-
-			reason := "unknown"
-			if resourcesChanged && configmapChanged {
-				reason = "resource and configmap change"
-			} else if resourcesChanged {
-				reason = "resource change"
-			} else if configmapChanged {
-				reason = "configmap change"
-			}
-
-			reqLogger.Info("Updating StatefulSet due to "+reason, "StatefulSetName", dep.Name)
-			err = r.Update(ctx, dep)
-			if err != nil {
-				oracleRestart.Spec.IsFailed = true
-				reqLogger.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
-				return ctrl.Result{}, err
-			}
-
+	}
+	if result.Updated {
+		reason := updateReason
+		if reason == "" {
+			reason = "resource and/or configmap change"
 		}
+		reqLogger.Info("Updating StatefulSet due to "+reason, "StatefulSetName", dep.Name)
 	}
 
 	return ctrl.Result{}, nil
 }
+
+// getAsmAutoUpdateForDisk checks if a given ASM disk is configured for auto-update based on the OracleRestart spec.
 func getAsmAutoUpdateForDisk(
 	instance *oraclerestartdb.OracleRestart,
 	disk string,
@@ -3530,10 +3418,7 @@ func (r *OracleRestartReconciler) createOrReplaceSfsAsm(
 	}
 	// Determine AutoUpdate for changed disks
 	asmAutoUpdate := true
-	addedAsmDisks := []string{}
-	removedAsmDisks := []string{}
-
-	addedAsmDisks, removedAsmDisks, err = r.computeDiskChanges(oracleRestart, oldSpec)
+	addedAsmDisks, removedAsmDisks, err := r.computeDiskChanges(oracleRestart, oldSpec)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -3542,19 +3427,17 @@ func (r *OracleRestartReconciler) createOrReplaceSfsAsm(
 		if getAsmAutoUpdateForDisk(oracleRestart, d) {
 			asmAutoUpdate = true
 			break
-		} else {
-			asmAutoUpdate = false
-			break
 		}
+		asmAutoUpdate = false
+		break
 	}
 	for _, d := range removedAsmDisks {
 		if getAsmAutoUpdateForDisk(oracleRestart, d) {
 			asmAutoUpdate = true
 			break
-		} else {
-			asmAutoUpdate = false
-			break
 		}
+		asmAutoUpdate = false
+		break
 	}
 
 	// if !asmAutoUpdate {
@@ -3794,12 +3677,6 @@ podsReady:
 	return ctrl.Result{}, nil
 }
 
-// #############################################################################
-//
-//	Manage Finalizer to cleanup before deletion of OracleRestart
-//
-// #############################################################################
-
 // manageOracleRestartDeletion manages the deletion of the OracleRestart resource
 func (r *OracleRestartReconciler) manageOracleRestartDeletion(req ctrl.Request, ctx context.Context, oracleRestart *oraclerestartdb.OracleRestart) error {
 	log := r.Log.WithValues("manageOracleRestartDeletion", req.NamespacedName)
@@ -4027,9 +3904,9 @@ func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oracler
 	// 	return fmt.Errorf("endpoint generation error in delete block")
 	// }
 
-	sfSetFound := &appsv1.StatefulSet{}
-	svcFound := &corev1.Service{}
-	configMapFound := &corev1.ConfigMap{}
+	var sfSetFound *appsv1.StatefulSet
+	var svcFound *corev1.Service
+	var configMapFound *corev1.ConfigMap
 
 	sfSetFound, err = oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
 	if err == nil {
@@ -4102,6 +3979,7 @@ func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oracler
 
 // IsStaticProvisioningUsed determines whether static provisioning should be
 // assumed by checking for unnamed storage class usage or listing failures.
+// IsStaticProvisioningUsed checks a storage class to determine whether static provisioning is configured.
 func IsStaticProvisioningUsed(ctx context.Context, c client.Client, storageClassName string) bool {
 	if storageClassName != "" {
 		return false
@@ -4233,8 +4111,7 @@ func (r *OracleRestartReconciler) updateONS(ctx context.Context, podList *corev1
 		stdout, stderr, err := oraclerestartcommon.ExecCommand(
 			podName,
 			[]string{"bash", "-c", cmd},
-			r.kubeClient,
-			r.kubeConfig,
+			oraclerestartcommon.NewExecCommandResp(r.kubeClient, r.kubeConfig),
 			instance,
 			reqLogger,
 		)
@@ -4257,7 +4134,7 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 	if oldSpec != nil {
 		// fmt.Printf("Received OldSpec", oldSpec.InstDetails.SwLocStorageSizeInGb)
 		if instance.Spec.InstDetails.SwLocStorageSizeInGb > oldSpec.InstDetails.SwLocStorageSizeInGb {
-			fmt.Printf("Inside OldSpec and newSpec Change", oldSpec.InstDetails.SwLocStorageSizeInGb, instance.Spec.InstDetails.SwLocStorageSizeInGb)
+			fmt.Printf("Inside OldSpec and newSpec Change: old=%d new=%d\n", oldSpec.InstDetails.SwLocStorageSizeInGb, instance.Spec.InstDetails.SwLocStorageSizeInGb)
 			storageClass := &storagev1.StorageClass{}
 			pvc := &corev1.PersistentVolumeClaim{}
 
@@ -4285,13 +4162,13 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 					newPVCSize := resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")
 					newPVCSizeAdd := &newPVCSize
 
-					fmt.Printf("New PvcSize set to ", newPVCSizeAdd)
+					fmt.Printf("New PvcSize set to %s\n", newPVCSizeAdd.String())
 					if newPVCSizeAdd.Cmp(pvc.Spec.Resources.Requests["storage"]) < 0 {
 						return fmt.Errorf("Resizing PVC to lower size volume not allowed")
 					}
 
 					pvc.Spec.Resources.Requests["storage"] = resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")
-					fmt.Printf("Updating PVC", "pvc", pvc.Name, "volume", pvc.Spec.VolumeName)
+					fmt.Printf("Updating PVC %s volume %s\n", pvc.Name, pvc.Spec.VolumeName)
 					err = r.Update(ctx, pvc)
 					if err != nil {
 						return fmt.Errorf("error while updating the PVCs")
@@ -4306,6 +4183,7 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 
 // getDisksToRemoveStatus compares spec and status to determine which disks
 // should be removed from ASM groups.
+// getDisksToRemoveStatus derives the ASM disks requested for removal from Oracle Restart status fields.
 func getDisksToRemoveStatus(instance *oraclerestartdb.OracleRestart) ([]string, error) {
 	disksToRemove := []string{}
 	disksToRemoveSet := make(map[string]struct{})
@@ -4355,6 +4233,7 @@ func getDisksToRemoveStatus(instance *oraclerestartdb.OracleRestart) ([]string, 
 
 // findRacDisksToRemove identifies disks that exist in status but not in spec
 // so they can be removed from ASM groups.
+// findRacDisksToRemove compares spec and status disks to compute removals for Oracle Restart setups.
 func findRacDisksToRemove(specDisks, statusDisks []string, instance *oraclerestartdb.OracleRestart) ([]string, error) {
 	// Convert specDisks to a set for fast lookups
 	specDiskSet := make(map[string]struct{})
@@ -4405,6 +4284,7 @@ func findRacDisksToRemove(specDisks, statusDisks []string, instance *oracleresta
 // - A slice of disk paths that are valid to be added
 // - An error if duplicates are found in newSpecDisks or if a disk already exists in an ASM device list
 // - nil if no new disks need to be added or all validations pass
+// findRacDisksToAdd identifies ASM disks newly requested in spec compared to status and old spec.
 func findRacDisksToAdd(newSpecDisks, statusDisks []string, instance *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec) ([]string, error) {
 	// Create a set for statusDisks to allow valid reuse of existing disks
 	// Step 1: Check for duplicates within newSpecDisks itself
@@ -4489,6 +4369,7 @@ func findRacDisksToAdd(newSpecDisks, statusDisks []string, instance *oracleresta
 	return validDisksToAdd, nil
 }
 
+// getDisksToAddStatus reads status annotations to determine ASM disks pending addition.
 func getDisksToAddStatus(instance *oraclerestartdb.OracleRestart) ([]string, error) {
 	disksToAdd := []string{}
 	disksToAddSet := make(map[string]struct{})
@@ -4537,6 +4418,7 @@ func getDisksToAddStatus(instance *oraclerestartdb.OracleRestart) ([]string, err
 }
 
 // Helper function to flatten all disk names in AsmStorageDetails
+// flattenAsmDisks flattens nested ASM disk group definitions into a single slice of device names.
 func flattenAsmDisks(oraclerestartdbSpec *oraclerestartdb.OracleRestartSpec) []string {
 	var allDisks []string
 
@@ -4558,86 +4440,24 @@ func flattenAsmDisks(oraclerestartdbSpec *oraclerestartdb.OracleRestartSpec) []s
 	return allDisks
 }
 
+// getRACDisksChangedSpec returns ASM disks added or removed between current and previous Oracle Restart specs.
 func getRACDisksChangedSpec(racDatabase oraclerestartdb.OracleRestart, oldSpec oraclerestartdb.OracleRestartSpec) ([]string, []string) {
-	addedAsmDisks := []string{}
-	removedAsmDisks := []string{}
-
-	// If old spec is empty, do not treat this as disk changes
-	if len(oldSpec.AsmStorageDetails) == 0 {
-		return addedAsmDisks, removedAsmDisks
-	}
-
-	// Helper: disk slice to set
-	diskSliceToSet := func(disks []string) map[string]bool {
-		set := make(map[string]bool)
-		for _, disk := range disks {
-			if disk != "" {
-				set[disk] = true
-			}
-		}
-		return set
-	}
-
-	newGroupMap := make(map[string][]string)
-	for _, dg := range racDatabase.Spec.AsmStorageDetails {
-		groupKey := fmt.Sprintf("%s-%s", dg.Name, dg.Type)
-		newGroupMap[groupKey] = dg.Disks
-	}
-
-	oldGroupMap := make(map[string][]string)
-	for _, dg := range oldSpec.AsmStorageDetails {
-		groupKey := fmt.Sprintf("%s-%s", dg.Name, dg.Type)
-		oldGroupMap[groupKey] = dg.Disks
-	}
-
-	// Unique sets for additions/removals
-	addedDiskSet := make(map[string]bool)
-	removedDiskSet := make(map[string]bool)
-
-	// 1. Check for added and removed disks per group
-	for name, newDisks := range newGroupMap {
-		oldDisks := oldGroupMap[name]
-		// Added: in newDisks not in oldDisks
-		oldSet := diskSliceToSet(oldDisks)
-		for _, disk := range newDisks {
-			if disk != "" && !oldSet[disk] {
-				addedDiskSet[disk] = true
-			}
-		}
-	}
-	for name, oldDisks := range oldGroupMap {
-		newDisks := newGroupMap[name]
-		newSet := diskSliceToSet(newDisks)
-		for _, disk := range oldDisks {
-			if disk != "" && !newSet[disk] {
-				removedDiskSet[disk] = true
-			}
-		}
-	}
-
-	// 2. Flatten all for top-level lists (de-duplicate)
-	for disk := range addedDiskSet {
-		addedAsmDisks = append(addedAsmDisks, disk)
-	}
-	for disk := range removedDiskSet {
-		removedAsmDisks = append(removedAsmDisks, disk)
-	}
-
-	return addedAsmDisks, removedAsmDisks
+	newAdapter := newOracleRestartAsmAdapter(&racDatabase, nil)
+	oldObj := oraclerestartdb.OracleRestart{Spec: oldSpec}
+	oldAdapter := newOracleRestartAsmAdapter(&oldObj, nil)
+	return sharedasm.GetDisksChanged(newAdapter, oldAdapter)
 }
 
+// setRacDgFromStatusAndSpecWithMinimumDefaults ensures ASM disk group definitions include minimum default values.
 func setRacDgFromStatusAndSpecWithMinimumDefaults(
 	racDatabase *oraclerestartdb.OracleRestart,
 	client client.Client,
 	cName, fName string,
 ) error {
-	ensureCrsDiskGroup(racDatabase, client, cName, fName)
-	ensureDbDataDiskGroup(racDatabase)
-	ensureDbRecoveryDiskGroup(racDatabase)
-	ensureDefaultCharset(racDatabase)
-
-	return nil
+	return sharedasm.EnsureDefaults(newOracleRestartAsmAdapter(racDatabase, client), cName, fName)
 }
+
+// ensureCrsDiskGroup guarantees the CRS ASM disk group configuration exists and applies default parameters.
 func ensureCrsDiskGroup(racDatabase *oraclerestartdb.OracleRestart, client client.Client, cName, fName string) {
 	crsDgFound := false
 	for i, dg := range racDatabase.Spec.AsmStorageDetails {
@@ -4673,6 +4493,7 @@ func ensureCrsDiskGroup(racDatabase *oraclerestartdb.OracleRestart, client clien
 	}
 }
 
+// lookupCrsDgResponseValue retrieves CRS disk group values from response files or returns defaults.
 func lookupCrsDgResponseValue(racDatabase *oraclerestartdb.OracleRestart, client client.Client, cName, fName string) string {
 	name, err := oraclerestartcommon.CheckRspData(racDatabase, client, "oracle.install.asm.diskGroup.name", cName, fName)
 	if err == nil && name != "" {
@@ -4685,6 +4506,7 @@ func lookupCrsDgResponseValue(racDatabase *oraclerestartdb.OracleRestart, client
 	return "+DATA"
 }
 
+// lookupRedundancyResponseValue obtains redundancy settings from response files, defaulting when absent.
 func lookupRedundancyResponseValue(racDatabase *oraclerestartdb.OracleRestart, client client.Client, cName, fName string) string {
 	redundancy, err := oraclerestartcommon.CheckRspData(racDatabase, client, "redundancy", cName, fName)
 	if err == nil && redundancy != "" {
@@ -4693,6 +4515,7 @@ func lookupRedundancyResponseValue(racDatabase *oraclerestartdb.OracleRestart, c
 	return "EXTERNAL"
 }
 
+// ensureDbDataDiskGroup validates or sets defaults for the database data ASM disk group.
 func ensureDbDataDiskGroup(racDatabase *oraclerestartdb.OracleRestart) {
 	var crsName string
 	for _, dg := range racDatabase.Spec.AsmStorageDetails {
@@ -4717,6 +4540,7 @@ func ensureDbDataDiskGroup(racDatabase *oraclerestartdb.OracleRestart) {
 	})
 }
 
+// ensureDbRecoveryDiskGroup validates or defaults the recovery ASM disk group configuration.
 func ensureDbRecoveryDiskGroup(racDatabase *oraclerestartdb.OracleRestart) {
 	var dataName string
 	for _, dg := range racDatabase.Spec.AsmStorageDetails {
@@ -4740,6 +4564,7 @@ func ensureDbRecoveryDiskGroup(racDatabase *oraclerestartdb.OracleRestart) {
 	})
 }
 
+// ensureDefaultCharset assigns a default database character set when the spec omits one.
 func ensureDefaultCharset(racDatabase *oraclerestartdb.OracleRestart) {
 	if racDatabase.Spec.ConfigParams != nil && racDatabase.Spec.ConfigParams.DbCharSet == "" {
 		racDatabase.Spec.ConfigParams.DbCharSet = "AL32UTF8"

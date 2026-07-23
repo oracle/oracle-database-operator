@@ -1,0 +1,72 @@
+#
+# Copyright (c) 2023, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  # Creates a standby database using primarySource.connectString with TCPS enabled.
+  # Update namespace, secrets, TLS secret, image, storage class, and connect string before applying.
+  name: standbydatabase-sample
+  namespace: default
+spec:
+  ## Use only alphanumeric characters for sid.
+  sid: ORCLS
+
+  ## Intended type of database.
+  createAs: standby
+
+  ## Use connectString when the primary is reached through a service name,
+  ## DNS name, IP address, or a different cluster/network path.
+  ## Set exactly one of primarySource.databaseRef, primarySource.connectString, or primarySource.details.
+  ##
+  ## For example: In current case
+  ## connectString: "sidb-sample.default:1521/ORCL1"
+  primarySource:
+    connectString: "<primary-host-or-service>:1521/<primary-service-or-sid>"
+
+  ## Grouped security settings.
+  ## For standby, use the source primary database admin secret.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+    tcps:
+      enabled: true
+      tlsSecret: standby-db-tcps-secret
+
+  ## Database image details.
+  ## Use an image compatible with the primary database major version.
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
+    imagePullPolicy: IfNotPresent
+    pullSecrets: oracle-container-registry-secret
+
+  ## Database storage details.
+  persistence:
+    oradata:
+      size: 100Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+
+  ## Optional service endpoint configuration.
+  ## Enable tcps only when spec.security.tcps.enabled is true.
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        tcp:
+          enabled: true
+        tcps:
+          enabled: true
+
+  ## Optional Data Guard prerequisite setup.
+  ## Enable this only when preparing this database for Data Guard workflows.
+  # dataguard:
+  #   prereqs:
+  #     enabled: true
+
+  replicas: 1

@@ -4,7 +4,7 @@ The Persistent Volume (PV) is created using `oci-fss` Storage Class. Please refe
 
 **Important:** The VCN of the OKE Cluster and the File System Storage in OCI Must be same in order for the OKE Cluster Nodes to access the FSS Mount Target.
 
-1. Provision an OCI File Systems in the same VCN which is used by the OKE Cluster on which you want to deploy the PrivateAI Container. Please refer [here](https://docs.oracle.com/en-us/iaas/Content/File/Tasks/create-file-system.htm) for the details of this step.
+1. Provision an OCI File Systems in the same VCN which is used by the OKE Cluster on which you want to deploy the PrivateAI Container. Please refer [documentation](https://docs.oracle.com/en-us/iaas/Content/File/Tasks/create-file-system.htm) for the details of this step.
 
 2. Once the OCI File System is created, get the details of the `Export Path` and `Mount Target` (the IP and OCID of Mount Target) information. It will be required in the next step.
 
@@ -15,6 +15,7 @@ The Persistent Volume (PV) is created using `oci-fss` Storage Class. Please refe
 5. Create a YAML file for the Persistent Volume Claim (PVC). It will use the PV created in previous step. Please refer to the sample file: [oke-pvc.yaml](./provisioning/oke-pvc.yaml)
 
 6. Apply the above YAML files to create the PVC using `oci-fss` based File System.
+
     ```sh
     kubectl apply -f StorageClass.yaml
     kubectl apply -f oke-pv.yaml
@@ -22,8 +23,9 @@ The Persistent Volume (PV) is created using `oci-fss` Storage Class. Please refe
     ```
 
 7. Check the details of the PVC created using `oci-fss` based File System:
+
     ```sh
     kubectl get sc
     kubectl get pv -n pai
     kubectl get pvc -n pai
-    ```    
+    ```

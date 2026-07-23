@@ -64,15 +64,15 @@ type LRESTSpec struct {
 	// +kubebuilder:default=orapkitag
 	LRESTorapkitag string `json:"orapkitag,omitempty"`
 	// Secret: tls.key
-	LRESTTlsKey LRESTTLSKEY `json:"cdbTlsKey,omitempty"`
+	//LRESTTlsKey LRESTTLSKEY `json:"cdbTlsKey,omitempty"`
 	// Secret: tls.crt
-	LRESTTlsCrt LRESTTLSCRT `json:"cdbTlsCrt,omitempty"`
+	//LRESTTlsCrt LRESTTLSCRT `json:"cdbTlsCrt,omitempty"`
 	// Secret: Pub.key
 	LRESTPubKey LRESTPUBKEY `json:"cdbPubKey,omitempty"`
 	// Secret: Priv.key
 	LRESTPriKey LRESTPRVKEY `json:"cdbPrvKey,omitempty"`
 	// Secret: Tls.cat
-	LRESTTlsCat LRPDBTLSCAT `json:"cdbTlsCat,omitempty"`
+	//LRESTTlsCat LRPDBTLSCAT `json:"cdbTlsCat,omitempty"`
 	// Password for user LREST_PUBLIC_USER
 	LRESTPwd LRESTPassword `json:"lrestPwd,omitempty"`
 	// LREST server port. For now, keep it as 8888. TO BE USED IN FUTURE RELEASE.
@@ -88,9 +88,9 @@ type LRESTSpec struct {
 	// Number of LREST Containers to create
 	Replicas int `json:"replicas,omitempty"`
 	// Web Server User with SQL Administrator role to allow us to authenticate to the PDB Lifecycle Management REST endpoints
-	WebLrestServerUser WebLrestServerUser `json:"webServerUser,omitempty"`
+	// WebLrestServerUser WebLrestServerUser `json:"webServerUser,omitempty"`
 	// Password for the Web Server User
-	WebLrestServerPwd WebLrestServerPassword `json:"webServerPwd,omitempty"`
+	// WebLrestServerPwd WebLrestServerPassword `json:"webServerPwd,omitempty"`
 	// Name of the DB server
 	DBServer string `json:"dbServer,omitempty"`
 	// DB server port
@@ -99,6 +99,10 @@ type LRESTSpec struct {
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 	// Container database connect string
 	DBTnsurl string `json:"dbTnsurl,omitempty"`
+	// Tnsanames secret
+	TNSnames string `json:"tnsNames,omitempty"`
+	// TnsAlias (to be used with tnsnames)
+	TNSalias string `json:"tnsAlias,omitempty"`
 	// lrest server deletion automatically triggers associated pdb deletion
 	DeletePDBCascade bool `json:"deletePdbCascade,omitempty"`
 	// Name of the service account
@@ -123,9 +127,9 @@ type LRESTSpec struct {
 	PwdProtection string `json:"passwordProtection"`
 	// Turn on the  sqlnet.trace_level_client
 	// +kubebuilder:default=0
-	SqlNetTrace int `json:"trace_level_client,omitempty"`
+	SQLNetTrace int `json:"trace_level_client,omitempty"`
 	// Reset database password
-	ResetDbPassword bool `json:"resetDbpassword,omitempty"`
+	ResetDBPassword bool `json:"resetDbpassword,omitempty"`
 	// Debug option , not yet implemented
 	Trclvl int `json:"tracelevel,omitempty"`
 }
@@ -136,6 +140,7 @@ type LRESTSecret struct {
 	Key        string `json:"key"`
 }
 
+// LRESTSecret2 secret used for pdb user creation
 type LRESTSecret2 struct {
 	SecretName string `json:"secretName"`
 }
@@ -161,27 +166,31 @@ type LRESTPassword struct {
 }
 
 // WebLrestServerUser defines the secret containing Web Server User mapped to key 'webServerUser' to manage PDB lifecycle
-type WebLrestServerUser struct {
-	Secret LRESTSecret `json:"secret"`
-}
+//type WebLrestServerUser struct {
+//	Secret LRESTSecret `json:"secret"`
+//}
 
 // WebLrestServerPassword defines the secret containing password for Web Server User mapped to key 'webServerPwd' to manage PDB lifecycle
-type WebLrestServerPassword struct {
-	Secret LRESTSecret `json:"secret"`
-}
+//type WebLrestServerPassword struct {
+//	Secret LRESTSecret `json:"secret"`
+//}
 
+// LRESTTLSKEY tls key
 type LRESTTLSKEY struct {
 	Secret LRESTSecret `json:"secret"`
 }
 
+// LRESTTLSCRT certificate
 type LRESTTLSCRT struct {
 	Secret LRESTSecret `json:"secret"`
 }
 
+// LRESTPUBKEY public kty
 type LRESTPUBKEY struct {
 	Secret LRESTSecret `json:"secret"`
 }
 
+// LRESTPRVKEY private kry
 type LRESTPRVKEY struct {
 	Secret LRESTSecret `json:"secret"`
 }
@@ -203,6 +212,8 @@ type LRESTStatus struct {
 	Ncrds int `json:"ncrds,omitempty"`
 	// Number of pdbs and crd detected
 	Npdbscrd string `json:"npdbscrd,omitempty"`
+	// connection info tnsalias
+	TNSstringGetAttr string `json:"tnsstring,omitempty"`
 }
 
 // +kubebuilder:object:root=true

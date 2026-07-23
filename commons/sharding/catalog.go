@@ -40,27 +40,49 @@ package commons
 
 import (
 	"context"
-	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+	// dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func buildLabelsForCatalog(instance *databasev4.ShardingDatabase, label string, catalogName string) map[string]string {
+func buildLabelsForCatalog(instance *databasev4.ShardingDatabase, _ string, _ string) map[string]string {
+	// Keep selector labels stable to avoid StatefulSet selector immutability issues.
 	return map[string]string{
 		"app":      "OracleSharding",
 		"type":     "Catalog",
 		"oralabel": getLabelForCatalog(instance),
 	}
+}
+
+func buildOwnerRefForCatalog(instance *databasev4.ShardingDatabase) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		*metav1.NewControllerRef(instance, databasev4.GroupVersion.WithKind("ShardingDatabase")),
+	}
+}
+
+func buildResourceLabelsForCatalog(instance *databasev4.ShardingDatabase, label string, catalogName string) map[string]string {
+	labels := buildLabelsForCatalog(instance, label, catalogName)
+	labels["app.kubernetes.io/name"] = "oracle-sharding"
+	labels["app.kubernetes.io/instance"] = instance.Name
+	labels["app.kubernetes.io/component"] = "catalog"
+	labels["app.kubernetes.io/managed-by"] = "oracle-database-operator"
+	labels["app.kubernetes.io/part-of"] = "oracle-database"
+	labels["sharding.oracle.com/database"] = instance.Name
+	labels["sharding.oracle.com/catalog"] = catalogName
+	if label != "" {
+		labels["sharding.oracle.com/kind"] = label
+	}
+	return labels
 }
 
 func getLabelForCatalog(instance *databasev4.ShardingDatabase) string {
@@ -72,14 +94,19 @@ func getLabelForCatalog(instance *databasev4.ShardingDatabase) string {
 	return instance.Name
 }
 
-func BuildStatefulSetForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) *appsv1.StatefulSet {
+// BuildStatefulSetForCatalog builds the desired StatefulSet for a catalog instance.
+func BuildStatefulSetForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) (*appsv1.StatefulSet, error) {
+	spec, err := buildStatefulSpecForCatalog(instance, OraCatalogSpex)
+	if err != nil {
+		return nil, err
+	}
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForCatalog(),
-		ObjectMeta: builObjectMetaForCatalog(instance, OraCatalogSpex),
-		Spec:       *buildStatefulSpecForCatalog(instance, OraCatalogSpex),
+		ObjectMeta: buildObjectMetaForCatalog(instance, OraCatalogSpex),
+		Spec:       *spec,
 	}
 
-	return sfset
+	return sfset, nil
 }
 
 // Function to build TypeMeta
@@ -93,20 +120,24 @@ func buildTypeMetaForCatalog() metav1.TypeMeta {
 }
 
 // Function to build ObjectMeta
-func builObjectMetaForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) metav1.ObjectMeta {
-	// building objectMeta
+func buildObjectMetaForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) metav1.ObjectMeta {
 	objmeta := metav1.ObjectMeta{
 		Name:            OraCatalogSpex.Name,
 		Namespace:       instance.Namespace,
-		OwnerReferences: getOwnerRef(instance),
-		Labels:          buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
+		OwnerReferences: buildOwnerRefForCatalog(instance),
+		Labels:          buildResourceLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 	}
 	return objmeta
 }
 
 // Function to build Stateful Specs
-func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) *appsv1.StatefulSetSpec {
+func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) (*appsv1.StatefulSetSpec, error) {
 	// building Stateful set Specs
+	podSpec, err := buildPodSpecForCatalog(instance, OraCatalogSpex)
+	if err != nil {
+		return nil, err
+	}
+	replicas := shardReplicaCount
 
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraCatalogSpex.Name,
@@ -115,12 +146,13 @@ func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatal
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
+				Labels: buildResourceLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 			},
-			Spec: *buildPodSpecForCatalog(instance, OraCatalogSpex),
+			Spec: *podSpec,
 		},
 		VolumeClaimTemplates: volumeClaimTemplatesForCatalog(instance, OraCatalogSpex),
 	}
+	sfsetspec.Replicas = &replicas
 	//    if OraCatalogSpex.OraCatalogSize == 0  {
 	//           OraCatalogSpex.OraCatalogSize = 1
 	//           sfsetspec.Replicas = &OraCatalogSpex.OraCatalogSize
@@ -128,25 +160,32 @@ func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatal
 	//           sfsetspec.Replicas = &OraCatalogSpex.OraCatalogSize
 	//      }
 
-	return sfsetspec
+	return sfsetspec, nil
 }
 
 // Function to build PodSpec
 
-func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) *corev1.PodSpec {
+func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) (*corev1.PodSpec, error) {
 
 	user := oraRunAsUser
 	group := oraFsGroup
+	podSecurityContext := mergePodSecurityContextWithDefaults(&corev1.PodSecurityContext{
+		RunAsNonRoot: BoolPointer(true),
+		RunAsUser:    &user,
+		RunAsGroup:   &group,
+		FSGroup:      &group,
+	}, OraCatalogSpex.SecurityContext)
+	podSecurityContext, err := applyOracleMemorySysctls(podSecurityContext, OraCatalogSpex.Resources, OraCatalogSpex.EnvVars)
+	if err != nil {
+		return nil, err
+	}
 	spec := &corev1.PodSpec{
-		SecurityContext: &corev1.PodSecurityContext{
-      RunAsNonRoot: BoolPointer(true),
-			RunAsUser: &user,
-      RunAsGroup: &group,
-			FSGroup:   &group,
-		},
-		Containers: buildContainerSpecForCatalog(instance, OraCatalogSpex),
-		Volumes:    buildVolumeSpecForCatalog(instance, OraCatalogSpex),
-    ServiceAccountName: instance.Spec.SrvAccountName,
+		SecurityContext:              podSecurityContext,
+		HostAliases:                  cloneHostAliases(instance.Spec.HostAliases),
+		Containers:                   buildContainerSpecForCatalog(instance, OraCatalogSpex),
+		Volumes:                      buildVolumeSpecForCatalog(instance, OraCatalogSpex),
+		ServiceAccountName:           instance.Spec.SrvAccountName,
+		AutomountServiceAccountToken: shardingAutomountServiceAccountToken(instance),
 	}
 
 	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
@@ -167,12 +206,14 @@ func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpe
 			spec.NodeSelector[key] = value
 		}
 	}
-	return spec
+	return spec, nil
 }
 
 // Function to build Volume Spec
 func buildVolumeSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.Volume {
 	var result []corev1.Volume
+	dshmSizeLimit := resource.MustParse("4Gi")
+	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.AdditionalPVCs)
 	result = []corev1.Volume{
 		{
 			Name: OraCatalogSpex.Name + "secretmap-vol3",
@@ -185,17 +226,26 @@ func buildVolumeSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalog
 		{
 			Name: OraCatalogSpex.Name + "oradshm-vol6",
 			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium:    corev1.StorageMediumMemory,
+					SizeLimit: &dshmSizeLimit,
+				},
 			},
 		},
 	}
 
-        if OraCatalogSpex.CatalogConfigData != nil && len(OraCatalogSpex.CatalogConfigData.Name) != 0 {
-                result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraCatalogSpex.CatalogConfigData.Name}}}})
-        }
+	if OraCatalogSpex.CatalogConfigData != nil && len(OraCatalogSpex.CatalogConfigData.Name) != 0 {
+		result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraCatalogSpex.CatalogConfigData.Name}}}})
+	}
 
-	if len(OraCatalogSpex.PvcName) != 0 {
-		result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "oradata-vol4", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OraCatalogSpex.PvcName}}})
+	for _, pvcMount := range pvcMounts {
+		if pvcMount.pvcName == "" {
+			continue
+		}
+		result = append(result, corev1.Volume{
+			Name:         pvcMount.volumeName,
+			VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcMount.pvcName}},
+		})
 	}
 
 	if len(instance.Spec.StagePvcName) != 0 {
@@ -207,8 +257,8 @@ func buildVolumeSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalog
 	}
 
 	if checkTdeWalletFlag(instance) {
-		if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
-			result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "shared-storage-vol8", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.TdeWalletPvc}}})
+		if walletPVC := getTdeWalletPVCName(instance); len(instance.Spec.FssStorageClass) == 0 && walletPVC != "" {
+			result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "shared-storage-vol8", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: walletPVC}}})
 		}
 	}
 
@@ -221,72 +271,38 @@ func buildContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCata
 	var result []corev1.Container
 	user := oraRunAsUser
 	group := oraFsGroup
+	// dbCheckCmd := dbcommons.CheckDBLockStatusCMD
 	containerSpec := corev1.Container{
 		Name:  OraCatalogSpex.Name,
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
-      RunAsNonRoot: BoolPointer(true),
-      RunAsUser: &user,
-      RunAsGroup: &group,
-      AllowPrivilegeEscalation: BoolPointer(false),
-			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
-				Drop: []corev1.Capability{"ALL",},
-			},
-		},
-		Resources: corev1.ResourceRequirements{
-			Requests: make(map[corev1.ResourceName]resource.Quantity),
+			RunAsNonRoot:             BoolPointer(true),
+			RunAsUser:                &user,
+			RunAsGroup:               &group,
+			AllowPrivilegeEscalation: BoolPointer(false),
+			Capabilities: mergeCapabilitiesWithDefaults(&corev1.Capabilities{
+				Add:  []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
+				Drop: []corev1.Capability{"ALL"},
+			}, OraCatalogSpex.Capabilities),
 		},
 		VolumeMounts: buildVolumeMountSpecForCatalog(instance, OraCatalogSpex),
-		LivenessProbe: &corev1.Probe{
-			// TODO: Investigate if it's ok to call status every 10 seconds
-			FailureThreshold:    int32(3),
-			InitialDelaySeconds: int32(30),
-			PeriodSeconds: func() int32 {
-				if instance.Spec.LivenessCheckPeriod > 0 {
-					return int32(instance.Spec.LivenessCheckPeriod)
-				}
-				return 60
-			}(),
-			TimeoutSeconds: int32(30),
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
-				},
-			},
-		},
-		/**
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					//Command: getReadinessCmd("CATALOG"),
-					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
-				},
-			},
-			InitialDelaySeconds: 20,
-			TimeoutSeconds:      20,
-			PeriodSeconds: func() int32 {
-				if instance.Spec.ReadinessCheckPeriod > 0 {
-					return int32(instance.Spec.ReadinessCheckPeriod)
-				}
-				return 60
-			}(),
-		},
-		**/
-		StartupProbe: &corev1.Probe{
-			FailureThreshold:    int32(120),
-			PeriodSeconds:       int32(40),
-			InitialDelaySeconds: int32(30),
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
-				},
-			},
-		},
-		Env: buildEnvVarsSpec(instance, OraCatalogSpex.EnvVars, OraCatalogSpex.Name, "CATALOG", false, ""),
+		// LivenessProbe: buildShellExecProbe(
+		// 	dbCheckCmd,
+		// 	30,
+		// 	func() int32 {
+		// 		if instance.Spec.LivenessCheckPeriod > 0 {
+		// 			return int32(instance.Spec.LivenessCheckPeriod)
+		// 		}
+		// 		return 130
+		// 	}(),
+		// 	30,
+		// 	3,
+		// ),
+		// StartupProbe: buildShellExecProbe(dbCheckCmd, 30, 180, 0, 120),
+		Env: buildEnvVarsSpec(instance, OraCatalogSpex.EnvVars, OraCatalogSpex.Name, "CATALOG", false, "NONE", "", nil),
 	}
 	if instance.Spec.IsClone {
-		containerSpec.Command = []string{orainitCmd3}
+		containerSpec.Command = []string{"/bin/bash", "-c", orainitCmd3}
 	}
 
 	if OraCatalogSpex.Resources != nil {
@@ -304,7 +320,8 @@ func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, Ora
 	var result []corev1.Container
 	// building the init Container Spec
 	privFlag := true
-	var uid int64 = 0
+	// var uid int64 = 0
+	uid := oraRunAsUser
 	var scriptLoc string
 	if len(instance.Spec.ScriptsLocation) != 0 {
 		scriptLoc = instance.Spec.ScriptsLocation
@@ -315,12 +332,12 @@ func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, Ora
 		Name:  OraCatalogSpex.Name + "-init1",
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
-      RunAsNonRoot: BoolPointer(true),
-      AllowPrivilegeEscalation: BoolPointer(false),
-			Privileged: &privFlag,
-			RunAsUser:  &uid,
+			RunAsNonRoot:             BoolPointer(false),
+			AllowPrivilegeEscalation: BoolPointer(true),
+			Privileged:               &privFlag,
+			RunAsUser:                &uid,
 			Capabilities: &corev1.Capabilities{
-				Drop: []corev1.Capability{"ALL",},
+				Drop: []corev1.Capability{"ALL"},
 			},
 		},
 		Command: []string{
@@ -342,126 +359,108 @@ func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, Ora
 }
 
 func buildVolumeMountSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.VolumeMount {
-	var result []corev1.VolumeMount
-	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
-	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
+	result := make([]corev1.VolumeMount, 0, 8)
+	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.AdditionalPVCs)
+	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "secretmap-vol3", MountPath: getDbSecretMountPath(instance), ReadOnly: true})
+	for _, pvcMount := range pvcMounts {
+		result = append(result, corev1.VolumeMount{Name: pvcMount.volumeName, MountPath: pvcMount.mountPath})
+	}
 	if instance.Spec.IsDownloadScripts {
 		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})
 	}
 	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "oradshm-vol6", MountPath: oraShm})
 
 	if OraCatalogSpex.CatalogConfigData != nil && len(OraCatalogSpex.CatalogConfigData.Name) != 0 {
-          result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "-oradata-configdata", MountPath: OraCatalogSpex.CatalogConfigData.MountPath})
-        }
+		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "-oradata-configdata", MountPath: OraCatalogSpex.CatalogConfigData.MountPath})
+	}
 
 	if len(instance.Spec.StagePvcName) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "orastage-vol7", MountPath: oraStage})
 	}
 
 	if checkTdeWalletFlag(instance) {
-		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
+		walletPVC := getTdeWalletPVCName(instance)
+		if len(instance.Spec.FssStorageClass) > 0 && walletPVC == "" {
 			result = append(result, corev1.VolumeMount{Name: instance.Name + "shared-storage", MountPath: getTdeWalletMountLoc(instance)})
-		} else {
-			if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
-				result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "shared-storage-vol8", MountPath: getTdeWalletMountLoc(instance)})
-			}
+		} else if len(instance.Spec.FssStorageClass) == 0 && walletPVC != "" {
+			result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "shared-storage-vol8", MountPath: getTdeWalletMountLoc(instance)})
 		}
 	}
 	return result
 }
 
 func volumeClaimTemplatesForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.PersistentVolumeClaim {
-
-	var claims []corev1.PersistentVolumeClaim
-
-	if len(OraCatalogSpex.PvcName) != 0 {
-		return claims
-	}
-
-	claims = []corev1.PersistentVolumeClaim{
-		{
+	pvcMounts := normalizePVCMountConfigs(OraCatalogSpex.Name, OraCatalogSpex.StorageSizeInGb, instance.Spec.StorageClass, OraCatalogSpex.AdditionalPVCs)
+	claims := make([]corev1.PersistentVolumeClaim, 0, len(pvcMounts)+1)
+	for _, pvcMount := range pvcMounts {
+		if strings.TrimSpace(pvcMount.pvcName) != "" {
+			continue
+		}
+		claim := corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:            OraCatalogSpex.Name + "-oradata-vol4",
+				Name:            pvcMount.volumeName,
 				Namespace:       instance.Namespace,
-				OwnerReferences: getOwnerRef(instance),
-				Labels:          buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
+				OwnerReferences: buildOwnerRefForCatalog(instance),
+				Labels:          buildResourceLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes: []corev1.PersistentVolumeAccessMode{
 					corev1.ReadWriteOnce,
 				},
-				StorageClassName: &instance.Spec.StorageClass,
+				StorageClassName: storageClassNamePtr(pvcMount.storageClass),
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraCatalogSpex.StorageSizeInGb), 10) + "Gi"),
+						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(pvcMount.storageSizeInGb), 10) + "Gi"),
 					},
 				},
 			},
-		},
-	}
-
-	if len(OraCatalogSpex.PvAnnotations) > 0 {
-		claims[0].ObjectMeta.Annotations = make(map[string]string)
-		for key, value := range OraCatalogSpex.PvAnnotations {
-			claims[0].ObjectMeta.Annotations[key] = value
 		}
-	}
-
-	if len(OraCatalogSpex.PvMatchLabels) > 0 {
-		claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraCatalogSpex.PvMatchLabels}
+		claims = append(claims, claim)
 	}
 
 	if checkTdeWalletFlag(instance) {
-		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
-			{
-				pvcClaim := corev1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:            instance.Name + "shared-storage",
-						Namespace:       instance.Namespace,
-						OwnerReferences: getOwnerRef(instance),
-						Labels:          buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
+		if walletPVC := getTdeWalletPVCName(instance); len(instance.Spec.FssStorageClass) > 0 && walletPVC == "" {
+			claims = append(claims, corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            instance.Name + "shared-storage",
+					Namespace:       instance.Namespace,
+					OwnerReferences: buildOwnerRefForCatalog(instance),
+					Labels:          buildResourceLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{
+						corev1.ReadWriteMany,
 					},
-					Spec: corev1.PersistentVolumeClaimSpec{
-						AccessModes: []corev1.PersistentVolumeAccessMode{
-							corev1.ReadWriteMany,
-						},
-						StorageClassName: &instance.Spec.FssStorageClass,
-						Resources: corev1.VolumeResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraCatalogSpex.StorageSizeInGb), 10) + "Gi"),
-							},
+					StorageClassName: storageClassNamePtr(instance.Spec.FssStorageClass),
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraCatalogSpex.StorageSizeInGb), 10) + "Gi"),
 						},
 					},
-				}
-
-				claims = append(claims, pvcClaim)
-			}
+				},
+			})
 		}
 	}
 
 	return claims
 }
 
+// BuildServiceDefForCatalog builds local or external Service definitions for catalog pods.
 func BuildServiceDefForCatalog(instance *databasev4.ShardingDatabase, replicaCount int32, OraCatalogSpex databasev4.CatalogSpec, svctype string) *corev1.Service {
-	//service := &corev1.Service{}
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForCatalog(instance, replicaCount, OraCatalogSpex, svctype),
-		Spec:       corev1.ServiceSpec{},
+		Spec: corev1.ServiceSpec{
+			Selector: getSvcLabelsForCatalog(replicaCount, OraCatalogSpex),
+			Ports:    buildSvcPortsDef(instance, "CATALOG"),
+		},
 	}
 
-	// Check if user want External Svc on each replica pod
-	if svctype == "external" {
+	switch svctype {
+	case shardServiceTypeExternal:
 		service.Spec.Type = corev1.ServiceTypeLoadBalancer
-		service.Spec.Selector = getSvcLabelsForCatalog(replicaCount, OraCatalogSpex)
-	}
-
-	if svctype == "local" {
+	case shardServiceTypeLocal:
 		service.Spec.ClusterIP = corev1.ClusterIPNone
-		service.Spec.Selector = getSvcLabelsForCatalog(replicaCount, OraCatalogSpex)
 	}
-
-	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
-	service.Spec.Ports = buildSvcPortsDef(instance, "CATALOG")
 	return service
 }
 
@@ -469,26 +468,29 @@ func BuildServiceDefForCatalog(instance *databasev4.ShardingDatabase, replicaCou
 func buildSvcObjectMetaForCatalog(instance *databasev4.ShardingDatabase, replicaCount int32, OraCatalogSpex databasev4.CatalogSpec, svctype string) metav1.ObjectMeta {
 	// building objectMeta
 	var svcName string
-	if svctype == "local" {
+	if svctype == shardServiceTypeLocal {
 		svcName = OraCatalogSpex.Name
 	}
 
-	if svctype == "external" {
+	if svctype == shardServiceTypeExternal {
 		svcName = OraCatalogSpex.Name + strconv.FormatInt(int64(replicaCount), 10) + "-svc"
 	}
+	labels := buildResourceLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name)
+	labels["sharding.oracle.com/service-type"] = svctype
 
 	objmeta := metav1.ObjectMeta{
 		Name:            svcName,
 		Namespace:       instance.Namespace,
-		OwnerReferences: getOwnerRef(instance),
-		Labels:          buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
+		OwnerReferences: buildOwnerRefForCatalog(instance),
+		Labels:          labels,
+		Annotations:     resolveCatalogServiceAnnotations(instance, OraCatalogSpex, svctype),
 	}
 	return objmeta
 }
 
 func getSvcLabelsForCatalog(replicaCount int32, OraCatalogSpex databasev4.CatalogSpec) map[string]string {
 
-	var labelStr map[string]string = make(map[string]string)
+	labelStr := make(map[string]string)
 	if replicaCount == -1 {
 		labelStr["statefulset.kubernetes.io/pod-name"] = OraCatalogSpex.Name + "-0"
 	} else {
@@ -499,30 +501,32 @@ func getSvcLabelsForCatalog(replicaCount int32, OraCatalogSpex databasev4.Catalo
 	return labelStr
 }
 
-// ======================== update Section ========================
+// UpdateProvForCatalog reconciles mutable provisioning settings for an existing catalog StatefulSet.
 func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 	OraCatalogSpex databasev4.CatalogSpec, kClient client.Client, sfSet *appsv1.StatefulSet, catalogPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
+	_ = catalogPod
 
-	var isUpdate bool = false
-	var err error
-	var i int
+	requiresUpdate := false
 	var msg string
 
 	//msg = "Inside the updateProvForCatalog"
 	//reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	LogMessages("DEBUG", msg, nil, instance, logger)
 
-	// Memory Check
-	//resources := corev1.Pod.Spec.Containers
-	for i = 0; i < len(catalogPod.Spec.Containers); i++ {
-		if catalogPod.Spec.Containers[i].Name == sfSet.Name {
-			shardContaineRes := catalogPod.Spec.Containers[i].Resources
-			oraSpexRes := OraCatalogSpex.Resources
+	if sfSet.Spec.Replicas == nil || *sfSet.Spec.Replicas != shardReplicaCount {
+		requiresUpdate = true
+	}
 
-			if !reflect.DeepEqual(shardContaineRes, oraSpexRes) {
-				isUpdate = false
+	if OraCatalogSpex.Resources != nil {
+		for i := range sfSet.Spec.Template.Spec.Containers {
+			if sfSet.Spec.Template.Spec.Containers[i].Name != OraCatalogSpex.Name {
+				continue
 			}
+			if sfSet.Spec.Template.Spec.Containers[i].Resources.String() != OraCatalogSpex.Resources.String() {
+				requiresUpdate = true
+			}
+			break
 		}
 	}
 
@@ -539,8 +543,12 @@ func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 	}
 	**/
 
-	if isUpdate {
-		err = kClient.Update(context.Background(), BuildStatefulSetForCatalog(instance, OraCatalogSpex))
+	if requiresUpdate {
+		desired, err := BuildStatefulSetForCatalog(instance, OraCatalogSpex)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		err = kClient.Update(context.Background(), desired)
 		if err != nil {
 			msg = "Failed to update Catalog StatefulSet " + "StatefulSet.Name : " + sfSet.Name
 			LogMessages("Error", msg, nil, instance, logger)
@@ -552,11 +560,11 @@ func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 	return ctrl.Result{}, nil
 }
 
-func ExportTDEKey(podName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,) error {
+// ExportTDEKey exports and backups TDE key material from the given catalog pod.
+func ExportTDEKey(podName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger) error {
 	var msg string
 
-  msg = ""
-	_, _, err := ExecCommand(podName, getExportTDEKeyCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(podName, getExportTDEKeyCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg = "Error executing getExportTDEKeyCmd : podName=[" + podName + "]. errMsg=" + err.Error()
 		LogMessages("INFO", msg, nil, instance, logger)

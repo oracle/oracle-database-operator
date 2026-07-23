@@ -25,24 +25,59 @@ spec:
   convertToSnapshotStandby: false
 
   ## Reference to a source primary database.
-  ## Valid only when createAs is clone, standby or truecache
-  ## The name of a source primary database resource from the same namespace
-  primaryDatabaseRef: ""
+  ## Valid only when createAs is clone, standby or truecache.
+  ## Set exactly one of primarySource.databaseRef, primarySource.connectString, or primarySource.details.
+  ## Optional: primarySource.pdbName may be set together with primarySource.connectString.
+  primarySource:
+  #   databaseRef: sidb-sample
+  #   connectString: primary-host:1521/ORCL1
+  #   pdbName: ORCLPDB1
+  #   details:
+  #     host: primary-host
+  #     port: 1521
+  #     sid: ORCL1
+  #     pdbName: ORCLPDB1
 
-  ## Only valid when createAs is set to truecache 
-  ## Accepts a semi colon separated map of `PRIMARY_PDB_SERIVCE_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
-  trueCacheServices: 
-  # - "FREEPDB1:sales1:sales1_tc"
-  # - "FREEPDB1:sales2:sales2_tc" 
-  # - "FREEPDB1:sales3:sales3_tc"
+  ## TrueCache blob handling
+  ## - For a primary database, set generateBlob=true to ensure the blob file exists on the primary pod.
+  ## - Set createConfigMap=true to publish that blob through the generated ConfigMap.
+  ## - The legacy generateEnabled=true still enables both behaviors.
+  ## - Blob generation requires edition=enterprise, archiveLog=true, and spec.security.secrets.tde to be set.
+  ## - The generated ConfigMap name defaults to <database-name>-truecache-blob.
+  ## - generatePath controls the in-pod blob file path used for generation and ConfigMap publishing.
+  ## - If generation is disabled, create the blob ConfigMap yourself and reference it from the truecache database.
+  trueCache:
+  #   generateBlob: false
+  #   createConfigMap: false
+  #   generateEnabled: false
+  #   generatePath: /tmp/tc_config_blob.tar.gz
+  #   blobConfigMapRef: my-truecache-blob
+  #   blobConfigMapKey: tc_config_blob.tar.gz
+  #   autoTCServiceRegistration: true
+  #   ## Only valid when createAs is set to truecache
+  #   ## Accepts a semicolon-separated map of `PRIMARY_PDB_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
+  #   ## The first value is the primary PDB name.
+  #   trueCacheServices:
+  #   - "FREEPDB1:sales1:sales1_tc"
+  #   - "FREEPDB1:sales2:sales2_tc"
+  #   - "FREEPDB1:sales3:sales3_tc"
   
-  ## Secret containing SIDB password mapped to secretKey. secretKey defaults to oracle_pwd
-  ## Should refer to adminPassword of Source DB if createAs is clone or standby
-  ## This secret will be deleted after creation of the database unless keepSecret is set to true which is the default
-  adminPassword:
-    secretName: 
-    secretKey:
-    keepSecret: true
+  ## Grouped security settings
+  ## security.secrets.admin should refer to the source DB admin secret if createAs is clone or standby.
+  security:
+    secrets:
+      admin:
+        secretName:
+        secretKey:
+        keepSecret: true
+    ## Configure spec.security.secrets.tde when enabling trueCache.generateBlob or trueCache.generateEnabled on a primary database.
+    #  tde:
+    #    secretName: tde-wallet-secret
+    #    secretKey: tde_wallet_pwd
+    ## TCPS settings. When tcps.enabled=true, expose TCPS through spec.services.endpoints[].tcps.
+    #  tcps:
+    #    enabled: true
+    #    tlsSecret: my-tls-secret
 
   ## DB character set. N/A for createAs clone or standby
   charset: AL32UTF8
@@ -58,20 +93,6 @@ spec:
 
   ## Enable/Disable ForceLogging
   forceLog: false
-
-  ## Enable TCPS
-  enableTCPS:
-
-  ## User specified TLS-Cert Secret
-  ## The following specified TLS certs will be used instead of self-signed
-  tcpsTlsSecret:
-
-  ## TCPS Certificate Renewal Interval: (Valid for Self-Signed Certificates)
-  ## The time after which TCPS certificate will be renewed if TCPS connections are enabled.
-  ## tcpsCertRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 4380h, 8760h etc.
-  ## Maximum value is 8760h (1 year), Minimum value is 24h; Default value is 8760h (1 year)
-  ## If this field is commented out/removed from the yaml, it will disable the auto-renewal feature for TCPS certificate
-  tcpsCertRenewInterval: 8760h
 
   ##  N/A for createAs clone or standby
   ## Specify Non-Zero value to use
@@ -91,29 +112,31 @@ spec:
   ## If cloning specify an image that is of same major version as the source DB at same or different patch levels
   image:
     pullFrom:
+    imagePullPolicy: IfNotPresent
     pullSecrets:
     prebuiltDB: false
 
   
   ## Database storage details
-  ## size is the required minimum size of the persistent volume
-  ## storageClass is specified for dynamic volume provisioning and datafilesVolumeName for static provisioning
+  ## persistence.oradata contains the primary datafiles volume configuration
   persistence:
-    ## if the storageClass supports volume expansion, patch the size attribute to expand the volume
-    ## Shrinking volumes is not allowed
-    size: 100Gi
+    oradata:
+      ## if the storageClass supports volume expansion, patch the size attribute to expand the volume
+      ## Shrinking volumes is not allowed
+      size: 100Gi
+      ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud services
+      storageClass: "oci-bv"
+      ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
+      accessMode: "ReadWriteOnce"
     ## set ownership/permissions for writing to datafiles volume. This is usually needed for NFS volumes. 
     setWritePermissions: true
-    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud services
-    storageClass: "oci-bv"
-    ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
-    accessMode: "ReadWriteOnce"
     ## datafilesVolumeName is optional. Specify for binding to a specific PV and set storageClass to an empty string to disable automatic volume provisioning
     datafilesVolumeName: ""
     ## Optionally specify a volume containing scripts in 'setup' and 'startup' folders to be executed during database setup and startup respectively.
     scriptsVolumeName: ""
 
   ## Database pod resource details
+  ## Uses the standard Kubernetes container resources shape.
   ## cpu can be expressed in terms of cpu units and can be a plain integer or fractional value
   ## memory is measured in bytes and can be expressed in plain integer or as a fixed-point number
   ## using one of these quantity suffixes: E, P, T, G, M, k.
@@ -121,6 +144,9 @@ spec:
   ## For Enterprise Edition, the recommended values are:
   ## cpu="2"
   ## memory="16Gi"
+  ## shmSize optionally configures a memory-backed /dev/shm volume used by Oracle Database.
+  ## If omitted, the pod uses the container runtime default. For production, size this at least to the configured SGA with headroom.
+  # shmSize: 8Gi
   resources:
     ## requests denotes minimum node resources required/to be utilized by the database pod
     requests:
@@ -131,21 +157,34 @@ spec:
       cpu:
       memory:
 
-  ## Type of service . Applicable on cloud enviroments only
-  ## if loadBalService : false, service type = "NodePort" else "LoadBalancer"
-  loadBalancer: false
-  
-  ## 'listenerPort' and 'tcpsListenerPort' fields customizes port cofigurations for normal and tcps database listeners
-  ## 'tcpsListenerPort' will come in effect only when 'enableTCPS' field is set
-  ## If loadBalancer is enabled, the listenerPort, tcpsListenerPort will be the load balancer ports
-  ## If loadBalancer is disabled, the listenerPort, tcpsListenerPort will be the node ports(should be in range 30000-32767)
-  ## If enableTCPS is set, and listenerPort is commented/not mentioned in the YAML file, only TCPS endpoint will be exposed
-  #listenerPort: 30001
-  #tcpsListenerPort: 30002
-
-  ## Service Annotations (Cloud provider specific), for configuring the service (e.g. private LoadBalancer service)
-  #serviceAnnotations:
-  #  service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+  ## Optional service endpoint configuration.
+  ## The ClusterIP service is always created with TCP port 1521.
+  ## Add NodePort or LoadBalancer endpoints when clients need another access path.
+  ## TCPS exposure requires spec.security.tcps.enabled=true.
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        tcp:
+          enabled: true
+        ## Uncomment tcps when TCPS is enabled in spec.security.tcps.
+        # tcps:
+        #   enabled: true
+        ## Optional traffic policy for NodePort/LoadBalancer services.
+        # externalTrafficPolicy: Local
+      ## LoadBalancer example:
+      # - name: loadbalancer
+      #   type: LoadBalancer
+      #   annotations:
+      #     oci-network-load-balancer.oraclecloud.com/internal: "true"
+      #     oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.replace-me"
+      #     oci-network-load-balancer.oraclecloud.com/assigned-private-ipv4: "10.0.2.101"
+      #   tcp:
+      #     enabled: true
+      #     port: 1521
+      #   tcps:
+      #     enabled: true
+      #     port: 2484
 
   ## Deploy only on nodes having required labels. Format label_name: label_value
   ## For instance if the pods need to be restricted to a particular AD
@@ -153,12 +192,21 @@ spec:
   # nodeSelector:
   #   topology.kubernetes.io/zone: PHX-AD-1
 
-  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
-  serviceAccountName: default
+  ## Optional static host-to-IP mappings added to the database pod /etc/hosts
+  ## Useful when specific names must resolve without depending on cluster DNS
+  # hostAliases:
+  #   - ip: "10.2.1.241"
+  #     hostnames:
+  #       - "truecache-production.default.svc.cluster.local"
+  #       - "truecache-production"
 
-  ## Count of Database Pods. Only one pod will have the DB mounted and open.
-  ## The other replica pods will have instance up and will mount and open the DB if the primary pod dies
-  ## For "ReadWriteOnce" AccessMode, all the replicas will schedule on the same node that has the storage attached
-  ## For minimal downtime during patching set the count of replicas > 1
-  ## Express edition can only have one replica and does not support patching
+  ## Use a dedicated SIDB service account instead of `default`.
+  ## If deploying on OpenShift, set this to `sidb-sa` after you run `$ oc apply -f openshift_rbac.yaml`
+  # serviceAccountName: sidb-sa
+
+  ## Defaults to false. Keep the Kubernetes API token unmounted in the SIDB pod unless explicitly needed.
+  # automountServiceAccountToken: false
+
+  ## Count of Database Pods.
+  ## SIDB currently supports only one pod; set replicas to 1.
   replicas: 1

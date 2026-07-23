@@ -6,58 +6,62 @@
 apiVersion: database.oracle.com/v4
 kind: SingleInstanceDatabase
 metadata:
-  # Creates base sidb-sample. Use singleinstancedatabase_clone.yaml for cloning
-  #                           and singleinstancedatabase_patch.yaml for patching
+  # Creates a primary SIDB with TCPS enabled.
+  # Update namespace, secrets, TLS secret, image, and storage class before applying.
   name: sidb-sample
-  namespace: default
+  namespace: <operator-watched-namespace>
 spec:
-  
-  ## Use only alphanumeric characters for sid
+  ## Use only alphanumeric characters for sid.
   sid: ORCL1
 
   ## DB edition.
   edition: enterprise
 
-  ## Secret containing SIDB password mapped to secretKey 
-  adminPassword:
-    secretName: db-admin-secret
+  ## Intended type of database.
+  createAs: primary
 
-  ## DB character set
+  ## Grouped security settings.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+    tcps:
+      enabled: true
+      tlsSecret: sidb-tcps-tls
+
+  ## DB character set.
   charset: AL32UTF8
 
-  ## PDB name
+  ## PDB name.
   pdbName: orclpdb1
 
-  ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
+  ## Enable ArchiveLog. Should be true to allow DB cloning.
   archiveLog: true
 
-  ## Enable TCPS
-  enableTCPS: true
-
-  ## User specified TLS-Cert Secret
-  ## The following specified TLS certs will be used instead of self-signed
-  tcpsTlsSecret: my-tls-secret
-
-  ## TCPS Certificate Renewal Interval: (Valid for Self-Signed Certificates)
-  ## The time after which TCPS certificate will be renewed if TCPS connections are enabled.
-  ## tcpsCertRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 4380h, 8760h etc.
-  ## Maximum value is 8760h (1 year), Minimum value is 24h; Default value is 8760h (1 year)
-  ## If this field is commented out/removed from the yaml, it will disable the auto-renewal feature for TCPS certificate
-  tcpsCertRenewInterval: 8760h
-
-  ## Database image details
+  ## Database image details.
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise:latest
-    pullSecrets: oracle-container-registry-secret
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
+    imagePullPolicy: IfNotPresent
+    pullSecrets: ocr-reg-cred
 
-  ## size is the required minimum size of the persistent volume
-  ## storageClass is specified for automatic volume provisioning
-  ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  ## Database storage details.
   persistence:
-    size: 100Gi
-    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
-    storageClass: "oci-bv"
-    accessMode: "ReadWriteOnce"
+    oradata:
+      size: 100Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
 
-  ## Count of Database Pods.
+  ## Optional service endpoint configuration.
+  ## Enable tcps because spec.security.tcps.enabled is true.
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        tcp:
+          enabled: true
+        tcps:
+          enabled: true
+
   replicas: 1

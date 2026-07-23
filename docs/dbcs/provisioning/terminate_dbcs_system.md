@@ -21,24 +21,20 @@ Use the file: [terminate_dbcs_system.yaml](./terminate_dbcs_system.yaml) for thi
 
 1. Deploy the `.yaml` file:  
 ```sh
-[root@test-server OBDS]# kubectl apply -f terminate_dbcs_system.yaml
-dbcssystem.database.oracle.com/dbcssystem-terminate created
- 
-
-[root@test-server OBDS]# kubectl delete -f terminate_dbcs_system.yaml
-dbcssystem.database.oracle.com "dbcssystem-terminate" deleted
+kubectl apply -f terminate_dbcs_system.yaml
+kubectl delete -f terminate_dbcs_system.yaml
 ```
 
 2. Check the logs of Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for an update on the terminate operation to confirm it has been accepted. 
 
-```
-[root@test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 3. Give some time for the termination operation to be completed, and then check and confirm if the existing OCI OBDS system is no longer available:
 
-```
-[root@test-server OBDS]# kubectl describe dbcssystems.database.oracle.com dbcssystem-terminate
+```bash
+kubectl describe dbcssystems.database.oracle.com dbcssystem-terminate
 ```
 
 ## Sample Output

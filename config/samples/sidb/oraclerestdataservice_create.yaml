@@ -11,16 +11,22 @@ metadata:
 spec:
   
   ## Database ref. This can be of kind SingleInstanceDatabase.
-  ## Make sure the source database has been created by applying singeinstancedatabase_express.yaml
-  databaseRef: "xedb-sample"
+  ## Make sure the source database has been created.
+  databaseRef: "sidb-sample"
   
-  ## Secret containing databaseRef password mapped to secretKey. 
-  adminPassword:
-    secretName: xedb-admin-secret
-
-  ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
-  ordsPassword:
-    secretName: ords-secret
+  security:
+    secrets:
+      ## Secret containing databaseRef admin password mapped to secretKey.
+      databaseAdmin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      
+      ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
+      ordsPublicUser:
+        secretName: ords-secret
+        secretKey: oracle_pwd
+        keepSecret: true
 
   ## ORDS image details
   image:
@@ -29,8 +35,10 @@ spec:
   ## Set this to true to enable MongoDB API
   mongoDbApi: true
 
+  replicas: 1
+
   ## PDB Schemas to be ORDS Enabled.
-  ## Schema will be created (if not exists) with password as .spec.ordsPassword.
+  ## Schema will be created (if not exists) with password from .spec.ordsPassword.
   restEnableSchemas:
   - schemaName: schema1
     enable: true

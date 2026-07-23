@@ -39,17 +39,24 @@
 package oci
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/common/auth"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 )
+
+// workloadIdentityProviderMu protects the OCI SDK environment variables while
+// constructing an OKE workload-identity provider. The SDK reads these values
+// only during provider construction, but os.Environ is process-wide.
+var workloadIdentityProviderMu sync.Mutex
 
 const (
 	regionKey      = "region"
@@ -60,32 +67,35 @@ const (
 	privatekeyKey  = "privatekey"
 )
 
-type ApiKeyAuth struct {
+// APIKeyAuth carries Kubernetes references used to build OCI auth providers.
+type APIKeyAuth struct {
 	ConfigMapName *string
 	SecretName    *string
 	Namespace     string
 }
 
-func GetOciProvider(kubeClient client.Client, authData ApiKeyAuth) (common.ConfigurationProvider, error) {
+// GetOciProvider returns an OCI configuration provider based on provided auth references.
+func GetOciProvider(ctx context.Context, kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
 	if authData.ConfigMapName != nil && authData.SecretName == nil {
-		return getWorkloadIdentityProvider(kubeClient, authData)
-	} else if authData.ConfigMapName != nil && authData.SecretName != nil {
-		provider, err := getProviderWithAPIKey(kubeClient, authData)
+		return getWorkloadIdentityProvider(ctx, kubeClient, authData)
+	}
+	if authData.ConfigMapName != nil && authData.SecretName != nil {
+		provider, err := getProviderWithAPIKey(ctx, kubeClient, authData)
 		if err != nil {
 			return nil, err
 		}
 
 		return provider, nil
-	} else if authData.ConfigMapName == nil && authData.SecretName == nil {
-		return auth.InstancePrincipalConfigurationProvider()
-	} else {
-		return nil, errors.New("both the OCI ConfigMap and the privateKey are required to authorize with API signing key; " +
-			"leave them both empty to authorize with Instance Principal")
 	}
+	if authData.ConfigMapName == nil && authData.SecretName == nil {
+		return auth.InstancePrincipalConfigurationProvider()
+	}
+	return nil, errors.New("both the OCI ConfigMap and the privateKey are required to authorize with API signing key; " +
+		"leave them both empty to authorize with Instance Principal")
 }
 
-func getWorkloadIdentityProvider(kubeClient client.Client, authData ApiKeyAuth) (common.ConfigurationProvider, error) {
-	ociConfigMap, err := k8s.FetchConfigMap(kubeClient, authData.Namespace, *authData.ConfigMapName)
+func getWorkloadIdentityProvider(ctx context.Context, kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
+	ociConfigMap, err := k8s.FetchConfigMap(ctx, kubeClient, authData.Namespace, *authData.ConfigMapName)
 	if err != nil {
 		return nil, err
 	}
@@ -97,9 +107,18 @@ func getWorkloadIdentityProvider(kubeClient client.Client, authData ApiKeyAuth) 
 	if !ok || len(region) == 0 {
 		return nil, fmt.Errorf("OCI Region Key %s missing from OCI ConfigMap %s", regionKey, ociConfigMap.Name)
 	}
-	// OCI SDK requires specific, dynamic environment variables for workload identity.
-	if err = os.Setenv(auth.ResourcePrincipalVersionEnvVar, auth.ResourcePrincipalVersion2_2); err != nil {
+	// The OCI SDK requires these values in process-wide environment variables.
+	// Keep the override scoped to provider construction so concurrent reconciles
+	// cannot observe each other's target region.
+	workloadIdentityProviderMu.Lock()
+	defer workloadIdentityProviderMu.Unlock()
 
+	previousVersion, hadPreviousVersion := os.LookupEnv(auth.ResourcePrincipalVersionEnvVar)
+	previousRegion, hadPreviousRegion := os.LookupEnv(auth.ResourcePrincipalRegionEnvVar)
+	defer restoreEnv(auth.ResourcePrincipalVersionEnvVar, previousVersion, hadPreviousVersion)
+	defer restoreEnv(auth.ResourcePrincipalRegionEnvVar, previousRegion, hadPreviousRegion)
+
+	if err = os.Setenv(auth.ResourcePrincipalVersionEnvVar, auth.ResourcePrincipalVersion2_2); err != nil {
 		return nil, fmt.Errorf("unable to set OCI SDK environment variable %s: %v", auth.ResourcePrincipalVersionEnvVar, err)
 	}
 	if err = os.Setenv(auth.ResourcePrincipalRegionEnvVar, region); err != nil {
@@ -108,33 +127,42 @@ func getWorkloadIdentityProvider(kubeClient client.Client, authData ApiKeyAuth) 
 	return auth.OkeWorkloadIdentityConfigurationProvider()
 }
 
-func getProviderWithAPIKey(kubeClient client.Client, authData ApiKeyAuth) (common.ConfigurationProvider, error) {
+func restoreEnv(key, value string, wasSet bool) {
+	if wasSet {
+		_ = os.Setenv(key, value)
+		return
+	}
+	_ = os.Unsetenv(key)
+}
+
+func getProviderWithAPIKey(ctx context.Context, kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
 	var region, fingerprint, user, tenancy, passphrase, privatekeyValue string
 
 	// Prepare ConfigMap
-	ociConfigMap, err := k8s.FetchConfigMap(kubeClient, authData.Namespace, *authData.ConfigMapName)
+	ociConfigMap, err := k8s.FetchConfigMap(ctx, kubeClient, authData.Namespace, *authData.ConfigMapName)
 	if err != nil {
 		return nil, err
 	}
 
 	for key, val := range ociConfigMap.Data {
-		if key == regionKey {
+		switch key {
+		case regionKey:
 			region = val
-		} else if key == fingerprintKey {
+		case fingerprintKey:
 			fingerprint = val
-		} else if key == userKey {
+		case userKey:
 			user = val
-		} else if key == tenancyKey {
+		case tenancyKey:
 			tenancy = val
-		} else if key == passphraseKey {
+		case passphraseKey:
 			passphrase = val
-		} else {
+		default:
 			return nil, errors.New("Unable to identify the key: " + key)
 		}
 	}
 
 	// Prepare privatekey value
-	privatekeyValue, err = k8s.GetSecretValue(kubeClient, authData.Namespace, *authData.SecretName, privatekeyKey)
+	privatekeyValue, err = k8s.GetSecretValue(ctx, kubeClient, authData.Namespace, *authData.SecretName, privatekeyKey)
 	if err != nil {
 		return nil, err
 	}

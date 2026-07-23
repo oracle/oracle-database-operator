@@ -45,5 +45,10 @@ To back up an Autonomous Database, complete this procedure.
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_backup.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabasebackup.database.oracle.com/autonomousdatabasebackup-sample created
     ```

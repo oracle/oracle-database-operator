@@ -1,0 +1,11 @@
+- op: replace
+  path: /kind
+  value: ClusterRole
+- op: remove
+  path: /metadata/namespace
+- op: add
+  path: /rules/0/resources/5
+  value: namespaces
+- op: add
+  path: /rules/0/resources/8
+  value: persistentvolumes

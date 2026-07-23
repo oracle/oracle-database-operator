@@ -38,18 +38,253 @@
 
 package v4
 
+// revive:disable:exported,unused-parameter
+// Legacy webhook signatures are preserved for interface compatibility.
+
 import (
+	"context"
+	"fmt"
+	"strings"
+
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var oraclerestdataservicelog = logf.Log.WithName("oraclerestdataservice-resource")
 
 func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+
+	return ctrl.NewWebhookManagedBy[*OracleRestDataService](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-oraclerestdataservice,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestdataservices,verbs=create;update,versions=v4,name=moraclerestdataservicev4.kb.io,admissionReviewVersions={v1,v1beta1}
+
+// Ensure the CRD implements the generic admission interfaces
+var _ admission.Defaulter[*OracleRestDataService] = &OracleRestDataService{}
+var _ admission.Validator[*OracleRestDataService] = &OracleRestDataService{}
+
+// Default implements admission.Defaulter[*OracleRestDataService]
+func (r *OracleRestDataService) Default(ctx context.Context, obj *OracleRestDataService) error {
+	oraclerestdataservicelog.Info("Defaulting for OracleRestDataService", "name", obj.Name)
+	if obj.Spec.Replicas == 0 {
+		obj.Spec.Replicas = 1
+	}
+	if obj.Spec.HTTPPort == 0 {
+		obj.Spec.HTTPPort = dbcommons.ORDSDefaultHTTPPort
+	}
+	defaultOracleRestDataServicePasswordRef(&obj.Spec.AdminPassword)
+	defaultOracleRestDataServicePasswordRef(&obj.Spec.OrdsPassword)
+	if obj.Spec.Security != nil && obj.Spec.Security.Secrets != nil {
+		defaultOracleRestDataServicePasswordRef(obj.Spec.Security.Secrets.DatabaseAdmin)
+		defaultOracleRestDataServicePasswordRef(obj.Spec.Security.Secrets.OrdsPublicUser)
+	}
+	return nil
+}
+
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-oraclerestdataservice,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestdataservices,versions=v4,name=voraclerestdataservicev4.kb.io,admissionReviewVersions={v1,v1beta1}
+
+// ValidateCreate implements admission.Validator[*OracleRestDataService]
+func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	oraclerestdataservicelog.Info("ValidateCreate for OracleRestDataService", "name", obj.Name)
+	return validateOracleRestDataService(ctx, obj)
+}
+
+// ValidateUpdate implements admission.Validator[*OracleRestDataService]
+func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldObj, newObj *OracleRestDataService) (admission.Warnings, error) {
+	oraclerestdataservicelog.Info("ValidateUpdate for OracleRestDataService", "name", newObj.Name)
+	warnings, err := validateOracleRestDataService(ctx, newObj)
+	if err != nil {
+		return warnings, err
+	}
+	var allErrs field.ErrorList
+	if oldObj.Status.DatabaseRef != "" && oldObj.Status.DatabaseRef != newObj.Spec.DatabaseRef {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("databaseRef"), "cannot be changed"))
+	}
+	if oldObj.Status.Image.PullFrom != "" && oldObj.Status.Image != newObj.Spec.Image {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("image"), "cannot be changed"))
+	}
+	if len(allErrs) == 0 {
+		return warnings, nil
+	}
+	return warnings, apierrors.NewInvalid(
+		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
+		newObj.Name,
+		allErrs,
+	)
+}
+
+// ValidateDelete implements admission.Validator[*OracleRestDataService]
+func (r *OracleRestDataService) ValidateDelete(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	return nil, nil
+}
+
+func validateOracleRestDataService(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	_ = ctx
+	warnings := oracleRestDataServiceDeprecatedFieldWarnings(obj)
+	var allErrs field.ErrorList
+
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, containsNamespace := namespaces[obj.Namespace]
+	if len(namespaces) != 0 && !containsNamespace {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), obj.Namespace,
+				"Oracle database operator doesn't watch over this namespace"))
+	}
+
+	if obj.Spec.HTTPPort < 1 || obj.Spec.HTTPPort > 65535 {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("httpPort"), obj.Spec.HTTPPort, "must be between 1 and 65535"))
+	}
+
+	if strings.TrimSpace(obj.Spec.DatabaseRef) == "" {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("databaseRef"), "databaseRef must be set"))
+	}
+	if obj.Spec.DatabaseRef == obj.Name {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("databaseRef"),
+				"cannot be same as metadata.name"))
+	}
+	if _, _, _, ok := ResolveOracleRestDataServiceAdminSecretRef(obj); !ok {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("security").Child("secrets").Child("databaseAdmin"),
+				"database admin password secret must be set using spec.security.secrets.databaseAdmin or deprecated spec.adminPassword"))
+	}
+	if _, _, _, ok := ResolveOracleRestDataServiceOrdsSecretRef(obj); !ok {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("security").Child("secrets").Child("ordsPublicUser"),
+				"ORDS public user password secret must be set using spec.security.secrets.ordsPublicUser or deprecated spec.ordsPassword"))
+	}
+
+	if obj.Spec.Persistence.Size == "" && (obj.Spec.Persistence.AccessMode != "" ||
+		obj.Spec.Persistence.StorageClass != "" || obj.Spec.Persistence.VolumeName != "") {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), obj.Spec.Persistence,
+				"invalid persistence specification, specify required size"))
+	}
+	if obj.Spec.Persistence.Size != "" {
+		if obj.Spec.Persistence.AccessMode == "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), obj.Spec.Persistence,
+					"invalid persistence specification, specify accessMode"))
+		}
+		if obj.Spec.Persistence.AccessMode != "ReadWriteMany" && obj.Spec.Persistence.AccessMode != "ReadWriteOnce" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("persistence").Child("accessMode"),
+					obj.Spec.Persistence.AccessMode, "should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
+		}
+	}
+
+	for i, schema := range obj.Spec.RestEnableSchemas {
+		fldPath := field.NewPath("spec").Child("restEnableSchemas").Index(i)
+		if !IsValidOracleRestDataServiceSchemaName(schema.SchemaName) {
+			allErrs = append(allErrs, field.Invalid(
+				fldPath.Child("schemaName"),
+				schema.SchemaName,
+				fmt.Sprintf("must match %s", oracleRestDataServiceSchemaNamePattern),
+			))
+		}
+		if !IsValidOracleRestDataServicePDBName(schema.PdbName) {
+			allErrs = append(allErrs, field.Invalid(
+				fldPath.Child("pdbName"),
+				schema.PdbName,
+				fmt.Sprintf("must match %s when specified", oracleRestDataServicePDBNamePattern),
+			))
+		}
+		if !IsValidOracleRestDataServiceURLMapping(schema.UrlMapping) {
+			allErrs = append(allErrs, field.Invalid(
+				fldPath.Child("urlMapping"),
+				schema.UrlMapping,
+				fmt.Sprintf("must match %s when specified", oracleRestDataServiceURLMappingPattern),
+			))
+		}
+	}
+
+	if len(allErrs) == 0 {
+		return warnings, nil
+	}
+	return warnings, apierrors.NewInvalid(
+		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
+		obj.Name,
+		allErrs,
+	)
+}
+
+func oracleRestDataServiceDeprecatedFieldWarnings(obj *OracleRestDataService) admission.Warnings {
+	if obj == nil {
+		return nil
+	}
+
+	var warnings admission.Warnings
+	legacyAdminSet := oracleRestDataServicePasswordFieldsSet(&obj.Spec.AdminPassword)
+	legacyOrdsSet := oracleRestDataServicePasswordFieldsSet(&obj.Spec.OrdsPassword)
+	groupedAdminSet := false
+	groupedOrdsSet := false
+	if obj.Spec.Security != nil && obj.Spec.Security.Secrets != nil {
+		groupedAdminSet = oracleRestDataServicePasswordFieldsSet(obj.Spec.Security.Secrets.DatabaseAdmin)
+		groupedOrdsSet = oracleRestDataServicePasswordFieldsSet(obj.Spec.Security.Secrets.OrdsPublicUser)
+	}
+
+	if legacyAdminSet {
+		warnings = append(warnings, "spec.adminPassword is deprecated; use spec.security.secrets.databaseAdmin")
+		if groupedAdminSet {
+			warnings = append(warnings, "spec.security.secrets.databaseAdmin takes precedence over deprecated spec.adminPassword")
+		}
+	}
+	if legacyOrdsSet {
+		warnings = append(warnings, "spec.ordsPassword is deprecated; use spec.security.secrets.ordsPublicUser")
+		if groupedOrdsSet {
+			warnings = append(warnings, "spec.security.secrets.ordsPublicUser takes precedence over deprecated spec.ordsPassword")
+		}
+	}
+	return warnings
+}
+
+func validateOracleRestDataServiceRestEnableSchemas(obj *OracleRestDataService) error {
+	var allErrs field.ErrorList
+
+	for i, schema := range obj.Spec.RestEnableSchemas {
+		fldPath := field.NewPath("spec").Child("restEnableSchemas").Index(i)
+		if !IsValidOracleRestDataServiceSchemaName(schema.SchemaName) {
+			allErrs = append(allErrs, field.Invalid(
+				fldPath.Child("schemaName"),
+				schema.SchemaName,
+				fmt.Sprintf("must match %s", oracleRestDataServiceSchemaNamePattern),
+			))
+		}
+		if !IsValidOracleRestDataServicePDBName(schema.PdbName) {
+			allErrs = append(allErrs, field.Invalid(
+				fldPath.Child("pdbName"),
+				schema.PdbName,
+				fmt.Sprintf("must match %s when specified", oracleRestDataServicePDBNamePattern),
+			))
+		}
+		if !IsValidOracleRestDataServiceURLMapping(schema.UrlMapping) {
+			allErrs = append(allErrs, field.Invalid(
+				fldPath.Child("urlMapping"),
+				schema.UrlMapping,
+				fmt.Sprintf("must match %s when specified", oracleRestDataServiceURLMappingPattern),
+			))
+		}
+	}
+
+	if len(allErrs) == 0 {
+		return nil
+	}
+
+	return apierrors.NewInvalid(
+		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
+		obj.Name,
+		allErrs,
+	)
+}

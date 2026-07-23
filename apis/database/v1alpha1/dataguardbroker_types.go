@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:revive // v1alpha1 legacy API methods are preserved for backward compatibility.
 package v1alpha1
 
 import (
@@ -83,7 +84,7 @@ type DataguardBrokerStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".status.primaryDatabase",name="Primary",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.standbyDatabases",name="Standbys",type="string"
-// +kubebuilder:printcolumn:JSONPath=".spec.protectionMode",name="Protection Mode",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.protectionMode",name="Protection Mode",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.clusterConnectString",name="Cluster Connect Str",type="string",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.externalConnectString",name="Connect Str",type="string"
 // +kubebuilder:printcolumn:JSONPath=".spec.primaryDatabaseRef",name="Primary Database",type="string", priority=1

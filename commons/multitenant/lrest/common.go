@@ -44,7 +44,10 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"regexp"
 	"runtime"
@@ -57,16 +60,29 @@ import (
 func CommonDecryptWithPrivKey2(Key string, Buffer string, req ctrl.Request) (string, error) {
 
 	Trclvl := 0
-	block, _ := pem.Decode([]byte(Key))
+	block, restb := pem.Decode([]byte(Key))
+	if block == nil {
+		fmt.Printf("CommonDecryptWithPrivKey2 failure")
+		fmt.Printf("rest =%x", restb)
+		return "", errors.New("CommonDecryptWithPrivKey2 pem.Decode failure")
+	}
+
 	pkcs8PrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		fmt.Printf("Failed to parse private key %s \n", err.Error())
 		return "", err
 	}
+
 	if Trclvl == 1 {
 		fmt.Printf("======================================\n")
 		fmt.Printf("%s\n", Key)
 		fmt.Printf("======================================\n")
+	}
+
+	// chdx hint
+	_, ok := pkcs8PrivateKey.(*rsa.PrivateKey)
+	if !ok {
+		return "", fmt.Errorf("CommonDecryptWithPrivKey2 expected RSA private key, got %T", pkcs8PrivateKey)
 	}
 
 	encString64, err := base64.StdEncoding.DecodeString(string(Buffer))
@@ -76,6 +92,7 @@ func CommonDecryptWithPrivKey2(Key string, Buffer string, req ctrl.Request) (str
 	}
 
 	decryptedB, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, pkcs8PrivateKey.(*rsa.PrivateKey), encString64, nil)
+	//decryptedB, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, rsaPrivateKey, encString64, nil)
 	if err != nil {
 		fmt.Printf("Failed to decrypt string %s\n", err.Error())
 		return "", err
@@ -130,7 +147,8 @@ const (
 	OCICON = 0x00000020 /* Rdbms connection */
 	FNALAZ = 0x00000040 /* Finalizer configured */
 	PDBUPL = 0x00000080 /* Unplug pdb  */
-	PDBPLG = 0x00000100 /* plug pdb */
+	PDBPLG = 0x00000100 /* Plug pdb */
+	APPUSR = 0x00000200 /* Application user created */
 	/* Error section */
 	PDBCRE = 0x00001000 /* PDB creation error */
 	PDBOPE = 0x00002000 /* PDB open error */
@@ -142,8 +160,9 @@ const (
 	PDBPLE = 0x00080000 /* Plug Error */
 	PDBPLW = 0x00100000 /* Plug Warining */
 	PDBCNE = 0x00200000 /* Call Error */
+	APPERR = 0x00400000 /* Application user error */
 	/* Autodiscover */
-	PDBAUT = 0x01000000 /* Autodisover */
+	PDBAUT = 0x00800000 /* Autodisover */
 )
 
 // * CONFIG MAP STATUS * //
@@ -153,7 +172,8 @@ const (
 	MPEMPT = 0x00000004 /* The map is empty - not specify */
 	MPWARN = 0x00000008 /* Map applied with warnings */
 	MPINIT = 0x00000010 /* Config map init */
-	SPARE3 = 0x00000020
+	MPRMVD = 0x00000020 /* Config map removed */
+	SPARE3 = 0x00000040
 )
 
 // DEBUG OPTIONS //
@@ -175,7 +195,67 @@ const (
 	TRCWEB = 0x00004000 /* Enable Webhook msg in logplane */
 	TRCSTA = 0x00008000 /* Trclvl call getLRPDBState */
 	TRCTNS = 0x00010000 /* Parse tnsalias - call parseTnsAlias */
+	TRCUSR = 0x00020000 /* Trace User Creation */
 )
+
+// DiscardableError: we use this function in order to avoid
+// bitset PDBCRE PDBOPE PDBCLE
+func DiscardableError(oerr int) bool {
+	// ora error white list
+	// ORA-65019 pdb already open
+	// ORA-65020 pdb already closed
+	// ORA-1403  no data found
+
+	var oraWhiteList = map[int]struct{}{
+		65019: {},
+		65020: {},
+		65012: {},
+		1403:  {},
+	}
+
+	_, exists := oraWhiteList[oerr]
+	return exists
+}
+
+// ParseStrStatus: function used to implement reset status with tokes
+func ParseStrStatus(state string) int {
+
+	wordToNumber := map[string]int{
+		"PDBCRT": 0x00000001,
+		"PDBOPN": 0x00000002,
+		"PDBCLS": 0x00000004,
+		"PDBDIC": 0x00000008,
+		"OCIHDL": 0x00000010,
+		"OCICON": 0x00000020,
+		"FNALAZ": 0x00000040,
+		"PDBUPL": 0x00000080,
+		"PDBPLG": 0x00000100,
+		"APPUSR": 0x00000200,
+		"PDBCRE": 0x00001000,
+		"PDBOPE": 0x00002000,
+		"PDBCLE": 0x00004000,
+		"OCIHDE": 0x00008000,
+		"OCICOE": 0x00010000,
+		"FNALAE": 0x00020000,
+		"PDBUPE": 0x00040000,
+		"PDBPLE": 0x00080000,
+		"PDBPLW": 0x00100000,
+		"PDBCNE": 0x00200000,
+		"APPERR": 0x00400000,
+		"PDBAUT": 0x00800000,
+	}
+
+	tokens := strings.Split(strings.TrimSuffix(state, "|"), "|")
+	var retbt int
+	for _, tks := range tokens {
+		if num, ok := wordToNumber[tks]; ok {
+			/* "OR" operator */
+			retbt = ((retbt) | (num))
+		}
+	}
+
+	return retbt
+}
 
 func ParseTnsAlias2(tns *string, lrpdbsrv *string) {
 	fmt.Printf("Analyzing string [%s]\n", *tns)
@@ -249,6 +329,12 @@ func Bitmaskprint(bitmask int) string {
 	if Bit(bitmask, PDBPLG) {
 		BitRead = strings.Join([]string{BitRead, "PDBPLG|"}, "")
 	}
+	if Bit(bitmask, APPUSR) {
+		BitRead = strings.Join([]string{BitRead, "APPUSR|"}, "")
+	}
+	if Bit(bitmask, APPERR) {
+		BitRead = strings.Join([]string{BitRead, "APPERR|"}, "")
+	}
 
 	if Bit(bitmask, PDBCRE) {
 		BitRead = strings.Join([]string{BitRead, "PDBCRE|"}, "")
@@ -307,6 +393,9 @@ func CMBitmaskprint(bitmask int) string {
 	if Bit(bitmask, MPINIT) {
 		BitRead = strings.Join([]string{BitRead, "MPINIT|"}, "")
 	}
+	if Bit(bitmask, MPRMVD) {
+		BitRead = strings.Join([]string{BitRead, "MPRMVD|"}, "")
+	}
 	if Bit(bitmask, SPARE3) {
 		BitRead = strings.Join([]string{BitRead, "SPARE3|"}, "")
 	}
@@ -342,4 +431,63 @@ func Backtrace() {
 			break
 		}
 	}
+}
+
+func HashStr(hnm interface{}, Beg int, End int) string {
+	byteArray, err := json.Marshal(hnm)
+	if err != nil {
+		return ""
+	}
+
+	hash := sha256.New()
+	_, err = hash.Write(byteArray)
+	if err != nil {
+		return ""
+	}
+
+	hashBytes := hash.Sum(nil)
+	hashString := hex.EncodeToString(hashBytes[Beg:End])
+	return hashString
+
+}
+
+func GenHash(url string, Check string) string {
+
+	var hsh string
+	if Check == "PWD" {
+		hsh = HashStr(url, 17, 32)
+	}
+	if Check == "USR" {
+		hsh = HashStr(url, 0, 17)
+	}
+
+	return hsh
+}
+
+func GetBaseName(url string) string {
+
+	// IN     https://cdb-dev-lrest.cdbnamespace:8888/database/pdbs/"
+	// OUT    cdb-dev-lrest.cdbnamespace
+
+	start := strings.Index(url, ":")
+	if start == -1 {
+		return ""
+	}
+	start++
+
+	end := strings.Index(url[start:], ":")
+	if end == -1 {
+		return ""
+	}
+
+	return url[start+2 : start+end]
+
+}
+
+func Gnrn() []byte {
+	brn := make([]byte, 17)
+	if _, err := rand.Read(brn); err != nil {
+		return []byte("00000")
+	}
+	return []byte(hex.EncodeToString(brn))
 }

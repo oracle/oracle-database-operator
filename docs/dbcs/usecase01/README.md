@@ -74,8 +74,13 @@ spec:
 
 Execute the target make file create **make create** or apply directly the above yaml file **kubectl apply -f dbcs_service_with_minimal_parameters.yaml** to create DBCS . Verify the DBCS creation by executing **kubectl get DbcsSystem -n [MY_NAMESPACE]**
 
-```
+```bash
 kubectl get DbcsSystem -n [MY_NAMESPACE]
+```
+
+Example output:
+
+```text
 NAME                AGE
 dbcssystem-create   52m
 ```

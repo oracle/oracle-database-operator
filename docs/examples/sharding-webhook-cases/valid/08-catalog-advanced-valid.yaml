@@ -1,0 +1,37 @@
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: case-catalog-adv
+  namespace: default
+spec:
+  dbImage: container-registry.oracle.com/database/enterprise:21.3.0.0
+  gsmImage: container-registry.oracle.com/database/gsm:21.3.0.0
+  dbSecret:
+    name: db-secret
+    pwdFileName: dbpwd
+    encryptionType: base64
+  catalog:
+  - name: cat8
+    sharding: COMPOSITE
+    repl: NATIVE
+    autoVncr: ON
+    agentPort: 8090
+    validateNetwork: true
+    chunks: 24
+    repFactor: 3
+    repUnits: 2
+    configName: mysdbcfg
+  gsm:
+  - name: gsm1
+  shardingType: COMPOSITE
+  replicationType: NATIVE
+  shardSpace:
+  - name: ss1
+    chunks: 24
+    repFactor: 3
+    repUnits: 2
+    protectMode: MAXPERFORMANCE
+  shard:
+  - name: shd1
+    shardGroup: sg1
+    shardSpace: ss1

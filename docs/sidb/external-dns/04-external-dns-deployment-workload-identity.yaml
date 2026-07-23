@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: external-dns
+  namespace: external-dns
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: external-dns
+  template:
+    metadata:
+      labels:
+        app: external-dns
+    spec:
+      serviceAccountName: external-dns
+      containers:
+        - name: external-dns
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
+          args:
+            - --source=service
+            - --source=ingress
+            - --provider=oci
+            - --policy=upsert-only
+            - --txt-owner-id=sidb-cluster-a
+            - --oci-zone-scope=PRIVATE
+            - --domain-filter=internal.example.com
+            - --zone-id-filter=ocid1.dns-zone.oc1.iad.replace-me
+            - --publish-internal-services
+            - --oci-config-file=/etc/kubernetes/oci.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kubernetes
+              readOnly: true
+      volumes:
+        - name: config
+          secret:
+            secretName: external-dns-config

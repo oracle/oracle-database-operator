@@ -34,14 +34,19 @@ Use the file: [ssharding_shard_prov_delshard.yaml](./ssharding_shard_prov_delsha
     # Check the status of the Kubernetes Pods:
     kubectl get all -n shns
 
+# Switch to the primary GSM Container:
+kubectl exec -i -t gsm1-0 -n shns /bin/bash
+# Check the status of the chunks and repeat to observe the chunk movement:
+    ```
+
+    Example output:
+
+    ```text
 **NOTE:** After you apply `ssharding_shard_prov_delshard.yaml`, the change may not be visible immediately. First the chunks will be moved out of that shard that is going to be deleted and then the shard will be removed from the topology.
 
 To monitor the chunk movement, use the following command:
 
 ```sh
-# Switch to the primary GSM Container:
-kubectl exec -i -t gsm1-0 -n shns /bin/bash
 
-# Check the status of the chunks and repeat to observe the chunk movement:
 gdsctl config chunks
-```
+    ```

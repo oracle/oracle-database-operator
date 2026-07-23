@@ -65,8 +65,6 @@ type AutonomousDatabaseBackupReconciler struct {
 	Log        logr.Logger
 	Scheme     *runtime.Scheme
 	Recorder   record.EventRecorder
-
-	dbService oci.DatabaseService
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -82,11 +80,12 @@ func (r *AutonomousDatabaseBackupReconciler) SetupWithManager(mgr ctrl.Manager) 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabasebackups/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases,verbs=get;list
 
+// Reconcile reconciles AutonomousDatabaseBackup resources.
 func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	backup := &dbv4.AutonomousDatabaseBackup{}
-	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, backup); err != nil {
+	if err := r.KubeClient.Get(ctx, req.NamespacedName, backup); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
 		// No need to change the since we don't know if we obtain the object.
 		if apiErrors.IsNotFound(err) {
@@ -97,10 +96,10 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	/******************************************************************
-	* Look up the owner AutonomousDatabase and set the ownerReference
-	* if the owner hasn't been set yet.
-	******************************************************************/
-	adbOCID, err := r.verifyTargetAdb(backup)
+	 * Look up the owner AutonomousDatabase and set the ownerReference
+	 * if the owner hasn't been set yet.
+	 ******************************************************************/
+	adbOCID, err := r.verifyTargetAdb(ctx, backup)
 	if err != nil {
 		return r.manageError(backup, err)
 	}
@@ -108,7 +107,8 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	/******************************************************************
 	* Get OCI database client
 	******************************************************************/
-	if err := r.setupOCIClients(backup); err != nil {
+	dbService, err := r.setupOCIClients(ctx, backup)
+	if err != nil {
 		return r.manageError(backup, err)
 	}
 
@@ -118,12 +118,13 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	* Get status from OCI AutonomousDatabaseBackup
 	******************************************************************/
 	if backup.Spec.AutonomousDatabaseBackupOCID != nil {
-		backupResp, err := r.dbService.GetAutonomousDatabaseBackup(*backup.Spec.AutonomousDatabaseBackupOCID)
+		backupResp, err := dbService.GetAutonomousDatabaseBackup(ctx, *backup.Spec.AutonomousDatabaseBackupOCID)
 		if err != nil {
-			return r.manageError(backup, err)
+			// Remove the backup if the OCI call fails
+			return emptyResult, r.KubeClient.Delete(ctx, backup)
 		}
 
-		adbResp, err := r.dbService.GetAutonomousDatabase(*backupResp.AutonomousDatabaseId)
+		adbResp, err := dbService.GetAutonomousDatabase(ctx, *backupResp.AutonomousDatabaseId)
 		if err != nil {
 			return r.manageError(backup, err)
 		}
@@ -148,19 +149,19 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	if backup.Spec.AutonomousDatabaseBackupOCID == nil {
 		// Create a new backup
 		logger.Info("Sending CreateAutonomousDatabaseBackup request to OCI")
-		backupResp, err := r.dbService.CreateAutonomousDatabaseBackup(backup, adbOCID)
+		backupResp, err := dbService.CreateAutonomousDatabaseBackup(ctx, backup, adbOCID)
 		if err != nil {
 			return r.manageError(backup, err)
 		}
 
 		// After the creation, update the status first
-		adbResp, err := r.dbService.GetAutonomousDatabase(*backupResp.AutonomousDatabaseId)
+		adbResp, err := dbService.GetAutonomousDatabase(ctx, *backupResp.AutonomousDatabaseId)
 		if err != nil {
 			return r.manageError(backup, err)
 		}
 
 		backup.UpdateStatusFromOCIBackup(backupResp.AutonomousDatabaseBackup, adbResp.AutonomousDatabase)
-		if err := r.KubeClient.Status().Update(context.TODO(), backup); err != nil {
+		if err := r.KubeClient.Status().Update(ctx, backup); err != nil {
 			return r.manageError(backup, err)
 		}
 
@@ -168,7 +169,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 		backup.Spec.AutonomousDatabaseBackupOCID = backupResp.Id
 		backup.UpdateStatusFromOCIBackup(backupResp.AutonomousDatabaseBackup, adbResp.AutonomousDatabase)
 
-		if err := r.KubeClient.Update(context.TODO(), backup); err != nil {
+		if err := r.KubeClient.Update(ctx, backup); err != nil {
 			// Do no requeue otherwise it will create multiple backups
 			r.Recorder.Event(backup, corev1.EventTypeWarning, "ReconcileFailed", err.Error())
 			logger.Error(err, "cannot update AutonomousDatabaseBackupOCID; stop reconcile", "AutonomousDatabaseBackupOCID", *backupResp.Id)
@@ -181,9 +182,9 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	/******************************************************************
-	*	Update the status and requeue if it's in an intermediate state
-	******************************************************************/
-	if err := r.KubeClient.Status().Update(context.TODO(), backup); err != nil {
+	 *	Update the status and requeue if it's in an intermediate state
+	 ******************************************************************/
+	if err := r.KubeClient.Status().Update(ctx, backup); err != nil {
 		return r.manageError(backup, err)
 	}
 
@@ -198,11 +199,13 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 }
 
 // setOwnerAutonomousDatabase sets the owner of the AutonomousDatabaseBackup if the AutonomousDatabase resource with the same database OCID is found
-func (r *AutonomousDatabaseBackupReconciler) setOwnerAutonomousDatabase(backup *dbv4.AutonomousDatabaseBackup, adb *dbv4.AutonomousDatabase) error {
+func (r *AutonomousDatabaseBackupReconciler) setOwnerAutonomousDatabase(ctx context.Context, backup *dbv4.AutonomousDatabaseBackup, adb *dbv4.AutonomousDatabase) error {
 	logger := r.Log.WithName("set-owner-reference")
 
-	controllerutil.SetOwnerReference(adb, backup, r.Scheme)
-	if err := r.KubeClient.Update(context.TODO(), backup); err != nil {
+	if err := controllerutil.SetOwnerReference(adb, backup, r.Scheme); err != nil {
+		return err
+	}
+	if err := r.KubeClient.Update(ctx, backup); err != nil {
 		return err
 	}
 	logger.Info(fmt.Sprintf("Set the owner of AutonomousDatabaseBackup %s to AutonomousDatabase %s", backup.Name, adb.Name))
@@ -212,9 +215,9 @@ func (r *AutonomousDatabaseBackupReconciler) setOwnerAutonomousDatabase(backup *
 
 // verifyTargetAdb searches if the target AutonomousDatabase is in the cluster, and set the owner reference to that AutonomousDatabase if it exists.
 // The function returns the OCID of the target AutonomousDatabase.
-func (r *AutonomousDatabaseBackupReconciler) verifyTargetAdb(backup *dbv4.AutonomousDatabaseBackup) (string, error) {
+func (r *AutonomousDatabaseBackupReconciler) verifyTargetAdb(ctx context.Context, backup *dbv4.AutonomousDatabaseBackup) (string, error) {
 	// Get the target ADB OCID and the ADB resource
-	ownerAdb, err := adbfamily.VerifyTargetAdb(r.KubeClient, backup.Spec.Target, backup.Namespace)
+	ownerAdb, err := adbfamily.VerifyTargetAdb(ctx, r.KubeClient, backup.Spec.Target, backup.Namespace)
 
 	if err != nil {
 		return "", err
@@ -222,7 +225,7 @@ func (r *AutonomousDatabaseBackupReconciler) verifyTargetAdb(backup *dbv4.Autono
 
 	// Set the owner reference if needed
 	if len(backup.GetOwnerReferences()) == 0 && ownerAdb != nil {
-		if err := r.setOwnerAutonomousDatabase(backup, ownerAdb); err != nil {
+		if err := r.setOwnerAutonomousDatabase(ctx, backup, ownerAdb); err != nil {
 			return "", err
 		}
 	}
@@ -237,26 +240,25 @@ func (r *AutonomousDatabaseBackupReconciler) verifyTargetAdb(backup *dbv4.Autono
 	return "", errors.New("cannot get the OCID of the target AutonomousDatabase")
 }
 
-func (r *AutonomousDatabaseBackupReconciler) setupOCIClients(backup *dbv4.AutonomousDatabaseBackup) error {
-	var err error
+func (r *AutonomousDatabaseBackupReconciler) setupOCIClients(ctx context.Context, backup *dbv4.AutonomousDatabaseBackup) (oci.DatabaseService, error) {
 
-	authData := oci.ApiKeyAuth{
+	authData := oci.APIKeyAuth{
 		ConfigMapName: backup.Spec.OCIConfig.ConfigMapName,
 		SecretName:    backup.Spec.OCIConfig.SecretName,
 		Namespace:     backup.GetNamespace(),
 	}
 
-	provider, err := oci.GetOciProvider(r.KubeClient, authData)
+	provider, err := oci.GetOciProvider(ctx, r.KubeClient, authData)
 	if err != nil {
-		return err
+		return oci.DatabaseService{}, err
 	}
 
-	r.dbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
+	dbService, err := oci.NewDatabaseService(r.Log, r.KubeClient, provider)
 	if err != nil {
-		return err
+		return oci.DatabaseService{}, err
 	}
 
-	return nil
+	return dbService, nil
 }
 
 func (r *AutonomousDatabaseBackupReconciler) manageError(backup *dbv4.AutonomousDatabaseBackup, issue error) (ctrl.Result, error) {

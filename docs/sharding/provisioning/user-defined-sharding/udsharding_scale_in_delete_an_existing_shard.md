@@ -58,8 +58,13 @@ To check the status, use the following command:
   kubectl exec -i -t gsm1-0 -n shns /bin/bash
 
   # Check the status shards:
+  # Check the status of the chunks:
+  ```
+
+  Example output:
+
+  ```text
   gdsctl config shard
 
-  # Check the status of the chunks:
   gdsctl config chunks
   ```

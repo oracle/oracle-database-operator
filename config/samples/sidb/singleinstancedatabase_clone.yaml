@@ -13,34 +13,45 @@ spec:
   ## Use only alphanumeric characters for sid
   sid: ORCL2
   
-  ## The name of a source primary database resource to clone from the same namespace
-  ## Make sure the source database has been created by applying singeinstancedatabase_create.yaml
-  primaryDatabaseRef: sidb-sample
+  ## The source primary database for the clone operation.
+  ## Set exactly one of primarySource.databaseRef, primarySource.connectString, or primarySource.details.
+  primarySource:
+    databaseRef: sidb-sample
 
   ## Intended type of database.
   createAs: clone
 
-  ## Should refer to SourceDB secret
-  ## Secret containing SIDB password mapped to secretKey 
-  adminPassword:
-    secretName: db-admin-secret
+  ## Grouped security settings.
+  ## Should refer to the source database admin secret.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
 
   ## Database image details
   ## This image should be the same as the source DB image being cloned
   ## or a patched DB image built from the souce DB image following instructions at
   ## https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise:latest
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
     pullSecrets: oracle-container-registry-secret
+
+  ## Optional node selector to restrict the database pod to nodes having specific labels.
+  ## For a single exact node, kubernetes.io/hostname can be used.
+  # nodeSelector:
+  #   kubernetes.io/hostname: worker-node.example
 
   ## size is the required minimum size of the persistent volume
   ## storageClass is specified for automatic volume provisioning
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
-    size: 100Gi
-    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
-    storageClass: "oci-bv"
-    accessMode: "ReadWriteOnce"
+    oradata:
+      size: 100Gi
+      ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
 
   ## Count of Database Pods.
   replicas: 1

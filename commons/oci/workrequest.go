@@ -48,9 +48,10 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/workrequests"
 )
 
+// WorkRequestService provides read operations for OCI work requests.
 type WorkRequestService interface {
-	Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
-	List(compartmentID string, resourceID string) (workrequests.ListWorkRequestsResponse, error)
+	Get(ctx context.Context, opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
+	List(ctx context.Context, compartmentID string, resourceID string) (workrequests.ListWorkRequestsResponse, error)
 }
 
 type workRequestService struct {
@@ -58,9 +59,10 @@ type workRequestService struct {
 	workClient workrequests.WorkRequestClient
 }
 
+// NewWorkRequestService constructs an OCI work request service client wrapper.
 func NewWorkRequestService(
 	logger logr.Logger,
-	kubeClient client.Client,
+	_ client.Client,
 	provider common.ConfigurationProvider) (WorkRequestService, error) {
 
 	workClient, err := workrequests.NewWorkRequestClientWithConfigurationProvider(provider)
@@ -74,12 +76,12 @@ func NewWorkRequestService(
 	}, nil
 }
 
-func (w *workRequestService) Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error) {
+func (w *workRequestService) Get(ctx context.Context, opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error) {
 	workRequest := workrequests.GetWorkRequestRequest{
 		WorkRequestId: common.String(opcWorkRequestID),
 	}
 
-	resp, err := w.workClient.GetWorkRequest(context.TODO(), workRequest)
+	resp, err := w.workClient.GetWorkRequest(ctx, workRequest)
 	if err != nil {
 		return resp, err
 	}
@@ -87,13 +89,13 @@ func (w *workRequestService) Get(opcWorkRequestID string) (workrequests.GetWorkR
 	return resp, nil
 }
 
-func (w *workRequestService) List(compartmentID string, resourceID string) (workrequests.ListWorkRequestsResponse, error) {
+func (w *workRequestService) List(ctx context.Context, compartmentID string, resourceID string) (workrequests.ListWorkRequestsResponse, error) {
 	req := workrequests.ListWorkRequestsRequest{
 		CompartmentId: common.String(compartmentID),
 		ResourceId:    common.String(resourceID),
 	}
 
-	resp, err := w.workClient.ListWorkRequests(context.TODO(), req)
+	resp, err := w.workClient.ListWorkRequests(ctx, req)
 	if err != nil {
 		return resp, err
 	}

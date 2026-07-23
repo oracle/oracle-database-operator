@@ -28,7 +28,12 @@ Use the file: [scale_up_storage.yaml](./scale_up_storage.yaml) for this use case
 
 1. Deploy the `.yaml` file:  
 ```sh
-[root@test-server OBDS]# kubectl apply -f scale_storage.yaml
+kubectl apply -f scale_storage.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
@@ -36,8 +41,8 @@ dbcssystem.database.oracle.com/dbcssystem-existing configured
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

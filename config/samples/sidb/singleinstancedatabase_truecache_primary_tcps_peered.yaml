@@ -1,0 +1,129 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+# Primary SIDB for cross-cluster / peered True Cache:
+# - generates the True Cache blob ConfigMap
+# - exposes LoadBalancer TCP + TCPS for a remote True Cache cluster
+# Pair with singleinstancedatabase_truecache_external.yaml (connectString to this NLB).
+# For existing Healthy primaries, you can patch only trueCache.generateBlob /
+# createConfigMap / generatePath instead of recreating the database.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: default
+spec:
+  ## Use only alphanumeric characters for sid
+  sid: ORCLPRD
+
+  ## PDB name (also used in True Cache trueCacheServices mapping)
+  pdbName: APPPDB1
+
+  ## DB type and edition
+  createAs: primary
+  edition: enterprise
+
+  ## Grouped security settings
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        ## Required when generating the True Cache blob on the primary.
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      ## Certificate SANs must match the hostname remote clients / True Cache use.
+      tlsSecret: sidb-primary-tcps-tls
+
+  ## Enable ArchiveLog so the operator can generate the True Cache blob
+  archiveLog: true
+
+  ## Database image details
+  ## True Cache blob generation needs a compatible enterprise / True Cache image.
+  ## Replace <tenancy> / tag for your registry.
+  image:
+    pullFrom: phx.ocir.io/<tenancy>/db-repo/oracle/database:truecache-23.26.0-ee
+    prebuiltDB: false
+    imagePullPolicy: Always
+
+  ## Optional init parameters
+  initParams:
+    sgaTarget: 2048
+    pgaAggregateTarget: 1024
+    cpuCount: 2
+    processes: 600
+
+  ## Database pod resource details
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "2"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  ## Optional node selector to restrict the database pod to nodes having specific labels.
+  ## For a single exact node, kubernetes.io/hostname can be used.
+  # nodeSelector:
+  #   kubernetes.io/hostname: worker-node.example
+
+  ## Storage details
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+    setWritePermissions: true
+
+  ## Prepare the True Cache blob on the primary and publish it for consumers.
+  ## generateBlob: ensure the blob file exists in the primary pod.
+  ## createConfigMap: publish ConfigMap <metadata.name>-truecache-blob for consumers.
+  ## Prefer generateBlob + createConfigMap. Legacy generateEnabled: true enables both.
+  ## Requires edition=enterprise, archiveLog=true, and TDE password secret.
+  trueCache:
+    generateBlob: true
+    createConfigMap: true
+    # generateEnabled: true
+    generatePath: "/tmp/tc_config_blob.tar.gz"
+
+  ## Optional LoadBalancer endpoint managed by the operator.
+  ## Prefer services.endpoints (name=loadbalancer). Legacy services.external still works.
+  ## This renders a Service named <sidb-name>-lb, for example sidb-sample-lb.
+  ## Remote True Cache connectString should use the published hostname/IP and port.
+  services:
+    endpoints:
+      - name: loadbalancer
+        type: LoadBalancer
+        externalTrafficPolicy: Local
+        annotations:
+          oci.oraclecloud.com/load-balancer-type: "nlb"
+          ## Optional: pin a stable private IP for DNS / hostAliases stability.
+          oci-network-load-balancer.oraclecloud.com/assigned-private-ipv4: "10.0.2.7"
+          oci-network-load-balancer.oraclecloud.com/internal: "true"
+          ## Replace with your VCN subnet OCID.
+          oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.replace-me"
+          external-dns.alpha.kubernetes.io/hostname: "sidb-sample.internal.example.com"
+        tcp:
+          enabled: true
+          port: 1521
+        tcps:
+          enabled: true
+          port: 2484
+
+  ## Optional fallback when the remote True Cache hostname is not resolvable
+  ## through shared private DNS yet.
+  # hostAliases:
+  #   - ip: "10.2.1.30"
+  #     hostnames:
+  #       - "truecache-production.internal.example.com"
+  #       - "truecache-production"
+
+  ## Count of Database Pods.
+  replicas: 1

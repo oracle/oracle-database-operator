@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:revive // legacy OCI interface docs and naming are retained for compatibility.
 package oci
 
 import (
@@ -50,7 +51,8 @@ import (
 /********************************
  * Autonomous Container Database
  *******************************/
-func (d *DatabaseService) CreateAutonomousContainerDatabase(acd *dbv4.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error) {
+// CreateAutonomousContainerDatabase creates an autonomous container database in OCI.
+func (d *DatabaseService) CreateAutonomousContainerDatabase(ctx context.Context, acd *dbv4.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error) {
 	createAutonomousContainerDatabaseRequest := database.CreateAutonomousContainerDatabaseRequest{
 		CreateAutonomousContainerDatabaseDetails: database.CreateAutonomousContainerDatabaseDetails{
 			CompartmentId:              acd.Spec.CompartmentOCID,
@@ -60,18 +62,20 @@ func (d *DatabaseService) CreateAutonomousContainerDatabase(acd *dbv4.Autonomous
 		},
 	}
 
-	return d.dbClient.CreateAutonomousContainerDatabase(context.TODO(), createAutonomousContainerDatabaseRequest)
+	return d.dbClient.CreateAutonomousContainerDatabase(ctx, createAutonomousContainerDatabaseRequest)
 }
 
-func (d *DatabaseService) GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error) {
+// GetAutonomousContainerDatabase fetches an autonomous container database by OCID.
+func (d *DatabaseService) GetAutonomousContainerDatabase(ctx context.Context, acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error) {
 	getAutonomousContainerDatabaseRequest := database.GetAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
 	}
 
-	return d.dbClient.GetAutonomousContainerDatabase(context.TODO(), getAutonomousContainerDatabaseRequest)
+	return d.dbClient.GetAutonomousContainerDatabase(ctx, getAutonomousContainerDatabaseRequest)
 }
 
-func (d *DatabaseService) UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv4.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
+// UpdateAutonomousContainerDatabase updates an existing autonomous container database.
+func (d *DatabaseService) UpdateAutonomousContainerDatabase(ctx context.Context, acdOCID string, difACD *dbv4.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
 	updateAutonomousContainerDatabaseRequest := database.UpdateAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
 		UpdateAutonomousContainerDatabaseDetails: database.UpdateAutonomousContainerDatabaseDetails{
@@ -81,21 +85,23 @@ func (d *DatabaseService) UpdateAutonomousContainerDatabase(acdOCID string, difA
 		},
 	}
 
-	return d.dbClient.UpdateAutonomousContainerDatabase(context.TODO(), updateAutonomousContainerDatabaseRequest)
+	return d.dbClient.UpdateAutonomousContainerDatabase(ctx, updateAutonomousContainerDatabaseRequest)
 }
 
-func (d *DatabaseService) RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error) {
+// RestartAutonomousContainerDatabase restarts an autonomous container database.
+func (d *DatabaseService) RestartAutonomousContainerDatabase(ctx context.Context, acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error) {
 	restartRequest := database.RestartAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
 	}
 
-	return d.dbClient.RestartAutonomousContainerDatabase(context.TODO(), restartRequest)
+	return d.dbClient.RestartAutonomousContainerDatabase(ctx, restartRequest)
 }
 
-func (d *DatabaseService) TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error) {
+// TerminateAutonomousContainerDatabase terminates an autonomous container database.
+func (d *DatabaseService) TerminateAutonomousContainerDatabase(ctx context.Context, acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error) {
 	terminateRequest := database.TerminateAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
 	}
 
-	return d.dbClient.TerminateAutonomousContainerDatabase(context.TODO(), terminateRequest)
+	return d.dbClient.TerminateAutonomousContainerDatabase(ctx, terminateRequest)
 }

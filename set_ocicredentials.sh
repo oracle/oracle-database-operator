@@ -152,55 +152,51 @@ create_namespace() {
 }; create_namespace
 
 create_configmap() {
-  echo "Generating Kubernetes ConfigMap \"$CONFIGMAP_NAME\"$cat_str. Next, when you populate the .yaml file for the AutonomousDatabase, use this value for the ociConfig.configMapName attribute."
+  echo "Generating Kubernetes ConfigMap \"$CONFIGMAP_NAME\"${cat_str:-}. Next, when you populate the .yaml file for the AutonomousDatabase, use this value for the ociConfig.configMapName attribute."
   echo ""
 
-  # Generate command that creates a ConfigMap
-  cmd="kubectl create configmap $CONFIGMAP_NAME \
-  --from-literal=tenancy=$tenancy \
-  --from-literal=user=$user \
-  --from-literal=fingerprint=$fingerprint \
-  --from-literal=region=$region"
+  local args=(
+    create configmap "$CONFIGMAP_NAME"
+    --from-literal=tenancy="$tenancy"
+    --from-literal=user="$user"
+    --from-literal=fingerprint="$fingerprint"
+    --from-literal=region="$region"
+  )
 
-  # Concat the passphrase if exists
-  if [ ! -z $passphrase ]; then
-    cmd="$cmd \
-    --from-literal=passphrase=$passphrase"
+  if [[ -n "${passphrase:-}" ]]; then
+    args+=(--from-literal=passphrase="$passphrase")
   fi
 
-  # Concat the namespace if exists
-  if [ ! -z $NAMESPACE ]; then
-    cmd="$cmd \
-    -n $NAMESPACE"
-
+  if [[ -n "${NAMESPACE:-}" ]]; then
+    args+=(-n "$NAMESPACE")
     cat_str=" with namespace \"$NAMESPACE\""
   fi
 
-  eval $cmd
-
+  kubectl "${args[@]}"
   echo ""
 }; create_configmap
 
 create_secret() {
-  echo "Generating Kubernetes Secret \"$SECRET_NAME\"$cat_str. Next, when you populate the .yaml file for the AutonomousDatabase, use this value for the ociConfig.secretName attribute."
+  echo "Generating Kubernetes Secret \"$SECRET_NAME\"${cat_str:-}. Next, when you populate the .yaml file for the AutonomousDatabase, use this value for the ociConfig.secretName attribute."
   echo ""
 
   # Replace tilde(~) with $HOME in key_file path so that the script can recognize
   key_file="${key_file//\~/$HOME}"
 
+  local args=(
+    create secret generic "$SECRET_NAME"
+    --from-file="privatekey=$key_file"
+  )
+
   # Generate command that creates a Secret
   cmd="kubectl create secret generic $SECRET_NAME \
   --from-file=privatekey=$key_file"
 
-  # Concat the namespace if exists
-  if [ ! -z $NAMESPACE ]; then
-    cmd="$cmd \
-    -n $NAMESPACE"
-
+  if [[ -n "${NAMESPACE:-}" ]]; then
+    args+=(-n "$NAMESPACE")
     cat_str=" with namespace \"$NAMESPACE\""
   fi
 
-  eval $cmd
-
+  kubectl "${args[@]}"
   echo ""
 }; create_secret

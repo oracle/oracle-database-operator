@@ -1,0 +1,135 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+# True Cache against an external RAC primary (not managed as a SIDB).
+#
+# Prerequisites:
+# - Create the True Cache blob on the RAC primary with DBCA and load it into a
+#   ConfigMap in this namespace (docs/sidb/README.md — manual DBCA blob).
+# - For autoTCServiceRegistration=true, install the helper on every RAC node
+#   and complete docs/sidb/PREREQUISITES.md (externaljob.ora + smoke test).
+#
+# Structure matches validated lab manifests (for example
+# build/sidb/sidb-create-truecache-rac-issue.yaml). Hostnames, subnet OCIDs,
+# and image tags below are sanitized placeholders — replace before apply.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: tck8node1
+  namespace: default
+spec:
+  ## Use only alphanumeric characters for sid
+  sid: TCK8DB1
+
+  ## True Cache is supported only with enterprise edition.
+  edition: enterprise
+  createAs: truecache
+
+  primarySource:
+    ## Service connect string for SQL*Plus/DBCA source access (TCP 1521).
+    ## Use the RAC SCAN listener and a registered primary service.
+    connectString: "primrac-scan.mysubnet.examplevcn.oraclevcn.com:1521/PRIM_UNQNAME.mysubnet.examplevcn.oraclevcn.com"
+    ## Must be primary CDB DB_NAME (v$database.name), NOT the full SCAN service name.
+    ## Wrong value becomes PRIMARY_DB_NAME env and can break CREATE TRUE CACHE.
+    ## Lab validation set this explicitly for domain-qualified RAC services.
+    dbName: PRIMDB
+
+  trueCache:
+    ## Create this ConfigMap from the manual DBCA blob before apply.
+    blobConfigMapRef: orcl-primary-truecache-blob
+    blobConfigMapKey: tc_config_blob.tar.gz
+    blobMountPath: /stage/tc_config_blob.tar.gz
+    truedbUniqueName: "TCK8DB1_FRA"
+    ## PRIMARY_PDB_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME
+    ## The first token is the primary PDB name (validated by the runtime).
+    trueCacheServices:
+      - "PRIMDB_PDB1:tcokeprim.example.com:tcokenodes.example.com"
+    ## Automatic primary-side service registration via DBMS_SCHEDULER.
+    ## Keep the sample helper installed at the same path on every RAC node,
+    ## owned by oracle:oinstall and executable. Verify externaljob.ora runs
+    ## external jobs as the Oracle software owner (not nobody:nobody).
+    ## See docs/sidb/PREREQUISITES.md. Pod READY TO USE does not prove association.
+    autoTCServiceRegistration: true
+    ## Optional advanced: primary-side DBMS_SCHEDULER credential name.
+    ## Prefer externaljob.ora as oracle:oinstall unless you need a credential.
+    # primarySchedulerCredentialName: TC_ORACLE_OS_CRED
+
+  ## Optional environment overrides (for example custom helper path).
+  # envVars:
+  #   - name: PRIMARY_TC_SERVICE_SCRIPT_PATH
+  #     value: /home/oracle/configure-primary-truecache-service.sh
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+
+  image:
+    ## True Cache capable image required (lab used truecache-*-ee-patch tags).
+    ## Replace <tenancy> / tag for your registry.
+    pullFrom: phx.ocir.io/<tenancy>/db-repo/oracle/database:truecache-23.26.0-ee
+    prebuiltDB: false
+    imagePullPolicy: Always
+
+  ## Optional init parameters (tune for lab or production; match primary sizing carefully)
+  initParams:
+    sgaTarget: 16384
+    pgaAggregateTarget: 4096
+    processes: 1200
+
+  resources:
+    requests:
+      memory: "32Gi"
+      cpu: "2"
+    limits:
+      memory: "32Gi"
+      cpu: "2"
+
+  ## Optional node selector.
+  # nodeSelector:
+  #   role: truecache
+
+  persistence:
+    oradata:
+      ## Lab often used 60Gi; increase if redo-heavy creates fill the volume on retries.
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+    setWritePermissions: true
+
+  ## Prefer services.endpoints. Lab YAMLs also worked with legacy services.external
+  ## (same LoadBalancer shape without the list wrapper).
+  services:
+    endpoints:
+      - name: loadbalancer
+        type: LoadBalancer
+        ## Keep Service across delete/recreate so NLB / assigned IP can be reused.
+        isKeep: true
+        externalTrafficPolicy: Local
+        annotations:
+          oci.oraclecloud.com/load-balancer-type: "nlb"
+          oci-network-load-balancer.oraclecloud.com/internal: "true"
+          oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+          ## Optional: pin frontend IP across delete/recreate (lab used this).
+          # oci-network-load-balancer.oraclecloud.com/assigned-private-ipv4: "10.0.2.27"
+          ## Placeholder subnet OCID — replace with your VCN subnet OCID.
+          oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaxxxxxxxx6ljna"
+          external-dns.alpha.kubernetes.io/hostname: "tck8node1.internal.example.com"
+        tcp:
+          enabled: true
+          port: 1521
+        ## Uncomment for TCPS clients (and set security.tcps + connectString :2484).
+        # tcps:
+        #   enabled: true
+        #   port: 2484
+
+  ## Count of Database Pods. Should be 1 for True Cache.
+  replicas: 1

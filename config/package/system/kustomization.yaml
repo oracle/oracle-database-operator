@@ -1,0 +1,158 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: oracle-database-operator-system
+
+namePrefix: oracle-database-operator-
+
+resources:
+- ../../crd
+- ../../manager
+- ../../metrics
+- ../../webhook
+- ../../certmanager
+- ../../network-policy
+
+patches:
+- path: manager_service_account_patch.yaml
+- path: manager_webhook_patch.yaml
+- path: manager_metrics_patch.yaml
+- path: webhookcainjection_patch.yaml
+
+replacements:
+ - source:
+     kind: Certificate
+     group: cert-manager.io
+     version: v1
+     name: serving-cert
+     fieldPath: .metadata.namespace
+   targets:
+     - select:
+         kind: ValidatingWebhookConfiguration
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 0
+         create: true
+     - select:
+         kind: MutatingWebhookConfiguration
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 0
+         create: true
+     - select:
+         kind: CustomResourceDefinition
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 0
+         create: true
+ - source:
+     kind: Certificate
+     group: cert-manager.io
+     version: v1
+     name: serving-cert
+     fieldPath: .metadata.name
+   targets:
+     - select:
+         kind: ValidatingWebhookConfiguration
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 1
+         create: true
+     - select:
+         kind: MutatingWebhookConfiguration
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 1
+         create: true
+     - select:
+         kind: CustomResourceDefinition
+       fieldPaths:
+         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+       options:
+         delimiter: '/'
+         index: 1
+         create: true
+ - source:
+     kind: Service
+     version: v1
+     name: webhook-service
+     fieldPath: .metadata.name
+   targets:
+     - select:
+         kind: Certificate
+         group: cert-manager.io
+         version: v1
+       fieldPaths:
+         - .spec.dnsNames.0
+         - .spec.dnsNames.1
+       options:
+         delimiter: '.'
+         index: 0
+         create: true
+ - source:
+     kind: Service
+     version: v1
+     name: webhook-service
+     fieldPath: .metadata.namespace
+   targets:
+     - select:
+         kind: Certificate
+         group: cert-manager.io
+         version: v1
+       fieldPaths:
+         - .spec.dnsNames.0
+         - .spec.dnsNames.1
+       options:
+         delimiter: '.'
+         index: 1
+         create: true
+ - source:
+     kind: Service
+     version: v1
+     name: controller-manager-metrics-service
+     fieldPath: .metadata.name
+   targets:
+     - select:
+         kind: Certificate
+         group: cert-manager.io
+         version: v1
+         name: metrics-certs
+       fieldPaths:
+         - .spec.dnsNames.0
+         - .spec.dnsNames.1
+       options:
+         delimiter: '.'
+         index: 0
+         create: true
+ - source:
+     kind: Service
+     version: v1
+     name: controller-manager-metrics-service
+     fieldPath: .metadata.namespace
+   targets:
+     - select:
+         kind: Certificate
+         group: cert-manager.io
+         version: v1
+         name: metrics-certs
+       fieldPaths:
+         - .spec.dnsNames.0
+         - .spec.dnsNames.1
+       options:
+         delimiter: '.'
+         index: 1
+         create: true

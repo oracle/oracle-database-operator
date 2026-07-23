@@ -1,22 +1,24 @@
-# OrdsSrvs Controller: Containerised Single Instance Database using the OraOperator
+# OrdsSrvs Controller: Containerized Single Instance Database using the OraOperator
 
-This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database created by the **SIDB Controller** in the same Kubernetes Cluster.
+This example walks through using the **OrdsSrvs Controller** with a Containerized Oracle Database created by the **SIDB Controller** in the same Kubernetes Cluster.
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
-### Deploy a Containerised Oracle Database
+### Deploy a Containerized Oracle Database
 
 Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/oracle-database-operator/blob/main/docs/sidb/README.md) for details.
 
-1. Create a Secret for the Database password:
+1. Create a Secret for the database admin credential and the ORDS database user credential:
 
     ```bash
-    DB_PWD=<specify password here>
-    kubectl create secret generic sidb-db-auth --from-literal=oracle_pwd=${DB_PWD} --namespace ordsnamespace
+    kubectl create secret generic ordssrvs-auth \
+      --from-literal=dbAuth='<ords-db-credential>' \
+      --from-literal=adminAuth='<database-admin-credential>' \
+      --namespace ordsnamespace
     ```
-1. Create a manifest for the containerised Oracle Database.
+1. Create a manifest for the containerized Oracle Database.
 
-    The POC uses an Oracle Free Image, but other versions may be subsituted; review the OraOperator Documentation for details on the manifests.
+    The POC uses an Oracle Free Image, but other versions may be substituted; review the OraOperator documentation for details on the manifests.
 
     ```yaml
     apiVersion: database.oracle.com/v4
@@ -27,14 +29,13 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
     spec:
       edition: free
       adminPassword:
-        secretName: sidb-db-auth
+        secretName: ordssrvs-auth
+        secretKey: adminAuth
       image:
-        pullFrom: container-registry.oracle.com/database/free:23.7.0.0
+        pullFrom: container-registry.oracle.com/database/free:<database-version>
         prebuiltDB: true
       replicas: 1
     ```
-    <sup>latest container-registry.oracle.com/database/free version, **23.7.0.0-lite**, valid as of **2-May-2025**</sup>
-
 
 1. Watch the `singleinstancedatabases` resource until the database status is **Healthy**:
 
@@ -43,23 +44,9 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
     ```
     **NOTE**: If this is the first time pulling the free database image, it may take up to 15 minutes for the database to become available.
 
-### Create encryped secret 
+### Create OrdsSrvs Resource
 
-```bash
-openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
-openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=password=ca.key  -n ordsnamespace
-
-echo -n "Enter Database Password: " && read -s DBPWD
-echo -n "${DBPWD}" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
-kubectl create secret generic sidb-db-auth-enc --from-file=password=e_db-auth -n  ordsnamespace
-rm e_db-auth
-unset DBPWD
-```
-
-### Create RestDataServices Resource
-
-1. Retrieve the Connection String from the containerised SIDB.
+1. Retrieve the Connection String from the containerized SIDB.
 
     ```bash
     CONN_STRING=$(kubectl get singleinstancedatabase oraoper-sidb \
@@ -80,16 +67,20 @@ unset DBPWD
 
     ```bash
     echo "
-    apiVersion: database.oracle.com/v4
     kind: OrdsSrvs
+    kubectl apply -f ords-sidb.yaml
+    ```
+
+    Example output:
+
+    ```text
+    apiVersion: database.oracle.com/v4
     metadata:
       name: ords-sidb
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:25.1.0
+      image: container-registry.oracle.com/database/ords:<ords-version>
       forceRestart: true
-      encPrivKey:
-        secretName: prvkey
       globalSettings:
         database.api.enabled: true
       poolSettings:
@@ -101,23 +92,21 @@ unset DBPWD
           db.customURL: jdbc:oracle:thin:@//${CONN_STRING}
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName:  sidb-db-auth-enc
+            secretName:  ordssrvs-auth
+            passwordKey: dbAuth
           db.adminUser: SYS
           db.adminUser.secret:
-            secretName:  sidb-db-auth-enc
+            secretName:  ordssrvs-auth
+            passwordKey: adminAuth
     " > ords-sidb.yaml
-
-    kubectl apply -f ords-sidb.yaml
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
-
 1. Watch the ordssrvs resource until the status is **Healthy**:
     ```bash
     kubectl get ordssrvs ords-sidb -n ordsnamespace -w
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
-    is being installed for the first time by the Operator, it may remain in the **Preparing** 
+    is being installed for the first time by the Operator, it may remain in the **Preparing**
     status for an additional 5 minutes.
 
     You can watch the APEX/ORDS Installation progress by running:
@@ -125,7 +114,7 @@ unset DBPWD
     ```bash
     POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-sidb" -n ordsnamespace -o custom-columns=NAME:.metadata.name --no-headers)
 
-    kubectl logs ${POD_NAME} -c ords-sidb-init -n ordsnamespace -f
+    kubectl logs ${POD_NAME} -c ordssrvs-init -n ordsnamespace -f
     ```
 
 ### Test
@@ -145,4 +134,4 @@ This example has a single database pool, named `default`.  It is set to:
 * Automatically restart when the configuration changes: `forceRestart: true`
 * Automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
 * Use a basic connection string to connect to the database: `db.customURL: jdbc:oracle:thin:@//${CONN_STRING}`
-* The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
+* The `passwordKey` fields identify the credential keys used by `db.secret` and `db.adminUser.secret`

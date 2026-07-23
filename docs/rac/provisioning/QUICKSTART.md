@@ -21,7 +21,7 @@ These steps include::
 - Storage requirements
 - RBAC Rules for deployment of Oracle RAC Database
 - Oracle RAC Slim Image
-- Kubernetes Secrets
+- Kuberentes Secrets
 
 **Note:** The example in this QuickStart Guide deploys a two-node Oracle RAC Database with a NodePort Service.
 
@@ -32,7 +32,7 @@ Follow these steps to deploy a 2-node Oracle RAC Database using the Oracle RAC C
 - Copy the [racdb_prov_quickstart.yaml](./racdb_prov_quickstart.yaml) file from in your working directory. 
 - Stage the Oracle Grid Infrastructure and Oracle RDBMS Binaries in the location specified by the parameter `hostSwStageLocation` on your worker nodes. 
 - Ensure the parameter `racHostSwLocation` points to the software location on the worker nodes. The GI Home and RDBMS Home in the Oracle RAC Pods will be mounted using this lcoation on the corresponding worker nodes. 
-- Use the following prebuilt Oracle RAC Database Slim Image: `dbocir/oracle/database-rac:19.3.0-slim` 
+- Use the following prebuilt Oracle RAC Database Slim Image: `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim` 
 - Verify that the shared disks on the worker nodes for ASM are as follows: `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2` 
 - Deploy the 2-node Oracle RAC Database using file `racdb_prov_quickstart.yaml` file:
     ```sh
@@ -45,6 +45,11 @@ Follow these steps to deploy a 2-node Oracle RAC Database using the Oracle RAC C
     
     # Check the logs of a particular pod. For example, to check status of pod "racnode1-0":    
     kubectl exec -it pod/racnode1-0 -n rac -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===================================
     ORACLE RAC DATABASE IS READY TO USE
     ===================================
@@ -54,31 +59,35 @@ Follow these steps to deploy a 2-node Oracle RAC Database using the Oracle RAC C
 After deployment, obtain Oracle RAC Database details with these commands:
 ```bash
 - Check the status of the Oracle RAC Database Pods:
-$ kubectl get all -n rac -o wide
+kubectl get all -n rac -o wide
 
 - Get the details of the "racdatabases.database.oracle.com" object created:
-$ kubectl get racdatabases.database.oracle.com -n rac
+kubectl get racdatabases.database.oracle.com -n rac
 
 - Describe the "racdatabases.database.oracle.com" object for its details:
-$ kubectl describe racdatabases.database.oracle.com/racdbprov-sample -n rac
+kubectl describe racdatabases.database.oracle.com/racdbprov-sample -n rac
 
 - Switch to the RAC Database Nodes:
-$ kubectl exec -it pod/racnode1-0 -n rac /bin/bash
-$ kubectl exec -it pod/racnode2-0 -n rac /bin/bash
+kubectl exec -it pod/racnode1-0 -n rac /bin/bash
+kubectl exec -it pod/racnode2-0 -n rac /bin/bash
 
 - When you are logged inside the RAC Database Pod, switch to the "grid" user and run the following commands:
-[grid@racnode1-0 ~]$ /u01/app/19c/grid/bin/crsctl stat res -t
-[grid@racnode2-0 ~]$ /u01/app/19c/grid/bin/crsctl stat res -t
+srvctl status database -d PORCLCDB -v
+srvctl status database -d PORCLCDB -v
+srvctl config service -s soepdb -d PORCLCDB
+srvctl config service -s soepdb -d PORCLCDB
+```
 
-[grid@racnode1-0 ~]$ /u01/app/19c/grid/bin/srvctl config nodeapps
-[grid@racnode2-0 ~]$ /u01/app/19c/grid/bin/srvctl config nodeapps
+Example output:
+
+```text
+/u01/app/19c/grid/bin/crsctl stat res -t
+/u01/app/19c/grid/bin/crsctl stat res -t
+
+/u01/app/19c/grid/bin/srvctl config nodeapps
+/u01/app/19c/grid/bin/srvctl config nodeapps
 
 - Once inside the RAC Database Pod, switch to "oracle" user and run the commands as "oracle" user:
-[oracle@racnode1-0 ~]$ srvctl status database -d PORCLCDB -v
-[oracle@racnode2-0 ~]$ srvctl status database -d PORCLCDB -v
-
-[oracle@racnode1-0 ~]$ srvctl config service -s soepdb -d PORCLCDB
-[oracle@racnode2-0 ~]$ srvctl config service -s soepdb -d PORCLCDB
 ```
 
 ## Database Connection
@@ -89,7 +98,7 @@ After provisioning the Oracle RAC Database with the Oracle RAC Database Controll
 
 If you want to clean up the Oracle RAC Database after deploying it, run the following command: 
 ```bash
-kubectl delete -f racdb_prov_quickstart.yaml
+kubectl apply -f racdb_prov_quickstart.yaml
 ```
 
 This command will clean up the Oracle RAC Database deployed earlier with the Oracle RAC Controller.

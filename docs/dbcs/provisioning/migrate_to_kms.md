@@ -12,6 +12,11 @@ In order to create KMS Vaults to an existing OBDS system, the steps will be:
 As step 1, first bind the existing OBDS System to OBDS Controller following [documentation](./../provisioning/bind_to_existing_dbcs_system.md). After successful binding, it will show as below-
 ```bash
 kubectl get dbcssystems
+```
+
+Example output:
+
+```text
 NAME                  AGE
 dbcssystem-create   3m33s
 ```
@@ -32,7 +37,12 @@ Use the file: [dbcs_service_migrate_to_kms.yaml](./dbcs_service_migrate_to_kms.y
 
 1. Deploy the .yaml file:  
 ```sh
-[root@docker-test-server OBDS]# kubectl apply -f dbcs_service_migrate_to_kms.yaml
+kubectl apply -f dbcs_service_migrate_to_kms.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
@@ -40,8 +50,8 @@ dbcssystem.database.oracle.com/dbcssystem-existing configured
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

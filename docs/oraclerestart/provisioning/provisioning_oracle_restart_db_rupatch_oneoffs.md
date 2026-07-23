@@ -39,6 +39,11 @@ For example:
 * Deploy the `oraclerestart_prov_rupatch_oneoff_storageclass.yaml` file:
     ```sh
     kubectl apply -f oraclerestart_prov_rupatch_oneoff_storageclass.yaml
+    ```
+
+    Example output:
+
+    ```text
     oraclerestart.database.oracle.com/oraclerestart-sample created
     ```
 * Check the status of the deployment:
@@ -48,6 +53,11 @@ For example:
 
     # Check the logs of a particular pod. For example, to check status of pod "dbmc1-0":    
     kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===============================
     ORACLE DATABASE IS READY TO USE
     ===============================

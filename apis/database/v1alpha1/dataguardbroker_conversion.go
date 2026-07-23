@@ -1,3 +1,4 @@
+//nolint:revive // v1alpha1 conversion stubs are intentionally minimal for compatibility.
 package v1alpha1
 
 import (

@@ -7,15 +7,20 @@ In this example, we will scale out an existing deployment with `replicas=1` to `
 Use the file: [pai_sample_scale_out.yaml](./provisioning/pai_sample_scale_out.yaml) for this use case as below:
 
 1. Check the status of the deployment:
+
     ```sh
     # Check the status of the Kubernetes Pods:
     kubectl get all -n pai
     ```
+
 2. Deploy the `pai_sample_scale_out.yaml` file to scale out:
+
     ```sh
     kubectl apply -f pai_sample_scale_out.yaml
     ```
+
 3. Check the status of the deployment:
+
     ```sh
     # Check the status of the Kubernetes Pods:
     kubectl get all -n pai

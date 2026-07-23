@@ -88,7 +88,7 @@ APIVERSION:v4
 ##########################
 ### CERT_MANAGER       ###
 ##########################
-CERT_MANAGER:https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+CERT_MANAGER:https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 ##################################
 ### BITMASK LRPDB TRACE LEVEL  ###

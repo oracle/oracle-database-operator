@@ -1,28 +1,20 @@
 {
   "models": [
     {
-      "modelname": "<<Replace with model name>>",
-      "modelfile": "<<MODEL FILE URL. For e.g. Object Storage Pre-authenticated URL for the model file.>>",
-      "modelfunction": "EMBEDDING",
-      "cache_on_startup": true
+      "name": "<<Replace with llm model name>>",
+      "path": "<<Path of the llm model file>>",
+      "runtime": "vllm",
+      "capabilities": ["TEXT_GENERATION"]
     },
     {
-      "modelname": "<<Replace with model name>>",
-      "modelfile": "<<MODEL FILE URL. For e.g. Object Storage Pre-authenticated URL for the model file.>>",
-      "modelfunction": "EMBEDDING",
-      "cache_on_startup": true
+      "name": "<<Replace with the model name>>",
+      "path": "<<Model File>>",
+      "function": "embedding"
     },
     {
-      "modelname": "<<Replace with model name>>",
-      "modelfile": "<<MODEL FILE URL. For e.g. Object Storage Pre-authenticated URL for the model file.>>",
-      "modelfunction": "EMBEDDING",
-      "cache_on_startup": true
-    },
-    {
-      "modelname": "<<Replace with model name>>",
-      "modelfile": "<<MODEL FILE URL. For e.g. Object Storage Pre-authenticated URL for the model file.>>",
-      "modelfunction": "EMBEDDING",
-      "cache_on_startup": true
+      "name": "<<Replace with model name>>",
+      "path": "<<Model File>>",
+      "function": "embedding"
     }
   ]
 }

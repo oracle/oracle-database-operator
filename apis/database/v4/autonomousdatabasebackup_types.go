@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,var-naming
+// Legacy API type names are preserved for backward compatibility.
+
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 

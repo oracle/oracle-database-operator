@@ -2,13 +2,6 @@
 # Copyright (c) 2022, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    control-plane: controller-manager
-  name: system
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,14 +19,24 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: controller-manager
       containers:
       - command:
         - /manager
         args:
         - --enable-leader-election
-        image: controller:latest
+        image: controller:v2.2
         imagePullPolicy: Always
         name: manager
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
         resources:
           limits:
             cpu: 400m
@@ -42,6 +45,8 @@ spec:
             cpu: 400m
             memory: 400Mi
         env:
-          - name : WATCH_NAMESPACE
-            value : ""
+          - name: WATCH_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
       terminationGracePeriodSeconds: 10

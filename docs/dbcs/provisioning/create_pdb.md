@@ -12,6 +12,11 @@ In order to create PDBs to an existing DBCS system, the steps will be:
 As step 1, first bind the existing DBCS System to DBCS Controller following [documentation](./../provisioning/bind_to_existing_dbcs_system.md). After successful binding, it will show as below-
 ```bash
 kubectl get dbcssystems
+```
+
+Example output:
+
+```text
 NAME                  AGE
 dbcssystem-existing   3m33s
 ```
@@ -38,7 +43,12 @@ Use the file: [createpdb_in_existing_dbcs_system_list.yaml](./createpdb_in_exist
 
 1. Deploy the .yaml file:  
 ```sh
-[root@docker-test-server DBCS]# kubectl apply -f createpdb_in_existing_dbcs_system_list.yaml
+kubectl apply -f createpdb_in_existing_dbcs_system_list.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
@@ -46,8 +56,8 @@ dbcssystem.database.oracle.com/dbcssystem-existing configured
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

@@ -5,6 +5,7 @@
 * The Software Home Location for Grid Infrastructure and Database, the ASM Disks are provisioned as Persistent Volumes using custom storage class during the initial deployment. An updated YAML file is applied to `increase` the size of the Software Home Location.
 
 **NOTE:** The `decrease` in the size of Software Home Location for an existing Oracle Restart Database is _not_ allowed.
+**NOTE:** This procedure resizes only the software-home PVC controlled by `swLocStorageSizeInGb`. Existing ASM PVC size changes are a separate workflow, and after the new size is available inside the pod you must manually grow or rebalance ASM inside the pod.
 
 This example uses `oraclerestart_prov_storage_class_before_sw_home_resize.yaml` to initially provision an Oracle Restart Database using Oracle Restart Controller with:
 
@@ -42,6 +43,11 @@ For example:
 * Deploy the `oraclerestart_prov_storage_class_before_sw_home_resize.yaml` file:
     ```sh
     kubectl apply -f oraclerestart_prov_storage_class_before_sw_home_resize.yaml
+    ```
+
+    Example output:
+
+    ```text
     oraclerestart.database.oracle.com/oraclerestart-sample created
     ```
 * Check the status of the deployment:
@@ -51,6 +57,11 @@ For example:
 
     # Check the logs of a particular pod. For example, to check status of pod "dbmc1-0":    
     kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===============================
       ORACLE DATABASE IS READY TO USE
     ===============================
@@ -61,7 +72,12 @@ For example:
 *  To `increase` the size of the Software Home Location, you can use the updated file [oraclerestart_prov_storage_class_after_sw_home_resize.yaml](./oraclerestart_prov_storage_class_after_sw_home_resize.yaml). 
 *  Deploy the `oraclerestart_prov_storage_class_after_sw_home_resize.yaml` file:
     ```sh
-    $ kubectl apply -f oraclerestart_prov_storage_class_after_sw_home_resize.yaml
+    kubectl apply -f oraclerestart_prov_storage_class_after_sw_home_resize.yaml
+    ```
+
+    Example output:
+
+    ```text
     oraclerestart.database.oracle.com/oraclerestart-sample configured
     ```
    You will notice the Persistent Volume for the Software Location has been resized. You can check Details of updated Kubernetes CRD Object as shown in this [example](./orestart_storage_class_object_after_sw_home_resize.txt)

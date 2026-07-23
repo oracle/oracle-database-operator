@@ -10,21 +10,21 @@ metadata:
 spec:
   
   ## Database ref. This can be of kind SingleInstanceDatabase.
-  databaseRef: "singleinstancedatabase-sample"
-  
-  ## Secret containing databaseRef password mapped to secretKey. 
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true
-  adminPassword:
-    secretName: 
-    secretKey:
-    keepSecret: true
+  databaseRef: "sidb-sample"
 
-  ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey. secretKey defaults to oracle_pwd
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true
-  ordsPassword:
-    secretName: 
-    secretKey:
-    keepSecret: true
+  security:
+    secrets:
+      ## Secret containing databaseRef admin password mapped to secretKey.
+      databaseAdmin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      
+      ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
+      ordsPublicUser:
+        secretName: ords-secret
+        secretKey: oracle_pwd
+        keepSecret: true
 
   ## ORDS image details
   image:
@@ -53,6 +53,8 @@ spec:
   ## Set this to true to enable MongoDB API
   mongoDbApi: true
 
+  replicas: 1
+
   ## Deploy only on nodes having required labels. Format label_name: label_value
   ## The same lables are applied to the created PVC
   ## For instance if the pods need to be restricted to a particular AD
@@ -61,7 +63,7 @@ spec:
   #   topology.kubernetes.io/zone: PHX-AD-1
 
   ## Schemas to be ORDS Enabled in PDB of .spec.databaseRef (.spec.pdbName)
-  ## Schema will be created (if not exists) with password as .spec.ordsPassword
+  ## Schema will be created (if not exists) with password from .spec.ordsPassword.
   restEnableSchemas:
   - schemaName:
     enable: true

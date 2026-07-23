@@ -1,11 +1,23 @@
 
 <span style="font-family:Liberation mono; font-size:0.8em; line-height: 1.2em">
 
-## TROUBLESHOOTING 
+## TROUBLESHOOTING
 
-### Init container error 
+### OrdsSrvs container names
 
-Check the pod status and verify the init outcome 
+OrdsSrvs pods use stable container names:
+
+| Container | Name |
+| --- | --- |
+| Init container | `ordssrvs-init` |
+| Main ORDS container | `ordssrvs-main` |
+| HTTP access log forwarder sidecar | `ordssrvs-access-log-forwarder` |
+
+Use these names with `kubectl logs`, `kubectl exec`, and `kubectl cp`.
+
+### Init container error
+
+Check the pod status and verify the init outcome
 
 ----
 *Command:*
@@ -16,10 +28,15 @@ kubectl get pods -n <namespace>
 *Example:*
 ```bash
 kubectl get pods -n ordsnamespace
+```
+
+Example output:
+
+```text
 NAME                               READY   STATUS                  RESTARTS      AGE
 ords-multi-pool-55db776994-7rrff   0/1     Init:CrashLoopBackOff   6 (61s ago)   12m
 ```
-In case of error identify the *initContainer* name 
+In case of error identify the *initContainer* name
 
 ----
 *Command:*
@@ -27,10 +44,10 @@ In case of error identify the *initContainer* name
 kubectl get pod -n <namespace> -o="custom-columns=NAME:.metadata.name,INIT-CONTAINERS:.spec.initContainers[*].name,CONTAINERS:.spec.containers[*].name"
 ```
 
-Use the initContainers info to dump log information 
+Use the initContainers info to dump log information
 **Command:**
-```bash 
-kubectl logs -f --since=0 <podname> -n <namespace> -c <podinit>
+```bash
+kubectl logs -f --since=0 <podname> -n <namespace> -c ordssrvs-init
 ```
 
 *Example:*
@@ -38,7 +55,7 @@ kubectl logs -f --since=0 <podname> -n <namespace> -c <podinit>
 In this particular case we are providing wrong credential: "SYT" user does not exist
 
 ```text
-kubectl logs -f --since=0 ords-multi-pool-55db776994-m7782 -n ordsnamespace -c ords-multi-pool-init
+kubectl logs -f --since=0 ords-multi-pool-55db776994-m7782 -n ordsnamespace -c ordssrvs-init
 
 [..omissis...]
 Running SQL...
@@ -75,7 +92,7 @@ do
 done
 ```
 
-## Ords init error 
+## Ords init error
 
 Get pod name
 
@@ -85,8 +102,13 @@ kubectl get pods -n <namespace>
 ```
 
 *Example:*
-```
+```bash
 kubectl get pods -n ordsnamespace
+```
+
+Example output:
+
+```text
 NAME                               READY   STATUS    RESTARTS   AGE
 ords-multi-pool-55db776994-m7782   1/1     Running   0          2m51s
 ```
@@ -124,6 +146,4 @@ Oracle REST Data Services java info: Java HotSpot(TM) 64-Bit Server VM 11.0.15+8
 alter user ORDS_PUBLIC_USER account unlock;
 ```
 
-
 <span/>
-

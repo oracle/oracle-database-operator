@@ -36,6 +36,11 @@ To become familiar with Oracle Restart in containerized environments, review the
 
 [Prerequisites for running Oracle Restart Controller](./provisioning/prerequisites_oracle_restart_db.md)
 
+The prerequisites include creating Kubernetes secrets before provisioning. Refer to the dedicated pages for each secret type:
+- [Create Kubernetes Secret for DB User](./provisioning/create_kubernetes_secret_for_db_user.md) — for `spec.dbSecret`
+- [Create Kubernetes Secret for TDE Wallet](./provisioning/create_kubernetes_secret_for_tde_wallet.md) — for `spec.tdeWalletSecret` (only when configuring TDE)
+- [Create Kubernetes Secret for SSH Setup](./provisioning/create_kubernetes_secret_for_ssh_setup.md) — for `spec.sshKeySecret`
+
 ## Provisioning Oracle Restart database in an Oracle Kubernetes Engine Environment
 
 Deploy Oracle Restart Database YAML files using Kubernetes Cluster on your Oracle Kubernetes Engine Environment (OKE). There are multiple use case possible for deploying the Oracle Restart Database.
@@ -58,7 +63,7 @@ Deploy Oracle Restart Database YAML files using Kubernetes Cluster on your Oracl
 [16. Provisioning an Oracle Restart Database with Huge Page allocation ](./provisioning/provisioning_oracle_restart_hugepages.md) 
 
 
-**NOTE:** Resizing of the `ASM Disks` is _not_ allowed. You can add new ASM Disks to an exising Oracle Restart Database.  
+**NOTE:** Increasing the size of an existing storage-class-backed ASM PVC is different from adding new ASM disks. After the larger size is available inside the pod, you must manually grow or rebalance ASM inside the pod to use the additional capacity. Software-home PVC resize remains a separate workflow.  
 
 ## Connecting to Oracle Restart Database
 

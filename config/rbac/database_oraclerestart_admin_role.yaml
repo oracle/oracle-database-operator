@@ -18,7 +18,13 @@ rules:
   resources:
   - oraclerestarts
   verbs:
-  - '*'
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - database.oracle.com
   resources:

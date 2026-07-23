@@ -39,11 +39,13 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
+	"encoding/xml"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
-	"time"
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	corev1 "k8s.io/api/core/v1"
@@ -65,18 +67,20 @@ func readScript(ctx context.Context, filePath string) string {
 	return string(scriptData)
 }
 
-func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, configMapName string, poolIndex int) *corev1.ConfigMap {
+// ConfigMapDefine defines a ConfigMap for OrdsSrvs.
+func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, rState *OrdsSrvsReconcileState, configMapName string, poolIndex int) (*corev1.ConfigMap, error) {
 
 	//log := ctrllog.FromContext(ctx).WithName("ConfigMapDefine")
 
 	var defData map[string]string
 	switch configMapName {
-	case r.ordssrvsScriptsConfigMapName:
+	case rState.ordssrvsScriptsConfigMapName:
 		defData = make(map[string]string)
+		defData["access_log_forwarder.sh"] = readScript(ctx, "/ordssrvs/access_log_forwarder.sh")
 		defData["ords_init.sh"] = readScript(ctx, "/ordssrvs/ords_init.sh")
 		defData["ords_start.sh"] = readScript(ctx, "/ordssrvs/ords_start.sh")
 		defData["RSADecryptOAEP.java"] = readScript(ctx, "/ordssrvs/RSADecryptOAEP.java")
-	case r.ordssrvsGlobalSettingsConfigMapName:
+	case rState.ordssrvsGlobalSettingsConfigMapName:
 		// GlobalConfigMap
 		var defStandaloneAccessLog string
 		if ordssrvs.Spec.GlobalSettings.EnableStandaloneAccessLog {
@@ -86,16 +90,38 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 		if ordssrvs.Spec.GlobalSettings.EnableMongoAccessLog {
 			defMongoAccessLog = `  <entry key="mongo.access.log">` + ordsSABase + `/log/global</entry>` + "\n"
 		}
-		var defCert string
-		if ordssrvs.Spec.GlobalSettings.CertSecret != nil {
-			defCert = `  <entry key="standalone.https.cert">` + ordsSABase + `/config/certficate/` + ordssrvs.Spec.GlobalSettings.CertSecret.Certificate + `</entry>` + "\n" +
-				`  <entry key="standalone.https.cert.key">` + ordsSABase + `/config/certficate/` + ordssrvs.Spec.GlobalSettings.CertSecret.CertificateKey + `</entry>` + "\n"
+		var defCertEntry string
+		if rState.httpsEnabled && ordssrvs.Spec.GlobalSettings.CertSecret != nil {
+			defCert := escapeXMLText(ordsSABase + `/config/certficate/` + ordssrvs.Spec.GlobalSettings.CertSecret.Certificate)
+			defCertEntry = `  <entry key="standalone.https.cert">` + defCert + `</entry>` + "\n"
+			defCertKey := escapeXMLText(ordsSABase + `/config/certficate/` + ordssrvs.Spec.GlobalSettings.CertSecret.CertificateKey)
+			defCertEntry = defCertEntry + `  <entry key="standalone.https.cert.key">` + defCertKey + `</entry>` + "\n"
 		}
+
+		// Graphq deprecation
+		featureGraphqlMaxNestingDepth := ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth
+		deprecatedFeatureGraphqlMaxNestingDepth := readDeprecatedInt32(&ordssrvs.Spec.GlobalSettings, "FeatureGrahpQLMaxNestingDepth")
+		if deprecatedFeatureGraphqlMaxNestingDepth != nil {
+			rState.specInfo.Info("feature.grahpql.max.nesting.depth is DEPRECATED, use feature.graphql.max.nesting.depth")
+			if ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth == nil {
+				featureGraphqlMaxNestingDepth = deprecatedFeatureGraphqlMaxNestingDepth
+			}
+		}
+		var defStandaloneHTTPSPort string
+		if rState.httpsEnabled {
+			defStandaloneHTTPSPort = conditionalEntry("standalone.https.port", ordssrvs.Spec.GlobalSettings.StandaloneHTTPSPort)
+		}
+		var defStandaloneHTTPSHost string
+		if rState.httpsEnabled {
+			defStandaloneHTTPSHost = conditionalEntry("standalone.https.host", ordssrvs.Spec.GlobalSettings.StandaloneHTTPSHost)
+		}
+
 		defData = map[string]string{
 			"settings.xml": fmt.Sprint(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
 				`<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">` + "\n" +
 				`<properties>` + "\n" +
 				conditionalEntry("cache.metadata.graphql.expireAfterAccess", ordssrvs.Spec.GlobalSettings.CacheMetadataGraphQLExpireAfterAccess) +
+				conditionalEntry("cache.metadata.graphql.expireAfterWrite", ordssrvs.Spec.GlobalSettings.CacheMetadataGraphQLExpireAfterWrite) +
 				conditionalEntry("cache.metadata.jwks.enabled", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSEnabled) +
 				conditionalEntry("cache.metadata.jwks.initialCapacity", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSInitialCapacity) +
 				conditionalEntry("cache.metadata.jwks.maximumSize", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSMaximumSize) +
@@ -103,15 +129,16 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("cache.metadata.jwks.expireAfterWrite", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSExpireAfterWrite) +
 				conditionalEntry("database.api.management.services.disabled", ordssrvs.Spec.GlobalSettings.DatabaseAPIManagementServicesDisabled) +
 				conditionalEntry("db.invalidPoolTimeout", ordssrvs.Spec.GlobalSettings.DBInvalidPoolTimeout) +
-				conditionalEntry("feature.graphql.max.nesting.depth", ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth) +
+				conditionalEntry("feature.graphql.max.nesting.depth", featureGraphqlMaxNestingDepth) +
 				conditionalEntry("request.traceHeaderName", ordssrvs.Spec.GlobalSettings.RequestTraceHeaderName) +
 				conditionalEntry("security.credentials.attempts", ordssrvs.Spec.GlobalSettings.SecurityCredentialsAttempts) +
 				conditionalEntry("security.credentials.lock.time", ordssrvs.Spec.GlobalSettings.SecurityCredentialsLockTime) +
 				conditionalEntry("standalone.context.path", ordssrvs.Spec.GlobalSettings.StandaloneContextPath) +
 				conditionalEntry("standalone.http.port", ordssrvs.Spec.GlobalSettings.StandaloneHTTPPort) +
-				conditionalEntry("standalone.https.host", ordssrvs.Spec.GlobalSettings.StandaloneHTTPSHost) +
-				conditionalEntry("standalone.https.port", ordssrvs.Spec.GlobalSettings.StandaloneHTTPSPort) +
+				defStandaloneHTTPSHost +
+				defStandaloneHTTPSPort +
 				conditionalEntry("standalone.stop.timeout", ordssrvs.Spec.GlobalSettings.StandaloneStopTimeout) +
+				conditionalEntry("standalone.access.log.retainDays", ordssrvs.Spec.GlobalSettings.StandaloneAccessLogRetainDays) +
 				conditionalEntry("cache.metadata.timeout", ordssrvs.Spec.GlobalSettings.CacheMetadataTimeout) +
 				conditionalEntry("cache.metadata.enabled", ordssrvs.Spec.GlobalSettings.CacheMetadataEnabled) +
 				conditionalEntry("database.api.enabled", ordssrvs.Spec.GlobalSettings.DatabaseAPIEnabled) +
@@ -133,12 +160,12 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("security.verifySSL", ordssrvs.Spec.GlobalSettings.SecurityVerifySSL) +
 				conditionalEntry("security.httpsHeaderCheck", ordssrvs.Spec.GlobalSettings.SecurityHTTPSHeaderCheck) +
 				conditionalEntry("security.forceHTTPS", ordssrvs.Spec.GlobalSettings.SecurityForceHTTPS) +
-				conditionalEntry("externalSessionTrustedOrigins", ordssrvs.Spec.GlobalSettings.SecuirtyExternalSessionTrustedOrigins) +
+				conditionalEntry("externalSessionTrustedOrigins", ordssrvs.Spec.GlobalSettings.SecurityExternalSessionTrustedOrigins) +
 				`  <entry key="standalone.doc.root">` + ordsSABase + `/config/global/doc_root/</entry>` + "\n" +
 				// Dynamic
 				defStandaloneAccessLog +
 				defMongoAccessLog +
-				defCert +
+				defCertEntry +
 				// Disabled (but not forgotten)
 				// conditionalEntry("standalone.binds", ords.Spec.GlobalSettings.StandaloneBinds) +
 				// conditionalEntry("error.externalPath", ords.Spec.GlobalSettings.ErrorExternalPath) +
@@ -158,22 +185,22 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 		// PoolConfigMap
 		poolName := strings.ToLower(ordssrvs.Spec.PoolSettings[poolIndex].PoolName)
 
-		// tnsadmin 
-		tnsadminEntry:=conditionalEntry("db.tnsDirectory", ordsSABase + "/config/databases/" + poolName + "/network/admin/");
-		
+		// tnsadmin
+		tnsadminEntry := conditionalEntry("db.tnsDirectory", ordsSABase+"/config/databases/"+poolName+"/network/admin/")
+
 		// Pool Zip Wallet
 		var zipWalletPathEntry string
 		if ordssrvs.Spec.PoolSettings[poolIndex].DBWalletSecret != nil {
-			tnsadminEntry="";
-			zipWalletPathEntry = conditionalEntry("db.wallet.zip.path", ordsSABase + "/config/databases/" + poolName + "/network/admin/" + ordssrvs.Spec.PoolSettings[poolIndex].DBWalletSecret.WalletName );
-		} 
+			tnsadminEntry = ""
+			zipWalletPathEntry = conditionalEntry("db.wallet.zip.path", ordsSABase+"/config/databases/"+poolName+"/network/admin/"+ordssrvs.Spec.PoolSettings[poolIndex].DBWalletSecret.WalletName)
+		}
 
 		// Shared Zip Wallets
 		// using shared zip wallet in fixed path /opt/oracle/sa/zipwallets
-		sharedZipWalletEntry:=""
+		sharedZipWalletEntry := ""
 		if ordssrvs.Spec.GlobalSettings.ZipWalletsSecretName != "" && ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletName != "" {
-		  tnsadminEntry="";
-		  sharedZipWalletEntry=conditionalEntry("db.wallet.zip.path", "/opt/oracle/sa/zipwallets/"+ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletName);
+			tnsadminEntry = ""
+			sharedZipWalletEntry = conditionalEntry("db.wallet.zip.path", "/opt/oracle/sa/zipwallets/"+ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletName)
 		}
 
 		defData = map[string]string{
@@ -191,10 +218,10 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("debug.trackResources", ordssrvs.Spec.PoolSettings[poolIndex].DebugTrackResources) +
 				conditionalEntry("feature.openservicebroker.exclude", ordssrvs.Spec.PoolSettings[poolIndex].FeatureOpenservicebrokerExclude) +
 				conditionalEntry("feature.sdw", ordssrvs.Spec.PoolSettings[poolIndex].FeatureSDW) +
-				conditionalEntry("http.cookie.filter", ordssrvs.Spec.PoolSettings[poolIndex].HttpCookieFilter) +
+				conditionalEntry("http.cookie.filter", ordssrvs.Spec.PoolSettings[poolIndex].HTTPCookieFilter) +
 				conditionalEntry("jdbc.auth.admin.role", ordssrvs.Spec.PoolSettings[poolIndex].JDBCAuthAdminRole) +
 				conditionalEntry("jdbc.cleanup.mode", ordssrvs.Spec.PoolSettings[poolIndex].JDBCCleanupMode) +
-				conditionalEntry("owa.trace.sql", ordssrvs.Spec.PoolSettings[poolIndex].OwaTraceSql) +
+				conditionalEntry("owa.trace.sql", ordssrvs.Spec.PoolSettings[poolIndex].OwaTraceSQL) +
 				conditionalEntry("plsql.gateway.mode", ordssrvs.Spec.PoolSettings[poolIndex].PlsqlGatewayMode) +
 				conditionalEntry("security.jwt.profile.enabled", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileEnabled) +
 				conditionalEntry("security.jwks.size", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSSize) +
@@ -227,13 +254,14 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("procedure.preProcess", ordssrvs.Spec.PoolSettings[poolIndex].ProcedurePreProcess) +
 				conditionalEntry("procedure.rest.preHook", ordssrvs.Spec.PoolSettings[poolIndex].ProcedureRestPreHook) +
 				conditionalEntry("security.requestAuthenticationFunction", ordssrvs.Spec.PoolSettings[poolIndex].SecurityRequestAuthenticationFunction) +
+				conditionalEntry("security.validationFunctionType", ordssrvs.Spec.PoolSettings[poolIndex].SecurityValidationFunctionType) +
 				conditionalEntry("security.requestValidationFunction", ordssrvs.Spec.PoolSettings[poolIndex].SecurityRequestValidationFunction) +
 				conditionalEntry("soda.defaultLimit", ordssrvs.Spec.PoolSettings[poolIndex].SODADefaultLimit) +
 				conditionalEntry("soda.maxLimit", ordssrvs.Spec.PoolSettings[poolIndex].SODAMaxLimit) +
-				conditionalEntry("restEnabledSql.active", ordssrvs.Spec.PoolSettings[poolIndex].RestEnabledSqlActive) +
+				conditionalEntry("restEnabledSql.active", ordssrvs.Spec.PoolSettings[poolIndex].RestEnabledSQLActive) +
 				conditionalEntry("db.wallet.zip.service", ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletService) +
 				tnsadminEntry +
-				zipWalletPathEntry + 
+				zipWalletPathEntry +
 				sharedZipWalletEntry +
 				// Disabled (but not forgotten)
 				// conditionalEntry("autoupgrade.api.aulocation", ords.Spec.PoolSettings[poolIndex].AutoupgradeAPIAulocation) +
@@ -245,7 +273,10 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 		}
 	}
 
-	objectMeta := objectMetaDefine(ordssrvs, configMapName)
+	// ConfigMap do not have specific additionalLabels/additionalAnnotations
+	labels := getSystemCommonLabels(ordssrvs, rState)
+	annotations := getSystemCommonAnnotations(ordssrvs, rState)
+	objectMeta := objectMetaDefine(ordssrvs, configMapName, labels, annotations)
 	def := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
@@ -255,35 +286,55 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 		Data:       defData,
 	}
 
-	// Set the ownerRef
 	if err := ctrl.SetControllerReference(ordssrvs, def, r.Scheme); err != nil {
-		return nil
+		return nil, fmt.Errorf("set owner reference for configmap %s/%s: %w", ordssrvs.Namespace, def.Name, err)
 	}
-	return def
+	return def, nil
+
+}
+
+func escapeXMLText(s string) string {
+	var buf bytes.Buffer
+	if err := xml.EscapeText(&buf, []byte(s)); err != nil {
+		return s
+	}
+	return buf.String()
 }
 
 func conditionalEntry(key string, value interface{}) string {
-	switch v := value.(type) {
-	case nil:
+	if value == nil {
 		return ""
-	case string:
-		if v != "" {
-			return fmt.Sprintf(`  <entry key="%s">%s</entry>`+"\n", key, v)
-		}
-	case *int32:
-		if v != nil {
-			return fmt.Sprintf(`  <entry key="%s">%d</entry>`+"\n", key, *v)
-		}
-	case *bool:
-		if v != nil {
-			return fmt.Sprintf(`  <entry key="%s">%v</entry>`+"\n", key, *v)
-		}
-	case *time.Duration:
-		if v != nil {
-			return fmt.Sprintf(`  <entry key="%s">%v</entry>`+"\n", key, *v)
-		}
-	default:
-		return fmt.Sprintf(`  <entry key="%s">%v</entry>`+"\n", key, v)
 	}
-	return ""
+
+	rv := reflect.ValueOf(value)
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return ""
+		}
+		value = rv.Elem().Interface()
+	}
+
+	content := fmt.Sprintf("%v", value)
+	if s, ok := value.(string); ok {
+		if s == "" {
+			return ""
+		}
+		content = s
+	}
+
+	return fmt.Sprintf(`  <entry key="%s">%s</entry>`+"\n", key, escapeXMLText(content))
+}
+
+func readDeprecatedInt32(globalSettings *dbapi.GlobalSettings, fieldName string) *int32 {
+	if globalSettings == nil {
+		return nil
+	}
+
+	field := reflect.ValueOf(globalSettings).Elem().FieldByName(fieldName)
+	if !field.IsValid() || field.IsNil() {
+		return nil
+	}
+
+	depth, _ := field.Interface().(*int32)
+	return depth
 }

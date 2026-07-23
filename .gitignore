@@ -5,10 +5,14 @@ bin/*
 testbin/*
 onpremtest/*
 ords/*zip
+dist/
 .gitattributes
 .vscode
-.gitlab-ci.yml
 .DS_Store
 # development
 .idea
 .local
+.codex
+.aider*
+.ocaider.tags.cache.v4/
+docs/trafficmanager/oca/

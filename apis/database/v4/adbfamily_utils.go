@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,var-declaration
+// Legacy helper names are preserved for compatibility with existing call sites.
+
 import (
 	"errors"
 	"reflect"
@@ -79,7 +82,7 @@ func RemoveUnchangedFields(lastSpec interface{}, curSpec interface{}) (bool, err
 // lastSpec should be a derefereced struct that is the last successful spec, e.g. AutonomousDatabaseSpec.
 // curSpec should be a pointer pointing to the struct that is being proccessed, e.g., *AutonomousDatabaseSpec.
 func traverse(lastSpec interface{}, curSpec interface{}) bool {
-	var changed bool = false
+	changed := false
 
 	fields := reflect.VisibleFields(reflect.TypeOf(lastSpec))
 

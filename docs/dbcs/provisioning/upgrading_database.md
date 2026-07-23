@@ -9,6 +9,11 @@ To upgrade OBDS to an existing OBDS system, obtain the OCID of DB System ID that
 For the first step, bind the existing DBCS System to DBCS Controller following the [Bind ot Existing DBCS System documentation](./../provisioning/bind_to_existing_dbcs_system.md). After successful binding, it will show as follows: 
 ```bash
 kubectl get dbcssystems
+```
+
+Example output:
+
+```text
 NAME                  AGE
 dbcssystem-existing   3m33s
 ```
@@ -26,7 +31,12 @@ Use the file: [upgrade_dbcs_system.yaml](./upgrade_dbcs_system.yaml) for this us
 
 1. Deploy the `.yaml` file:  
 ```sh
-[root@docker-test-server DBCS]# kubectl apply -f upgrade_dbcs_system.yaml
+kubectl apply -f upgrade_dbcs_system.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
@@ -34,8 +44,8 @@ dbcssystem.database.oracle.com/dbcssystem-existing configured
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 3. After the upgrade, describe the Kubernetes object to ensure that the correct database version is completed: 

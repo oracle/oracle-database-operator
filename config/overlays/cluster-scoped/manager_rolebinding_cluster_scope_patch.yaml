@@ -1,0 +1,11 @@
+- op: replace
+  path: /kind
+  value: ClusterRoleBinding
+- op: remove
+  path: /metadata/namespace
+- op: replace
+  path: /roleRef/kind
+  value: ClusterRole
+- op: replace
+  path: /roleRef/name
+  value: oracle-database-operator-manager-role

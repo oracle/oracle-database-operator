@@ -343,11 +343,52 @@ For more details, please refer to [Install Oracle DB Operator](../../../README.m
 
 After the image is ready, push it to your private container images repository, so that you can pull this image during Oracle Restart Database provisioning..
 
-**Note**: In the Oracle Restart Database provisioning sample .yaml files, we are using Oracle Restart Database slim image `dbocir/oracle/database-orestart:19.3.0-slim`.
+**Note**: In the Oracle Restart Database provisioning sample .yaml files, we are using Oracle Restart Database slim image `odbcir/oracle/database-orestart:19.3.0-slim`.
 
 ## Create a Kubernetes secret for the Oracle Restart Database installation owner for the Oracle Restart Database Deployment
- * Create a Kubernetes secret named `db-user-pass` in `orestart` namespace using these steps: [Create Kubernetes Secret](./create_kubernetes_secret_for_db_user.md)
+ * Create a Kubernetes secret named `db-user-pass-pkutl` in `orestart` namespace using these steps: [Create Kubernetes Secret](./create_kubernetes_secret_for_db_user.md)
    * Once the setup completes, you can change the password inside the pod for Oracle sys user.
  * Create a Kubernetes secret named `ssh-key-secret` in `orestart` namespace using these steps: [Create Kubernetes Secret for SSH Key](./create_kubernetes_secret_for_ssh_setup.md)
+
+If your Oracle Restart YAML includes a `tdeWalletSecret` block, create that Kubernetes secret before provisioning the database. Follow the steps in [Create Kubernetes Secret for TDE Wallet](./create_kubernetes_secret_for_tde_wallet.md), using the TDE secret name and file names from `spec.tdeWalletSecret`.
+
+For example, if your Oracle Restart YAML includes:
+
+```yaml
+spec:
+  tdeWalletSecret:
+    name: tde-user-pass-pkutl
+    keyFileName: key.pem
+    pwdFileName: pwdfile.enc
+    encryptionType: pkeyutl
+    pkeyopt: rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256
+```
+
+then create the secret in the `orestart` namespace by following the steps in [Create Kubernetes Secret for TDE Wallet](./create_kubernetes_secret_for_tde_wallet.md), using the TDE secret name from your YAML:
+
+```sh
+kubectl create secret generic tde-user-pass-pkutl \
+  --from-file=/tmp/.secrets/pwdfile.enc \
+  --from-file=/tmp/.secrets/key.pem \
+  -n orestart
+```
+
+For Base64-encoded secrets, set `encryptionType: base64` and omit `pwdFileName`. For example:
+
+```yaml
+spec:
+  dbSecret:
+    name: db-user-pass-pkutl
+    keyFileName: key.pem
+    encryptionType: base64
+  tdeWalletSecret:
+    name: tde-user-pass-pkutl
+    keyFileName: key.pem
+    encryptionType: base64
+```
+
+In that layout, the Kubernetes secret must contain `key.pem` and a Base64-encoded `pwdfile` entry.
+
+Use `tdeWalletSecret` only when your Oracle Restart deployment is intended to configure TDE. If your YAML does not include `spec.tdeWalletSecret`, you do not need to create this secret.
 
 After you have the above prerequsites completed, you can proceed to the next section for your environment to provision the Oracle Restart Database.

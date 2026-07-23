@@ -7,8 +7,8 @@ In order to pull an image from Oracle Container Registry, you need to create Kub
 
 Create an image pull secret `ocr-reg-cred` for the Oracle Container Registry by providing the credentials on the command line as below:
 
-```
-$ kubectl create secret docker-registry ocr-reg-cred --docker-server=container-registry.oracle.com --docker-username='<Your Username for Oracle Container Registry Login>' --docker-password='<container-registry-auth-token for your account>' --docker-email='<Email address for your account>' -n <namespace>
+```bash
+kubectl create secret docker-registry ocr-reg-cred --docker-server=container-registry.oracle.com --docker-username='<Your Username for Oracle Container Registry Login>' --docker-password='<container-registry-auth-token for your account>' --docker-email='<Email address for your account>' -n <namespace>
 ```
 **Note:** Generate the auth token from user profile section on top right of the page after logging into `container-registry.oracle.com`
 
@@ -18,13 +18,13 @@ A Kubernetes cluster uses the Secret of `kubernetes.io/dockerconfigjson` type to
 
 If you already ran docker login, you can copy that credential into Kubernetes:
 So, after a successful login to Oracle Container Registry, the Kubernetes secret can also be created from the docker config.json or from podman auth.json as below:
-```
+```bash
 docker login container-registry.oracle.com
 kubectl create secret generic ocr-reg-cred --from-file=.dockerconfigjson=.docker/config.json --type=kubernetes.io/dockerconfigjson -n <namespace>
 ```
 or
 
-```
+```bash
 podman login container-registry.oracle.com
 kubectl create secret generic ocr-reg-cred --from-file=.dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json --type=kubernetes.io/ dockerconfigjson -n <namespace>
 ```

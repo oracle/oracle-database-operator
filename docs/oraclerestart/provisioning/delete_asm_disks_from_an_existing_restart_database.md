@@ -27,8 +27,8 @@ For example:
         - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
         - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
 ```
-  * Before deleting the disk, **you will need to remove the disk at the ASM Level** using `ALTER DISKGROUP DROP DISK` command. 
-  * If you delete the disk’s YAML file before first removing the disk at the ASM level, thne the Operator will not delete the disk from the StatefulSet, and the Oracle Restart Database Pod will not be recreated. Instead, to prevent data loss, the operator will wait until you remove the disk at the ASM level before proceeding.
+  * Before deleting the disk, remove it at the ASM level by using `ALTER DISKGROUP DROP DISK` and allow rebalance to complete.
+  * If the disk is still part of an ASM disk group, the operator does not force the delete. It waits until the disk has been removed at the ASM level before updating the StatefulSet, recreating the pod, and deleting the corresponding PV and PVC.
   * In this example, out of the two disks mentioned above, the disk `/dev/disk/by-partlabel/asm-disk2` will be deleted from the existing Oracle Restart Database Deployment. 
 
 ### Steps: Delete the ASM Disk

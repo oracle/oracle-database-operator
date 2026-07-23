@@ -69,7 +69,6 @@
 #|                | rbacap         |               |apply rbac                           |
 #+----------------+----------------+---------------+-------------------------------------+
 #|**secrets**     |                |               |create certificates and secrets      |
-#|                | tkl            |               |tls cert for https                   |
 #|                | delsecres      |               |cleanup existing secrets             |
 #+----------------+----------------+---------------+-------------------------------------+
 #|**genyaml**     |                |               |generate yaml files                  |
@@ -80,13 +79,37 @@
 #
 #|target          | description                                                          |
 #+----------------+----------------------------------------------------------------------+
+#|tkapplyinit     | config map creation                                                  |
+#+----------------+----------------------------------------------------------------------+
+#|opclean         | deintall the operator                                                |
+#+----------------+----------------------------------------------------------------------+
+#|run00           | lrest pod creation                                                   |
+#+----------------+----------------------------------------------------------------------+
+#|run01.1         | pdb1 creation                                                        |
+#+----------------+----------------------------------------------------------------------+
+#|run01.2         | pdb2 creation                                                        |
+#+----------------+----------------------------------------------------------------------+
+#|run02.1         | pdb1 open                                                            |
+#+----------------+----------------------------------------------------------------------+
+#|run02.2         | pdb2 open                                                            |
+#+----------------+----------------------------------------------------------------------+
+#|run03.1         | pdb1 clone                                                           |
+#+----------------+----------------------------------------------------------------------+
+#|run04.1         | pdb1 close                                                           |
+#+----------------+----------------------------------------------------------------------+
+#|run04.2         | pdb2 close                                                           |
+#+----------------+----------------------------------------------------------------------+
+#|run05.1         | pdb1 unplug                                                          |
+#+----------------+----------------------------------------------------------------------+
+#|run06.1         | pdb1 plug                                                            |
+#+----------------+----------------------------------------------------------------------+
 #|dumplrest       | dump lrest                                                           |
 #+----------------+----------------------------------------------------------------------+
 #|dumpoperator    | dump operator logs                                                   |
 #+----------------+----------------------------------------------------------------------+
 #|check           | print parameters value                                               |
 #+----------------+----------------------------------------------------------------------+
-#|tklrestnew      | online rest server recreation                                        |
+#|tklrestnew      | online rest server recreation/https certificate rotation             |
 #+----------------+----------------------------------------------------------------------+
 #|mgrrestart      | restart manager                                                      |
 #+----------------+----------------------------------------------------------------------+
@@ -120,6 +143,34 @@
 #+----------------+----------------------------------------------------------------------+
 #|lrestrecreation | delete and recreate lrest pod with to test lrpdb reconnection        |
 #+----------------+----------------------------------------------------------------------+
+#|appuserct       | create pdb user using secret (negative test)                         |
+#+----------------+----------------------------------------------------------------------+
+#|appuserct01/02  | create pdb user using secret                                         |
+#+----------------+----------------------------------------------------------------------+
+#|tkplsqlexec01   | test sql and plsql script creation                                   |
+#+----------------+----------------------------------------------------------------------+
+#|certverify      | verify https certificate                                             |
+#+----------------+----------------------------------------------------------------------+
+#|tnsnames        | create tnsnames.ora configmap                                        |
+#+----------------+----------------------------------------------------------------------+
+#|newpwd          | change restdba password                                              |
+#+----------------+----------------------------------------------------------------------+
+#|appuserctneg01  | test handle error for malformed appuser secret + rest bitmask status |
+#+----------------+----------------------------------------------------------------------+
+#|reset01         | reset state  make -f LRPDBNAME=pdb1 RESETSTRING=|PDBCRT|PDBOPN|FNALAZ|
+#+----------------+----------------------------------------------------------------------+
+#|altercpu        | make  altercpu LRPDBNAME=_lrpdb resource_ CPU_COUNT=_cpu count value_|
+#+----------------+----------------------------------------------------------------------+
+#|open            | make open LRPDBNAME=_lrpdb resource_                                 |
+#+----------------+----------------------------------------------------------------------+
+#|close           | make close LRPDBNAME=_lrpdb resource_                                |
+#+----------------+----------------------------------------------------------------------+
+#|opclean         | deintall the operator                                                |
+#+----------------+----------------------------------------------------------------------+
+#|checkimpdel     | report of imperative delete setting                                  |
+#+----------------+----------------------------------------------------------------------+
+#|cleanlrest      | drop lrest resource                                                  |
+#+----------------+----------------------------------------------------------------------+
 
 
 #[END TABLE]
@@ -131,12 +182,12 @@ DATE  := `date "+%y%m%d%H%M%S"`
 ######################
    
 export PARAMETERS=parameters.txt
-#export TNSALIAS=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSALIAS|cut -d :  -f 2)
+#export TNSSTRING=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSSTRING|cut -d :  -f 2)
+export TNSTOPOLOGY=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSTOPOLOGY|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
 export TNSALIAS=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSALIAS|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
+export TNSSTRING=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSSTRING|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
 export DBUSER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep DBUSER|cut -d :  -f 2)
 export DBPASS=$(shell cat $(PARAMETERS)|grep -v ^\#|grep DBPASS|cut -d :  -f 2)
-export WBUSER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep WBUSER|cut -d :  -f 2)
-export WBPASS=$(shell cat $(PARAMETERS)|grep -v ^\#|grep WBPASS|cut -d :  -f 2)
 export PDBUSR=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PDBUSR|cut -d :  -f 2)
 export PDBPWD=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PDBPWD|cut -d :  -f 2)
 export PDBNAMESPACE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PDBNAMESPACE|cut -d :  -f 2)
@@ -158,20 +209,16 @@ export PASSPROTECTION=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PASSPROTECTION|
 export LRPDBTRC=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRPDBTRC|cut -d : -f 2)
 export LRESTTRC=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRESTTRC|cut -d : -f 2)
 export FILENAMECONVERSION=$(shell cat $(PARAMETERS)|grep -v ^\#|grep FILENAMECONVERSION|cut -d : -f 2)
+
 export TEST_EXEC_TIMEOUT=3m
 export WALLET_DIR=./orapkidir
 
 REST_SERVER=lrest
-SKEY=tls.key
-SCRT=tls.crt
-CART=ca.crt
-PRVKEY=ca.key
+PRVKEY=private.key
 PUBKEY=public.pem
 COMPANY=oracle
 DBUSERFILE=dbuser.txt
 DBPASSFILE=dbpass.txt
-WBUSERFILE=wbuser.txt
-WBPASSFILE=wbpass.txt
 PDBUSRFILE=pdbusr.txt
 PDBPWDFILE=pdbpwd.txt
 
@@ -191,6 +238,7 @@ export LREST_POD=create_lrest_pod.yaml
 
 export LRPDBCRE1=create_pdb1_resource.yaml
 export LRPDBCRE2=create_pdb2_resource.yaml
+export LRPDBCRE1NEG=create_pdb1_resource_neg.yaml
 
 export LRPDBCLOSE1=close_pdb1_resource.yaml
 export LRPDBCLOSE2=close_pdb2_resource.yaml
@@ -225,8 +273,8 @@ export ALTERSYSTEMYAML=altersystem_pdb1_resource.yaml
 export CONFIG_MAP=config_map_pdb.yaml
 export CONFIG_MAP_SQL=config_map_plsql.yaml
 
-
-
+export PWD1=$(shell tr -dc 'A-Za-z' < /dev/urandom | head -c 13 ; echo)
+export PWD2=$(shell tr -dc 'A-Za-z' < /dev/urandom | head -c 13 ; echo)
 
 ##BINARIES AND SQLSCRIPT
 export KUBECTL=/usr/bin/kubectl
@@ -234,7 +282,7 @@ export SQLPLUS=/usr/bin/sqlplus
 export SQLTEXT="select sysdate from dual;"
 export SQLFILE=/tmp/sqltemp.sql
 export SQLPDB="create pluggable database pdb10 admin user \
-       	welcome identified by welcome1 roles = (DBA) default \
+       	$(PWD1) identified by $(PWD2) roles = (DBA) default \
 	tablespace users  storage ( maxsize 5G max_shared_temp_size 2G ) tempfile reuse;"
 OPENSSL=/usr/bin/openssl
 ECHO=/usr/bin/echo
@@ -247,15 +295,16 @@ DIFF=/usr/bin/diff
 MAKE=/usr/bin/make
 BC=/usr/bin/bc
 MAKEFILE=./makefile
+CAT=/usr/bin/cat
 
 check:
+	@printf "TNSTOPOLOGY............:%s\n" $(TNSTOPOLOGY)
 	@printf "LRESTIMG...............:%s\n" $(LRESTIMG)
 	@printf "OPRIMG.................:%s\n" $(OPRIMG)
-	@printf "TNSALIAS...............:%.60s....\n" $(TNSALIAS)
+	@printf "TNSSTRING..............:%.60s....\n" $(TNSSTRING)
+	@printf "TNSALIAS...............:%s\n" $(TNSALIAS)
 	@printf "DBUSER.................:%s\n" $(DBUSER)
 	@printf "DBPASS.................:%s\n" $(DBPASS)
-	@printf "WBUSER.................:%s\n" $(WBUSER)
-	@printf "WBPASS.................:%s\n" $(WBPASS)
 	@printf "PDBUSR.................:%s\n" $(PDBUSR)
 	@printf "PDBPWD.................:%s\n" $(PDBPWD)
 	@printf "PDBNAMESPACE...........:%s\n" $(PDBNAMESPACE)
@@ -275,7 +324,7 @@ check:
 	@printf "FILENAMECONVERSION.....:%s\n" $(FILENAMECONVERSION)
 
 define msg
-@printf "\033[31;7m%s\033[0m\r" "......................................]"
+@printf "\033[31;7m%s\033[0m\r" ".....................................................................................]"
 @printf "\033[31;7m[\xF0\x9F\x91\x89 %s\033[0m\n" $(1)
 endef
 
@@ -298,72 +347,66 @@ export gendoc = $(value _gendoc)
 docs:
 	eval "$$gendoc"
 
-tls:
-	$(call msg,"TLS GENERATION")
-	#$(OPENSSL) genrsa -out $(PRVKEY) 2048	
-	$(OPENSSL)  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > $(PRVKEY)
-	$(OPENSSL) req -new -x509 -days 365 -key $(PRVKEY) \
-    	       -subj "/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=$(COMPANY) Root CA" -out ca.crt
-	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj \
-	       	"/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=cdb-dev-$(REST_SERVER).$(LRSNAMESPACE)" -out server.csr
-	$(ECHO) "subjectAltName=DNS:cdb-dev-$(REST_SERVER).$(LRSNAMESPACE)" > extfile.txt
-	$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey $(PRVKEY) -CAcreateserial -out $(SCRT)
+#tls:
+#	$(call msg,"PRIVATE AND PUBLIC KEY")
+#	#$(OPENSSL) genrsa -out $(PRVKEY) 2048
+#	$(OPENSSL)  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > $(PRVKEY)
+#	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
+#	#$(OPENSSL) req -new -x509 -days 365 -key $(PRVKEY) \
+#    #	       -subj "/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=$(COMPANY) Root CA" -out ca.crt
+#	#$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj \
+#	#       	"/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=cdb-dev-$(REST_SERVER).$(LRSNAMESPACE)" -out server.csr
+#	#$(ECHO) "subjectAltName=DNS:cdb-dev-$(REST_SERVER).$(LRSNAMESPACE)" > extfile.txt
+#	#$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey $(PRVKEY) -CAcreateserial -out $(SCRT)
+
+
+genkeys:
+	$(call msg,"PRIVATE AND PUBLIC KEY")
+	$(OPENSSL) genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > $(PRVKEY)
 	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
 
-secrets: delsecrets tls
-	$(call msg,"CREATING NEW TLS/PRVKEY/PUBKEY SECRETS")
-	$(KUBECTL) create secret tls db-tls --key="$(SKEY)" --cert="$(SCRT)"  -n $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic db-ca --from-file="$(CART)" -n $(LRSNAMESPACE)
-	$(KUBECTL) create secret tls db-tls --key="$(SKEY)" --cert="$(SCRT)"  -n $(PDBNAMESPACE)
-	$(KUBECTL) create secret generic db-ca --from-file="$(CART)" -n $(PDBNAMESPACE)
-	#$(KUBECTL) create secret tls prvkey --key="$(PRVKEY)" --cert=ca.crt  -n $(LRSNAMESPACE)
+secrets: delsecrets genkeys
 	$(call msg,"CREATING ENCRYPTED SECRETS (OPENSSL)")
 	$(KUBECTL) create secret generic pubkey --from-file=publicKey=$(PUBKEY) -n $(LRSNAMESPACE)
 	$(KUBECTL) create secret generic prvkey --from-file=privateKey=$(PRVKEY)  -n $(LRSNAMESPACE)
 	$(KUBECTL) create secret generic prvkey --from-file=privateKey="$(PRVKEY)" -n $(PDBNAMESPACE)
+	$(KUBECTL) create secret generic appusersecret \
+	       	--from-literal=usr01='db_admin01' \
+	      	--from-literal=pwd01='contmasc' \
+	       	--from-literal=grt01='dba,session,create anyuser' \
+	       	--from-literal=usr02='db_admin02' \
+	      	--from-literal=pwd02='sorperoz' \
+	      	--from-literal=grt02='connect,select catalog role'  \
+	       	--from-literal=usr03='db_admin03' \
+	       	--from-literal=pwd03='archmelan' \
+       	--from-literal=grt03='connect' -n  $(PDBNAMESPACE)
    ifeq ($(PASSPROTECTION),OPENSSL3)
 	$(call msg,"CREATING NEW CREDENTIAL SECRETS (OPENSSL3 ENCRYPTION)")
 	@$(ECHO) $(DBUSER) > $(DBUSERFILE)
 	@$(ECHO) $(DBPASS) > $(DBPASSFILE)
-	@$(ECHO) $(WBUSER) > $(WBUSERFILE)
-	@$(ECHO) $(WBPASS) > $(WBPASSFILE)
 	@$(ECHO) $(PDBUSR) > $(PDBUSRFILE)
 	@$(ECHO) $(PDBPWD) > $(PDBPWDFILE)
 	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(DBUSERFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(DBUSERFILE)
 	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(DBPASSFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(DBPASSFILE)
-	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(WBUSERFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(WBUSERFILE)
-	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(WBPASSFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(WBPASSFILE)
 	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(PDBUSRFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(PDBUSRFILE)
 	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(PDBPWDFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(PDBPWDFILE)
 	$(KUBECTL) create secret generic dbuser --from-file=e_$(DBUSERFILE) -n  $(LRSNAMESPACE)
 	$(KUBECTL) create secret generic dbpass --from-file=e_$(DBPASSFILE) -n  $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic wbuser --from-file=e_$(WBUSERFILE) -n  $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic wbpass --from-file=e_$(WBPASSFILE) -n  $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic wbuser --from-file=e_$(WBUSERFILE) -n  $(PDBNAMESPACE)
-	$(KUBECTL) create secret generic wbpass --from-file=e_$(WBPASSFILE) -n  $(PDBNAMESPACE)
 	$(KUBECTL) create secret generic pdbusr --from-file=e_$(PDBUSRFILE) -n  $(PDBNAMESPACE)
 	$(KUBECTL) create secret generic pdbpwd --from-file=e_$(PDBPWDFILE) -n  $(PDBNAMESPACE)
-	$(RM) $(SKEY) $(SCRT) $(CART) $(PRVKEY) $(PUBKEY) server.csr extfile.txt ca.srl \
-		$(DBUSERFILE) $(DBPASSFILE) $(WBUSERFILE) $(WBPASSFILE) $(PDBUSRFILE) $(PDBPWDFILE)\
-		e_$(DBUSERFILE) e_$(DBPASSFILE) e_$(WBUSERFILE) e_$(WBPASSFILE) e_$(PDBUSRFILE) e_$(PDBPWDFILE)
+	-- $(RM)   $(PRVKEY) $(PUBKEY) server.csr extfile.txt ca.srl \
+		$(DBUSERFILE) $(DBPASSFILE)  $(PDBUSRFILE) $(PDBPWDFILE)\
+		e_$(DBUSERFILE) e_$(DBPASSFILE) e_$(PDBUSRFILE) e_$(PDBPWDFILE)
  endif
    ifeq ($(PASSPROTECTION),NATIVE)
 	$(call msg,"CREATING NEW CREDENTIAL SECRETS (BASE64 ENCODED)")
 	$(KUBECTL) create secret generic dbuser --from-literal=e_$(DBUSERFILE)=$(DBUSER) -n  $(LRSNAMESPACE)
 	$(KUBECTL) create secret generic dbpass --from-literal=e_$(DBPASSFILE)=$(DBPASS) -n  $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic wbuser --from-literal=e_$(WBUSERFILE)=$(WBUSER) -n  $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic wbpass --from-literal=e_$(WBPASSFILE)=$(WBPASS) -n  $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic wbuser --from-literal=e_$(WBUSERFILE)=$(WBUSER) -n  $(PDBNAMESPACE)
-	$(KUBECTL) create secret generic wbpass --from-literal=e_$(WBPASSFILE)=$(WBPASS) -n  $(PDBNAMESPACE)
 	$(KUBECTL) create secret generic pdbusr --from-literal=e_$(PDBUSRFILE)=$(PDBUSR) -n  $(PDBNAMESPACE)
 	$(KUBECTL) create secret generic pdbpwd --from-literal=e_$(PDBPWDFILE)=$(PDBPWD) -n  $(PDBNAMESPACE)
    endif
    ifeq ($(PASSPROTECTION),ORAPKI)
 	$(call msg,"CREATING LRPDB CREDENTIAL SECRETS (BASE64 ENCODED)")
-	$(KUBECTL) create secret generic wbuser --from-literal=e_$(WBUSERFILE)=$(WBUSER) -n  $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic wbpass --from-literal=e_$(WBPASSFILE)=$(WBPASS) -n  $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic wbuser --from-literal=e_$(WBUSERFILE)=$(WBUSER) -n  $(PDBNAMESPACE)
-	$(KUBECTL) create secret generic wbpass --from-literal=e_$(WBPASSFILE)=$(WBPASS) -n  $(PDBNAMESPACE)
 	$(KUBECTL) create secret generic pdbusr --from-literal=e_$(PDBUSRFILE)=$(PDBUSR) -n  $(PDBNAMESPACE)
 	$(KUBECTL) create secret generic pdbpwd --from-literal=e_$(PDBPWDFILE)=$(PDBPWD) -n  $(PDBNAMESPACE)
 	$(call msg,"CREATING LREST DB CREDENTIAL IN ORAPKI WALLET")
@@ -387,9 +430,9 @@ delsecrets:
 	        || ( echo "No screts in namespace $(PDBNAMESPACE)")
 
 cleanCert:
-	$(RM) $(SKEY) $(SCRT) $(CART) $(PRVKEY) $(PUBKEY) server.csr extfile.txt ca.srl \
-		$(DBUSERFILE) $(DBPASSFILE) $(WBUSERFILE) $(WBPASSFILE) $(PDBUSRFILE) $(PDBPWDFILE)\
-		e_$(DBUSERFILE) e_$(DBPASSFILE) e_$(WBUSERFILE) e_$(WBPASSFILE) e_$(PDBUSRFILE) e_$(PDBPWDFILE)
+	$(RM)    $(PRVKEY) $(PUBKEY) server.csr extfile.txt ca.srl \
+		$(DBUSERFILE) $(DBPASSFILE) $(PDBUSRFILE) $(PDBPWDFILE)\
+		e_$(DBUSERFILE) e_$(DBPASSFILE) e_$(PDBUSRFILE) e_$(PDBPWDFILE)
 
 ### YAML FILE SECTION ###
 define _opr
@@ -412,7 +455,8 @@ cp ${ORACLE_OPERATOR_YAML} .
 cp ${OPBASENAME} ${OPBASENAME}.ORIG
 fi
 
-sed -i  's/value: ""/value: '${OPRNAMESPACE}','${PDBNAMESPACE}','${LRSNAMESPACE}'/g'   `basename ${ORACLE_OPERATOR_YAML}` 
+#sed -i  's/value: ""/value: '${OPRNAMESPACE}','${PDBNAMESPACE}','${LRSNAMESPACE}'/g'   `basename ${ORACLE_OPERATOR_YAML}` 
+
 
 if [[ ${OPRIMG:-"OFF"} != "OFF" ]] ; then 
 	export IMG=`cat ${OPBASENAME}| awk '( $1 == "image:" ) && ( NF == 2)    { printf("%s",$2); }'`
@@ -433,7 +477,17 @@ opclean: rbacdl bnddel crtmgrdel opdelete
 
 opapply:
 	@$(call msg,"Applying operator yaml file")
+	$(call msg,"Applying ${ORACLE_OPERATOR_YAML}" )
 	$(KUBECTL) apply -f `basename ${ORACLE_OPERATOR_YAML}`
+	$(KUBECTL) wait --for=condition=Available deployment/oracle-database-operator-controller-manager \
+        -n oracle-database-operator-system --timeout=300s
+	$(call msg,"updateing WATCH_NAMESPACE" )
+	$(KUBECTL) set env deployment/oracle-database-operator-controller-manager \
+		-n oracle-database-operator-system  WATCH_NAMESPACE="$(PDBNAMESPACE),$(LRSNAMESPACE)"
+	$(call msg,"manager restart" )
+	$(KUBECTL) rollout restart -n $(OPRNAMESPACE) deployment oracle-database-operator-controller-manager
+	$(KUBECTL) wait --for=condition=Available deployment/oracle-database-operator-controller-manager \
+        -n oracle-database-operator-system --timeout=300s
 
 opdelete:
 	- $(KUBECTL) delete -f `basename ${ORACLE_OPERATOR_YAML}`
@@ -498,26 +552,14 @@ cat <<EOF > authsection.yaml
     secret:
       secretName: "pdbpwd"
       key: "e_pdbpwd.txt"
-  lrpdbTlsKey:
-    secret:
-      secretName: "db-tls"
-      key: "tls.key"
-  lrpdbTlsCrt:
-    secret:
-      secretName: "db-tls"
-      key: "tls.crt"
-  lrpdbTlsCat:
-    secret:
-      secretName: "db-ca"
-      key: "ca.crt"
-  webServerUser:
-    secret:
-      secretName: "wbuser"
-      key: "e_wbuser.txt"
-  webServerPwd:
-    secret:
-      secretName: "wbpass"
-      key: "e_wbpass.txt"
+#  lrpdbTlsKey:
+#    secret:
+#      secretName: "db-tls"
+#      key: "tls.key"
+#  lrpdbTlsCrt:
+#    secret:
+#      secretName: "db-tls"
+#      key: "tls.crt"
 EOF
 
 if [[ ${PASSPROTECTION} == "OPENSSL3" ]]
@@ -610,7 +652,22 @@ spec:
   cdbName: "DB12"
   lrestImage: ${LRESTIMG}
   lrestImagePullPolicy: "Always"
-  dbTnsurl : ${TNSALIAS}
+EOF
+
+if [[ ${TNSTOPOLOGY} == "FULLDESC" ]];then 
+cat <<EOF >> ${LREST_POD}
+  dbTnsurl : ${TNSSTRING} 
+EOF
+fi
+
+if [[ ${TNSTOPOLOGY} == "TNSNAMES" ]];then 
+cat <<EOF >> ${LREST_POD}
+  tnsNames: tnscfgmp
+  tnsAlias: test
+EOF
+fi
+
+cat <<EOF >> ${LREST_POD}
   replicas: 1
   deletePdbCascade: true
   passwordProtection: ${PASSPROTECTION}
@@ -647,29 +704,6 @@ cat <<EOF >> ${LREST_POD}
 EOF
 fi
 
-cat <<EOF >>  ${LREST_POD}
-  webServerUser:
-    secret:
-      secretName: "wbuser"
-      key: "e_wbuser.txt"
-  webServerPwd:
-    secret:
-      secretName: "wbpass"
-      key: "e_wbpass.txt"
-  cdbTlsKey:
-    secret:
-      secretName: "db-tls"
-      key: "tls.key"
-  cdbTlsCrt:
-    secret:
-      secretName: "db-tls"
-      key: "tls.crt"
-  cdbTlsCat:
-    secret:
-      secretName: "db-ca"
-      key: "ca.crt"
-EOF
-
 
 if [[ ${PASSPROTECTION} == "OPENSSL3" ]];then 
 cat <<EOF >> ${LREST_POD}
@@ -682,7 +716,16 @@ cat <<EOF >> ${LREST_POD}
       secretName: "prvkey"
       key: "privateKey"
 EOF
+
+
 fi
+
+cat <<EOF > tnsnames.ora
+test=${TNSSTRING}
+
+orapkitag=${TNSSTRING}
+
+EOF
 
 endef
 export script01 = $(value _script01)
@@ -711,6 +754,7 @@ spec:
   passwordProtection: ${PASSPROTECTION}
   unlimitedStorage: false
   pdbconfigmap: "config-map-pdb"
+  monitorinitparameter: true
   tdeImport: false
   totalSize: "2G"
   tempSize: "800M"
@@ -1126,8 +1170,8 @@ metadata:
 data:
   rdbmsparameters.txt: |
      session_cached_cursors;100;spfile
-     open_cursors;100;spfile
-     db_file_multiblock_read_count;16;spfile
+     open_cursors;101;memory
+     db_file_multiblock_read_count;17;memory
      test_invalid_parameter;16;spfile
 EOF
 
@@ -1161,14 +1205,10 @@ metadata:
   namespace: ${PDBNAMESPACE}
 data:
   plblock1.sql: |
-        create user k8stestuser 
-  plblock2.sql: |
-        grant dba to k8stestuser
-  plblock3.sql: |
         create table k8stestuser.rndnum (c1 number ,c2 number)
-  plblock4.sql: |
+  plblock2.sql: |
         alter session set events '942 trace name errorstack level  3'
-  plblock5.sql: |
+  plblock3.sql: |
         create or replace  procedure k8stestuser.gennum 
         as 
         begin 
@@ -1179,10 +1219,13 @@ data:
            end loop;
            commit;
         end;
-  plblock6.sql: |
+  plblock4.sql: |
         begin 
         k8stestuser.gennum;
         end;
+  plblock5.sql: |
+        create table k8stestuser.negative_test (c1 spczlprem)
+
 EOF
 
 
@@ -1296,11 +1339,9 @@ endef
 
 define _envfile
 cat <<EOF >tkpc_mmk8slenv.sh
-export TNSALIAS=${TNSALIAS}
+export TNSSTRING=${TNSSTRING}
 export DBUSER=${DBUSER}
 export DBPASS=${DBPASS}
-export WBUSER=${WBUSER}
-export WBPASS=${WBPASS}
 export PDBUSR=${PDBUSR}
 export PDBPWD=${PDBPWD}
 export PDBNAMESPACE=${PDBNAMESPACE}
@@ -1316,7 +1357,7 @@ export CODE_TREE=${CODE_TREE}
 export ORACLE_OPERATOR_YAML=${ORACLE_OPERATOR_YAML}
 export AUTODISCOVER=${AUTODISCOVER}
 export CERT_MANAGER=${CERT_MANAGER}
-export TEST_EXEC_TIMEOUT=3m
+export TEST_EXEC_TIMEOUT=5m
 EOF
 endef
 
@@ -1335,8 +1376,6 @@ genyaml: check secyaml
 cleanyaml:
 	- $(RM) $(LRPDBMAP3) $(LRPDBMAP2) $(LRPDBMAP1) $(LRPDBPLUG1) $(LRPDBUNPLUG1) $(LRPDBDELETE2) $(LRPDBDELETE1) $(LRPDBDELETE3) $(LRPDBCLONE2) $(LRPDBCLONE1) $(LRPDBCLOSE3) $(LRPDBCLOSE2) $(LRPDBCLOSE1) $(LRPDBOPEN3) $(LRPDBOPEN2) $(LRPDBOPEN1) $(LRPDBCRE2) $(LRPDBCRE1) $(LREST_POD) ${ALTERSYSTEMYAML}
 	- $(RM) ${CONFIG_MAP} ${PDBNAMESPACE}_binding.yaml ${LRSNAMESPACE}_binding.yaml
-
-
 
 
 #################
@@ -1362,10 +1401,10 @@ showpdbs:
 	@$(ECHO) "show pdbs" > /tmp/showpdbs.sql
 	@$(ECHO) "exit" >> /tmp/showpdbs.sql
 	@$(KUBECTL) cp /tmp/showpdbs.sql `$(KUBECTL) get pods -n $(LRSNAMESPACE)|grep rest|cut -d ' ' -f 1`:/home/oracle -n $(LRSNAMESPACE)
-	@$(KUBECTL) exec   `$(KUBECTL) get pods -n $(LRSNAMESPACE)|grep rest|cut -d ' ' -f 1` -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(DBPASS)@$(TNSALIAS) as sysdba @/home/oracle/showpdbs.sql
+	@$(KUBECTL) exec   `$(KUBECTL) get pods -n $(LRSNAMESPACE)|grep rest|cut -d ' ' -f 1` -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(DBPASS)@$(TNSSTRING) as sysdba @/home/oracle/showpdbs.sql
 	
 sql:
-	$(KUBECTL) exec   `$(KUBECTL) get pods -n $(LRSNAMESPACE)|grep rest|cut -d ' ' -f 1` -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(DBPASS)@$(TNSALIAS) as sysdba
+	$(KUBECTL) exec   `$(KUBECTL) get pods -n $(LRSNAMESPACE)|grep rest|cut -d ' ' -f 1` -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(DBPASS)@$(TNSSTRING) as sysdba
 
 reloadop:
 	@$(call msg,"RELOAD OPERATOR")
@@ -1415,6 +1454,9 @@ CLOSEMSG="close:[op. completed]"
 CLONEMSG="clone:[op. completed]"
 PLUGMSG="plug:[op. completed]"
 AUTODISCMGS="autodiscover:[op completed]"
+CREATEUSR="create users:[op. completed]"
+APPUSERERR="create user:[malformed secrets:0]"
+
 
 cleanlrest:
 	@$(call msg,"lrest deletion")
@@ -1434,12 +1476,12 @@ run00: cleanlrest
 	@$(call msg,"lrest pod completed")
 	$(KUBECTL) get lrest -n  $(LRSNAMESPACE)
 	$(KUBECTL) get pod -n  $(LRSNAMESPACE)
-	$(KUBECTL) logs  `$(KUBECTL) get pods -o custom-columns=:metadata.name -n $(LRSNAMESPACE) --no-headers |grep lrest ` -n $(LRSNAMESPACE)
+	while $(KUBECTL) get pods -n cdbnamespace --no-headers | grep -q "Terminating"; do echo "Waiting for terminating pod(s) to disappear..."; sleep 5; done
+	$(KUBECTL) logs  `$(KUBECTL) get pods -o custom-columns=:metadata.name -n $(LRSNAMESPACE)  --field-selector=status.phase=Running --no-headers |grep lrest ` -n $(LRSNAMESPACE)
 
 run01.1:
 	@$(call msg,"lrpdb pdb1  creation")
 	$(KUBECTL) apply -f $(LRPDBCRE1)
-	##$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CREATEMSG) lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(OPENMSG) lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg, "lrpdb pdb1 creation completed")
 	$(KUBECTL) get lrpdb pdb1 -n $(PDBNAMESPACE) 
@@ -1481,6 +1523,9 @@ altercpu:
 	@$(call msg, "lrpdb $(LRPDBNAME)  alter cpu")
 	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
 		'{"spec":{"alterSystemParameter":"cpu_count","alterSystemValue":"2","parameterScope":"memory"}}' --type=merge
+
+run08.1:
+	$(MAKE) -f $(MAKEFILE) altercpu LRPDBNAME=pdb1
 
 openpdb1:
 	$(MAKE) -f $(MAKEFILE) open LRPDBNAME=pdb1 
@@ -1597,6 +1642,7 @@ tkplsqlexec:
 	@$(call msg,"delete config map ")
 	-- $(KUBECTL) delete configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
 	@$(call msg,"recreating config sql map")
+	$(MAKE) -f $(MAKEFILE) appuserct01 LRPDBNAME=pdb1
 	$(KUBECTL) apply -f $(CONFIG_MAP_SQL)
 	$(KUBECTL) describe configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
 	@$(call msg,"applying config sql map")
@@ -1607,11 +1653,11 @@ tkplsqlexec:
 	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
 	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
 
-
 tkplsqlexec01:
 	@$(call msg,"delete config map ")
 	-- $(KUBECTL) delete configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
 	@$(call msg,"recreating config sql map")
+	$(MAKE) -f $(MAKEFILE) appuserct01
 	$(KUBECTL) apply -f $(CONFIG_MAP_SQL)
 	$(KUBECTL) describe configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
 	@$(call msg,"applying config sql map")
@@ -1620,6 +1666,24 @@ tkplsqlexec01:
 	sleep 10
 	$(KUBECTL) get events --sort-by='.lastTimestamp' -n $(PDBNAMESPACE)
 	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=$(LRPDBNAME)|grep APPLYSQL
+
+tkplsqlexec02:
+	@$(call msg,"==>PLSQL TESTING<==")
+	@$(call msg,"delete config map ")
+	-- $(KUBECTL) delete configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
+	@$(call msg,"recreating config sql map")
+	$(KUBECTL) apply -f $(CONFIG_MAP_SQL)
+	$(KUBECTL) describe configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
+	@$(call msg,"applying config sql map")
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+	       '{"spec":{"codeconfigmap":"$(PLSQLMAP)"}}' --type=merge
+	sleep 10 
+	$(KUBECTL) get events --sort-by='.lastTimestamp' -n $(PDBNAMESPACE)
+	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
+	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
+
+run07.3:
+	$(MAKE) -f $(MAKEFILE) tkplsqlexec02 LRPDBNAME=pdb1
 
 tkaudosicov:
 	@$(call msg,"==>AUTODISCOVER TESTING<==")
@@ -1634,14 +1698,19 @@ tkaudosicov:
 	$(MAKE) -f $(MAKEFILE) genyaml ASSERTDELETION=true
 
 # Proceudure to recreate restserver
+run09.1: tklrestnew
 tklrestnew:
 	@$(call msg,"Recrete resetserver")
+	@$(call msg,"Cert/usrhttps rotation")
 	@$(call msg,"disable autodiscover and delete cascade")
+	$(KUBECTL) get secrets cdb-dev-lrest-ca-pin -n cdbnamespace -o yaml | grep $(PRVKEY) | awk ' { print $2 }'|md5sum -
 	$(KUBECTL) patch lrest cdb-dev -n $(LRSNAMESPACE) -p '{"spec":{"autodiscover":false,"deletePdbCascade":false}}'  --type=merge
 	$(KUBECTL) wait --for jsonpath='{.spec.autodiscover'}=false lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	$(KUBECTL) wait --for jsonpath='{.spec.deletePdbCascade'}=false lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
-	sleep 10
+	sleep 60
 	$(MAKE) -f $(MAKEFILE) run00
+	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)
+	$(KUBECTL) get secrets cdb-dev-lrest-ca-pin -n cdbnamespace -o yaml | grep $(PRVKEY) | awk ' { print $2 }'|md5sum -
 
 # Turn ON/OFF autodiscovery 
 #          ON:    make tkautd AUTOD=true
@@ -1652,14 +1721,16 @@ tkautd:
 	$(KUBECTL) wait --for jsonpath='{.spec.autodiscover'}=$(AUTOD) lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 
 tkautd01:
+	@$(call msg,"Testing autodiscover")
 	$(MAKE) tkautd AUTOD=true
-ifeq ($(FILENAMECONVERSION),"NONE")
+ifeq ($(FILENAMECONVERSION),NONE)
 	@$(eval SQLTEXT := $(shell $(ECHO) $(SQLPDB)))
 else
 	@$(eval SQLTEXT := $(shell $(ECHO) $(SQLPDB)|sed 's/;//g') "file_name_convert=\(\'$(FILENAMECONVERSION)\',\'pdb10\'\)\;")
 endif
 	@$(ECHO) "[$(SQLTEXT)]"
 	$(MAKE) -f $(MAKEFILE) execsql SQLTEXT="$(SQLTEXT)"
+	sleep 10
 	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(AUTODISCMGS) lrpdb atd-pdb10 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	$(KUBECTL) get lrpdb -n  $(PDBNAMESPACE)
 	$(MAKE) -f $(MAKEFILE) showpdbs
@@ -1699,6 +1770,12 @@ reset:
 		--type=merge
 	$(KUBECTL) get  lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)
  
+reset01:
+	@$(call msg,"Reset state $(LRPDBNAME):$(RESETVALUE)")
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) \
+		-p '{"spec":{"pdbState":"RESET","resetstrstate":"$(RESETSTRING)"}}'  \
+		--type=merge
+	$(KUBECTL) get  lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)
 
 ## Reset Password Test
 ## ~~~~~~~~~~~~~~~~~~~
@@ -1707,10 +1784,15 @@ reset:
 ##        - lrest pod up and runbing
 ##          - make newpwd 
 ##          - make oldpwd
-export NEWPASS=NewPassword6_6260
+export NEWPASS=Plplfailtac
 export WRONGPA=WrongPassword
-newpwd:
-   ifeq ($(PASSPROTECTION),NATIVE)
+
+unlimitpwd:
+	@$(call msg," This setting is for testenv only")
+	$(MAKE) -f $(MAKEFILE) execsql SQLTEXT="ALTER PROFILE DEFAULT LIMIT PASSWORD_REUSE_TIME UNLIMITED PASSWORD_REUSE_MAX  UNLIMITED;"
+
+newpwd: unlimitpwd
+ifeq ($(PASSPROTECTION),NATIVE)
 	@$(call msg,"reset password")
 	@echo "New Pwd: " $(NEWPASS)
 	@$(call msg,"secret recreation")
@@ -1739,9 +1821,9 @@ oldpwd:
 	@echo "exit;" >> $(SQLFILE)
 	$(call cp2lrest,$(SQLFILE))
 ifeq ($(NEGATIVETEST),false)
-	$(KUBECTL) exec   $(POD) -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(NEWPASS)@$(TNSALIAS) as sysdba @$(SQLFILE)
+	$(KUBECTL) exec   $(POD) -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(NEWPASS)@$(TNSSTRING) as sysdba @$(SQLFILE)
 else
-	$(KUBECTL) exec   $(POD) -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(WRONGPA)@$(TNSALIAS) as sysdba @$(SQLFILE)
+	$(KUBECTL) exec   $(POD) -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(WRONGPA)@$(TNSSTRING) as sysdba @$(SQLFILE)
 endif
 	$(KUBECTL) patch lrest cdb-dev -n $(LRSNAMESPACE) -p '{"spec":{"resetDbpassword":true}}'  --type=merge
 	$(MAKE) -f $(MAKEFILE) loglrest
@@ -1749,7 +1831,7 @@ endif
 
 
 ## Patch Status
-## ~~~~~~~~~~~~~~~~
+## ~~~~~~~~~~~~
 
 export BTMSTS="PDBCRT:PDBOPN:FNALAZ"
 export PDBCRT=00000001 
@@ -1761,6 +1843,7 @@ export OCICON=00000020
 export FNALAZ=00000040 
 export PDBUPL=00000080 
 export PDBPLG=00000100 
+export APPUSR=00000200
 export PDBCRE=00001000 
 export PDBOPE=00002000 
 export PDBCLE=00004000 
@@ -1773,8 +1856,9 @@ export PDBPLW=00100000
 export PDBAUT=01000000 
 
 
+
 patchstatus:
-	@$(eval L1 := $(shell echo $(BTMSTS)|$(SED) 's/|/\+/g' |$(SED) 's/PDBCRT/00000001/g'| $(SED) 's/PDBOPN/00000002/g'| $(SED) 's/PDBCLS/00000004/g'| $(SED) 's/PDBDIC/00000008/g'| $(SED) 's/OCIHDL/00000010/g'| $(SED) 's/OCICON/00000020/g'| $(SED) 's/FNALAZ/00000040/g'| $(SED) 's/PDBUPL/00000080/g'| $(SED) 's/PDBPLG/00000100/g'| $(SED) 's/PDBCRE/00001000/g'| $(SED) 's/PDBOPE/00002000/g'| $(SED) 's/PDBCLE/00004000/g'| $(SED) 's/OCIHDE/00008000/g'| $(SED) 's/OCICOE/00010000/g'| $(SED) 's/FNALAE/00020000/g'| $(SED) 's/PDBUPE/00040000/g'| $(SED) 's/PDBPLE/00080000/g'| $(SED) 's/PDBPLW/00100000/g'| $(SED) 's/PDBAUT/01000000/g'|$(SED) 's/:/+/g'))
+	@$(eval L1 := $(shell echo $(BTMSTS)|$(SED) 's/|/\+/g' |$(SED) 's/PDBCRT/00000001/g'| $(SED) 's/PDBOPN/00000002/g'| $(SED) 's/PDBCLS/00000004/g'| $(SED) 's/PDBDIC/00000008/g'| $(SED) 's/OCIHDL/00000010/g'| $(SED) 's/OCICON/00000020/g'| $(SED) 's/FNALAZ/00000040/g'| $(SED) 's/PDBUPL/00000080/g'| $(SED) 's/PDBPLG/00000100/g'|$(SED) 's/APPUSR/00000200/g' | $(SED) 's/PDBCRE/00001000/g'| $(SED) 's/PDBOPE/00002000/g'| $(SED) 's/PDBCLE/00004000/g'| $(SED) 's/OCIHDE/00008000/g'| $(SED) 's/OCICOE/00010000/g'| $(SED) 's/FNALAE/00020000/g'| $(SED) 's/PDBUPE/00040000/g'| $(SED) 's/PDBPLE/00080000/g'| $(SED) 's/PDBPLW/00100000/g'| $(SED) 's/PDBAUT/01000000/g'|$(SED) 's/:/+/g'))
 	@$(eval LEVEL := $(shell echo 'ibase=16 ; $(L1)'|$(BC)  ))
 	@printf "BITMAP..................:%s\n" $(BTMSTS)
 	@printf "BITMAP(DEC).............:%s:%s\n" $(L1) $(LEVEL)
@@ -1826,23 +1910,28 @@ memcheck:
 # run00       - lrest pod creation 
 # run01.1     - pdb1 creation 
 # run01.2     - pdb2 creation
-# run02.1     - pdb1 open               - declarative  
-# run02.2     - pdb2 open               - declarative
-# run03.1     - pdb1 clone              - declarative
-# run04.1     - pdb1 close              - declarative
-# run04.2     - pdb2 close              - declatative  
-# run05.1     - pdb1 unplug             - declarative
-# run06.1     - pdb1 plug               - declarative
-# openpdb1    - pdb1 open               - imperative 
-# openpdb2    - pdb2 open               - imperative 
-# closepdb1   - pdb1 close              - imperative
-# closepdb2   - pdb2 close              - imperative 
-# openpdb1rs  - pdb1 open restrict      - imperative  
-# openpdb2rs  - pdb2 open restrict      - imperative  
-#
+# run02.1     - pdb1 open               
+# run02.2     - pdb2 open               
+# run03.1     - pdb1 clone              
+# run04.1     - pdb1 close              
+# run04.2     - pdb2 close              
+# run05.1     - pdb1 unplug             
+# run06.1     - pdb1 plug               
+# openpdb1    - pdb1 open               
+# openpdb2    - pdb2 open               
+# closepdb1   - pdb1 close              
+# closepdb2   - pdb2 close              
+# openpdb1rs  - pdb1 open restrict      
+# openpdb2rs  - pdb2 open restrict      
+# run07.2     - recreate pdb1 + users   
+# run07.3     - create plsql object     
+# run08.1     - alter CPU               
+# run09.1     - lrest server recreation 
+
 
 runall01: genyaml tkapplyinit run00 run01.1 run01.2 \
-	  run03.1 run03.2 run04.1 run04.2 run05.1 run06.1 run07.1 
+	  run03.1 run03.2 run04.1 run04.2 run05.1 run06.1 run07.1 run07.2 run07.3 tkautd01 \
+	  run08.1 run09.1
 runall02: genyaml tkapplyinit run00 run01.1 openpdb1
 runall03: genyaml tkapplyinit run00 run01.1 run01.2  \
        	run04.1 run04.2 openpdb1 openpdb2 closepdb1 closepdb2 openpdb1rs
@@ -1879,7 +1968,7 @@ execsql:
 	@echo "$(SQLTEXT)" >> $(SQLFILE)
 	@echo "exit;"    >> $(SQLFILE)
 	@$(KUBECTL) cp $(SQLFILE) $(POD):$(SQLFILE) -n $(LRSNAMESPACE)
-	@$(KUBECTL) exec   `$(KUBECTL) get pods -n $(LRSNAMESPACE)|grep rest|cut -d ' ' -f 1` -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(DBPASS)@$(TNSALIAS) as sysdba @$(SQLFILE)
+	@$(KUBECTL) exec   `$(KUBECTL) get pods -n $(LRSNAMESPACE)|grep rest|cut -d ' ' -f 1` -n $(LRSNAMESPACE) -it -- $(SQLPLUS)  $(DBUSER)/$(DBPASS)@$(TNSSTRING) as sysdba @$(SQLFILE)
 	
 orapki19:
 	--@rm -rf $(WALLET_DIR)
@@ -1891,6 +1980,7 @@ orapki19:
 	@$(KUBECTL) describe secret  orawallet  -n $(LRSNAMESPACE)
 
 orapki26:
+	#unzip -o $(ADE_VIEW_ROOT)/crypto/jlib/pki/standalone/oraclepki-standalone.zip -d .
 	--@rm -rf $(WALLET_DIR)
 	@mkdir $(WALLET_DIR)
 	./bin/linux/orapki  wallet create -wallet $(WALLET_DIR)   -pwd Matteo1234 -auto_login
@@ -1910,3 +2000,187 @@ lrestrecreation:
 	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"lrest pod completed")
 	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)
+
+appuserct:
+	@$(call msg,"creating app user on pdb");
+	-- $(KUBECTL) create secret generic appusersecret \
+                --from-literal=usr01='k8stestuser' \
+                --from-literal=pwd01='contmasc' \
+                --from-literal=grt01='dba,session,create anyuser' \
+                --from-literal=usr02='k8stestuser' \
+                --from-literal=pwd02='tkstestuser' \
+                --from-literal=grt02='connect,dba'  \
+                --from-literal=usr03='db_admin03' \
+                --from-literal=pwd03='archmelan' \
+                --from-literal=grt03='connect' -n  $(PDBNAMESPACE)
+	$(MAKE) -f $(MAKEFILE)  run01.1
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"pdbappuser":"appusersecret","tracelevel":131072}}' --type=merge
+	@$(call msg,"Users creation completed")
+
+
+appuserct03:
+	@$(call msg,"creating app user on pdb neg. test");
+	-- $(KUBECTL) delete secrets appusersecret -n pdbnamespace
+	$(KUBECTL) create secret generic appusersecret -n pdbnamespace \
+          --from-literal=grt01='create session' \
+          --from-literal=grt02='create session' \
+          --from-literal=pwd01='Bug08PwdForPwdAsUser_123' \
+	  --from-literal=pwd02='Bug08RealPwd_123' \
+          --from-literal=pwd03='BUG08_PWD_AS_USER' \
+          --from-literal=usr01='BUG08_REAL_USER'
+	$(MAKE) -f $(MAKEFILE)  run01.1
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+                '{"spec":{"pdbappuser":"appusersecret","tracelevel":131072}}' --type=merge
+	@$(call msg,"Users creation completed")
+
+appuserct04:
+	@$(call msg,"creating app user on pdb neg. test");
+	-- $(KUBECTL) delete secrets appusersecret -n pdbnamespace
+	$(KUBECTL) create secret generic appusersecret -n pdbnamespace \
+	 --from-literal=usr01='BUG07_U01' \
+         --from-literal=pwd02='Bug07Pwd_123' \
+         --from-literal=grt01='create session'
+	$(MAKE) -f $(MAKEFILE)  run01.1
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+                '{"spec":{"pdbappuser":"appusersecret","tracelevel":131072}}' --type=merge
+	@$(call msg,"Users creation completed")
+
+appuserctneg:
+	@$(call msg,"creating app user neg test");
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"pdbappuser":"notexsist","tracelevel":131072}}' --type=merge
+	$(KUBECTL) describe lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)|grep pdbappuser|wc -l
+
+
+#This test case passes a malformed ConfigMap for user creation 
+##to a newly created PDB to verify that a warning message 
+##is raised after command execution. After that, it tests the 
+##RESET status functionality. In addition, it verifies 
+##that incorrect statuses are disregarded.
+
+appuserctneg01: export LRPDBNAME=pdb1
+appuserctneg01:
+	@$(call msg,"creating app user neg test");
+	-- $(KUBECTL) delete lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)
+	-- $(KUBECTL) create secret generic appuserscrtnopwd \
+                --from-literal=usr01='k8stestuser' \
+		--from-literal=grt01='connect' -n  $(PDBNAMESPACE)
+	$(MAKE) -f $(MAKEFILE)  run01.1
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"pdbappuser":"appuserscrtnopwd","tracelevel":131072}}' --type=merge
+	@$(call msg,"Users creation completed")
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(APPUSERERR) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) get lrpdb -n  $(PDBNAMESPACE)
+	@$(call msg,"Removing APPERR flag")
+	## test string validation: SPRCZL is not a valid value it will be disregarded
+	## test webhook validation: update state with string or value
+	-- $(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) \
+                -p '{"spec":{"pdbState":"RESET","resetstrstate":"|PDBCRT|PDBOPN|FNALAZ|SPRCZL","resetstate":67}}'  \
+                --type=merge
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) \
+	-p '{"spec":{"pdbState":"RESET","resetstrstate":"|PDBCRT|PDBOPN|FNALAZ|SPRCZL"}}'  \
+                --type=merge
+	$(KUBECTL) get  lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)
+
+#
+appuserctneg02: export LRPDBNAME=pdb1
+appuserctneg02: export APPUSERERR="create users:[USR:TC04_U01 ORA-990]"
+appuserctneg02:
+	-- $(KUBECTL) delete lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)
+	-- $(KUBECTL) create secret generic appuserneg990 \
+		  --from-literal=usr01=TC04_U01 \
+                  --from-literal=pwd01=contmasc \
+                  --from-literal=grt01='dba,session,create anyuser' \
+	          	-n  $(PDBNAMESPACE)
+	$(MAKE) -f $(MAKEFILE)  run01.1
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"pdbappuser":"appuserneg990","tracelevel":131072}}' --type=merge
+	@$(call msg,"Users creation completed")
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(APPUSERERR) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) get lrpdb -n  $(PDBNAMESPACE)
+
+
+appuserct01:
+	@$(call msg,"creating app user on pdb");
+	-- $(KUBECTL) create secret generic appusersecret \
+                --from-literal=usr01='db_admin01' \
+                --from-literal=pwd01='contmasc' \
+                --from-literal=grt01='dba,create session,resource' \
+                --from-literal=usr02='k8stestuser' \
+                --from-literal=pwd02='tkstestuser' \
+                --from-literal=grt02='connect,dba'  \
+                --from-literal=usr03='db_admin03' \
+                --from-literal=pwd03='archmelan' \
+                --from-literal=grt03='connect' -n  $(PDBNAMESPACE)
+	$(KUBECTL) patch lrpdb  $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"pdbappuser":"appusersecret","tracelevel":131072}}' --type=merge
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CREATEUSR) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	@$(call msg,"Users creation completed")
+	$(KUBECTL) describe lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)|grep pdbappuser|wc -l
+
+	
+appuserct02:
+	@$(call msg,"creating app user on pdb");
+	-- $(KUBECTL) create secret generic appusersecret02 \
+                --from-literal=usr01='db_admin05' \
+                --from-literal=pwd01='contmasc' \
+                --from-literal=grt01='dba,create session,resource' \
+                --from-literal=usr02='db_admin06' \
+                --from-literal=pwd02='tkstestuser' \
+                --from-literal=grt02='connect,dba'  \
+                --from-literal=usr03='db_admin07' \
+                --from-literal=pwd03='archmelan' \
+                --from-literal=grt03='connect' \
+                --from-literal=usr04='k8stestuser' \
+                --from-literal=pwd04='archmelan' \
+                --from-literal=grt04='connect,dba,create session,resource' \
+	       	-n  $(PDBNAMESPACE)
+	$(KUBECTL) patch lrpdb  $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"pdbappuser":"appusersecret02","tracelevel":131072}}' --type=merge
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CREATEUSR) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	@$(call msg,"Users creation completed")
+	$(KUBECTL) describe lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)|grep pdbappuser|wc -l
+
+run07.2:
+	@$(call msg,"User creation test")
+	@$(call msg,"recreating pdb1")
+	$(MAKE) -f $(MAKEFILE) run01.1
+	$(MAKE) -f $(MAKEFILE) appuserct02 LRPDBNAME=pdb1
+	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)
+
+
+usr2runs:
+	@$(call msg,"==>test fix for bug 39214736<===")
+	$(MAKE) -f $(MAKEFILE) run00 run01.1 run02.1
+	@$(call msg,"delete config map ")
+	-- $(KUBECTL) delete configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
+	@$(call msg,"recreating config sql map")
+	$(MAKE) -f $(MAKEFILE) appuserct01 LRPDBNAME=pdb1
+	$(MAKE) -f $(MAKEFILE) appuserct02 LRPDBNAME=pdb1
+	
+
+tnsnames:
+	$(call msg,"tnsnames.ora config map test")
+	-- $(KUBECTL) delete configmap tnscfgmp -n $(LRSNAMESPACE)
+	$(KUBECTL)  create configmap tnscfgmp --from-file=tnsnames.ora   -n $(LRSNAMESPACE)
+	
+
+certverify:
+	$(call msg,"Verify https certificates" )
+	@$(KUBECTL) get secret cdb-dev-tls -n  $(LRSNAMESPACE) -o jsonpath='{.data.tls\.crt}' | base64 -d > tls.crt
+	@$(KUBECTL) get secret cdb-dev-lrest-ca-pin -n $(LRSNAMESPACE) -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
+	$(OPENSSL) x509 -in tls.crt -text -noout
+	$(OPENSSL) x509 -in ca.crt -text -noout
+	$(OPENSSL) verify -CAfile ca.crt tls.crt
+	@$(RM) tls.crt ca.crt
+	
+
+# Check wrong pdbname e.g. with "-" dash 
+pdbcrtneg01:
+	$(call msg,"negative test - wrong pdbname" )
+	$(CAT) $(LRPDBCRE1)   |$(SED) 's/pdbdev/pdbdev-wrong/g' | $(SED) 's/name: pdb1/name: pdb100/g' >$(LRPDBCRE1NEG)
+	-- $(KUBECTL) apply -f $(LRPDBCRE1NEG)
+	$(RM) $(LRPDBCRE1NEG)		
+
+

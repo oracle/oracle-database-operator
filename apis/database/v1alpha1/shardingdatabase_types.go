@@ -55,6 +55,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ShardingDatabaseSpec defines the desired state of ShardingDatabase
+// revive:disable:var-naming
 type ShardingDatabaseSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -71,7 +72,6 @@ type ShardingDatabaseSpec struct {
 	IsDebug                   bool                `json:"isDebug,omitempty"`            // Optional parameter to enable logining
 	IsExternalSvc             bool                `json:"isExternalSvc,omitempty"`
 	IsClone                   bool                `json:"isClone,omitempty"`
-	IsDataGuard               bool                `json:"isDataGuard,omitempty"`
 	ScriptsLocation           string              `json:"scriptsLocation,omitempty"`
 	IsDeleteOraPvc            bool                `json:"isDeleteOraPvc,omitempty"`
 	ReadinessCheckPeriod      int                 `json:"readinessCheckPeriod,omitempty"`
@@ -95,10 +95,13 @@ type ShardingDatabaseSpec struct {
 	TdeWalletPvcMountLocation string              `json:"tdeWalletPvcMountLocation,omitempty"`
 	DbEdition                 string              `json:"dbEdition,omitempty"`
 	TopicId                   string              `json:"topicId,omitempty"`
+	SrvAccountName            string              `json:"serviceAccountName,omitempty"`
+	// +kubebuilder:default:=false
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
 }
 
-// To understand Metav1.Condition, please refer the link https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1
 // ShardingDatabaseStatus defines the observed state of ShardingDatabase
+// To understand Metav1.Condition, please refer to https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1.
 type ShardingDatabaseStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -115,6 +118,7 @@ type ShardingDatabaseStatus struct {
 	CrdStatus []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// GsmStatus captures current GSM connectivity, shard, and service state.
 type GsmStatus struct {
 	InternalconnectStr string            `json:"internalConnectStr,omitempty"`
 	ExternalConnectStr string            `json:"externalConnectStr,omitempty"`
@@ -124,12 +128,14 @@ type GsmStatus struct {
 	Services           string            `json:"services,omitempty"`
 }
 
+// GsmShardDetails represents status details for a shard from GSM views.
 type GsmShardDetails struct {
 	Name      string `json:"name,omitempty"`
 	Available string `json:"available,omitempty"`
 	State     string `json:"State,omitempty"`
 }
 
+// GsmStatusDetails represents detailed status for a shard or catalog endpoint.
 type GsmStatusDetails struct {
 	Name             string `json:"name,omitempty"`
 	K8sInternalSvc   string `json:"k8sInternalSvc,omitempty"`
@@ -147,7 +153,7 @@ type GsmStatusDetails struct {
 //+kubebuilder:printcolumn:JSONPath=".status.gsm.shards",name="shards",type=string,priority=1
 
 // ShardingDatabase is the Schema for the shardingdatabases API
-// +kubebuilder:resource:path=shardingdatabases,scope=Namespaced
+// +kubebuilder:resource:path=shardingdatabases,scope=Namespaced,shortName=gdd
 type ShardingDatabase struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -168,16 +174,20 @@ type ShardingDatabaseList struct {
 // ShardSpec is a specification of Shards for an application deployment.
 // +k8s:openapi-gen=true
 type ShardSpec struct {
-	Name            string                       `json:"name"`                                                      // Shard name that will be used deploy StatefulSet
+	Name string `json:"name"` // Shard name that will be used deploy StatefulSet
+	// +kubebuilder:default:=50
 	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Shard Storage Size
 	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Shards
 	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requirement for the container.
-	PvcName         string                       `json:"pvcName,omitempty"`
-	Label           string                       `json:"label,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvcName string `json:"pvcName,omitempty"`
+	Label   string `json:"label,omitempty"`
 	// +kubebuilder:validation:Enum=enable;disable;failed;force
-	IsDelete         string             `json:"isDelete,omitempty"`
-	NodeSelector     map[string]string  `json:"nodeSelector,omitempty"`
-	PvAnnotations    map[string]string  `json:"pvAnnotations,omitempty"`
+	IsDelete     string            `json:"isDelete,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
 	PvMatchLabels    map[string]string  `json:"pvMatchLabels,omitempty"`
 	ImagePulllPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 	ShardSpace       string             `json:"shardSpace,omitempty"`
@@ -189,17 +199,21 @@ type ShardSpec struct {
 // CatalogSpec defines the desired state of CatalogSpec
 // +k8s:openapi-gen=true
 type CatalogSpec struct {
-	Name             string                       `json:"name"`                                                      // Catalog name that will be used deploy StatefulSet
-	StorageSizeInGb  int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Catalog Storage Size and This parameter will not be used if you use PvcName
-	EnvVars          []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Catalog
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
-	PvcName          string                       `json:"pvcName,omitempty"`
-	Label            string                       `json:"label,omitempty"`
-	IsDelete         string                       `json:"isDelete,omitempty"`
-	NodeSelector     map[string]string            `json:"nodeSelector,omitempty"`
-	PvAnnotations    map[string]string            `json:"pvAnnotations,omitempty"`
-	PvMatchLabels    map[string]string            `json:"pvMatchLabels,omitempty"`
-	ImagePulllPolicy *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
+	Name string `json:"name"` // Catalog name that will be used deploy StatefulSet
+	// +kubebuilder:default:=50
+	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Catalog Storage Size and This parameter will not be used if you use PvcName
+	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Catalog
+	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvcName      string            `json:"pvcName,omitempty"`
+	Label        string            `json:"label,omitempty"`
+	IsDelete     string            `json:"isDelete,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvMatchLabels    map[string]string  `json:"pvMatchLabels,omitempty"`
+	ImagePulllPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 }
 
 // GsmSpec defines the desired state of GsmSpec
@@ -208,29 +222,32 @@ type GsmSpec struct {
 	Name string `json:"name"` // Gsm name that will be used deploy StatefulSet
 
 	//Replicas         int32                        `json:"replicas,omitempty"`                                        // Gsm Replicas. If you set OraGsmPvcName then it is set default to 1.
-	EnvVars          []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for GSM
-	StorageSizeInGb  int32                        `json:"storageSizeInGb,omitempty"`                                 // This parameter will not be used if you use OraGsmPvcName
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
-	PvcName          string                       `json:"pvcName,omitempty"`
-	Label            string                       `json:"label,omitempty"` // Optional GSM Label
-	IsDelete         string                       `json:"isDelete,omitempty"`
-	NodeSelector     map[string]string            `json:"nodeSelector,omitempty"`
-	PvAnnotations    map[string]string            `json:"pvAnnotations,omitempty"`
-	PvMatchLabels    map[string]string            `json:"pvMatchLabels,omitempty"`
-	ImagePulllPolicy *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
-	Region           string                       `json:"region,omitempty"`
-	DirectorName     string                       `json:"directorName,omitempty"`
+	EnvVars []EnvironmentVariable `json:"envVars,omitempty"` //Optional Env variables for GSM
+	// +kubebuilder:default:=50
+	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // This parameter will not be used if you use OraGsmPvcName
+	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvcName      string            `json:"pvcName,omitempty"`
+	Label        string            `json:"label,omitempty"` // Optional GSM Label
+	IsDelete     string            `json:"isDelete,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvMatchLabels    map[string]string  `json:"pvMatchLabels,omitempty"`
+	ImagePulllPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	Region           string             `json:"region,omitempty"`
+	DirectorName     string             `json:"directorName,omitempty"`
 }
 
-// ShardGroupSpec Specification
-
+// GsmShardGroupSpec defines shard group placement and deployment mode.
 type GsmShardGroupSpec struct {
 	Name     string `json:"name"` // Name of the shardgroup.
 	Region   string `json:"region,omitempty"`
 	DeployAs string `json:"deployAs,omitempty"`
 }
 
-// ShardSpace Specs
+// GsmShardSpaceSpec defines a shard space and optional protection settings.
 type GsmShardSpaceSpec struct {
 	Name           string `json:"name"`                     // Name of the shardSpace.
 	Chunks         int    `json:"chunks,omitempty"`         //chunks is optional
@@ -238,7 +255,7 @@ type GsmShardSpaceSpec struct {
 	ShardGroup     string `json:"shardGroup,omitempty"`
 }
 
-// Service Definition
+// GsmServiceSpec defines a sharded database service configuration.
 type GsmServiceSpec struct {
 	Name                 string `json:"name"` // Name of the shardSpace.
 	Available            string `json:"available,omitempty"`
@@ -271,7 +288,7 @@ type GsmServiceSpec struct {
 	TfaPolicy            string `json:"tfaPolicy,omitempty"`
 }
 
-// Secret Details
+// SecretDetails defines secret metadata used for sharding components.
 type SecretDetails struct {
 	Name                 string `json:"name"`                  // Name of the secret.
 	KeyFileName          string `json:"keyFileName,omitempty"` // Name of the key.
@@ -299,16 +316,20 @@ type PortMapping struct {
 	Protocol   corev1.Protocol `json:"protocol"`   // IP protocol for the mapping, e.g., "TCP" or "UDP".
 }
 
+// SfsetLabel represents operator labels used on StatefulSets.
 type SfsetLabel string
 
+// SfsetLabel constants define labels used on sharding statefulsets.
 const (
 	ShardingDelLabelKey        SfsetLabel = "sharding.oracle.com/delflag"
 	ShardingDelLabelTrueValue  SfsetLabel = "true"
 	ShardingDelLabelFalseValue SfsetLabel = "false"
 )
 
+// ShardStatusMapKeys identifies keys in shard status maps.
 type ShardStatusMapKeys string
 
+// ShardStatusMapKeys constants define key names used in shard status maps.
 const (
 	Name             ShardStatusMapKeys = "Name"
 	K8sInternalSvc   ShardStatusMapKeys = "K8sInternalSvc"
@@ -323,8 +344,10 @@ const (
 	OpenMode         ShardStatusMapKeys = "OpenMode"
 )
 
+// ShardLifecycleState identifies a shard lifecycle status value.
 type ShardLifecycleState string
 
+// ShardLifecycleState values represent high-level shard lifecycle outcomes.
 const (
 	AvailableState        ShardLifecycleState = "AVAILABLE"
 	FailedState           ShardLifecycleState = "FAILED"
@@ -348,24 +371,9 @@ const (
 	ShardRemoveError      ShardLifecycleState = "SHARD_DELETE_ERROR_FROM_GSM"
 )
 
-type CrdReconcileState string
-
-const (
-	CrdReconcileErrorState     CrdReconcileState = "ReconcileError"
-	CrdReconcileErrorReason    CrdReconcileState = "LastReconcileCycleFailed"
-	CrdReconcileQueuedState    CrdReconcileState = "ReconcileQueued"
-	CrdReconcileQueuedReason   CrdReconcileState = "LastReconcileCycleQueued"
-	CrdReconcileCompeleteState CrdReconcileState = "ReconcileComplete"
-	CrdReconcileCompleteReason CrdReconcileState = "LastReconcileCycleCompleted"
-	CrdReconcileWaitingState   CrdReconcileState = "ReconcileWaiting"
-	CrdReconcileWaitingReason  CrdReconcileState = "LastReconcileCycleWaiting"
-)
-
-// var
+// KubeConfigOnce guards one-time kube config initialization.
+// revive:enable:var-naming
 var KubeConfigOnce sync.Once
-
-// #const lastSuccessfulSpec = "lastSuccessfulSpec"
-const lastSuccessfulSpecOnsInfo = "lastSuccessfulSpeOnsInfo"
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.
 // Returns nil, nil if there is no lastSuccessfulSpec.
@@ -395,27 +403,6 @@ func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpec(kubeClient client.C
 
 	anns := map[string]string{
 		lastSuccessfulSpec: string(specBytes),
-	}
-
-	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)
-}
-
-// GetLastSuccessfulOnsInfo returns spec from the lass successful reconciliation.
-// Returns nil, nil if there is no lastSuccessfulSpec.
-func (shardingv1 *ShardingDatabase) GetLastSuccessfulOnsInfo() ([]byte, error) {
-	val, ok := shardingv1.GetAnnotations()[lastSuccessfulSpecOnsInfo]
-	if !ok {
-		return nil, nil
-	}
-	specBytes := []byte(val)
-	return specBytes, nil
-}
-
-// UpdateLastSuccessfulSpec updates lastSuccessfulSpec with the current spec.
-func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpecOnsInfo(kubeClient client.Client, specBytes []byte) error {
-
-	anns := map[string]string{
-		lastSuccessfulSpecOnsInfo: string(specBytes),
 	}
 
 	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)

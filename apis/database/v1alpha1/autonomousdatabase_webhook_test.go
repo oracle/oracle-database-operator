@@ -35,6 +35,8 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
+
+//nolint:staticcheck // test clarity intentionally favors explicit var declarations.
 package v1alpha1
 
 import (

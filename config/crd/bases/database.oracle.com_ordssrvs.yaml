@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: ordssrvs.database.oracle.com
 spec:
   group: database.oracle.com
@@ -54,6 +54,75 @@ spec:
             type: object
           spec:
             properties:
+              accessLogForwarder:
+                properties:
+                  enabled:
+                    default: false
+                    type: boolean
+                  resources:
+                    properties:
+                      claims:
+                        items:
+                          properties:
+                            name:
+                              type: string
+                            request:
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                    type: object
+                type: object
+              accessLogPersistence:
+                properties:
+                  accessMode:
+                    default: ReadWriteOnce
+                    enum:
+                    - ReadWriteOnce
+                    - ReadWriteMany
+                    type: string
+                  size:
+                    default: 2Gi
+                    type: string
+                  storageClass:
+                    type: string
+                  volumeName:
+                    type: string
+                type: object
+              automountServiceAccountToken:
+                default: false
+                type: boolean
+              commonMetadata:
+                properties:
+                  additionalAnnotations:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  additionalLabels:
+                    additionalProperties:
+                      type: string
+                    type: object
+                type: object
               encPrivKey:
                 properties:
                   passwordKey:
@@ -145,6 +214,9 @@ spec:
                   feature.grahpql.max.nesting.depth:
                     format: int32
                     type: integer
+                  feature.graphql.max.nesting.depth:
+                    format: int32
+                    type: integer
                   icap.port:
                     format: int32
                     type: integer
@@ -155,9 +227,23 @@ spec:
                     type: string
                   instance.api.enabled:
                     type: boolean
+                  instanceAPIAdminSecret:
+                    properties:
+                      passwordKey:
+                        default: password
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - secretName
+                    type: object
+                  instanceAPIAdminUser:
+                    default: instance_api_admin
+                    type: string
                   log.procedure:
                     type: boolean
                   mongo.enabled:
+                    default: false
                     type: boolean
                   mongo.idle.timeout:
                     type: string
@@ -191,6 +277,9 @@ spec:
                     type: integer
                   security.verifySSL:
                     type: boolean
+                  standalone.access.log.retainDays:
+                    format: int32
+                    type: integer
                   standalone.context.path:
                     default: /ords
                     type: string
@@ -210,6 +299,7 @@ spec:
                     type: string
                 type: object
               image:
+                default: container-registry.oracle.com/database/ords:latest
                 type: string
               imagePullPolicy:
                 default: IfNotPresent
@@ -220,6 +310,22 @@ spec:
                 type: string
               imagePullSecrets:
                 type: string
+              jdkJavaOptions:
+                type: string
+              podTemplate:
+                properties:
+                  metadata:
+                    properties:
+                      additionalAnnotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      additionalLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
               poolSettings:
                 items:
                   properties:
@@ -366,6 +472,7 @@ spec:
                       - proxied
                       type: string
                     poolName:
+                      pattern: ^[a-z0-9._-]+$
                       type: string
                     procedure.preProcess:
                       type: string
@@ -422,8 +529,69 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              resources:
+                properties:
+                  claims:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        request:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                type: object
+              service:
+                properties:
+                  metadata:
+                    properties:
+                      additionalAnnotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      additionalLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
               serviceAccountName:
                 type: string
+              workload:
+                properties:
+                  metadata:
+                    properties:
+                      additionalAnnotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      additionalLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
               workloadType:
                 default: Deployment
                 enum:
@@ -481,6 +649,9 @@ spec:
               mongoPort:
                 format: int32
                 type: integer
+              observedGeneration:
+                format: int64
+                type: integer
               ordsInstalled:
                 type: boolean
               ordsVersion:
@@ -491,8 +662,6 @@ spec:
                 type: string
               workloadType:
                 type: string
-            required:
-            - restartRequired
             type: object
         type: object
     served: true

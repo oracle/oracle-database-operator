@@ -3,7 +3,7 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-create
 spec:
-  ociConfigMap: "oci-cred"
+  ociConfigMap: "oci-cred-mumbai"
   ociSecret: "oci-privatekey"
   dbSystem:
     availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
@@ -22,6 +22,6 @@ spec:
      - "oci-publickey"
     subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
   kmsConfig:
-    vaultName: "dbvault"
+    vaultName: "dbvault-local-06"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
-    keyName: "dbkey"
+    keyName: "dbkey-local-06"

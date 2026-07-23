@@ -1,0 +1,122 @@
+---
+# Sample scenario:
+# PVC-based software locations
+# Reference guide:
+# ./provisioning_oracle_rac_storageclass_pvc_softwares.md
+#
+# This sample uses:
+# - storage-class-backed ASM disks using asmDiskGroupDetails[].storageClass
+# - per disk-group ASM size using asmDiskGroupDetails[].asmStorageSizeInGb
+# - explicit ASM access mode using asmDiskGroupDetails[].accessMode
+# - a PVC-backed software home sized by swLocStorageSizeInGb
+# - a staged software PVC mounted from configParams.swStagePvc
+#
+# ASM access mode hint:
+# - ReadWriteOnce: use when the selected storage class supports single-writer block volumes
+# - ReadWriteMany: use when the selected storage class supports multi-node shared access
+# Always set accessMode to a mode supported by the selected storageClass.
+#
+---
+apiVersion: database.oracle.com/v4
+kind: RacDatabase
+metadata:
+  name: racdbprov-sample
+  namespace: rac
+spec:
+  instanceDetails:
+    nodeCount: 1
+    racNodeName: racnode
+    privateIPDetails:
+      - name: macvlan-conf1
+        interface: ens1
+      - name: macvlan-conf2
+        interface: ens2
+    workerNodeSelector:
+      raccluster: raccluster01
+  envVars:
+    - name: LOG_DIR
+      value: "/tmp/orod"
+  # Filesystem StorageClass used for the software home PVC mounted at /u01.
+  # This is separate from asmDiskGroupDetails[].storageClass.
+  swStorageClass: "oci-bv-ext4"
+  swLocStorageSizeInGb: 300
+  # Optional. Default is false, which means the operator deletes the /u01
+  # software PVC during RAC delete and node scale-down. Set true only when you
+  # want to retain that PVC for reuse.
+  # isKeep: true
+  asmDiskGroupDetails:
+    # For storage-class-backed ASM provisioning:
+    # - disks[] lists the device paths exposed inside the RAC pod
+    # - asmStorageSizeInGb is the size of each dynamically provisioned ASM PVC
+    # - storageClass selects the backend used to provision those ASM PVCs
+    # - accessMode must match a mode supported by that storage class
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/asm-disk1
+        - /dev/asm-disk2
+      asmStorageSizeInGb: 50
+      storageClass: "oci-bv"
+      # Optional. Default is false, which means the operator deletes the
+      # storage-class-backed ASM PVCs when the RacDatabase is deleted.
+      # isKeep: true
+      # Supported values: "ReadWriteOnce" or "ReadWriteMany"
+      # Example: OCI Block Volume (oci-bv) supports "ReadWriteOnce"
+      accessMode: "ReadWriteOnce"
+  sshKeySecret:
+    name: ssh-key-secret
+    privKeySecretName: ssh-privkey
+    pubKeySecretName: ssh-pubkey
+  dbSecret:
+    name: db-user-pass
+    keyFileName: key.pem
+    pwdFileName: pwdfile.enc
+    # encryptionType: pkeyutl
+    # pkeyopt: rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256
+  tdeWalletSecret:
+    name: tde-user-pass
+    keyFileName: key.pem
+    pwdFileName: pwdfile.enc
+    # encryptionType: pkeyutl
+    # pkeyopt: rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256
+  image: phx.ocir.io/intsanjaysingh/oracle/database-rac:19.3.0-slim
+  imagePullPolicy: Always
+  scanSvcName: racnode-scan
+  scanSvcTargetPort: 31521
+  serviceDetails:
+    name: soepdb
+  resources:
+    requests:
+      cpu: "2"
+      memory: "16Gi"
+      # hugepages-2Mi: "14Gi"
+    limits:
+      cpu: "2"
+      memory: "16Gi"
+      # hugepages-2Mi: "14Gi"
+  securityContext:
+    sysctls:
+      - name: kernel.shmall
+        value: "2097152"
+      - name: kernel.sem
+        value: "250 32000 100 128"
+      - name: kernel.shmmax
+        value: "8589934592"
+      - name: kernel.shmmni
+        value: "4096"
+  configParams:
+    sgaSize: "3Gi"
+    pgaSize: "1Gi"
+    processes: 2000
+    cpuCount: 4
+    gridHome: "/u01/app/19c/grid"
+    gridBase: "/u01/app/grid"
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"
+    dbBase: "/u01/app/oracle"
+    inventory: "/u01/app/oraInventory"
+    gridSwZipFile: "grid_home.zip"
+    dbSwZipFile: "db_home.zip"
+    dbName: "PORCLCDB"
+    swStagePvc: pv-stage-vol-claim
+    swStagePvcMountLocation: "/stage/software/19c/1930-new"

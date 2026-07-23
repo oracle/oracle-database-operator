@@ -9,7 +9,12 @@ Follow these steps:
 
 1. Get the Details of the deployment:
 ```sh
-$ kubectl get all -n rac -o wide
+kubectl get all -n rac -o wide
+```
+
+Example output:
+
+```text
 NAME             READY   STATUS    RESTARTS   AGE   IP            NODE            NOMINATED NODE   READINESS GATES
 pod/racnode1-0   1/1     Running   0          48m   10.244.1.4    qck-ocne19-w1   <none>           <none>
 pod/racnode2-0   1/1     Running   0          48m   10.244.2.87   qck-ocne19-w2   <none>           <none>
@@ -27,8 +32,8 @@ service/racnode2-0-ons      NodePort    10.104.243.56    <none>        6200:3020
 service/racnode2-0-vip      ClusterIP   None             <none>        <none>            48m   statefulset.kubernetes.io/pod-name=racnode2-0
 
 NAME                        READY   AGE   CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     48m   racnode1-0   dbocir/oracle/database-rac:19.3.0-slim
-statefulset.apps/racnode2   1/1     48m   racnode2-0   dbocir/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode1   1/1     48m   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     48m   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
 ```
 In this case, the port 1521 for Scan Listener from the pod is mapped to port 31521 on the worker node. To make the connection from outside, you must open the port `31521` on the worker node for INGRESS. 
 
@@ -42,6 +47,11 @@ With this NodePort Service deployment, you can make a SQL*Plus database connecti
 - On the remote client machine `/etc/hosts`file, add the RAC Node hostname mapping to the worker node IPs:
   ```sh
   129.XXX.XX.XX  racnode1-0.rac.svc.cluster.local
+  ```
+
+  Example output:
+
+  ```text
   144.XXX.XX.XX  racnode2-0.rac.svc.cluster.local
   129.XXX.XX.XX  racnode-scan
   144.XXX.XX.XX  racnode-scan
@@ -49,17 +59,25 @@ With this NodePort Service deployment, you can make a SQL*Plus database connecti
 - Connect using any Worker Node IP and SCAN Port `31521` as below:
 
   ```sh
-  $ sqlplus system/<Password>@//129.XXX.XX.XX:31521/soepdb
+  sqlplus system/<Password>@//129.XXX.XX.XX:31521/soepdb
 
+  sqlplus system/<Password>@//144.XXX.XX.XX:31521/soepdb
+  ```
+
+  Example output:
+
+  ```text
   OR 
-
-  $ sqlplus system/<Password>@//144.XXX.XX.XX:31521/soepdb
   ```
   
   For Example:
   ```sh
-  $ sqlplus system/<Password>@//129.XXX.XX.XX:31521/soepdb
+  sqlplus system/<Password>@//129.XXX.XX.XX:31521/soepdb
+  ```
 
+  Example output:
+
+  ```text
   SQL*Plus: Release 19.0.0.0.0 - Production on Thu Dec 25 01:24:50 2025
   Version 19.8.0.0.0
 
@@ -94,8 +112,12 @@ With this NodePort Service deployment, you can make a SQL*Plus database connecti
 
   For Example:
   ```sh
-  $ sqlplus system/<Password>@//129.XXX.XX.XX:31522/soepdb
+  sqlplus system/<Password>@//129.XXX.XX.XX:31522/soepdb
+  ```
 
+  Example output:
+
+  ```text
   SQL*Plus: Release 19.0.0.0.0 - Production on Thu Dec 25 01:25:09 2025
   Version 19.8.0.0.0
 

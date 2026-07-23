@@ -23,6 +23,6 @@ roleRef:
   name: oracle-database-operator-manager-role-storage-class
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 ---

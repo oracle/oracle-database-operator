@@ -44,6 +44,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// StatusEnum defines the observer status values.
 type StatusEnum string
 
 // DatabaseObserverSpec defines the desired state of DatabaseObserver
@@ -193,6 +194,7 @@ type OCIConfig struct {
 	MountPath  string           `json:"mountPath,omitempty"`
 }
 
+// ConfigPrivateKey defines the private key configuration.
 type ConfigPrivateKey struct {
 	SecretName string `json:"secret,omitempty"`
 }
@@ -219,6 +221,7 @@ type DatabaseObserverStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.metricsConfig",name="MetricsConfig",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.version",name="Version",type=string
+// +kubebuilder:deprecatedversion:warning="observability.oracle.com/v1alpha1 DatabaseObserver is deprecated; use observability.oracle.com/v4."
 type DatabaseObserver struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

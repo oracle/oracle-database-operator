@@ -7,7 +7,12 @@ The Oracle Database Sharding Topology deployed by Sharding Controller in Oracle 
 Check the details of the Sharding Topology provisioned by using the Sharding Controller:
 
 ```sh
-$ kubectl get all  -n shns
+kubectl get all  -n shns
+```
+
+Example output:
+
+```text
 NAME            READY   STATUS    RESTARTS   AGE
 pod/catalog-0   1/1     Running   0          10d
 pod/gsm1-0      1/1     Running   0          10d

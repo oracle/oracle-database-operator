@@ -445,7 +445,7 @@ spec:
           - subjectaccessreviews
           verbs:
           - create
-        serviceAccountName: default
+        serviceAccountName: controller-manager
       deployments:
       - label:
           control-plane: controller-manager
@@ -461,6 +461,7 @@ spec:
               labels:
                 control-plane: controller-manager
             spec:
+              serviceAccountName: controller-manager
               containers:
               - args:
                 - --enable-leader-election
@@ -763,7 +764,7 @@ spec:
           - get
           - list
           - watch
-        serviceAccountName: default
+        serviceAccountName: controller-manager
     strategy: deployment
   installModes:
   - supported: false
@@ -1418,25 +1419,3 @@ spec:
     targetPort: 9443
     type: ValidatingAdmissionWebhook
     webhookPath: /validate-database-oracle-com-v4-shardingdatabase
-  - admissionReviewVersions:
-    - v1
-    - v1beta1
-    containerPort: 443
-    deploymentName: oracle-database-operator-controller-manager
-    failurePolicy: Fail
-    generateName: vsingleinstancedatabase.kb.io
-    rules:
-    - apiGroups:
-      - database.oracle.com
-      apiVersions:
-      - v1alpha1
-      operations:
-      - CREATE
-      - UPDATE
-      - DELETE
-      resources:
-      - singleinstancedatabases
-    sideEffects: None
-    targetPort: 9443
-    type: ValidatingAdmissionWebhook
-    webhookPath: /validate-database-oracle-com-v1alpha1-singleinstancedatabase

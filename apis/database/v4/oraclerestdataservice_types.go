@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,var-naming
+// Legacy API field/type names are preserved for backward compatibility.
+
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -50,24 +53,43 @@ type OracleRestDataServiceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	DatabaseRef        string                                   `json:"databaseRef"`
-	LoadBalancer       bool                                     `json:"loadBalancer,omitempty"`
-	ServiceAnnotations map[string]string                        `json:"serviceAnnotations,omitempty"`
-	NodeSelector       map[string]string                        `json:"nodeSelector,omitempty"`
-	Image              OracleRestDataServiceImage               `json:"image,omitempty"`
-	OrdsPassword       OracleRestDataServicePassword            `json:"ordsPassword"`
-	AdminPassword      OracleRestDataServicePassword            `json:"adminPassword"`
+	DatabaseRef        string                         `json:"databaseRef"`
+	LoadBalancer       bool                           `json:"loadBalancer,omitempty"`
+	ServiceAnnotations map[string]string              `json:"serviceAnnotations,omitempty"`
+	NodeSelector       map[string]string              `json:"nodeSelector,omitempty"`
+	Image              OracleRestDataServiceImage     `json:"image,omitempty"`
+	Security           *OracleRestDataServiceSecurity `json:"security,omitempty"`
+	// Deprecated: use security.secrets.ordsPublicUser.
+	OrdsPassword OracleRestDataServicePassword `json:"ordsPassword,omitempty"`
+	// Deprecated: use security.secrets.databaseAdmin.
+	AdminPassword      OracleRestDataServicePassword            `json:"adminPassword,omitempty"`
 	OrdsUser           string                                   `json:"ordsUser,omitempty"`
 	RestEnableSchemas  []OracleRestDataServiceRestEnableSchemas `json:"restEnableSchemas,omitempty"`
 	OracleService      string                                   `json:"oracleService,omitempty"`
 	ServiceAccountName string                                   `json:"serviceAccountName,omitempty"`
 	Persistence        OracleRestDataServicePersistence         `json:"persistence,omitempty"`
 	MongoDbApi         bool                                     `json:"mongoDbApi,omitempty"`
+	// HTTPPort is the port on which the ORDS HTTP server listens inside the pod.
+	// +kubebuilder:default=8080
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	HTTPPort int32 `json:"httpPort,omitempty"`
 
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Minimum=1
 	Replicas             int `json:"replicas,omitempty"`
 	ReadinessCheckPeriod int `json:"readinessCheckPeriod,omitempty"`
+}
+
+// OracleRestDataServiceSecurity groups security-related ORDS settings.
+type OracleRestDataServiceSecurity struct {
+	Secrets *OracleRestDataServiceSecrets `json:"secrets,omitempty"`
+}
+
+// OracleRestDataServiceSecrets defines Kubernetes Secrets used by ORDS.
+type OracleRestDataServiceSecrets struct {
+	DatabaseAdmin  *OracleRestDataServicePassword `json:"databaseAdmin,omitempty"`
+	OrdsPublicUser *OracleRestDataServicePassword `json:"ordsPublicUser,omitempty"`
 }
 
 // OracleRestDataServicePersistence defines the storage releated params
@@ -98,8 +120,11 @@ type OracleRestDataServicePassword struct {
 
 // OracleRestDataServicePDBSchemas defines the PDB Schemas to be ORDS Enabled
 type OracleRestDataServiceRestEnableSchemas struct {
-	PdbName    string `json:"pdbName,omitempty"`
+	// +kubebuilder:validation:Pattern=`^$|^[A-Za-z][A-Za-z0-9_]{0,29}$`
+	PdbName string `json:"pdbName,omitempty"`
+	// +kubebuilder:validation:Pattern=`^[A-Za-z][A-Za-z0-9_]{0,29}$`
 	SchemaName string `json:"schemaName"`
+	// +kubebuilder:validation:Pattern=`^$|^[A-Za-z][A-Za-z0-9_-]{0,29}$`
 	UrlMapping string `json:"urlMapping,omitempty"`
 	Enable     bool   `json:"enable"`
 }

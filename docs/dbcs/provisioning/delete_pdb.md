@@ -12,6 +12,11 @@ To create PDBs and add them to an existing DBCS system, the two steps are as fol
 In the first step, you first bind the existing DBCS System to DBCS Controller following [the Bind to Existing DBCS System documentation](./../provisioning/bind_to_existing_dbcs_system.md). After successful binding, it will appear as follows:
 ```bash
 kubectl get dbcssystems
+```
+
+Example output:
+
+```text
 NAME                  AGE
 dbcssystem-existing   3m33s
 ```
@@ -28,7 +33,12 @@ Use the file: [deletepdb_in_existing_dbcs_system_list.yaml](./deletepdb_in_exist
 
 1. Deploy the `.yaml` file:  
 ```sh
-[root@docker-test-server DBCS]# kubectl apply -f deletepdb_in_existing_dbcs_system_list.yaml
+kubectl apply -f deletepdb_in_existing_dbcs_system_list.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
@@ -37,7 +47,7 @@ dbcssystem.database.oracle.com/dbcssystem-existing configured
 NOTE: Check the DB Operator Pod name in your environment.
 
 ```bash
-[root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 3. Remove the DBCS Systems resource-

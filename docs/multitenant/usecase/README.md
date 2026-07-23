@@ -1,16 +1,16 @@
 <!-- vscode-markdown-toc -->
 * 1. [Prerequisites](#Prerequisites)
-* 2. [Operator setup](#Operatorsetup)
-* 3. [Secrets creation](#Secretscreation)
-* 4. [Yaml file creation](#Yamlfilecreation)
-* 5. [Run testcase](#Runtestcase)
-* 6. [Makefile targets table](#Makefiletargetstable)
-* 7. [Diag commands and troubleshooting](#Diagcommandsandtroubleshooting)
-	* 7.1. [Connect to rest server pod](#Connecttorestserverpod)
-	* 7.2. [Lrest pod log](#Lrestpodlog)
-	* 7.3. [Monitor control plane](#Monitorcontrolplane)
-	* 7.4. [Error decrypting credential](#Errordecryptingcredential)
-	* 7.5. [Crd details](#Crddetails)
+* 1. [Operator setup](#Operatorsetup)
+* 1. [Secrets creation](#Secretscreation)
+* 1. [Yaml file creation](#Yamlfilecreation)
+* 1. [Run testcase](#Runtestcase)
+* 1. [Makefile targets table](#Makefiletargetstable)
+* 1. [Diag commands and troubleshooting](#Diagcommandsandtroubleshooting)
+  * 7.1. [Connect to rest server pod](#Connecttorestserverpod)
+  * 7.2. [Lrest pod log](#Lrestpodlog)
+  * 7.3. [Monitor control plane](#Monitorcontrolplane)
+  * 7.4. [Error decrypting credential](#Errordecryptingcredential)
+  * 7.5. [Crd details](#Crddetails)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -18,29 +18,31 @@
 	/vscode-markdown-toc-config -->
 <!-- /vscode-markdown-toc -->
 
-
 <span style="font-family:Liberation mono; font-size:0.9em; line-height: 1.1em">
 
+# Use case directory
 
+The use case directory includes a Makefile that automates the installation of the Oracle Database Operator using a namespace-scoped configuration and generates the YAML files required to test PDB lifecycle management across two different namespaces (one for the LREST pod and another for the PDB CRD).
 
-# Use case directory 
+To simplify and accelerate the setup process, you only need to update the [parameter file](../usecase/parameters.txt) with the details specific to your environment. The Makefile then uses these parameters to automatically generate all the YAML files needed to test the controllers.
 
-The use case directory contains a makefile to automatically install the Oracle Database Operator (namespace scope configuration) and generate the yaml files to test pdb life cycle management in two different namespaces (one for lrest pod the other one for pdb crd). To simplify and speed up the execution you just need to edit a [parameter file](../usecase/parameters.txt) with all the information about your environment. The makefile script uses parameter file to generate all the yaml file required to test the controllers. 
 After parameters setup there is the operator installation (**make opsetup**) , the secrets installation (**make secrets**), the yaml file generation (**make genyaml**).
 
 ![generalschema](../images/usecaseschema.jpg)
 
 **parameter file table of contents**
-```text 
+
+```text
                                 Check the latest version available<--------------+
                                                                                  |           
                                                                               +-----+
 LRESTIMG...............:container-registry.oracle.com/database/operator:lrest-241210-amd64
-TNSALIAS...............:[Tnsalias do not use quotes and avoid space in the string --> (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELA....]
+OPRIMG.................:[latest image of oracle database operator available on OCR]
+TNSSTRING..............:[Tnsalias do not use quotes and avoid space in the string --> (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELA....]
+TNSTOPOLOGY............:[Possible value:**FULLDESC** **TNSNAMES**]
+TNSALIAS...............:[tns alias]
 DBUSER.................:[CDB admin user]
 DBPASS.................:[CDB admin user password]
-WBUSER.................:[HTTPS user]
-WBPASS.................:[HTTPS user password]
 PDBUSR.................:[PDB admin user]
 PDBPWD.................:[PDB admin user password]
 PDBNAMESPACE...........:[pdb namespace]
@@ -56,11 +58,11 @@ OPENSHIFT..............:[boolean]
 
 Verify parameters using ``make check`` command.
 
-##  1. <a name='Prerequisites'></a>Prerequisites
+## 1. <a name='Prerequisites'></a>Prerequisites
 
-- Ensure that **kubectl** is properly installed on your client.
-- Even if the makefile automation, read carefully the [operator installation page](../../../../docs/installation/OPERATOR_INSTALLATION_README.md). (role binding,webcert,etc)
-- Ensure that the administrative user (admin) on the container database is configured as documented.
+* Ensure that **kubectl** is properly installed on your client.
+* Even if the makefile automation, read carefully the [operator installation page](../../../../docs/installation/OPERATOR_INSTALLATION_README.md). (role binding,webcert,etc)
+* Ensure that the administrative user (admin) on the container database is configured as documented.
 
 eg
 
@@ -72,120 +74,143 @@ grant create session to restdba container=all;
 grant sysdba to restdba container=all;
 ```
 
-##  2. <a name='Operatorsetup'></a>Operator setup
+## 2. <a name='Operatorsetup'></a>Operator setup
 
 ```bash
 make opsetup
 ```
+
 The make target **make opsetup** does the following actions:
-- Creates a copy the original **oracle-database-operator.yaml** and updates the WATCH_NAMESPACE list with the pdbnamespace and cdbnamespace values.
-- [Applies the certmaneger](../../../README.md#install-cert-manager)
-- Creates two namespaces: one for the lrest pod and the other one for the pdb controller.
-- [Namespace Scoped Deployment](../../../README.md#2-namespace-scoped-deployment)
-- Applies the oracle-database-operator.yaml
-- [ClusterRole and ClusterRoleBinding for NodePort services](../../../README.md#clusterrole-and-clusterrolebinding-for-nodeport-services)
 
-👉 **If your are running on Openshift you need to manually apply the [service context file](./security_context.yaml)** 
+* Creates a copy the original **oracle-database-operator.yaml** and updates the WATCH_NAMESPACE list with the pdbnamespace and cdbnamespace values.
+* [Applies the certmaneger](../../../README.md#install-cert-manager)
+* Creates two namespaces: one for the lrest pod and the other one for the pdb controller.
+* [Namespace Scoped Deployment](../../../README.md#2-namespace-scoped-deployment)
+* Applies the oracle-database-operator.yaml
+* [ClusterRole and ClusterRoleBinding for NodePort services](../../../README.md#clusterrole-and-clusterrolebinding-for-nodeport-services)
 
-##  3. <a name='Secretscreation'></a>Secrets creation 
+👉 **If your are running on Openshift you need to manually apply the [service context file](./security_context.yaml)**
+
+## 3. <a name='Secretscreation'></a>Secrets creation
 
 ```bash
 make secrets
 ```
+
 **make secrets** creates secrets encrypting the credential specified in the parameters
 
-##  4. <a name='Yamlfilecreation'></a>Yaml file creation 
+## 4. <a name='Yamlfilecreation'></a>Yaml file creation
 
 ```bash
 make genyaml
 ```
+
 **make genyaml** generates the required `yaml` files to work with multitenant controllers.
 
-##  5. <a name='Runtestcase'></a>Run testcase 
+## 5. <a name='Runtestcase'></a>Run testcase
 
 ```bash
 make runall00
 ```
 
-You can run **make runall00** to test all the functionality the multitenant controller 
+You can run **make runall00** to test all the functionality the multitenant controller
 
-##  6. <a name='Makefiletargetstable'></a>Makefile targets table
+## 6. <a name='Makefiletargetstable'></a>Makefile targets table
 
- | target          | action              | additional info |
- |-----------------|---------------------|-----------------|
- |tkapplyinit      | config map creation |                 |
- |run00            | lrest pod creation  |                 |
- |run01.1          | pdb1 creation       |                 |
- |run01.2          | pdb2 creation       |                 |
- |run02.1          | pdb1 open           | declarative     |
- |run02.2          | pdb2 open           | declarative     |
- |run03.1          | pdb1 clone          | declarative     |
- |run04.1          | pdb1 close          | declarative     |
- |run04.2          | pdb2 close          | declatative     |
- |run05.1          | pdb1 unplug         | declarative     |
- |run06.1          | pdb1 plug           | declarative     |
- |openpdb1         | pdb1 open           | imperative      |
- |openpdb2         | pdb2 open           | imperative      |
- |closepdb1        | pdb1 close          | imperative      |
- |closepdb2        | pdb2 close          | imperative      |
- |openpdb1rs       | pdb1 open restrict  | imperative      |
- |openpdb2rs       | pdb2 open restrict  | imperative      |
- |tkaudosicov      | test autodiscovery  |                 |
- |tkplsqlexec      | test sql/plsql      |                 |
- |tkapplyinit      | apply init map      |                 |
- |altercpu         | alter cpu_count     | make  altercpu LRPDBNAME=_lrpdb resource_ CPU_COUNT=_cpu count value_   |
- |open             | open pdb  [imperative]| make open LRPDBNAME=_lrpdb resource_ |
- |close            | close pdb [imperative]| make close LRPDBNAME=_lrpdb resource_ |
- |listimage        | images available on the cluster|      |
- |dumpoperator     | dump operator log   |                 |
- |dumplrest        | dump lrest log      |                 |
- |login            | connect to lrest pod|                 |
- |reloadod         | reload operator img |                 | 
- |mgrrestart       | manager restart     |                 |
- |**opsetup**      | install the  operator|                |
- |**secrets**      | create secrets      |                 |
- |**genyaml**      | generate the yaml files|              |
- |opclean          | deintall the operator|                |   
- |cleanlrest       | drop lrest resource | **lrest name hard coded** | 
- |rest             | rest status bitmask | make rest LRPDBNAME=_resname_ RESETVALUE=_new bitmask value_ |
- |tkautd           | Turn on/off autodiscover |  make tkautd AUTOD=true/false |
- |tkdelcs          | Turn on/off pdb delete cascade | make tkdelcs DELETECS=true/false |
- |tkdelcrd         |Turn ON/OFF lrest pdb imperativeLrpdb deletion |  make tkdelcrd DELETECRD=true/false  LRPDBNAME=_lrpdb resource name_ |
- | checkimpdel     | report of imperative delete setting ||
+|TARGET          |DESCRIBE                                                              |
+|----------------|----------------------------------------------------------------------|
+|**opsetup**     | setup the operator                                                   |
+|**secrets**     | create secrets for cdb connection                                    |
+|**genyaml**     | generate yaml files                                                  |
+|target          | description                                                          |
+|tkapplyinit     | config map creation                                                  |
+|opclean         | deintall the operator                                                |
+|run00           | lrest pod creation                                                   |
+|run01.1         | pdb1 creation                                                        |
+|run01.2         | pdb2 creation                                                        |
+|run02.1         | pdb1 open                                                            |
+|run02.2         | pdb2 open                                                            |
+|run03.1         | pdb1 clone                                                           |
+|run04.1         | pdb1 close                                                           |
+|run04.2         | pdb2 close                                                           |
+|run05.1         | pdb1 unplug                                                          |
+|run06.1         | pdb1 plug                                                            |
+|dumplrest       | dump lrest                                                           |
+|dumpoperator    | dump operator logs                                                   |
+|check           | print parameters value                                               |
+|tklrestnew      | online rest server recreation/https certificate rotation             |
+|mgrrestart      | restart manager                                                      |
+|listimage       | list images available on the cluster                                 |
+|loglrest        | tail -f log lrest                                                    |
+|cleanyaml       | clean yaml files                                                     |
+|pkg             | tar this directory                                                   |
+|run00           | delete and recreate the lrest pod                                    |
+|tkautd          | autodiscovery turn on/off *make tkautd AUTOD=false/true*             |
+|tkautd01        | test autodiscovery feature
+|tkdelcs         | lrest pdb delete cascade (on/off) *make tkdelcs DELETECS=true/false* |
+|tkdelcrd        | imperative deletion  *make tkdelcrd DELETECRD=false LRPDNNAME=<crd>* |
+|showpdbs        | use sqlplus  in the pod to show pdbs                                 |
+|sql             | connect to cdb as sysdba                                             |
+|patchstatus     | make patchstatus LRPDBNAME=<pdb> BTMSTS="val1:val2:...:valn"         |
+|orapki19        | create orapki db authentication secret (19 syntax)                   |
+|orapki26        | create orapki db authentication secret (26 syntax)                   |
+|lrestrecreation | delete and recreate lrest pod with to test lrpdb reconnection        |
+|appuserct       | create pdb user using secret (negative test)                         |
+|appuserct01/02  | create pdb user using secret                                         |
+|tkplsqlexec01   | test sql and plsql script creation                                   |
+|certverify      | verify https certificate                                             |
+|tnsnames        | create tnsnames.ora configmap                                        |
+|newpwd          | change restdba password                                              |
+|appuserctneg01  | test handle error for malformed appuser secret + rest bitmask status |
+|reset01         | reset state  make -f LRPDBNAME=pdb1 RESETSTRING=|PDBCRT|PDBOPN|FNALAZ|
+|altercpu        | make  altercpu LRPDBNAME=*lrpdb resource* CPU_COUNT=*cpu count value*|
+|open            | make open LRPDBNAME=*lrpdb resource*                                 |
+|close           | make close LRPDBNAME=*lrpdb resource*                                |
+|opclean         | deintall the operator                                                |
+|checkimpdel     | report of imperative delete setting                                  |
+|cleanlrest      | drop lrest resource                                                  |
 
+## 7. <a name='Diagcommandsandtroubleshooting'></a>Diag commands and troubleshooting
 
-##  7. <a name='Diagcommandsandtroubleshooting'></a>Diag commands and troubleshooting
+### 7.1. <a name='Connecttorestserverpod'></a>Connect to rest server pod
 
-###  7.1. <a name='Connecttorestserverpod'></a>Connect to rest server pod
-
-```bash 
+```bash
 /usr/bin/kubectl exec   <podname> -n <namespace> -it -- /bin/bash
 ```
 
-###  7.2. <a name='Lrestpodlog'></a>Lrest pod log
+### 7.2. <a name='Lrestpodlog'></a>Lrest pod log
 
 ```bash
 kubectl logs  `kubectl get pods -o custom-columns=:metadata.name -n cdbnamespace --no-headers ` -n cdbnamespace
 ```
 
-```bash 
+```bash
 ## example ##
 
 kubectl get pods -n cdbnamespace
-NAME                     READY   STATUS    RESTARTS      AGE
-cdb-dev-lrest-rs-fnw99   1/1     Running   1 (17h ago)   18h
-
 kubectl exec  cdb-dev-lrest-rs-fnw99 -n cdbnamespace -it -- /bin/bash
-[oracle@cdb-dev-lrest-rs-fnw99 ~]$
 ```
 
-###  7.3. <a name='Monitorcontrolplane'></a>Monitor control plane
+Example output:
+
+```text
+NAME                     READY   STATUS    RESTARTS      AGE
+cdb-dev-lrest-rs-fnw99   1/1     Running   1 (17h ago)   18h
+```
+
+### 7.3. <a name='Monitorcontrolplane'></a>Monitor control plane
 
 ```bash
 kubectl logs -f -l control-plane=controller-manager -n oracle-database-operator-system
 ```
-```bash 
+
+```bash
 ## output example: ##
+```
+
+Example output:
+
+```text
 2024-10-28T23:54:25Z    INFO    lrpdb-webhook   ValidateUpdate-Validating LRPDB spec for : lrpdb2
 2024-10-28T23:54:25Z    INFO    lrpdb-webhook   validateCommon  {"name": "lrpdb2"}
 2024-10-28T23:54:25Z    INFO    lrpdb-webhook   Valdiating LRPDB Resource Action : MODIFY
@@ -199,14 +224,13 @@ kubectl logs -f -l control-plane=controller-manager -n oracle-database-operator-
 2024-10-29T10:07:20Z    INFO    controller-runtime.certwatcher  Starting certificate watcher
 I1029 10:07:20.189724       1 leaderelection.go:250] attempting to acquire leader lease oracle-database-operator-system/a9d608ea.oracle.com...
 2024-10-29T16:49:15Z    INFO    lrpdb-webhook   Setting default values in LRPDB spec for : lrpdb1
-
 ```
 
-###  7.4. <a name='Errordecryptingcredential'></a>Error decrypting credential 
+### 7.4. <a name='Errordecryptingcredential'></a>Error decrypting credential
 
 In the following example you can see a resource creation failure due to a decryption issue
 
-```text 
+```text
 2024-10-30T10:09:08Z    INFO    controllers.LRPDB       getEncriptedSecret :pdbusr      {"getEncriptedSecret": {"name":"lrpdb1","namespace":"pdbnamespace"}}
 2024-10-30T10:09:08Z    ERROR   controllers.LRPDB       Failed to parse private key - x509: failed to parse private key (use ParsePKCS1PrivateKey instead for this key format)     {"DecryptWithPrivKey": {"name":"lrpdb1","namespace":"pdbnamespace"}, "error": "x509: failed to parse private key (use ParsePKCS1PrivateKey instead for this key format)"}
 ```
@@ -216,11 +240,18 @@ In the following example you can see a resource creation failure due to a decryp
 ```bash
 openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > mykey
 ```
-###  7.5. <a name='Crddetails'></a>Crd details 
+
+### 7.5. <a name='Crddetails'></a>Crd details
+
 Use the **describe** option to obtain `crd` information
 
 ```bash
 kubectl describe lrpdb lrpdb1 -n pdbnamespace
+```
+
+Example output:
+
+```text
 [...]
     Secret:
       Key:          e_wbuser.txt
@@ -242,7 +273,6 @@ Events:
   Normal   Created    108s                  LRPDB  PDB 'pdbdev' assertive pdb deletion turned on
   Warning  LRESTINFO  95s                   LRPDB  pdb=pdbdev:test_invalid_parameter:16:spfile:2065
   Warning  Done       15s (x12 over 2m25s)  LRPDB  cdb-dev
-
 ```
 
 </span>

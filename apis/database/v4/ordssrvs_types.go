@@ -44,54 +44,110 @@ import (
 )
 
 // OrdsSrvsSpec defines the desired state of OrdsSrvs
-// +kubebuilder:resource:shortName="ords"
 type OrdsSrvsSpec struct {
-	
+
 	// Specifies the desired Kubernetes Workload
 	//+kubebuilder:validation:Enum=Deployment;StatefulSet;DaemonSet
 	//+kubebuilder:default=Deployment
 	WorkloadType string `json:"workloadType,omitempty"`
-	
+
 	// Defines the number of desired Replicas when workloadType is Deployment or StatefulSet
 	//+kubebuilder:validation:Minimum=1
 	//+kubebuilder:default=1
 	Replicas int32 `json:"replicas,omitempty"`
-	
+
 	// Specifies whether to restart pods when Global or Pool configurations change
 	ForceRestart bool `json:"forceRestart,omitempty"`
-	
+
 	// Specifies the ORDS container image
-	//+kubecbuilder:default=container-registry.oracle.com/database/ords:latest
+	//+kubebuilder:default="container-registry.oracle.com/database/ords:latest"
 	Image string `json:"image"`
-	
+
 	// Specifies the ORDS container image pull policy
 	//+kubebuilder:validation:Enum=IfNotPresent;Always;Never
 	//+kubebuilder:default=IfNotPresent
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
-	
+
+	// Deprecated: ImagePullSecrets is not used by the OrdsSrvs controller and will be removed in a future API version.
 	// Specifies the Secret Name for pulling the ORDS container image
 	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
-	
+
 	// Contains settings that are configured across the entire ORDS instance.
 	//+kubebuilder:default:={}
 	GlobalSettings GlobalSettings `json:"globalSettings,omitempty"`
-	
+
+	// Specify the storage attributes for the access log PersistenceVolumeClaim
+	AccessLogPersistence OrdsSrvsPersistence `json:"accessLogPersistence,omitempty"`
+
+	// Specifies the sidecar that forwards HTTP access logs to stdout
+	AccessLogForwarder OrdsSrvsAccessLogForwarder `json:"accessLogForwarder,omitempty"`
+
+	// Specifies JVM options to pass via JDK_JAVA_OPTIONS.
+	JdkJavaOptions string `json:"jdkJavaOptions,omitempty"`
+
 	// Private key
-	EncPrivKey   PasswordSecret  `json:"encPrivKey,omitempty"`
-	
+	EncPrivKey PasswordSecret `json:"encPrivKey,omitempty"`
+
 	// Contains settings for individual pools/databases
 	PoolSettings []*PoolSettings `json:"poolSettings,omitempty"`
+
+	// Global metadata for all generated resources
+	CommonMetadata *MetadataConfig `json:"commonMetadata,omitempty"`
+
+	// Workload
+	Workload *OrdsSrvsWorkload `json:"workload,omitempty"`
+
+	// Pod template
+	PodTemplate *OrdsSrvsPodTemplate `json:"podTemplate,omitempty"`
+
+	// Service
+	Service *OrdsSrvsService `json:"service,omitempty"`
+
+	// Container compute resource requirements
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// ServiceAccount of the OrdsSrvs Pod
 	// +k8s:openapi-gen=true
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 
+	// +kubebuilder:default:=false
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
 }
 
+// OrdsSrvsWorkload defines the workload configuration for OrdsSrvs.
+type OrdsSrvsWorkload struct {
+	Metadata *MetadataConfig `json:"metadata,omitempty"`
+}
+
+// OrdsSrvsPodTemplate defines the pod template configuration for OrdsSrvs.
+type OrdsSrvsPodTemplate struct {
+	Metadata *MetadataConfig `json:"metadata,omitempty"`
+}
+
+// OrdsSrvsService defines the service configuration for OrdsSrvs.
+type OrdsSrvsService struct {
+	Metadata *MetadataConfig `json:"metadata,omitempty"`
+}
+
+// MetadataConfig defines metadata-related configuration for OrdsSrvs.
+type MetadataConfig struct {
+	AdditionalLabels      map[string]string `json:"additionalLabels,omitempty"`
+	AdditionalAnnotations map[string]string `json:"additionalAnnotations,omitempty"`
+}
+
+// GlobalSettings defines global ORDS settings.
+// this are attributes that will go in global.xml
 type GlobalSettings struct {
 
 	// Specifies whether the Instance API is enabled.
 	InstanceAPIEnabled *bool `json:"instance.api.enabled,omitempty"`
+
+	// ORDS user to be created by init script to access InstanceAPI
+	//+kubebuilder:default:="instance_api_admin"
+	InstanceAPIAdminUser string `json:"instanceAPIAdminUser,omitempty"`
+
+	// Secret containing InstanceAPIAdminUser password
+	InstanceAPIAdminSecret PasswordSecret `json:"instanceAPIAdminSecret,omitempty"`
 
 	// Specifies the setting to enable or disable metadata caching.
 	CacheMetadataEnabled *bool `json:"cache.metadata.enabled,omitempty"`
@@ -132,8 +188,12 @@ type GlobalSettings struct {
 	// Specifies how long to wait before retrying an invalid pool.
 	DBInvalidPoolTimeout string `json:"db.invalidPoolTimeout,omitempty"`
 
+	// Deprecated: use FeatureGraphQLMaxNestingDepth (json:"feature.graphql.max.nesting.depth").
 	// Specifies the maximum join nesting depth limit for GraphQL queries.
-	FeatureGraphQLMaxNestingDepth *int32 `json:"feature.grahpql.max.nesting.depth,omitempty"`
+	FeatureGrahpQLMaxNestingDepth *int32 `json:"feature.grahpql.max.nesting.depth,omitempty"`
+
+	// Specifies the maximum join nesting depth limit for GraphQL queries.
+	FeatureGraphQLMaxNestingDepth *int32 `json:"feature.graphql.max.nesting.depth,omitempty"`
 
 	// Specifies the name of the HTTP request header that uniquely identifies the request end to end as
 	// it passes through the various layers of the application stack.
@@ -155,11 +215,15 @@ type GlobalSettings struct {
 	StandaloneHTTPSHost string `json:"standalone.https.host,omitempty"`
 
 	// Specifies the HTTPS listen port.
+	// Set to 0 for HTTP-only OrdsSrvs deployments, for example when TLS is terminated by an ingress controller or OpenShift edge route.
 	//+kubebuilder:default:=8443
 	StandaloneHTTPSPort *int32 `json:"standalone.https.port,omitempty"`
 
 	// Specifies the period for Standalone Mode to wait until it is gracefully shutdown.
 	StandaloneStopTimeout string `json:"standalone.stop.timeout,omitempty"`
+
+	// Specifies the number of days before rotated access log files are deleted.
+	StandaloneAccessLogRetainDays *int32 `json:"standalone.access.log.retainDays,omitempty"`
 
 	// Specifies whether to display error messages on the browser.
 	DebugPrintDebugToScreen *bool `json:"debug.printDebugToScreen,omitempty"`
@@ -187,7 +251,7 @@ type GlobalSettings struct {
 	LogProcedure bool `json:"log.procedure,omitempty"`
 
 	// Specifies to enable the API for MongoDB.
-	//+kubebuider:default=false
+	//+kubebuilder:default=false
 	MongoEnabled bool `json:"mongo.enabled,omitempty"`
 
 	// Specifies the API for MongoDB listen port.
@@ -221,27 +285,38 @@ type GlobalSettings struct {
 	//+kubebuilder:default:="/ords"
 	StandaloneContextPath string `json:"standalone.context.path,omitempty"`
 
+	/*************************************************
+	* Custom attributes, not written to global.xml
+	/************************************************/
+
 	// Specify whether to download APEX installation files
 	// This setting will be ignored for ADB
+	// This is not written to ORDS global settings.
+	// Deprecated: use apex.installation.persistence with a pre-staged APEX installation artifact.
 	//+kubebuilder:default:=false
 	APEXDownload bool `json:"apex.download,omitempty"`
 
 	// Specify the url to download APEX installation files
 	// This setting will be ignored for ADB
+	// This is not written to ORDS global settings.
+	// Deprecated: stage APEX installation files with apex.installation.persistence.
 	//+kubebuilder:default:="https://download.oracle.com/otn_software/apex/apex-latest.zip"
-	APEXDownloadUrl string `json:"apex.download.url,omitempty"`
+	APEXDownloadURL string `json:"apex.download.url,omitempty"`
 
 	// Specify the storage attributes for PersistenceVolume and PersistenceVolumeClaim
-	APEXInstallationPersistence Persistence `json:"apex.installation.persistence,omitempty"`
+	// This is not written to ORDS global settings.
+	APEXInstallationPersistence OrdsSrvsPersistence `json:"apex.installation.persistence,omitempty"`
 
 	// Central Configuration URL
-	CentralConfigUrl string `json:"central.config.url,omitempty"`
-	
+	// This is passed to ORDS as -Dconfig.url and is not written to settings.xml.
+	CentralConfigURL string `json:"central.config.url,omitempty"`
+
 	// Central Configuration Wallet
 	//CentralConfigWallet string `json:"central.config.wallet,omitempty"`
 
 	// Specifies the Secret containing one or more wallet.zip archives (whit different names) containing connection details and credentials for the pools.
 	// shared zip wallet
+	// This is not written to ORDS global settings.
 	ZipWalletsSecretName string `json:"zipWalletsSecretName,omitempty"`
 
 	/*************************************************
@@ -257,7 +332,7 @@ type GlobalSettings struct {
 	SecurityForceHTTPS bool `json:"security.forceHTTPS,omitempty"`
 
 	// Specifies to trust Access from originating domains
-	SecuirtyExternalSessionTrustedOrigins string `json:"security.externalSessionTrustedOrigins,omitempty"`
+	SecurityExternalSessionTrustedOrigins string `json:"security.externalSessionTrustedOrigins,omitempty"`
 
 	/*************************************************
 	* Customised
@@ -304,7 +379,7 @@ type GlobalSettings struct {
 	// interface on which to listen.
 	//+kubebuilder:default:="0.0.0.0"
 	//StandaloneBinds string `json:"standalone.binds,omitempty"`
-	// This is disabled as containerised
+	// This is disabled as containerized
 
 	// Specifies the file where credentials are stored.
 	//SecurityCredentialsFile string `json:"security.credentials.file,omitempty"`
@@ -333,15 +408,17 @@ type GlobalSettings struct {
 	// network interface on which to listen.
 	//+kubebuilder:default:="0.0.0.0"
 	// MongoHost string `json:"mongo.host,omitempty"`
-	// This is disabled as containerised
+	// This is disabled as containerized
 
 	// Specifies the path to the folder where you want to store the API for MongoDB access logs.
 	// MongoAccessLog string `json:"mongo.access.log,omitempty"`
 	// HARDCODED to global/logs
 }
 
-// Specify storage attributes of PV and PVC
-type Persistence struct {
+// OrdsSrvsPersistence specifies storage attributes of a PV and PVC.
+// These settings are applied when the PVC is created. Changes after PVC
+// creation do not resize, replace, or rebind the existing PVC.
+type OrdsSrvsPersistence struct {
 	//+kubebuilder:default="2Gi"
 	Size         string `json:"size,omitempty"`
 	StorageClass string `json:"storageClass,omitempty"`
@@ -353,8 +430,21 @@ type Persistence struct {
 	//SetWritePermissions   *bool  `json:"setWritePermissions,omitempty"`
 }
 
+// OrdsSrvsAccessLogForwarder specifies the sidecar that forwards HTTP access logs to stdout.
+type OrdsSrvsAccessLogForwarder struct {
+	// Specifies if HTTP access logs should be forwarded to sidecar stdout.
+	//+kubebuilder:default:=false
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Container compute resource requirements for the access-log forwarder.
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+}
+
+// PoolSettings defines configuration for an ORDS pool.
 type PoolSettings struct {
 	// Specifies the Pool Name
+	// ORDS documentation, Pool Name must only contain lowercase alphabets a-z, digits 0-9, and “-“, “_“ and “.“
+	// +kubebuilder:validation:Pattern=`^[a-z0-9._-]+$`
 	PoolName string `json:"poolName"`
 
 	// Specify whether to perform ORDS installation/upgrades automatically
@@ -431,7 +521,7 @@ type PoolSettings struct {
 	FeatureSDW *bool `json:"feature.sdw,omitempty"`
 
 	// Specifies a comma separated list of HTTP Cookies to exclude when initializing an Oracle Web Agent environment.
-	HttpCookieFilter string `json:"http.cookie.filter,omitempty"`
+	HTTPCookieFilter string `json:"http.cookie.filter,omitempty"`
 
 	// Identifies the database role that indicates that the database user must get the SQL Administrator role.
 	JDBCAuthAdminRole string `json:"jdbc.auth.admin.role,omitempty"`
@@ -440,7 +530,7 @@ type PoolSettings struct {
 	JDBCCleanupMode string `json:"jdbc.cleanup.mode,omitempty"`
 
 	// If it is true, then it causes a trace of the SQL statements performed by Oracle Web Agent to be echoed to the log.
-	OwaTraceSql *bool `json:"owa.trace.sql,omitempty"`
+	OwaTraceSQL *bool `json:"owa.trace.sql,omitempty"`
 
 	// Indicates if the PL/SQL Gateway functionality should be available for a pool or not.
 	// Value can be one of disabled, direct, or proxied.
@@ -587,7 +677,7 @@ type PoolSettings struct {
 	SODAMaxLimit string `json:"soda.maxLimit,omitempty"`
 
 	// Specifies whether the REST-Enabled SQL service is active.
-	RestEnabledSqlActive *bool `json:"restEnabledSql.active,omitempty"`
+	RestEnabledSQLActive *bool `json:"restEnabledSql.active,omitempty"`
 
 	/*************************************************
 	* Customised
@@ -649,11 +739,7 @@ type PoolSettings struct {
 	*/
 }
 
-type PriVKey struct {
-	Secret PasswordSecret `json:"secret"`
-}
-
-// Defines the secret containing Password mapped to secretKey
+// PasswordSecret defines the secret containing a password mapped to a secret key.
 type PasswordSecret struct {
 	// Specifies the name of the password Secret
 	SecretName string `json:"secretName"`
@@ -662,7 +748,7 @@ type PasswordSecret struct {
 	PasswordKey string `json:"passwordKey,omitempty"`
 }
 
-// Defines the secret containing Certificates
+// CertificateSecret defines the secret containing certificates.
 type CertificateSecret struct {
 	// Specifies the name of the certificate Secret
 	SecretName string `json:"secretName"`
@@ -672,19 +758,13 @@ type CertificateSecret struct {
 	CertificateKey string `json:"key"`
 }
 
-// Defines a secret containing tns admin folder (network/admin), e.g. tnsnames.ora
+// TNSAdminSecret defines the secret containing the TNS admin folder, for example tnsnames.ora.
 type TNSAdminSecret struct {
 	// Specifies the name of the Secret
 	SecretName string `json:"secretName"`
 }
 
-// Defines a secret containing pool wallet, Oracle Wallet with credentials, cwallet.sso
-//type PoolWalletSecret struct {
-//	// Specifies the name of the Secret
-//	SecretName string `json:"secretName"`
-//}
-
-// Defines the secret containing wallet.zip
+// DBWalletSecret defines the secret containing wallet.zip.
 type DBWalletSecret struct {
 	// Specifies the name of the Database Wallet Secret
 	SecretName string `json:"secretName"`
@@ -710,11 +790,11 @@ type OrdsSrvsStatus struct {
 	// Indicates the MongoAPI port of the resource exposed by the pods (if enabled)
 	MongoPort int32 `json:"mongoPort,omitempty"`
 	// Indicates if the resource is out-of-sync with the configuration
-	RestartRequired bool `json:"restartRequired"`
-
+	RestartRequired bool `json:"restartRequired,omitempty"`
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-
+	// last observed generation to log first creation or Spec changes
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -737,7 +817,6 @@ type OrdsSrvs struct {
 
 	Spec   OrdsSrvsSpec   `json:"spec,omitempty"`
 	Status OrdsSrvsStatus `json:"status,omitempty"`
-	
 }
 
 //+kubebuilder:object:root=true
@@ -748,7 +827,6 @@ type OrdsSrvsList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []OrdsSrvs `json:"items"`
 }
-
 
 func init() {
 	SchemeBuilder.Register(&OrdsSrvs{}, &OrdsSrvsList{})

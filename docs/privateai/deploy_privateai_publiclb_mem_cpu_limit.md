@@ -2,17 +2,20 @@
 
 Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In this example, the deployment uses the YAML file based on `OCI OKE` cluster. The memory and cpu limits are assigned for the Pods for the PrivateAI Container.
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle PrivartAI Controller](./README.md#prerequisites-for-running-oracle-privartai-controller) before using Oracle PrivateAI Controller.
+**IMPORTANT:** Complete [Before You Begin](./README.md#before-you-begin) before using Oracle PrivateAI Controller. Make sure you use the Public IP Address of the Public LoadBalancer to the parameter `IP_ADDRESS` while creating the certificate for this `PrivateAi` Deployment.
 
 **NOTE:** Modify the file `pai_sample_publiclb_mem_cpu_limit.yaml` with the actual Reserved Public IP before deployment.
 
 Use the file: [pai_sample_publiclb_mem_cpu_limit.yaml](./provisioning/pai_sample_publiclb_mem_cpu_limit.yaml) for this use case as below:
 
 1. Deploy the `pai_sample_publiclb_mem_cpu_limit.yaml` file:
+
     ```sh
     kubectl apply -f pai_sample_publiclb_mem_cpu_limit.yaml
     ```
+
 2. Check the status of the deployment:
+
     ```sh
     # Check the status of the Kubernetes Pods:
     kubectl get all -n pai
@@ -23,4 +26,3 @@ Use the file: [pai_sample_publiclb_mem_cpu_limit.yaml](./provisioning/pai_sample
     # Check the memory and cpu limits on the Pods by describing them:
     kubectl describe pod/pai-sample-b669d7897-nkkhz -n pai    
     ```
-  
