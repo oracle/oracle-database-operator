@@ -32,9 +32,11 @@ spec:
     ## Service connect string for SQL*Plus/DBCA source access (TCP 1521).
     ## Use the RAC SCAN listener and a registered primary service.
     connectString: "primrac-scan.mysubnet.examplevcn.oraclevcn.com:1521/PRIM_UNQNAME.mysubnet.examplevcn.oraclevcn.com"
-    ## Must be primary CDB DB_NAME (v$database.name), NOT the full SCAN service name.
-    ## Wrong value becomes PRIMARY_DB_NAME env and can break CREATE TRUE CACHE.
-    ## Lab validation set this explicitly for domain-qualified RAC services.
+    ## Primary CDB short DB_NAME (SELECT name FROM v$database), e.g. PRIMDB.
+    ## Required in practice for domain-qualified RAC SCAN services so bootstrap
+    ## does not treat the full service string as PRIMARY_DB_NAME.
+    ## Never set to DB_UNIQUE_NAME or the full SCAN service (breaks CREATE TRUE CACHE).
+    ## Same definition as docs/sidb/README.md — Source Database Reference.
     dbName: PRIMDB
 
   trueCache:

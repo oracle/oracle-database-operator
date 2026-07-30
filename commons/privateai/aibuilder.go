@@ -25,6 +25,7 @@ import (
 
 const (
 	restartAnnotationKey = "kubectl.kubernetes.io/restartedAt"
+	deploymentRevisionAnnotationKey = "deployment.kubernetes.io/revision"
 	envHTTPEnabled       = "PRIVATE_AI_HTTP_ENABLED"
 	envHTTPSEnabled      = "PRIVATE_AI_HTTPS_ENABLED"
 	envAuthEnabled       = "PRIVATE_AI_AUTHENTICATION_ENABLED"
@@ -57,6 +58,12 @@ func copyStringMap(input map[string]string) map[string]string {
 	for key, value := range input {
 		output[key] = value
 	}
+	return output
+}
+
+func deploymentUserAnnotations(input map[string]string) map[string]string {
+	output := copyStringMap(input)
+	delete(output, deploymentRevisionAnnotationKey)
 	return output
 }
 
@@ -984,7 +991,7 @@ func UpdateDeploySetForPrivateAI(
 	}
 
 	desiredWorkloadAnnotations := privateAIWorkloadAnnotations(instance)
-	if !reflect.DeepEqual(deploy.Annotations, desiredWorkloadAnnotations) {
+	if !reflect.DeepEqual(deploymentUserAnnotations(deploy.Annotations), desiredWorkloadAnnotations) {
 		LogMessages("INFO", "Deployment annotations changed. Updating deployment...", nil, instance, logger)
 		needsUpdate = true
 	}
@@ -1002,7 +1009,16 @@ func UpdateDeploySetForPrivateAI(
 	instance.Status.Status = privateaiv4.StatusUpdating
 
 	updated := deploy.DeepCopy()
-	updated.Annotations = desiredWorkloadAnnotations
+	updated.Annotations = copyStringMap(deploy.Annotations)
+	for key := range deploymentUserAnnotations(deploy.Annotations) {
+		delete(updated.Annotations, key)
+	}
+	for key, value := range desiredWorkloadAnnotations {
+		if updated.Annotations == nil {
+			updated.Annotations = map[string]string{}
+		}
+		updated.Annotations[key] = value
+	}
 	updated.Spec.Template.Annotations = copyStringMap(desiredPodAnnotations)
 	if restartedAt := deploy.Spec.Template.Annotations[restartAnnotationKey]; restartedAt != "" {
 		if updated.Spec.Template.Annotations == nil {
@@ -1023,6 +1039,17 @@ func UpdateDeploySetForPrivateAI(
 			container.Image = desiredImage
 		}
 		break
+	}
+
+	// The checks above identify fields that may need reconciliation, but the
+	// normalized representation can still be equivalent to the object already
+	// persisted in the API server (for example nil versus an empty annotation
+	// map).  Avoid issuing a no-op Deployment update: every unnecessary update
+	// can trigger another owned-resource reconcile and prevent the Deployment
+	// controller from catching up with its observed generation.
+	if reflect.DeepEqual(updated.Annotations, deploy.Annotations) &&
+		reflect.DeepEqual(updated.Spec, deploy.Spec) {
+		return ctrl.Result{}, nil
 	}
 
 	if err := kClient.Update(context.Background(), updated); err != nil {

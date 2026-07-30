@@ -28,13 +28,12 @@ spec:
     connectString: "sidb-sample.internal.example.com:1521/ORCLPRD"
     ## The trailing service name or SID must identify the primary database.
     ## It does not need to match the True Cache SID defined below.
-    ## Optional primary CDB DB_NAME when it must be supplied explicitly.
-    ## Leave this unset when the connectString already uses the correct
-    ## reachable primary service or SID.
-    ## Set it when the service segment is not the CDB name (lab TCPS example:
-    ## connectString .../primary_service with dbName: ORCLPRD).
-    ## For domain-qualified RAC SCAN services, set dbName to the short CDB name
-    ## (see singleinstancedatabase_truecache_external_rac.yaml).
+    ## Optional: primary CDB short DB_NAME (SELECT name FROM v$database).
+    ## Not DB_UNIQUE_NAME, not the full SCAN/service string, not the TC SID.
+    ## Omit: scripts resolve PRIMARY_DB_NAME from the primary (works).
+    ## Set short name when the connectString service segment is not the CDB name
+    ## (common for RAC SCAN) or when you prefer not to inherit primary db_domain.
+    ## See docs/sidb/README.md — Source Database Reference.
     # dbName: "ORCLPRD"
 
   ## Use only alphanumeric characters for sid

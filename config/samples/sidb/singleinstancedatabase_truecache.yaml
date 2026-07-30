@@ -27,10 +27,11 @@ spec:
   ## Lab alternative: primarySource.connectString: "sidb-sample:1521/ORCLPRD"
   primarySource:
     databaseRef: "sidb-sample"
-    ## Optional primary CDB DB_NAME when it must be supplied explicitly.
-    ## Leave this unset for the usual databaseRef flow.
-    ## Set it only when True Cache must use the primary CDB DB_NAME instead of
-    ## the identifier derived from the source reference.
+    ## Optional: primary CDB short DB_NAME (SELECT name FROM v$database), e.g. ORCLPRD.
+    ## Not DB_UNIQUE_NAME, not a SCAN/service string, not the True Cache SID.
+    ## Omit to let provisioning resolve PRIMARY_DB_NAME from the primary (works).
+    ## Set the short name when you want an explicit PRIMARY_DB_NAME; may avoid
+    ## inheriting the primary db_domain on the True Cache database.
     # dbName: "ORCLPRD"
 
   ## Optional environment overrides for the True Cache container.

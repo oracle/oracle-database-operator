@@ -368,3 +368,51 @@ func TestUpdateDeploySetForPrivateAI_ReconcilesUserAnnotations(t *testing.T) {
 		t.Fatalf("expected restart annotation to be preserved, got %#v", updated.Spec.Template.Annotations)
 	}
 }
+
+func TestUpdateDeploySetForPrivateAI_NoOpDoesNotUpdateDeployment(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add apps scheme: %v", err)
+	}
+
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+				Image: &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+			},
+		},
+	}
+	deploy := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "pai-sample", Namespace: "pai",
+			Annotations: map[string]string{deploymentRevisionAnnotationKey: "1"},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					restartAnnotationKey: "existing-restart",
+				}},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{
+					Name: "pai-sample", Image: "repo/pai:current",
+				}}},
+			},
+		},
+	}
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+		Name: "pai-sample", Image: "repo/pai:current",
+	}}}}
+	kClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(deploy).Build()
+
+	if _, err := UpdateDeploySetForPrivateAI(instance, instance.Spec, kClient, nil, deploy, pod, logr.Discard()); err != nil {
+		t.Fatalf("unexpected no-op update error: %v", err)
+	}
+
+	updated := &appsv1.Deployment{}
+	if err := kClient.Get(context.Background(), client.ObjectKey{Name: "pai-sample", Namespace: "pai"}, updated); err != nil {
+		t.Fatalf("failed to fetch deployment: %v", err)
+	}
+	if updated.Spec.Template.Annotations[restartAnnotationKey] != "existing-restart" {
+		t.Fatalf("restart annotation changed during no-op reconcile: %#v", updated.Spec.Template.Annotations)
+	}
+}

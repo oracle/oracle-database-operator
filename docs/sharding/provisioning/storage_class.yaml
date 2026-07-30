@@ -1,0 +1,30 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+
+metadata:
+  # Name of the StorageClass. PersistentVolumeClaims (PVCs)
+  # must reference this name in storageClassName.
+  name: fss-dyn-storage
+
+# OCI File Storage (FSS) CSI provisioner
+provisioner: fss.csi.oraclecloud.com
+
+# Parameters passed to the OCI FSS CSI driver
+parameters:
+  # Availability Domain where the dynamically provisioned file system will be created.
+  availabilityDomain: PHX-AD-1
+
+  # OCID of the OCI File Storage Mount Target
+  # where the dynamically provisioned file system will be exported.
+  mountTargetOcid: ocid1.mounttarget.oc1.phx...........
+
+  # Optional export path for the dynamically created export.
+  # The path must begin with "/" and be unique within the mount target.
+  exportPath: /FileSystem_GDD_Deployment
+
+# Retain the PersistentVolume and underlying OCI File Storage
+# resources when the PVC is deleted. Manual cleanup is required.
+reclaimPolicy: Retain
+
+# Provision the storage immediately after the PVC is created.
+volumeBindingMode: Immediate

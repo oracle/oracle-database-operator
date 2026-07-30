@@ -42,9 +42,8 @@ kubectl exec -it catalog-0 -n shns /bin/bash
 
 When you switched to the correct Kubernetes Pod, you can troubleshooting the corresponding component using the alert log, the trace files, and so on, just as you would with a normal Sharding Database Deployment. For more information, see: [Oracle Globally Distributed Database Documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/shard/index.html)
 
+## Debugging using Database Events
 
-## Debugging using Database Events 
-
-* You can enable database events as part of the Sharded Database Deployment 
-* Enable events using `envVars` 
-* One example of enabling Database Events is [sharding_provisioning_with_db_events.md](./debugging/sharding_provisioning_with_db_events.md) 
+* You can enable database events as part of the Sharded Database Deployment
+* Enable events using `envVars`
+* One example of enabling Database Events is [sharding_provisioning_with_db_events.md](./debugging/sharding_provisioning_with_db_events.md)

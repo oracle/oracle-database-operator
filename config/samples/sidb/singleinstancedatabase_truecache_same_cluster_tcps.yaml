@@ -26,7 +26,9 @@ spec:
   ## Same-namespace primary SIDB reference.
   primarySource:
     databaseRef: sidb-sample
-    ## Usually omit for databaseRef; operator uses primary SIDB spec.sid.
+    ## Optional: primary CDB short DB_NAME (v$database.name). See docs/sidb/README.md
+    ## Source Database Reference. Omit = resolve from primary; set = explicit value
+    ## (may avoid inheriting primary db_domain on the True Cache database).
     # dbName: "ORCLPRD"
 
   ## Optional override for auto registration helper path.

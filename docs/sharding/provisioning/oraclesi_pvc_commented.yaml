@@ -38,7 +38,7 @@ spec:
         app: oshard26aicdb-dep
     spec:
       containers:
-      - image: container-registry.oracle.com/database/enterprise:23.26.1.0
+      - image: container-registry.oracle.com/database/enterprise_ru:latest-26
         name: oshard26aicdb
         ports:
         - containerPort: 1521
