@@ -1378,7 +1378,7 @@ flowchart LR
 5. **Client exposure:** prefer `spec.services.endpoints` (`name: loadbalancer`); legacy `services.external` still works.
 6. **Primary service ↔ True Cache service association** is separate from True Cache database creation. Seeing `DATABASE IS READY TO USE` in the True Cache pod logs means the cache database was created; it does **not** by itself mean a primary service was associated with a True Cache service. By default (`autoTCServiceRegistration=false` or omitted), that association is a **manual** step on the primary. To have the operator attempt it automatically during True Cache provisioning, set `spec.trueCache.autoTCServiceRegistration: true` and complete the prerequisites in [PREREQUISITES.md](./PREREQUISITES.md).
 
-**Sample placeholders (replace before apply):** image pulls use `phx.ocir.io/<tenancy>/...` until a public True Cache image is standard; NLB annotations use `ocid1.subnet...` / `<region>` placeholders; hostnames use `*.internal.example.com` or `*.examplevcn.oraclevcn.com` examples—not real lab endpoints.
+**Sample placeholders (replace before apply):** image pulls use `dbocir/oracle/database:...` (or your registry) for True Cache samples; NLB annotations use `ocid1.subnet...` / `<region>` placeholders; hostnames use `*.internal.example.com` or `*.examplevcn.oraclevcn.com` examples—not real lab endpoints.
 
 Workflows in this section:
 

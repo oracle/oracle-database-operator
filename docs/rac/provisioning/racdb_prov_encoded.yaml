@@ -47,7 +47,7 @@ spec:
   dbSecret:
     name: db-user-pass                                                     # Secret containing a Base64-encoded pwdfile entry
     pwdFileName: pwdfile                                                   # Base64-encoded password file stored inside the secret
-  image: phx.ocir.io/intsanjaysingh/oracle/database-rac:19.3.0-slim        # RAC slim image used for provisioning
+  image: dbocir/oracle/database-rac:19.3.0-slim        # RAC slim image used for provisioning
   imagePullPolicy: Always
   scanSvcName: racnode-scan                                                # SCAN service name created for RAC connectivity
   scanSvcTargetPort: 31521

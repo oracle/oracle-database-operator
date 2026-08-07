@@ -56,8 +56,8 @@ spec:
       nodeSelector:
         failure-domain.beta.kubernetes.io/zone: "PHX-AD-1"
  storageClass: oci
- dbImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:21.3.0-ee
- gsmImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-gsm:21.3.0
+ dbImage: dbocir/oracle/database:21.3.0-ee
+ gsmImage: dbocir/oracle/database-gsm:21.3.0
  scriptsLocation: /mnt/stage/sharding/scripts
  secret: db-user-pass
  isExternalSvc: false

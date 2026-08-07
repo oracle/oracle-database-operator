@@ -22,7 +22,7 @@
 
 
 ### In this example, 
-  * A pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim` is used. 
+  * A pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `dbocir/oracle/database-rac:19.3.0-slim` is used. 
   * If you plan to build the image yourself, you can build using the files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). In this case, you will need to change value of `image` with the image you have built in your enviornment in file `racdb_prov_diff_dg_for_db_and_crs.yaml`.   
   * The ASM diskgroup is configured using the shared disks on the worker nodes i.e. 
     * `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2` for the `CRSDATA` diskgroup 

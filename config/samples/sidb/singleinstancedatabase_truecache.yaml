@@ -94,7 +94,7 @@ spec:
   image:
     ## Oracle True Cache requires a True Cache capable image.
     ## Replace <tenancy> / tag for your registry.
-    pullFrom: phx.ocir.io/<tenancy>/db-repo/oracle/database:truecache-23.26.0-ee
+    pullFrom: dbocir/oracle/database:truecache-23.26.0-ee
     prebuiltDB: false
     imagePullPolicy: Always
 

@@ -77,7 +77,7 @@ spec:
   image:
     ## True Cache capable image required (lab used truecache-*-ee-patch tags).
     ## Replace <tenancy> / tag for your registry.
-    pullFrom: phx.ocir.io/<tenancy>/db-repo/oracle/database:truecache-23.26.0-ee
+    pullFrom: dbocir/oracle/database:truecache-23.26.0-ee
     prebuiltDB: false
     imagePullPolicy: Always
 

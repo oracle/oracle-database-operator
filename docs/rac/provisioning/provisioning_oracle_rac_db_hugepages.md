@@ -23,7 +23,7 @@ For guidance on memory calculation when using HugePages to deploy an Oracle Rest
 
 
 ### Example Details 
-  * A pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim` is used. 
+  * A pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `dbocir/oracle/database-rac:19.3.0-slim` is used. 
   * If you plan to build the image yourself, then you can build using the files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). In this case, Change the value of `image` with the image that you have built in your enviornment in file `racdb_prov_hugepages.yaml`. 
   * The ASM diskgroup is configured using the shared disks on the worker nodes: `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2`. These disks are specified using parameter `asmDiskGroupDetails` in the YAML file. 
 

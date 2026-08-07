@@ -28,8 +28,8 @@ service/racnode3-0       ClusterIP   None         <none>        <none>    3h2m  
 service/racnode3-0-vip   ClusterIP   None         <none>        <none>    3h2m    statefulset.kubernetes.io/pod-name=racnode3-0
 
 NAME                        READY   AGE     CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     3h29m   racnode1     phx.ocir.io/intsanjaysingh/db-repo/oracle/database:23.3.0-rac-slim
-statefulset.apps/racnode3   0/1     3h2m    racnode3     phx.ocir.io/intsanjaysingh/db-repo/oracle/database:23.3.0-rac-slim
+statefulset.apps/racnode1   1/1     3h29m   racnode1     dbocir/oracle/database:23.3.0-rac-slim
+statefulset.apps/racnode3   0/1     3h2m    racnode3     dbocir/oracle/database:23.3.0-rac-slim
 
 --------------------------------------------------------------------------------
 Name           Target  State        Server                   State details
@@ -147,8 +147,8 @@ service/racnode2-0-ons      NodePort    10.110.24.81     <none>        6200:3020
 service/racnode2-0-vip      ClusterIP   None             <none>        <none>            25m   statefulset.kubernetes.io/pod-name=racnode2-0
 
 NAME                        READY   AGE   CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     25m   racnode1     phx.ocir.io/intsanjaysingh/db-repo/oracle/database:23.3.0-rac-slim
-statefulset.apps/racnode2   1/1     25m   racnode2     phx.ocir.io/intsanjaysingh/db-repo/oracle/database:23.3.0-rac-slim
+statefulset.apps/racnode1   1/1     25m   racnode1     dbocir/oracle/database:23.3.0-rac-slim
+statefulset.apps/racnode2   1/1     25m   racnode2     dbocir/oracle/database:23.3.0-rac-slim
 
 NAME                ENDPOINTS                          AGE
 racnode-scan        10.244.1.8                         94m

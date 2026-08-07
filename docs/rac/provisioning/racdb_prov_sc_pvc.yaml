@@ -80,7 +80,7 @@ spec:
     pwdFileName: pwdfile.enc
     # encryptionType: pkeyutl
     # pkeyopt: rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256
-  image: phx.ocir.io/intsanjaysingh/oracle/database-rac:19.3.0-slim
+  image: dbocir/oracle/database-rac:19.3.0-slim
   imagePullPolicy: Always
   scanSvcName: racnode-scan
   scanSvcTargetPort: 31521

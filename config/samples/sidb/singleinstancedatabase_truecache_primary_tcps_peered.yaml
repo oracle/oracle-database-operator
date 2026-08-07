@@ -49,7 +49,7 @@ spec:
   ## True Cache blob generation needs a compatible enterprise / True Cache image.
   ## Replace <tenancy> / tag for your registry.
   image:
-    pullFrom: phx.ocir.io/<tenancy>/db-repo/oracle/database:truecache-23.26.0-ee
+    pullFrom: dbocir/oracle/database:truecache-23.26.0-ee
     prebuiltDB: false
     imagePullPolicy: Always
 
