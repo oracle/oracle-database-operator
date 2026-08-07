@@ -8,8 +8,8 @@ Deploy an Oracle RAC Database and Grid Infrastructure using Oracle RAC Controlle
 * In this case, the Oracle RAC Database is deployed with with different diskgroups for CRS and RDBMS. 
 * The diskgroups have different redundancy levels. 
 * This example uses `racdb_prov_diff_dg_for_db_and_crs_with_diff_redundancy.yaml` to provision an Oracle RAC Database using Oracle RAC Controller. The provisioning includes:
-  * Two Kubernetes Pods as the RAC Nodes
-  * Headless services for RAC
+  * Two Kubernetes Pods as the Oracle RAC Nodes
+  * Headless services for Oracle RAC
     * VIP Service
     * Scan Service
     * RAC Node hostname

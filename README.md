@@ -337,12 +337,12 @@ After the operator is installed, continue with the guide for your workload:
 | Multitenant | Manage CDB/PDB lifecycle | create, plug, unplug, clone, open, close, delete | [docs/multitenant/README.md](./docs/multitenant/README.md) |
 | Oracle Base Database Service | Manage Oracle Base Database Service resources on OCI | provision, scale, clone, backup, restore, patch, Data Guard | [docs/dbcs/README.md](./docs/dbcs/README.md) |
 | ORDS Services | Manage ORDS service deployments | provision, update, delete | [docs/ordsservices/README.md](./docs/ordsservices/README.md) |
-| RAC | Manage Oracle Real Application Clusters | provision, scale, add or remove ASM disks | [docs/rac/README.md](./docs/rac/README.md) |
+| Oracle RAC | Manage Oracle Real Application Clusters | provision, scale, add or remove ASM disks | [docs/rac/README.md](./docs/rac/README.md) |
 | Oracle Restart | Manage Oracle Restart deployments | provision, ASM disk operations, load balancer support | [docs/oraclerestart/README.md](./docs/oraclerestart/README.md) |
 | Private AI | Manage Oracle Private AI Services Container | deploy, scale, configure networking, manage runtime updates | [docs/privateai/README.md](./docs/privateai/README.md) |
 | Traffic Manager | Route database listener traffic | CMAN for Oracle listener connectivity | [docs/trafficmanager/README.md](./docs/trafficmanager/README.md) |
 
-Traffic Manager works with Single Instance Database or RAC for CMAN-based listener access. See the [Traffic Manager guide](./docs/trafficmanager/README.md) for CMAN generated and file-mode configuration, and sample manifests under [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/).
+Traffic Manager works with Single Instance Database or Oracle RAC for CMAN-based listener access. See the [Traffic Manager guide](./docs/trafficmanager/README.md) for CMAN generated and file-mode configuration, and example manifests under [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/).
 
 ### Supporting Services
 
@@ -409,7 +409,7 @@ kubectl get crd -o name \
   | xargs --no-run-if-empty kubectl delete
 ```
 
-## Documentation for the supported Oracle Database configurations
+## Documentation for the Supported Oracle Database configurations
 
 - [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
 - [Components of Dedicated Autonomous Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/components.html)

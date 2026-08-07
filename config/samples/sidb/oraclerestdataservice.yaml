@@ -61,6 +61,10 @@ spec:
   ## Leave commented if there is no such requirement
   # nodeSelector:
   #   topology.kubernetes.io/zone: PHX-AD-1
+  ## If the primary SIDB is created with accessMode: "ReadWriteOnce", the PV can be attached to only one worker node in OCI.
+  ## In that case, use the following value to restrict the ORDS pod to the same worker node.
+  nodeSelector:
+    kubernetes.io/hostname: "<< worker node >>"
 
   ## Schemas to be ORDS Enabled in PDB of .spec.databaseRef (.spec.pdbName)
   ## Schema will be created (if not exists) with password from .spec.ordsPassword.

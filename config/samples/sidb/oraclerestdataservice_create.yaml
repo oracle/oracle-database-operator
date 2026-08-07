@@ -35,6 +35,11 @@ spec:
   ## Set this to true to enable MongoDB API
   mongoDbApi: true
 
+  ## If the primary SIDB is created with accessMode: "ReadWriteOnce", the PV can be attached to only one worker node in OCI.
+  ## In that case, use the following value to restrict the ORDS pod to the same worker node.
+  nodeSelector:
+    kubernetes.io/hostname: "<< worker node >>"
+
   replicas: 1
 
   ## PDB Schemas to be ORDS Enabled.

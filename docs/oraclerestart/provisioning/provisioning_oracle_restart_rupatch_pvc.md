@@ -61,4 +61,4 @@ For example:
     ===============================
     ```
 * Check Details of Kubernetes CRD Object as in this [example](./orestart_rupatch_pvc_object.txt)
-* Refer to the page [Database Connection](./database_connection.md) for the details to connect to Oracle Restart Database deployed using above example.
+* Refer to the page [Database Connection](./database_connection.md) for the details to connect to Oracle Restart Database deployed using the example provided above.

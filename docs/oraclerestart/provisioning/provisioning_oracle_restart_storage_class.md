@@ -16,8 +16,8 @@
   * Name of Custom Storage Class for the storage location for software is specified by `swDgStorageClass`.    
 
 ### In this Example:
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name you want. You can also push the image to your container repository.
-  * When you are building the image yourself, update the image value in the `oraclerestart_prov_storage_class.yaml` file to point to the container image you have built. 
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from the [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. Tag it with the name you want. You can also push the image to your container repository.
+  * When you are building the image yourself, update the image value in the `oraclerestart_prov_storage_class.yaml` file to point to the container image that you have built. 
 The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
 ```text
 For example:

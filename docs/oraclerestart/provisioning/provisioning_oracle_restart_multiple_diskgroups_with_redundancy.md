@@ -1,6 +1,6 @@
 # Provisioning an Oracle Restart Database with multiple diskgroups with different redundancy
 # In this Usecase:
-The Oracle Grid Infrastructure and Oracle Restart Database are deployed automatically using Oracle Restart Controller. In this example, multiple diskgroups are created for CRS Files, Database Files, Recovery Area Files and Redo Log Files. Different Disk Groups have different redundancy levels.
+The Oracle Grid Infrastructure and Oracle Restart Database are deployed automatically using the Oracle Restart Controller. In this example, multiple diskgroups are created for CRS Files, Database Files, Recovery Area Files and Redo Log Files. Different Disk Groups have different redundancy levels.
 
 This example uses `oraclerestart_prov_multiple_diskgroups_with_redundancy.yaml` to provision an Oracle Database configured with Oracle Restart using Oracle Restart Controller. The provisioning includes:
   * Oracle Restart Pod
@@ -13,7 +13,7 @@ This example uses `oraclerestart_prov_multiple_diskgroups_with_redundancy.yaml` 
   * Software location on the worker nodes is specified by `hostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using this location on the worker node 
 
 ### In this example, 
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name you want. You can also push the image to your container repository 
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from the [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. Tag it with the name you want. You can also push the image to your container repository 
   * When you are building the image yourself, update the image value in the `oraclerestart_prov_multiple_diskgroups_with_redundancy.yaml` file to point to the container image you have built. 
 The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
 ```text

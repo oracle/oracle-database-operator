@@ -1,10 +1,10 @@
 # Scale Out - Add Node to an existing Oracle RAC Database Cluster
 
 #### Use Case
-* This use case demonstrates addition of a RAC Node to an existing Oracle RAC Database Cluster provisioned earlier using Oracle RAC Database Controller.
+* This use case demonstrates addition of an Oracle RAC Node to an existing Oracle RAC Database Cluster provisioned earlier using Oracle RAC Database Controller.
 * In this This example, the exising 2 Node Oracle RAC Database has been deployed using the file [racdb_prov_np.yaml](./racdb_prov_np.yaml) from the case [Provisioning an Oracle RAC Database with Node Port Service](./provisioning/provisioning_oracle_rac_db_with_node_port.md) which includes:
-  * 2 Kubernetes Pods as the RAC Nodes
-  * Headless services for RAC
+  * 2 Kubernetes Pods as the Oracle RAC Nodes
+  * Headless services for Oracle RAC
     * VIP Service
     * Scan Service
     * RAC Node hostname
@@ -16,12 +16,12 @@
 * This use case will add a new Kubernetes Pod which will work as the new RAC Node after getting added to the existing Oracle RAC Database.
 
 
-### In this example, 
-  * The existing RAC Database was deployed using pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `dbocir/oracle/database-rac:19.3.0-slim`. 
-  * If you had built the image yourself using the files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image), you will need to change value of `image` with the image you had built in your enviornment in file `racdb_prov_scale_out.yaml`. 
-  * The ASM diskgroup in the existing RAC Database was configured using the shared disks on the worker nodes i.e. `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2`. These disks are specified using parameter `asmDiskGroupDetails` in the YAML file. 
+### In this example: 
+  * The existing Oracle RAC Database was deployed using pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `dbocir/oracle/database-rac:19.3.0-slim`. 
+  * If you built the image yourself using the files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image), tne you need to exchange the value of `image` with the image value you built in your enviornment in the file `racdb_prov_scale_out.yaml`. 
+  * The ASM diskgroup in the existing Oracle RAC Database was configured using the shared disks on the worker nodes i.e. `/dev/disk/by-partlabel/qck-ocne19-asmdisk1` and `/dev/disk/by-partlabel/qck-ocne19-asmdisk2`. These disks are specified using parameter `asmDiskGroupDetails` in the YAML file. 
 
-**Note:** In the current case, a new worker node was labelled as below to be used for the new Kubernetes Pod `racnode3-0`(the new RAC Node):
+**Note:** In the current case, a new worker node was labelled as follows to be used for the new Kubernetes Pod `racnode3-0`(the new Oracle RAC Node):
   ```sh
   kubectl label node qck-ocne19-w3 raccluster=raccluster01
   ```

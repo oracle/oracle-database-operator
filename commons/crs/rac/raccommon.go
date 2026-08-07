@@ -427,7 +427,7 @@ func sanitizeK8sName(name string) string {
 	return sharednaming.SanitizeK8sName(name, maxNameLen)
 }
 
-// shortHash returns a deterministic truncated SHA-1 checksum for the provided text.
+// shortHash returns a deterministic truncated SHA-256 hex string for resource naming.
 func shortHash(text string, n int) string {
 	return sharednaming.ShortHash(text, n)
 }

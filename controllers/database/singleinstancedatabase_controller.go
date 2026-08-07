@@ -7204,8 +7204,7 @@ func convertPhysicalStdToSnapshotStdDB(
 		return err
 	}
 
-	var adminPassword string =
-		string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
+	var adminPassword string = string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
 
 	if _, err := dbcommons.ExecCommand(
 		r,
@@ -7334,8 +7333,7 @@ func convertSnapshotStdToPhysicalStdDB(
 		return err
 	}
 
-	var adminPassword string =
-		string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
+	var adminPassword string = string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
 
 	_, err := dbcommons.ExecCommand(
 		r,

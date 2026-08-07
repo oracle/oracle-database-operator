@@ -10,7 +10,8 @@ Using an updated YAML file with a new PrivateAI Container image tag, you can cha
 
 **IMPORTANT:** Complete [Before You Begin](./README.md#before-you-begin) before using Oracle PrivateAI Controller.
 
-Use the file: [pai_sample_publiclb_new_container_image.yaml](./provisioning/pai_sample_publiclb_new_container_image.yaml) for this use case as below:
+For this use case, use the file: [pai_sample_publiclb_new_container_image.yaml](./provisioning/pai_sample_publiclb_new_container_image.yaml). 
+For example:
 
 1. Deploy the `pai_sample_publiclb_new_container_image.yaml` file:
 

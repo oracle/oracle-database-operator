@@ -778,7 +778,7 @@ func TestSIDBUnit_ValidateTrueCacheUsesDBCredentialsWalletSecret(t *testing.T) {
 			CreateAs: "truecache",
 			Edition:  "enterprise",
 			Image: dbapi.SingleInstanceDatabaseImage{
-				PullFrom: "phx.ocir.io/intsanjaysingh/db-repo/oracle/database:truecache-23.26.1-ee-patch",
+				PullFrom: "dbocir/oracle/database:truecache-23.26.1-ee-patch",
 			},
 			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
 				ConnectString: "racdb26260-scan.okeprivsubnet.k8stest.oraclevcn.com:1521/DB0515_qw6_iad.okeprivsubnet.k8stest.oraclevcn.com",

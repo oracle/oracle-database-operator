@@ -25,7 +25,7 @@ ORDS image does **not** contain APEX installation files.
 APEX installation files can be provided to the pod in two ways:
 
  - automatic download
- - external storage (PersistentVolume)
+ - external storage (`PersistentVolume`)
 
 
 ### APEX installation automatic download
@@ -53,15 +53,15 @@ spec:
         ...
 ```
 
-If you do not specify a download URL (`apex.download.url`), the default value is used:
+If you do not specify a download URL (`apex.download.url`), then the default value is used:
 https://download.oracle.com/otn_software/apex/apex-latest.zip
 
 
 ### APEX installation files on external storage
 
-Alternatively, you can provide APEX installation files in a dedicated PersistentVolume containing a single apex.zip file.
+Alternatively, you can provide APEX installation files in a dedicated `PersistentVolume` containing a single `apex.zip` file.
 
-You can download apex.zip from:
+You can download `apex.zip` from:
 https://www.oracle.com/tools/downloads/apex-downloads/
 
 ```yaml
@@ -85,9 +85,9 @@ spec:
       autoUpgradeAPEX: true
 ```
 
-The OrdsSrvs controller will create a PersistentVolumeClaim (PVC) for the PV and mount it in the pod’s container at /opt/oracle/apex.
+The OrdsSrvs controller will create a `PersistentVolumeClaim` (PVC) for the PV and mount it in the pod’s container at `/opt/oracle/apex`.
 
-The volume can be static or dynamic. If the volume is empty, the init container will wait until it finds apex.zip at the mount point.
+The volume can be static or dynamic. If the volume is empty, then the init container will wait until it finds `apex.zip` at the mount point.
 The init container logs the following message:
 
 ``` bash

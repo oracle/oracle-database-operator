@@ -687,7 +687,7 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 		m.Status.Status = dbcommons.StatusError
 		eventReason := "Database Password"
 		eventMsg := "database admin password secret reference is not set"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		log.Info(eventMsg)
 		return requeueY, sidbReadyPod
 	}
@@ -709,7 +709,7 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 		m.Status.Status = dbcommons.StatusError
 		eventReason := "Database Password"
 		eventMsg := "database admin password secret is invalid: " + err.Error()
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		log.Info(eventMsg, "secret", adminSecretName)
 		return requeueY, sidbReadyPod
 	}
@@ -1459,7 +1459,7 @@ func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.Oracle
 	if !ok {
 		eventReason := "Database Password"
 		eventMsg := "database admin password secret reference is not set"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		r.Log.Info(eventMsg)
 		m.Status.Status = dbcommons.StatusError
 		if updateErr := r.Status().Update(ctx, m); updateErr != nil {
@@ -1473,7 +1473,7 @@ func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.Oracle
 		if apierrors.IsNotFound(err) {
 			eventReason := "Database Password"
 			eventMsg := "database admin password secret " + adminSecretName + " not found, retrying..."
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 			r.Log.Info(eventMsg)
 			m.Status.Status = dbcommons.StatusError
 			if updateErr := r.Status().Update(ctx, m); updateErr != nil {
@@ -1490,7 +1490,7 @@ func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.Oracle
 	if err != nil {
 		eventReason := "Database Password"
 		eventMsg := "database admin password secret is invalid: " + err.Error()
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		r.Log.Info(eventMsg, "secret", adminSecretName)
 		m.Status.Status = dbcommons.StatusError
 		if updateErr := r.Status().Update(ctx, m); updateErr != nil {
@@ -1729,7 +1729,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 			m.Status.Status = dbcommons.StatusError
 			eventReason := "Error"
 			eventMsg := "database admin password secret reference is required for ORDS uninstall"
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 			r.Log.Info(eventMsg)
 		}
 		for i := 0; i < 5; i++ {
@@ -1850,7 +1850,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		m.Status.Status = dbcommons.StatusError
 		eventReason := "Database Password"
 		eventMsg := "database admin password secret reference is not set"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		log.Info(eventMsg)
 		return requeueY
 	}
@@ -1873,7 +1873,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		m.Status.Status = dbcommons.StatusError
 		eventReason := "Database Password"
 		eventMsg := "database admin password secret is invalid: " + err.Error()
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		log.Info(eventMsg, "secret", adminSecretName)
 		return requeueY
 	}
@@ -2103,7 +2103,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			if !ok {
 				eventReason := "No Secret"
 				eventMsg := "ORDS public user password secret reference is not set"
-				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+				r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 				r.Log.Info(eventMsg)
 				m.Status.Status = dbcommons.StatusError
 				return requeueY
@@ -2125,7 +2125,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			if err != nil {
 				eventReason := "Invalid OrdsPassword"
 				eventMsg := "ords password secret is invalid: " + err.Error()
-				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+				r.Recorder.Event(m, corev1.EventTypeWarning, eventReason, eventMsg)
 				log.Info(eventMsg, "secret", ordsSecretName)
 				m.Status.Status = dbcommons.StatusError
 				return requeueY

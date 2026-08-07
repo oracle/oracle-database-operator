@@ -198,7 +198,7 @@ func getlabelsForRac(instance *oraclerestart.OracleRestart) map[string]string {
 	return buildLabelsForOracleRestart(instance, "OracleRestart")
 }
 
-// shortHash returns a deterministic truncated SHA-1 hex string.
+// shortHash returns a deterministic truncated SHA-256 hex string for resource naming.
 func shortHash(text string, n int) string {
 	return sharednaming.ShortHash(text, n)
 }

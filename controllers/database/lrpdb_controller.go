@@ -2337,7 +2337,7 @@ func (r *LRPDBReconciler) ApplyConfigMap(ctx context.Context, req ctrl.Request, 
 				}
 
 				if SQLCode != "0" {
-					r.Recorder.Eventf(lrpdb, corev1.EventTypeWarning, "lrpdbinfo", AlterMsg)
+					r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "lrpdbinfo", AlterMsg)
 					lrpdb.Status.CmBitstat = Bis(lrpdb.Status.CmBitstat, MPWARN)
 				}
 
@@ -2796,7 +2796,7 @@ func NewCallAPISQL(ctx context.Context, intr interface{}, req ctrl.Request, lrcr
 			errmsg := err.Error()
 			log.Error(err, "Failed - Could not connect to LREST Pod", "err", err.Error())
 			lrpdb.Status.Msg = "Error: Could not connect to LREST Pod"
-			e.Eventf(lrpdb, corev1.EventTypeWarning, "LRESTError", errmsg)
+			e.Event(lrpdb, corev1.EventTypeWarning, "LRESTError", errmsg)
 			return "", err
 		}
 
@@ -2898,11 +2898,11 @@ func NewCallAPISQL(ctx context.Context, intr interface{}, req ctrl.Request, lrcr
 			errmsg := err.Error()
 			log.Error(err, "Failed - Could not connect to LREST Pod", "err", err.Error())
 			lrest.Status.Msg = "Error: Could not connect to LREST Pod"
-			e.Eventf(lrest, corev1.EventTypeWarning, "LRESTError", errmsg)
+			e.Event(lrest, corev1.EventTypeWarning, "LRESTError", errmsg)
 			return "", err
 		}
 
-		e.Eventf(lrest, corev1.EventTypeWarning, "Done", lrest.Spec.LRESTName)
+		e.Event(lrest, corev1.EventTypeWarning, "Done", lrest.Spec.LRESTName)
 		if resp.StatusCode != http.StatusOK {
 			// lint SA1019 bb, _ := ioutil.ReadAll(resp.Body)
 			bb, _ := io.ReadAll(resp.Body)
@@ -3084,7 +3084,7 @@ func (r *LRPDBReconciler) CreateApplicanUsers(ctx context.Context, req ctrl.Requ
 			fmt.Printf("TRCUSR: Worng number of elements\n")
 		}
 
-		r.Recorder.Eventf(lrpdb, corev1.EventTypeWarning, "Crt usr malformed secret[0]", Secname)
+		r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "Crt usr malformed secret[0]", Secname)
 		lrpdb.Status.Msg = "create user:[malformed secrets:0]"
 		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, APPERR)
 		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -3131,7 +3131,7 @@ func (r *LRPDBReconciler) CreateApplicanUsers(ctx context.Context, req ctrl.Requ
 				fmt.Printf("TRCUSR: %s \t[OK]:rgr\n", credential[cnt])
 			}
 		} else {
-			r.Recorder.Eventf(lrpdb, corev1.EventTypeWarning, "Crt usr malformed secret[1]", Secname)
+			r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "Crt usr malformed secret[1]", Secname)
 			lrpdb.Status.Msg = "create user:[malformed secrets:1]"
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, APPERR)
 			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -3161,7 +3161,7 @@ func (r *LRPDBReconciler) CreateApplicanUsers(ctx context.Context, req ctrl.Requ
 			rep.MatchString(credential[cnt+((arrsz)/3)]) == false ||
 			rgr.MatchString(credential[cnt]) == false ||
 			(uind != pind) || (pind != gind) {
-			r.Recorder.Eventf(lrpdb, corev1.EventTypeWarning, "Crt usr malformed secret[2]", Secname)
+			r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "Crt usr malformed secret[2]", Secname)
 			lrpdb.Status.Msg = "create user:[malformed secrets:2]"
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, APPERR)
 			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -3229,7 +3229,7 @@ func (r *LRPDBReconciler) CreateApplicanUsers(ctx context.Context, req ctrl.Requ
 		}
 		if lrpdb.Status.SqlCode != 0 {
 			log.Info("SQL error during user creation [ORA-" + strconv.Itoa(lrpdb.Status.SqlCode) + "]")
-			r.Recorder.Eventf(lrpdb, corev1.EventTypeWarning, "Create user ORA-", strconv.Itoa(lrpdb.Status.SqlCode))
+			r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "Create user ORA-", strconv.Itoa(lrpdb.Status.SqlCode))
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, APPERR)
 			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 			lrpdb.Status.Msg = "create users:[USR:" + User + " ora-" + strconv.Itoa(lrpdb.Status.SqlCode) + "]"

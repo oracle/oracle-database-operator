@@ -47,9 +47,9 @@
 
 ![generaleschema](./images/Generalschema2.jpg)
 
-The multitenant controllers enable the capability of pdb lifecycle  management. For each physical pdb  there is one CRD instance running in the kubernetes cluster. LREST controller manages comunication between the pdb/CRD (LRPDB) and the Container Database leveraging a dedicated rest server. The Container Database can be anywhere.
+The multitenant controllers enable the capability of PDB lifecycle  management. For each physical PDB, there is one CRD instance running in the Kubernetes cluster. The LREST controller manages comunication between the PDB/CRD (LRPDB) and the Container Database leveraging a dedicated REST server. The Container Database can be anywhere.
 
-See also the [Quick Start](./usecase/README.md) for the shortest lrest lrpdb setup using a reachable Oracle Database.
+See also the [Quick Start](./usecase/README.md) for the shortest `lrest lrpdb` setup using a reachable Oracle database.
 
 ## 1. <a name='WHATSNEW'></a>WHAT'S NEW
 
@@ -71,9 +71,9 @@ See also the [Quick Start](./usecase/README.md) for the shortest lrest lrpdb set
 
 * Use secrets to create PDB application users.
 
-* Generate a bitmap that contains a tnsnames.ora file with your database network topology.
+* Generate a bitmap that contains a `tnsnames.ora` file with your database network topology.
 
-* Monitor pdb init parameters with reconciliation loop.
+* Monitor PDB init parameters with reconciliation loop.
 
 * Reset bitmask status simplification.
 
@@ -267,7 +267,7 @@ Specify the attribute **passwordProtection** on `lrest` and `lrpdb` resources as
 | **dbuser** |**dbpass**   | the administrative user created on the container database |
 | **pdbusr** |**pdbpwd**   | the administrative user of the PDBs                       |
 
-> NOTE: The pdbusr credential can only be stored in a standard or OpenSSL3-encrypted Secret because the LRPDB CRD does not own any pod. Because this information is not necessary for PDB lifecycle management, it is advisable to delete the Secret.
+> NOTE: The `pdbusr` credential can only be stored in a standard or OpenSSL3-encrypted Secret, because the LRPDB CRD does not own any pod. Because this information is not necessary for PDB lifecycle management, Oracle recommends that you delete the Secret.
 
 ### 2.9. <a name='OPENSSL3EXAMPLE'></a>OPENSSL3 EXAMPLE
 

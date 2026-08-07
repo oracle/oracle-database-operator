@@ -26,4 +26,4 @@ Use the file: [pai_sample_scale_in.yaml](./provisioning/pai_sample_scale_in.yaml
     kubectl get all -n pai
     ```
 
-    You will see, Kubernetes Pods are reduced in number once the scale in is done automatically.
+    You should see that Kubernetes Pods are reduced in number after the Scale In operation is done automatically.

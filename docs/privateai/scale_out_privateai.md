@@ -2,7 +2,7 @@
 
 **IMPORTANT:** This example assumes that you have an existing Oracle PrivateAI Container Deployment with `replicas=1` using the example [PrivateAI Container using OCI Public LoadBalancer](./deploy_privateai_publiclb.md) which uses the file [pai_sample_publiclb.yaml](./provisioning/pai_sample_publiclb.yaml).
 
-In this example, we will scale out an existing deployment with `replicas=1` to `replicas=3`.
+In this example, we will Scale Out an existing deployment with `replicas=1` to `replicas=3`.
 
 Use the file: [pai_sample_scale_out.yaml](./provisioning/pai_sample_scale_out.yaml) for this use case as below:
 
@@ -26,5 +26,5 @@ Use the file: [pai_sample_scale_out.yaml](./provisioning/pai_sample_scale_out.ya
     kubectl get all -n pai
     ```
 
-    You will see, additional Kubernetes Pods getting deployed once the scale out is done automatically.
+    You should see additional Kubernetes Pods being deployed automatically after the Scale Out is done.
   

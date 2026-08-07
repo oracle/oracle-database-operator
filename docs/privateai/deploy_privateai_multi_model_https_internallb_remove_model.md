@@ -8,13 +8,13 @@ Additional AI Models have been added to the existing PrivateAI Deployment using 
 
 In this example, an existing AI Model is removed from the existing PrivateAI deployment.
 
-1. Use the below command to edit the configmap used by the existing PrivateAI Deployment to removew an existing AI Model:
+1. Use the following command to edit the configmap used by the existing PrivateAI Deployment to removew an existing AI Model:
 
     ```sh
     kubectl edit configmap multiconfigjson -n pai
     ```
 
-2. Wait for few minutes and you should see configmap updated inside the Pod. You can verify that using file `/privateai/config/config.json` inside the Pod.
+2. Wait for few minutes. You should see the configmap updated inside the Pod. You can verify that by using file `/privateai/config/config.json` inside the Pod.
 
     ```sh
     kubectl exec -i -t pod/pai-sample-699b88cdb-5h9bq -n pai /bin/bash

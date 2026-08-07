@@ -35,7 +35,7 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
   | Events | create patch |
 
   ## Prerequisites for Oracle Restart on OKE
- Before proceeding with the Oracle Database deployment, ensure that you have completed all required prerequisites on your Oracle Kubernetes Engine (OKE) cluster. This includes setting up the necessary infrastructure and configuring all relevant components. To effectively use these instructions, you should have background knowledge of both Kubernetes technology and the underlying operating system.
+ Before proceeding with the Oracle database deployment, ensure that you have completed all required prerequisites on your Oracle Kubernetes Engine (OKE) cluster. This includes setting up the necessary infrastructure and configuring all relevant components. To effectively use these instructions, you should have background knowledge of both Kubernetes technology and the underlying operating system.
   * Verify that all necessary dependencies are installed and up-to-date. You should be familiar with the following technologies:
     * Linux
     * Kubernetes
@@ -87,13 +87,13 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
           - If you want to use the devices from the worker nodes for ASM storage, you will need to mark any default StorageClass as non-default in your Kubernetes Cluster.**
 
   ### Download Oracle Grid Infrastructure and Oracle Database Software
-  You need to download the Oracle Grid Infrastructure and Oracle Database software, you can make it available inside the Pod using following steps:
+  You need to download the Oracle Grid Infrastructure and Oracle database software. You can make it available inside the Pod using the following steps:
 
   * Prepare the Persistent Volume (PVC) for Staging: 
-    * If you plan to use an existing Persistent Volume Claim (PVC) as a staging area, ensure it is pre-created and available before deployment.
-    * NFS (Network File System) is commonly used as a backing storage for staging, since it allows multiple pods/nodes to access the staged files.
+    * If you plan to use an existing Persistent Volume Claim (PVC) as a staging area, then ensure that it is precreated and available before deployment.
+    * NFS (Network File System) is commonly used as a backing storage for staging, because it allows multiple pods/nodes to access the staged files.
   * Copy Software to Staging Location: 
-    * Download the Oracle Grid Infrastructure and Oracle Database installation media from Oracle's official sources.
+    * Download the Oracle Grid Infrastructure and Oracle database installation media from Oracle's official sources.
     * Copy (stage) these files onto the PVC (or NFS volume) you intend to use. If you opt to stage on a worker node's local storage, ensure sufficient space and security practices.
   * Mounting in Pod: 
     * The Oracle Restart Database Controller is responsible for mounting the staged software into the Pod at runtime, making the installers available for use during installation or upgrade tasks.
@@ -105,7 +105,7 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
 
   ### Permission on the software files
 
-  Depending on the wheter you are provisioning the Oracle Restart Database using Base Release sofware or you are applying an RU patch or any one-off patch, please set the below permissions on the software files in the staging location:
+  Depending on whether you are provisioning the Oracle Restart Database using Base Release sofware or you are applying an RU patch or any one-off patch, set permissions on the software files in the staging location as follows:
 
   - Set the permission on the GRID Infrastructure Software and RDBMS Software .zip files to be 755.
   - Set the permission on the Opatch .zip file to be 755
@@ -114,7 +114,7 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
 
 
   ### Worker Node Preparation Checklist
-  Preparing the worker node is a critical foundation for a secure and successful Oracle Restart Database deployment in a Kubernetes environmen. These steps need to be executed by Kuberernetes administrator as root user on worker nodes and follow these steps:
+  Preparing the worker node is a critical foundation for a secure and successful Oracle Restart Database deployment in a Kubernetes environment. These steps must be run by the Kubernetes administrator as the root user on worker nodes. Complete each of these steps:
   
   #### System Requirements
    * Verify OS and Kernel Versions: Ensure your node’s operating system and kernel version are supported by Oracle Database and Kubernetes.
@@ -391,4 +391,4 @@ In that layout, the Kubernetes secret must contain `key.pem` and a Base64-encode
 
 Use `tdeWalletSecret` only when your Oracle Restart deployment is intended to configure TDE. If your YAML does not include `spec.tdeWalletSecret`, you do not need to create this secret.
 
-After you have the above prerequsites completed, you can proceed to the next section for your environment to provision the Oracle Restart Database.
+After you have completed the prerequsites described here, you can proceed to the next section for your environment to provision the Oracle Restart Database.

@@ -1,6 +1,6 @@
 # Using Oracle Restart with Oracle Database Operator for Kubernetes
 
-Oracle Restart is an option to the award-winning Oracle Database Enterprise Edition. Oracle Restart is a feature introduced in Oracle 11gR2 that automatically restarts Oracle components, such as the database instance, listener, and Oracle ASM, after a failure or system reboot. It ensures that these components are started in the correct order and that they are managed by Oracle's High Availability Services (HAS). This enhances the availability of Oracle databases in a standalone server environment. Refer [this documentation](https://docs.oracle.com/cd/E18283_01/server.112/e17120/restart001.htm)
+Oracle Restart is an option to the award-winning Oracle Database Enterprise Edition. Oracle Restart is a feature introduced in Oracle 11gR2 that automatically restarts Oracle components, such as the database instance, listener, and Oracle ASM, after a failure or system reboot. It ensures that these components are started in the correct order and that they are managed by Oracle's High Availability Services (HAS). This enhances the availability of Oracle databases in a standalone server environment. For details, refer to [the Oracle Restart documentation](https://docs.oracle.com/cd/E18283_01/server.112/e17120/restart001.htm)
 
 For more information on Oracle Restart, refer to the [Oracle Database Documentation](http://docs.oracle.com/en/database/).
 

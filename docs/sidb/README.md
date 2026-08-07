@@ -362,6 +362,7 @@ Before using any workflow in this section, complete [Before You Begin](#before-y
 - [Create Express, Free, or Free Lite Databases](#create-express-free-or-free-lite-databases)
 - [Connect to a Database](#connect-to-a-database)
 - [Clone a Database](#clone-a-database)
+- [Restore a Database from an RMAN Backup](#restore-a-database-from-an-rman-backup)
 - [Create a Standby Database](#create-a-standby-database)
 - [Patch a Database](#patch-a-database)
 - [Delete a Database](#delete-a-database)
@@ -496,6 +497,12 @@ Key fields:
 - `spec.security.secrets.admin`
 - image compatible with the source database major version
 
+#### Restore a Database from an RMAN Backup
+
+Use this option to provision a new Single Instance Database (SIDB) by restoring an existing RMAN backup. The backup can be restored from either an object storage service or a mounted file system.
+
+For prerequisites, supported restore scenarios, required Secrets and ConfigMaps, and complete restore procedures, see [Restore a Database from an RMAN Backup](./RESTORE_DATABASE_FROM_RMAN_BACKUP.md).
+
 #### Create a Standby Database
 
 Use when you want a physical standby SIDB.
@@ -569,6 +576,7 @@ Use the generated broker YAML for the normal SIDB Data Guard flow. The generated
 - [Create a Standby Database with TDE Encryption](#create-a-standby-database-with-tde-encryption)
 - [Confirm Primary and Standby are Ready](#confirm-primary-and-standby-are-ready)
 - [Create the Data Guard Broker Configuration](#create-the-data-guard-broker-configuration)
+- [Second Standby Database](#second-standby-database)
 - [Perform Data Guard Operations](#perform-data-guard-operations)
 - [Enable Fast-Start Failover](#enable-fast-start-failover)
 - [Static Data Guard Connect String](#static-data-guard-connect-string)
@@ -816,10 +824,10 @@ Replace `ORCLS` with the standby SID.
 
 The important standby TDE fields are:
 
-* `secretName`: Kubernetes Secret containing the wallet password and wallet zip.
+- `secretName`: Kubernetes Secret containing the wallet password and wallet zip.
 - `secretKey`: - Not required for 19c - Required for 23ai and later (e.g., 23ai, 26ai) as `tde_wallet_pwd`
-* `walletZipFileKey`: Secret key containing the exported primary wallet zip.
-* `walletRoot`: destination wallet root for the standby database. Set this explicitly for predictable bootstrap behavior.
+- `walletZipFileKey`: Secret key containing the exported primary wallet zip.
+- `walletRoot`: destination wallet root for the standby database. Set this explicitly for predictable bootstrap behavior.
 
 During standby pod creation, the operator mounts `walletZipFileKey` as `standby-wallet.zip` and passes the path to the container. The image verifies that the zip is valid, extracts the primary wallet into a temporary source directory, keeps `walletRoot` as the standby wallet destination, and configures DBCA with the source wallet, source wallet password, and destination wallet root.
 
@@ -944,8 +952,6 @@ PRIMARY_ADMIN_SECRET_KEY=oracle_pwd \
 PRIMARY_CLIENT_WALLET_SECRET=<primary-client-wallet-secret> \
 ./render-dg-broker-from-status.sh sidb $STANDBY_DB $NS $DGB > dataguardbroker.yaml
 ```
-
-Do not commit real secret values to source control.
 
 ##### Review the Generated Data Guard Broker YAML
 
@@ -1106,6 +1112,39 @@ kubectl get events -n $NS --sort-by=.lastTimestamp
 kubectl get pods -n $NS -o wide
 ```
 
+#### Second Standby Database
+
+You can create a second standby database by following these steps. For more information, see [Create the Primary and Standby SIDB](#create-the-primary-and-standby-sidb).
+
+- Create the primary database (for example, `sidb-sample`).
+- Create the first standby database (for example, `standbydatabase-sample`) and set `sidb-sample` as `primarySource.databaseRef`.
+- Create the second standby database (for example, `standbydatabase-sample1`) and set `sidb-sample` as `primarySource.databaseRef`.
+- Generate the Data Guard Broker YAML from the first standby database status. For more information, see [Create the Data Guard Broker Configuration](#create-the-data-guard-broker-configuration).
+- Modify the `dataguardbroker.yaml` file to add details for the second standby database (`standbydatabase-sample1`). For example:
+
+  ```sh
+      - dbUniqueName: ORCLS1
+        endpoints:
+        # Service endpoint for the standby SIDB
+        - host: standbydatabase-sample1
+          name: tcp
+          port: 1521
+          protocol: TCP
+          serviceName: ORCLS1
+        localRef:
+          apiVersion: database.oracle.com/v4
+          kind: SingleInstanceDatabase
+          name: standbydatabase-sample1
+          namespace: default
+        name: standbydatabase-sample1
+        role: PHYSICAL_STANDBY
+  ```
+
+- Apply the modified Broker YAML manifest.
+- Verify the status of the primary and standby databases by running the `show configuration` command from the `DGMGRL` prompt in the Data Guard Broker pod.
+
+**Note:** Add the second standby database **before** configuring the Data Guard Broker. If the Data Guard Broker has already been configured, delete the existing `DataguardBroker` resource, deploy the second standby database, update `dataguardbroker.yaml` with the second standby database details, and then recreate the DataguardBroker resource.
+
 #### Perform Data Guard Operations
 
 The `DataguardBroker` custom resource does not currently support switchover, failover, protection-mode changes, Fast-Start Failover, or physical/snapshot standby conversion through `spec.operations`.
@@ -1197,19 +1236,39 @@ After failover, inspect the old primary before reusing it. It may need reinstate
 
 ##### Change Protection Mode
 
-Use the `EDIT CONFIGURATION SET PROTECTION MODE` command from the `DGMGRL` prompt to change the Data Guard Broker protection mode. For example:
+Use the `EDIT CONFIGURATION SET PROTECTION MODE` command from the `DGMGRL` prompt to change the Data Guard Broker protection mode.
+
+Before changing the protection mode, ensure that the standby database is configured with the appropriate `LogXptMode` value:
+
+- For `MaxAvailability` and `MaxProtection`, set the standby database `LogXptMode` property to `SYNC`.
+- For `MaxPerformance`, set the standby database `LogXptMode` property to `ASYNC`.
+- If the current protection mode is `MaxPerformance`, you must first change it to `MaxAvailability` before changing it to `MaxProtection`.
+
+For example, to change the protection mode to `MaxAvailability` for the current standby `orcls`:
 
 ```sh
+DGMGRL> EDIT DATABASE 'orcls' SET PROPERTY LogXptMode='SYNC';
+
 DGMGRL> EDIT CONFIGURATION SET PROTECTION MODE AS MaxAvailability;
 ```
 
-Similarly, you can change the protection mode to `MaxPerformance` or `MaxProtection`.
+After setting `LogXptMode` to `SYNC`, you can similarly change the protection mode to `MaxProtection`.
+
+To change the protection mode back to `MaxPerformance`:
+
+```sh
+DGMGRL> EDIT CONFIGURATION SET PROTECTION MODE AS MaxPerformance;
+
+DGMGRL> EDIT DATABASE 'orcls' SET PROPERTY LogXptMode='ASYNC';
+```
 
 Verify the updated configuration:
 
 ```sh
 DGMGRL> show configuration;
 ```
+
+For more details, please refer to [Data Guard Broker Documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/edit-configuration-protection-mode.html).
 
 ##### Convert Between Physical and Snapshot Standby
 
@@ -1378,7 +1437,7 @@ flowchart LR
 5. **Client exposure:** prefer `spec.services.endpoints` (`name: loadbalancer`); legacy `services.external` still works.
 6. **Primary service ↔ True Cache service association** is separate from True Cache database creation. Seeing `DATABASE IS READY TO USE` in the True Cache pod logs means the cache database was created; it does **not** by itself mean a primary service was associated with a True Cache service. By default (`autoTCServiceRegistration=false` or omitted), that association is a **manual** step on the primary. To have the operator attempt it automatically during True Cache provisioning, set `spec.trueCache.autoTCServiceRegistration: true` and complete the prerequisites in [PREREQUISITES.md](./PREREQUISITES.md).
 
-**Sample placeholders (replace before apply):** image pulls use `dbocir/oracle/database:...` (or your registry) for True Cache samples; NLB annotations use `ocid1.subnet...` / `<region>` placeholders; hostnames use `*.internal.example.com` or `*.examplevcn.oraclevcn.com` examples—not real lab endpoints.
+**Sample placeholders (replace before apply):** image pulls use `dbocir/oracle/database/...` until a public True Cache image is standard; NLB annotations use `ocid1.subnet...` / `<region>` placeholders; hostnames use `*.internal.example.com` or `*.examplevcn.oraclevcn.com` examples—not real lab endpoints.
 
 Workflows in this section:
 
@@ -1930,14 +1989,24 @@ For `NodePort` services, use `tcp.nodePort` or `tcps.nodePort` when you need a p
 
 ### Enabling TCPS Connections
 
-Before enabling TCPS, complete TLS secret prerequisites in [Before You Begin](#before-you-begin) / [`PREREQUISITES.md`](./PREREQUISITES.md). Create the secret referenced by `spec.security.tcps.tlsSecret` with SANs that match the hostname clients (or remote True Cache / standby) will use.
+Before enabling TCPS, review [Before You Begin](#before-you-begin) and create the TLS secret referenced by `spec.security.tcps.tlsSecret`.
 
-For the cert-manager helper flow, see [`tcps-cert-manager/README.md`](./tcps-cert-manager/README.md).
+For the cert-manager single-script flow, see [`tcps-cert-manager/README.md`](./tcps-cert-manager/README.md).
+
+Key fields:
+
+- `spec.security.tcps.enabled`
+- `spec.security.tcps.tlsSecret`
+- `spec.services.endpoints.tcps`
 
 Enable both:
 
-- `spec.security.tcps` (`enabled`, `tlsSecret`)
-- `spec.services.endpoints[].tcps` when clients should reach the database over TCPS
+- `spec.security.tcps.enabled` and `spec.security.tcps.tlsSecret`
+- `spec.services.endpoints[].tcps` when clients should acess the database over TCPS
+
+Create and manage the Kubernetes TLS secret using your standard certificate process, then reference that secret from `spec.security.tcps.tlsSecret`.
+
+**Note:** Enabling TCPS by patching `spec.security.tcps.enabled` on an existing `SingleInstanceDatabase` resource is not supported. To enable TCPS, configure both `spec.security.tcps.enabled: true` and `spec.security.tcps.tlsSecret` in the `SingleInstanceDatabase` manifest before creating or updating the resource.
 
 Primary sample:
 
@@ -2257,83 +2326,96 @@ If the pod remains `Running` but `Ready: False`, check the readiness probe messa
 
 1. The following Data Guard Broker operations are currently **not supported** through the `DataguardBroker` custom resource. Use the corresponding `DGMGRL` commands instead.
 
-- Switchover
+   - **Switchover**
 
-  The following `kubectl patch` operation is `not` supported:
+     The following `kubectl patch` operation is **not** supported:
 
-  ```sh
-  kubectl patch dataguardbroker $DG -n $NS --type merge \
-    -p '{"spec":{"operations":{"switchover":{"target":"ORCLS","requestId":"switchover-001"}}}}'
-  ```
+     ```sh
+     kubectl patch dataguardbroker $DG -n $NS --type merge \
+       -p '{"spec":{"operations":{"switchover":{"target":"ORCLS","requestId":"switchover-001"}}}}'
+     ```
 
-  For details, see [Switchover](#switchover).
+     For details, see [Switchover](#switchover).
 
-- Failover
+   - **Failover**
 
-  The following `kubectl patch` operation is `not` supported:
+     The following `kubectl patch` operation is **not** supported:
 
-  ```sh
-  kubectl patch dataguardbroker $DG -n $NS --type merge \
-    -p '{"spec":{"operations":{"failover":{"target":"ORCLS","requestId":"failover-001","force":true}}}}'
-  ```
+     ```sh
+     kubectl patch dataguardbroker $DG -n $NS --type merge \
+       -p '{"spec":{"operations":{"failover":{"target":"ORCLS","requestId":"failover-001","force":true}}}}'
+     ```
 
-  For details, see [Failover](#failover).
+     For details, see [Failover](#failover).
 
-- Enable Fast-Start Failover
+   - **Enable Fast-Start Failover**
 
-  The following `kubectl patch` operation is `not` supported:
+     The following `kubectl patch` operation is **not** supported:
 
-  ```sh
-  kubectl patch dataguardbroker $DG -n $NS --type=merge \
-    -p '{"spec":{"fastStartFailover": true}}'
-  ```
+     ```sh
+     kubectl patch dataguardbroker $DG -n $NS --type=merge \
+       -p '{"spec":{"fastStartFailover": true}}'
+     ```
 
-  For details, see [Enable Fast-Start Failover](#enable-fast-start-failover).
+     For details, see [Enable Fast-Start Failover](#enable-fast-start-failover).
 
-- Change Protection Mode
+   - **Change Protection Mode**
 
-  The following `kubectl patch` operation is `not` supported:
+     The following `kubectl patch` operation is **not** supported:
 
-  ```sh
-  kubectl patch dataguardbroker $DG -n $NS --type=merge \
-    -p '{"spec":{"operations":{"protectionMode":{"mode":"MaxAvailability","requestId":"protection-mode-001"}}}}'
-  ```
+     ```sh
+     kubectl patch dataguardbroker $DG -n $NS --type=merge \
+       -p '{"spec":{"operations":{"protectionMode":{"mode":"MaxAvailability","requestId":"protection-mode-001"}}}}'
+     ```
 
-  For details, see [Change Protection Mode](#change-protection-mode).
+     For details, see [Change Protection Mode](#change-protection-mode).
 
-- Convert Between Physical and Snapshot Standby
+   - **Convert Between Physical and Snapshot Standby**
 
-  The following `kubectl patch` operations are `not` supported.
+     The following `kubectl patch` operations are **not** supported.
 
-  Convert to a physical standby:
+     Convert to a physical standby:
 
-  ```sh
-  kubectl patch dataguardbroker $DG -n $NS --type merge \
-    -p '{"spec":{"operations":{"roleConversion":{"target":"ORCLS","role":"PHYSICAL_STANDBY","requestId":"role-conversion-physical-001"}}}}'
-  ```
+     ```sh
+     kubectl patch dataguardbroker $DG -n $NS --type merge \
+       -p '{"spec":{"operations":{"roleConversion":{"target":"ORCLS","role":"PHYSICAL_STANDBY","requestId":"role-conversion-physical-001"}}}}'
+     ```
 
-  Convert to a snapshot standby:
+     Convert to a snapshot standby:
 
-  ```sh
-  kubectl patch dataguardbroker $DG -n $NS --type merge \
-    -p '{"spec":{"operations":{"roleConversion":{"target":"ORCLS","role":"SNAPSHOT_STANDBY","requestId":"role-conversion-snapshot-001"}}}}'
-  ```
+     ```sh
+     kubectl patch dataguardbroker $DG -n $NS --type merge \
+       -p '{"spec":{"operations":{"roleConversion":{"target":"ORCLS","role":"SNAPSHOT_STANDBY","requestId":"role-conversion-snapshot-001"}}}}'
+     ```
 
-  For details, see [Convert Between Physical and Snapshot Standby](#convert-between-physical-and-snapshot-standby).
+     For details, see [Convert Between Physical and Snapshot Standby](#convert-between-physical-and-snapshot-standby).
 
-- Recreating the Data Guard Broker Resource
+   - **Recreating the Data Guard Broker Resource**
 
-  Deleting and recreating the `DataguardBroker` custom resource for an existing Data Guard configuration is not supported.
+     Deleting and recreating the `DataguardBroker` custom resource for an existing Data Guard configuration is not supported.
 
-  For example:
+     For example:
 
-  ```sh
-  kubectl delete dataguardbroker <dg-broker-name>
+     ```sh
+     kubectl delete dataguardbroker <dg-broker-name>
 
-  kubectl apply -f dataguardbroker.yaml
-  ```
+     kubectl apply -f dataguardbroker.yaml
+     ```
 
-  After recreating the `DataguardBroker` resource, its status may remain in the `Error` state and the Data Guard Broker does not recover automatically.
+     After recreating the `DataguardBroker` resource, its status may remain in the `Error` state and the Data Guard Broker does not recover automatically.
+
+2. Data synchronization between the primary and standby databases does not occur until the Data Guard Broker is configured.
+
+   After the primary and standby databases reach the `Healthy` state, changes made to the primary database are not propagated to the standby database until a Data Guard Broker configuration is created and reaches the `Healthy` state.
+
+3. The Oracle Enterprise Manager (OEM) Express URL is not updated correctly for Data Guard configurations.
+
+   - The `OEM EXPRESS URL` field is displayed as `Unavailable` for a healthy physical standby database.
+   - After a switchover or failover, the `OEM EXPRESS URL` field for the new primary database continues to display `Unavailable`, even though the `SingleInstanceDatabase` is in the `Healthy` state.
+
+4. The physical standby database does not recover automatically after certain failure scenarios.
+
+   After a standby database crash (for example, when the `pmon` process is terminated), `SHUTDOWN ABORT`, force deletion of the standby pod using `kubectl delete pod --force --grace-period=0`, or a reboot of the worker node hosting the standby pod, the physical standby database remains in the `Unhealthy` state.
 
 ## Frequently Asked Questions
 

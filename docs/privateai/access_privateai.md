@@ -113,15 +113,15 @@ curl --cacert ca.crt --noproxy '*' -X POST --header 'Content-Type: application/j
 
 You can access the PrivateAI Container deployed in Kubernetes from an Oracle Database using PL/SQL Commands. You can use `dbms_vector.utl_to_embedding()` or `dbms_vector_chain.utl_to_embedding()` for this purpose.
 
-**Note:** Your Oracle Database version must be 23.26.0.0.0 (26ai) to access the PrivateAI Container. 
+**Note:** Your Oracle database version must be Oracle AI Database 26ai (23.26.0.0.0) to access the PrivateAI Container. 
 
-You need to follow the below steps:
+You must complete all of the following steps:
 
 ### Create wallet
 
 - Create a wallet on the Database Host using `orapki`
 - Copy the CA Certificate file from earlier step or the `cert.pem` file generated when you had run `pai_secret.sh` script, to the Database Host as `ca.crt` and add to the wallet using `orapki`
-- If you have more than 1 node then you need to execute the orapki commands on all Database Nodes
+- If you have more than one node, then you must run the `orapki` commands on all database nodes.
 
   ```sh
   rm -rf /home/oracle/wallet/*
@@ -130,9 +130,9 @@ You need to follow the below steps:
   orapki wallet add -wallet /home/oracle/wallet/ -trusted_cert -cert ca.crt -pwd Oracle_26ai
   ```
 
-### Create Database user to access the PrivateAI Container
+### Create Database User to Access the PrivateAI Container
 
-- Create a user on the Database. In this example, the user is created at the PDB `ORCLPDB` Level.
+- Create a user on the database. In this example, the user is created at the PDB `ORCLPDB` Level.
 
   ```sh
   sqlplus "/ as sysdba"
@@ -141,7 +141,7 @@ You need to follow the below steps:
   ```
 
 - Add permission to connect and use client certificates to this user. 
-- Change principal_name to this user to grant the "connect" network privilege for the specified host:
+- Change `principal_name` to this user to grant the "connect" network privilege for the specified host:
 
   ```sh
   grant connect, resource, dba to vectordb;
@@ -157,7 +157,7 @@ You need to follow the below steps:
   /
   ```
 
-  **Note:** In above command, replace `xxx.xxx.xxx.xxx` with the Public IP or the Private IP of the LoadBalancer used in the deployment of PrivateAI Container on Kubernetes. 
+  **Note:** In the preceding command, replace `xxx.xxx.xxx.xxx` with the Public IP or the Private IP of the LoadBalancer used in the deployment of PrivateAI Container on Kubernetes. 
 
   ```sh
   BEGIN
@@ -173,7 +173,7 @@ You need to follow the below steps:
 
 ### Access the PrivateAI Container from within the Oracle Database
 
-- Connect to the PDB as the user you have created earlier:
+- Connect to the PDB as the user that you previously created:
 
   ```sh
   connect vectordb/"<<Password>>"@orclpdb
@@ -197,7 +197,7 @@ You need to follow the below steps:
   /
   ```
 
-- Set proxy and add LoadBalancer IP address to no proxy list. For Example:
+- Set proxy and add LoadBalancer IP address to the no proxy list. For example:
 
   ```sh
   exec utl_http.set_proxy('<proxy-hostname>:<port>', 'localhost,127.0.0.1,IP_ADDRESS_AI_CONTAINER,<additional-bypass-hosts-or-domains>');
@@ -238,8 +238,8 @@ You need to follow the below steps:
 
 #### Access the PrivateAI Container using "dbms_vector_chain.utl_to_embedding()"
 
-- Get the list of available models from the PrivateAI Container deployed in Kubernetes
-- In this case, `xxx.xxx.xxx.xxx` is the LoadBalancer IP and `ORACLEAI_CRED` is the credential name created earlier
+- Obtain the list of available models from the PrivateAI Container deployed in Kubernetes
+- In this example, `xxx.xxx.xxx.xxx` is the LoadBalancer IP and `ORACLEAI_CRED` is the credential name created earlier
 
   ```sh
   set serveroutput on;
@@ -268,7 +268,7 @@ You need to follow the below steps:
   /
   ```
 
-- Select the AI Model from the list of Models from above list. In this example, the AI Model `clip-vit-base-patch32-txt` is be used in this step to get the Text embeddings:
+- Select the AI Model from the list of models from the above list. In this example, the AI Model `clip-vit-base-patch32-txt` is used in this step to obtain the Text embeddings:
 
   ```sh
   set serveroutput on;

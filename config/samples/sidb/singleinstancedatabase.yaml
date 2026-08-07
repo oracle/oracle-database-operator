@@ -20,10 +20,6 @@ spec:
   ## Valid values for createAs are primary, clone, standby or truecache
   createAs: primary
 
-  ## Specify true to convert this standby to a snapshot standby
-  ## Valid only if createAs is standby
-  convertToSnapshotStandby: false
-
   ## Reference to a source primary database.
   ## Valid only when createAs is clone, standby or truecache.
   ## Set exactly one of primarySource.databaseRef, primarySource.connectString, or primarySource.details.

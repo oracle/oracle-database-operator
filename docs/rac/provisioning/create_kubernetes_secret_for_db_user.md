@@ -1,6 +1,6 @@
 # Create Kubernetes secret for db user
 
-RAC supports two database-secret layouts. Choose the one that matches the YAML you are applying.
+Oracle RAC supports two database-secret layouts. Choose the one that matches the YAML you are applying.
 
 Use this page for both `spec.dbSecret` and `spec.tdeWalletSecret`:
 - for `dbSecret`, create the secret name used in your YAML, such as `db-user-pass`

@@ -39,7 +39,7 @@ DOCKER ?= podman
 PULL_POLICY ?= missing
 
 # Go toolchain version used for image builds
-GOLANG_VERSION ?= 1.26.4
+GOLANG_VERSION ?= 1.26.5
 
 # Toggle: BUILD_INTERNAL=true downloads Go in Dockerfile and uses oraclelinux builder
 BUILD_INTERNAL ?= false
@@ -61,7 +61,7 @@ TARGET ?=
 CRD_OPTIONS ?= "crd:maxDescLen=0,allowDangerousTypes=true"
 
 # envtest Kubernetes assets version
-ENVTEST_K8S_VERSION ?= 1.36.0
+ENVTEST_K8S_VERSION ?= 1.36.3
 #kustomize veriosn
 KUSTOMIZE_VERSION ?= v5.8.1
 

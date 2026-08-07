@@ -44,7 +44,7 @@ For example:
 ```
 
 ### Steps: Deploy Oracle Restart Database
-* Use the file: [oraclerestart_prov_multiple_diskgroups.yaml](./oraclerestart_prov_multiple_diskgroups.yaml) for this use case as below:
+* Use the file: [oraclerestart_prov_multiple_diskgroups.yaml](./oraclerestart_prov_multiple_diskgroups.yaml) for this use case, as in the following example:
 * Deploy the `oraclerestart_prov_multiple_diskgroups.yaml` file:
     ```sh
     kubectl apply -f oraclerestart_prov_multiple_diskgroups.yaml

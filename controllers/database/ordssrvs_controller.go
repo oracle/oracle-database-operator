@@ -1716,7 +1716,7 @@ func (r *OrdsSrvsReconciler) validateSpec(ctx context.Context, req ctrl.Request,
 			Reason:  "InvalidSpec",
 			Message: invalidAccessLogForwarderMessage,
 		}
-		r.Recorder.Eventf(ordssrvs, corev1.EventTypeWarning, "InvalidSpec", invalidAccessLogForwarderMessage)
+		r.Recorder.Event(ordssrvs, corev1.EventTypeWarning, "InvalidSpec", invalidAccessLogForwarderMessage)
 		if err := r.UpdateStatus(ctx, req, rState, condition); err != nil {
 			return true, err
 		}
@@ -1739,7 +1739,7 @@ func (r *OrdsSrvsReconciler) validateSpec(ctx context.Context, req ctrl.Request,
 			Reason:  "InvalidSpec",
 			Message: invalidAccessLogAccessModeMessage,
 		}
-		r.Recorder.Eventf(ordssrvs, corev1.EventTypeWarning, "InvalidSpec", invalidAccessLogAccessModeMessage)
+		r.Recorder.Event(ordssrvs, corev1.EventTypeWarning, "InvalidSpec", invalidAccessLogAccessModeMessage)
 		if err := r.UpdateStatus(ctx, req, rState, condition); err != nil {
 			return true, err
 		}
@@ -1762,7 +1762,7 @@ func (r *OrdsSrvsReconciler) validateSpec(ctx context.Context, req ctrl.Request,
 			Reason:  "InvalidSpec",
 			Message: invalidAPEXInstallationAccessModeMessage,
 		}
-		r.Recorder.Eventf(ordssrvs, corev1.EventTypeWarning, "InvalidSpec", invalidAPEXInstallationAccessModeMessage)
+		r.Recorder.Event(ordssrvs, corev1.EventTypeWarning, "InvalidSpec", invalidAPEXInstallationAccessModeMessage)
 		if err := r.UpdateStatus(ctx, req, rState, condition); err != nil {
 			return true, err
 		}

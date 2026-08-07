@@ -91,7 +91,7 @@ collect.
 In OCI, enable workload logging for the OKE cluster and send the Kubernetes
 container logs to an OCI Log Group.
 
-At a minimum, make sure you can filter or search by:
+At a minimum, ensure that you can filter or search by the following:
 
 - namespace: `pai`
 - Pod name
@@ -111,12 +111,12 @@ Use these filters:
 3. the relevant Pod name
 4. the main application container
 
-If the same lines are visible in both `kubectl logs` and OCI Logging, the OKE
+If the same lines are visible in both `kubectl logs` and OCI Logging, then the OKE
 telemetry path is working.
 
 ## Step 5: Troubleshoot Missing Logs
 
-If logs are missing in OCI Logging, check in this order.
+If logs are missing in OCI Logging, then check for the cause in this order.
 
 ### 1. Verify `kubectl logs` first
 
@@ -124,14 +124,14 @@ If logs are missing in OCI Logging, check in this order.
 kubectl logs -n pai pod/<pod-name>
 ```
 
-If the log line is not visible here, OKE workload logging cannot collect it.
+If the log line is not visible here, then OKE workload logging cannot collect it.
 
 ### 2. Verify the application is really writing to stdout/stderr
 
 The recommended path assumes the application logs go to the main container log
 stream.
 
-If the application writes only to files, those file logs will not automatically
+If the application writes only to files, then those file logs will not automatically
 appear in OKE workload logging unless a separate cluster-side or application-side
 solution is introduced.
 
@@ -147,7 +147,7 @@ service name.
 
 ## Alternative Backend: Loki
 
-If your cluster already uses Loki, you can use the same `stdout` and `stderr`
+If your cluster already uses Loki, then you can use the same `stdout` and `stderr`
 stream as the source for Loki ingestion.
 
 The pattern is:

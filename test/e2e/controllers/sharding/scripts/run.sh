@@ -42,8 +42,8 @@ done
 order_file="test/e2e/controllers/sharding/${profile}/manifest-order.txt"
 [ -f "${order_file}" ] || { echo "Missing order file: ${order_file}" >&2; exit 2; }
 
-: "${DB_IMAGE:=phx.ocir.io/intsanjaysingh/db-repo/oracle/database:26.0.0-ee}"
-: "${GSM_IMAGE:=phx.ocir.io/intsanjaysingh/db-repo/oracle/database:26.0.0-gsm}"
+: "${DB_IMAGE:=dbocir/oracle/database:26.0.0-ee}"
+: "${GSM_IMAGE:=dbocir/oracle/database:26.0.0-gsm}"
 : "${SHARDING_STORAGE_CLASS:=oci}"
 : "${SHARDING_SCRIPTS_URL:=https://objectstorage.us-phoenix-1.oraclecloud.com/p/skNq1WdNGhXonbDQN8c55d95WjXYeG9AGyVZ1SoWQPKNHKq0b6ALwCSFalQtFnWD/n/intsanjaysingh/b/sharding-scripts/o/db-main-sharding.tgz}"
 : "${SHARDING_DB_SECRET:=db-user-pass-pkutl}"

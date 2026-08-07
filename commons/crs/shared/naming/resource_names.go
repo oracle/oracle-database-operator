@@ -1,8 +1,16 @@
 // Package naming provides deterministic Kubernetes-safe resource naming helpers.
+//
+// ShortHash is used only to derive stable, collision-resistant name segments for
+// Kubernetes objects (for example ASM PV/PVC names). It is not used for
+// password hashing, integrity of secrets, or other security-critical crypto.
+//
+// Note: ShortHash uses SHA-256. Changing the hash algorithm changes generated
+// resource names for the same inputs. Clusters that already have ASM PV/PVCs
+// created with a previous algorithm will need a naming migration or recreate.
 package naming
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"regexp"
@@ -20,15 +28,16 @@ func SanitizeK8sName(name string, maxLen int) string {
 	return sanitized
 }
 
-// ShortHash returns a deterministic SHA-1 prefix of length n.
+// ShortHash returns a deterministic SHA-256 hex prefix of length n.
+// This is for Kubernetes resource name uniqueness only, not cryptographic
+// verification of untrusted data.
 func ShortHash(text string, n int) string {
-	h := sha1.New()
-	h.Write([]byte(text))
-	sum := hex.EncodeToString(h.Sum(nil))
-	if n <= 0 || n >= len(sum) {
-		return sum
+	sum := sha256.Sum256([]byte(text))
+	encoded := hex.EncodeToString(sum[:])
+	if n <= 0 || n >= len(encoded) {
+		return encoded
 	}
-	return sum[:n]
+	return encoded[:n]
 }
 
 // AsmPVCName builds a bounded PVC name for ASM disks.

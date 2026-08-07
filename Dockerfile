@@ -83,7 +83,13 @@ RUN --mount=type=cache,target=/go-cache \
       mkdir -p "${GOBIN}"; \
       CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" GO111MODULE=on \
         /usr/local/go/bin/go build -gcflags="all=-N -l" -o /workspace/manager main.go; \
-      /usr/local/go/bin/go install github.com/go-delve/delve/cmd/dlv@v1.26.1; \
+      dlv_build_dir="$(mktemp -d)"; \
+      cd "$dlv_build_dir"; \
+      /usr/local/go/bin/go mod init dlv-build; \
+      /usr/local/go/bin/go get github.com/go-delve/delve/cmd/dlv@v1.27.0; \
+      /usr/local/go/bin/go get golang.org/x/sys@v0.47.0; \
+      /usr/local/go/bin/go install github.com/go-delve/delve/cmd/dlv; \
+      rm -rf "$dlv_build_dir"; \
     else \
       CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" GO111MODULE=on \
         /usr/local/go/bin/go build -o /workspace/manager main.go; \
