@@ -74,7 +74,7 @@ Version 2.2 introduces expanded database lifecycle automation, stronger reconcil
 | **OracleRestart** | • Phased reconciliation for validation, storage, workload, and finalization<br>• ASM disk lifecycle with static/dynamic PV/PVC handling |
 | **ORDS Services (OrdsSrvs)** | • HTTP-only edge deployments, HTTP access-log forwarding/persistence, and Instance API bootstrap<br>• Configurable resource limits, metadata, and JVM options |
 | **RacDatabase** | • Expanded RAC and ASM storage lifecycle<br>• Disk/PVC provisioning, and validation |
-| **ShardingDatabase** | • Sharded topology lifecycle and scaling<br>• Catalog/shard management, and status validation |
+| **ShardingDatabase** | • Oracle GDD topology lifecycle and scaling<br>• Catalog/shard management, and status validation |
 | **SingleInstanceDatabase** | • Service endpoints, TCPS, TrueCache, Data Guard prerequisites, clone/restore, and external PVCs<br>• Improved pod security, resource handling, recreation checks, and connection status |
 | **DataguardBroker** | • Topology runtime, authentication wallets, validation/provisioning, FSFO observer management, and operation tracking<br>• Idempotent manual switchover support |
 | **DatabaseObserver** | • Safer child-resource ownership and Server-Side Apply<br>• Improved deployment readiness and status handling |
@@ -333,16 +333,16 @@ After the operator is installed, continue with the guide for your workload:
 | Autonomous Database | Manage Oracle Autonomous Database resources on OCI | provision, bind, start, stop, scale, backup, restore, failover | [docs/adb/README.md](./docs/adb/README.md) |
 | Autonomous Container Database | Manage the Autonomous Container Database infrastructure | provision, bind, restart, terminate | [docs/adb/ACD.md](./docs/adb/ACD.md) |
 | Single Instance Database and Data Guard | Manage containerized Oracle single instance databases | provision, patch, clone, Data Guard, standby role conversion, ORDS, PDB operations | [docs/sidb/README.md](./docs/sidb/README.md) |
-| Sharding | Manage globally distributed Oracle databases | provision topology, add shards, remove shards, Raft replication | [docs/sharding/README.md](./docs/sharding/README.md) |
+| Oracle GDD | Manage Oracle globally distributed  databases | provision topology, add shards, remove shards, Raft replication | [docs/sharding/README.md](./docs/sharding/README.md) |
 | Multitenant | Manage CDB/PDB lifecycle | create, plug, unplug, clone, open, close, delete | [docs/multitenant/README.md](./docs/multitenant/README.md) |
 | Oracle Base Database Service | Manage Oracle Base Database Service resources on OCI | provision, scale, clone, backup, restore, patch, Data Guard | [docs/dbcs/README.md](./docs/dbcs/README.md) |
 | ORDS Services | Manage ORDS service deployments | provision, update, delete | [docs/ordsservices/README.md](./docs/ordsservices/README.md) |
 | Oracle RAC | Manage Oracle Real Application Clusters | provision, scale, add or remove ASM disks | [docs/rac/README.md](./docs/rac/README.md) |
 | Oracle Restart | Manage Oracle Restart deployments | provision, ASM disk operations, load balancer support | [docs/oraclerestart/README.md](./docs/oraclerestart/README.md) |
 | Private AI | Manage Oracle Private AI Services Container | deploy, scale, configure networking, manage runtime updates | [docs/privateai/README.md](./docs/privateai/README.md) |
-| Traffic Manager | Route database listener traffic | CMAN for Oracle listener connectivity | [docs/trafficmanager/README.md](./docs/trafficmanager/README.md) |
+| Traffic Manager (CMAN) | Route database listener traffic | CMAN for Oracle listener connectivity | [docs/trafficmanager/README.md](./docs/trafficmanager/README.md) |
 
-Traffic Manager works with Single Instance Database or Oracle RAC for CMAN-based listener access. See the [Traffic Manager guide](./docs/trafficmanager/README.md) for CMAN generated and file-mode configuration, and example manifests under [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/).
+Traffic Manager (CMAN) works with Single Instance Database or Oracle RAC for CMAN-based listener access. See the [Traffic Manager guide](./docs/trafficmanager/README.md) for CMAN generated and file-mode configuration, and example manifests under [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/).
 
 ### Supporting Services
 

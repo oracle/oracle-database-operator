@@ -72,7 +72,7 @@ CODE_TREE:../../../../oracle-database-operator
 ##  OPERATOR IMAGE   ###
 ########################
 #Use this parameter if you need to change the image
-#OPRIMG:lin.ocir.io/intsanjaysingh/operator/dboperator_master_orahub:test
+#OPRIMG:container-registry.oracle.com/database/operator:latest
 
 
 ##########################
