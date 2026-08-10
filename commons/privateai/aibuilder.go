@@ -24,13 +24,13 @@ import (
 )
 
 const (
-	restartAnnotationKey            = "kubectl.kubernetes.io/restartedAt"
+	restartAnnotationKey = "kubectl.kubernetes.io/restartedAt"
 	deploymentRevisionAnnotationKey = "deployment.kubernetes.io/revision"
-	envHTTPEnabled                  = "PRIVATE_AI_HTTP_ENABLED"
-	envHTTPSEnabled                 = "PRIVATE_AI_HTTPS_ENABLED"
-	envAuthEnabled                  = "PRIVATE_AI_AUTHENTICATION_ENABLED"
-	envConfigFile                   = "PRIVATE_AI_CONFIG_FILE"
-	envSecretsMount                 = "PRIVATE_AI_SECRETS_MOUNTPOINT"
+	envHTTPEnabled       = "PRIVATE_AI_HTTP_ENABLED"
+	envHTTPSEnabled      = "PRIVATE_AI_HTTPS_ENABLED"
+	envAuthEnabled       = "PRIVATE_AI_AUTHENTICATION_ENABLED"
+	envConfigFile        = "PRIVATE_AI_CONFIG_FILE"
+	envSecretsMount      = "PRIVATE_AI_SECRETS_MOUNTPOINT"
 )
 
 func filterPaiUserAnnotations(input map[string]string) map[string]string {

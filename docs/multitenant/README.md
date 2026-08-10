@@ -13,9 +13,9 @@
     * 2.6.2. [TNSNAMES.ORA TOPOLOGY](#TNSNAMES.ORATOPOLOGY)
   * 2.7. [HOST:PORT](#HOST:PORT)
   * 2.8. [CDB CREDENTIALS](#CDBCREDENTIALS)
-  * 2.9. [OPENSSL3 EXAMPLE](#OPENSSL3EXAMPLE)
-    * 2.9.1. [NATIVE EXAMPLE](#NATIVEEXAMPLE)
-    * 2.9.2. [ORAPKI EXAMPLE](#ORAPKIEXAMPLE)
+    * 2.8.1. [OPENSSL3 EXAMPLE](#OPENSSL3EXAMPLE)
+    * 2.8.1. [NATIVE EXAMPLE](#NATIVEEXAMPLE)
+    * 2.8.2. [ORAPKI EXAMPLE](#ORAPKIEXAMPLE)
   * 2.10. [CREATE LREST POD](#CREATELRESTPOD)
   * 2.11. [OPENSHIFT CONFIGURATION](#OPENSHIFTCONFIGURATION)
   * 2.12. [CREATE PDB](#CREATEPDB)
@@ -250,9 +250,9 @@ You can select one of these options by setting the **passwordProtection** attrib
 
 Supported values are:
 
-* **NATIVE** — use generic Kubernetes Secrets.
+* **NATIVE** — use generic Kubernetes Secrets. **RECCOMANDED**
+* **ORAPKI** — use passwords stored in an Oracle Wallet **RECCOMANDED**.
 * **OPENSSL3** — use user-encrypted secrets with OpenSSL.
-* **ORAPKI** — use passwords stored in an Oracle Wallet.
 
 Specify the attribute **passwordProtection** on `lrest` and `lrpdb` resources as follows:
 
@@ -269,7 +269,7 @@ Specify the attribute **passwordProtection** on `lrest` and `lrpdb` resources as
 
 > NOTE: The `pdbusr` credential can only be stored in a standard or OpenSSL3-encrypted Secret, because the LRPDB CRD does not own any pod. Because this information is not necessary for PDB lifecycle management, Oracle recommends that you delete the Secret.
 
-### 2.9. <a name='OPENSSL3EXAMPLE'></a>OPENSSL3 EXAMPLE
+#### 2.8.1 <a name='OPENSSL3EXAMPLE'></a>OPENSSL3 EXAMPLE
 
 This approach creates a key pair for encryption, as described in the following steps. Note that
 LREST controllers support only private keys in PKCS#8 format. After creation, the keys must be stored as Secrets. The CDB namespace contains both the private and public keys; PDB namespaces contain only the private key.
@@ -358,7 +358,7 @@ passwordProtection: OPENSSL3
       key: "privateKey"
 ```
 
-#### 2.9.1. <a name='NATIVEEXAMPLE'></a>NATIVE EXAMPLE
+#### 2.8.2. <a name='NATIVEEXAMPLE'></a>NATIVE EXAMPLE
 
 In this case, setting **passwordProtection** to **NATIVE** is enough. No other action is required; just create Secrets for the CDB admin user in the CDB namespace and for the PDB admin credentials in the PDB namespace.
 
@@ -369,7 +369,7 @@ kubectl create secret generic pdbusr --from-literal=e_pdbusr.txt=[PDBUSERNAME ] 
 kubectl create secret generic pdbpwd --from-literal=e_pdbpwd.txt=[PDBUSERNAME PASSWORD] -n  pdbnamespace
 ```
 
-#### 2.9.2. <a name='ORAPKIEXAMPLE'></a>ORAPKI EXAMPLE
+#### 2.8.3. <a name='ORAPKIEXAMPLE'></a>ORAPKI EXAMPLE
 
 To use **Oracle Wallet**, make sure that the **orapki** software is available on your client, set **passwordProtection** to **ORAPKI**, and then execute the steps in the following section.
 

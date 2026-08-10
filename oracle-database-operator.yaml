@@ -1822,7 +1822,6 @@ spec:
                                 type: string
                               modulus:
                                 format: int64
-                                minimum: 0
                                 type: integer
                               regex:
                                 type: string
@@ -2010,7 +2009,7 @@ spec:
                                   type: string
                               type: object
                             tokenUrl:
-                              pattern: ^(http|https)://.+$
+                              minLength: 1
                               type: string
                           required:
                           - clientId
@@ -2081,7 +2080,6 @@ spec:
                                 type: string
                               modulus:
                                 format: int64
-                                minimum: 0
                                 type: integer
                               regex:
                                 type: string
@@ -4334,7 +4332,6 @@ spec:
                                 type: string
                               modulus:
                                 format: int64
-                                minimum: 0
                                 type: integer
                               regex:
                                 type: string
@@ -4522,7 +4519,7 @@ spec:
                                   type: string
                               type: object
                             tokenUrl:
-                              pattern: ^(http|https)://.+$
+                              minLength: 1
                               type: string
                           required:
                           - clientId
@@ -4593,7 +4590,6 @@ spec:
                                 type: string
                               modulus:
                                 format: int64
-                                minimum: 0
                                 type: integer
                               regex:
                                 type: string
@@ -6846,7 +6842,6 @@ spec:
                                 type: string
                               modulus:
                                 format: int64
-                                minimum: 0
                                 type: integer
                               regex:
                                 type: string
@@ -7034,7 +7029,7 @@ spec:
                                   type: string
                               type: object
                             tokenUrl:
-                              pattern: ^(http|https)://.+$
+                              minLength: 1
                               type: string
                           required:
                           - clientId
@@ -7105,7 +7100,6 @@ spec:
                                 type: string
                               modulus:
                                 format: int64
-                                minimum: 0
                                 type: integer
                               regex:
                                 type: string
