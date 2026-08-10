@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -36,7 +36,11 @@
 ** SOFTWARE.
  */
 
+//nolint:unused // legacy validation helpers are retained for staged rollout and backward compatibility.
 package v4
+
+// revive:disable:exported,unused-parameter,var-naming,redefines-builtin-id
+// Legacy webhook signatures and helper names are preserved for backward compatibility.
 
 import (
 	"context"
@@ -46,14 +50,13 @@ import (
 	"strconv"
 	"strings"
 
-	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
+	utils "github.com/oracle/oracle-database-operator/commons/crs/restart/utils"
+	sharedresources "github.com/oracle/oracle-database-operator/commons/resources"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	corev1 "k8s.io/api/core/v1"
@@ -65,8 +68,7 @@ var OracleRestartlog = logf.Log.WithName("OracleRestart-resource")
 // SetupWebhookWithManager registers the OracleRestart webhook with the
 // controller manager.
 func (r *OracleRestart) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&OracleRestart{}).
+	return ctrl.NewWebhookManagedBy[*OracleRestart](mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
@@ -74,15 +76,12 @@ func (r *OracleRestart) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-oraclerestart,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestarts,verbs=create;update,versions=v4,name=moraclerestart.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.CustomDefaulter = &OracleRestart{}
+var _ admission.Defaulter[*OracleRestart] = &OracleRestart{}
 
 // Default mutates an OracleRestart resource to apply default values before
 // admission.
-func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
-	cr, ok := obj.(*OracleRestart)
-	if !ok {
-		return fmt.Errorf("expected *OracleRestart but got %T", obj)
-	}
+func (r *OracleRestart) Default(ctx context.Context, obj *OracleRestart) error {
+	cr := obj
 
 	OracleRestartlog.Info("default", "name", cr.Name)
 
@@ -92,7 +91,7 @@ func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
 	}
 
 	if cr.Spec.SshKeySecret != nil && cr.Spec.SshKeySecret.KeyMountLocation == "" {
-		cr.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+		cr.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 	}
 
 	if cr.Spec.DbSecret != nil && cr.Spec.DbSecret.Name != "" {
@@ -128,14 +127,11 @@ func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
 
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-oraclerestart,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestarts,versions=v4,name=voraclerestart.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.CustomValidator = &OracleRestart{}
+var _ admission.Validator[*OracleRestart] = &OracleRestart{}
 
 // ValidateCreate verifies OracleRestart resources on creation.
-func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cr, ok := obj.(*OracleRestart)
-	if !ok {
-		return nil, fmt.Errorf("expected *OracleRestart but got %T", obj)
-	}
+func (r *OracleRestart) ValidateCreate(ctx context.Context, obj *OracleRestart) (admission.Warnings, error) {
+	cr := obj
 
 	OracleRestartlog.Info("validate create", "name", cr.Name)
 	var validationErrs field.ErrorList
@@ -207,54 +203,26 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
 	}
 
-	// ----- EXTRACT POD MEMORY LIMIT -----
-	var memLimit int64
-	if cr.Spec.Resources != nil {
-		if memQ, ok := cr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
-			memLimit = memQ.Value()
-		}
-	}
-
-	// ----- EXTRACT HUGE PAGES (SEPARATE RESOURCE POOL) -----
-	var hugeMem int64
-	if cr.Spec.Resources != nil {
-		if hpQ, ok := cr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
-			hugeMem = hpQ.Value()
-		}
-		if hugeMem == 0 {
-			if hpQ, ok := cr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
-				hugeMem = hpQ.Value()
-			}
-		}
-	}
+	memLimit, hugeMem := sharedresources.ExtractMemoryAndHugePagesBytes(cr.Spec.Resources)
 
 	// ----- SGA + PGA SAFETY CHECK (FIXED) -----
-	totalMem := sga + pga
-	effectiveMem := memLimit + hugeMem
-
-	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+	if err := sharedresources.ValidateSgaPgaSafety(sga, pga, memLimit, hugeMem, safetyPct); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath,
-				totalMem,
-				fmt.Sprintf(
-					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
-					sga, pga, int(safetyPct*100), memLimit, hugeMem,
-				),
+				sga+pga,
+				err.Error(),
 			),
 		)
 	}
 
 	// ----- VALIDATE HUGEPAGES (FIXED) -----
-	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+	if err := sharedresources.ValidateHugePagesAtLeastSga(hugeMem, sga); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath.Child("hugePages"),
 				hugeMem,
-				fmt.Sprintf(
-					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
-					hugeMem, sga,
-				),
+				err.Error(),
 			),
 		)
 	}
@@ -263,6 +231,7 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 	const minMemoryBytes = 16 * 1024 * 1024 * 1024 // 16GiB
 	validationErrs = append(validationErrs,
 		validateMinMemoryLimit(
+			nil,
 			cr.Spec.Resources,
 			minMemoryBytes,
 			field.NewPath("spec"),
@@ -325,12 +294,9 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	old, okOld := oldObj.(*OracleRestart)
-	newCr, okNew := newObj.(*OracleRestart)
-	if !okOld || !okNew {
-		return nil, fmt.Errorf("expected *OracleRestart for both old and new objects")
-	}
+func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj *OracleRestart) (admission.Warnings, error) {
+	old := oldObj
+	newCr := newObj
 
 	OracleRestartlog.Info("validate update", "name", newCr.Name)
 
@@ -412,9 +378,6 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 	validationErrs = append(validationErrs, newCr.validateUpdateAsmStorage(old)...)
 	validationErrs = append(validationErrs, newCr.validateUpdateGeneric(old)...)
 
-	if old.Spec.ConfigParams != nil && newCr.Spec.ConfigParams != nil {
-
-	}
 	// Forbid downscale or warn on SGA/PGA
 	oldSga, _ := parseMem(old.Spec.ConfigParams.SgaSize)
 	newSga, _ := parseMem(newCr.Spec.ConfigParams.SgaSize)
@@ -452,54 +415,26 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
 	}
 
-	// ----- EXTRACT POD MEMORY LIMIT -----
-	var memLimit int64
-	if newCr.Spec.Resources != nil {
-		if memQ, ok := newCr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
-			memLimit = memQ.Value()
-		}
-	}
-
-	// ----- EXTRACT HUGE PAGES -----
-	var hugeMem int64
-	if newCr.Spec.Resources != nil {
-		if hpQ, ok := newCr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
-			hugeMem = hpQ.Value()
-		}
-		if hugeMem == 0 {
-			if hpQ, ok := newCr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
-				hugeMem = hpQ.Value()
-			}
-		}
-	}
+	memLimit, hugeMem := sharedresources.ExtractMemoryAndHugePagesBytes(newCr.Spec.Resources)
 
 	// ----- SGA + PGA SAFETY CHECK -----
-	totalMem := sga + pga
-	effectiveMem := memLimit + hugeMem
-
-	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+	if err := sharedresources.ValidateSgaPgaSafety(sga, pga, memLimit, hugeMem, safetyPct); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath,
-				totalMem,
-				fmt.Sprintf(
-					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
-					sga, pga, int(safetyPct*100), memLimit, hugeMem,
-				),
+				sga+pga,
+				err.Error(),
 			),
 		)
 	}
 
 	// ----- HUGE PAGES >= SGA -----
-	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+	if err := sharedresources.ValidateHugePagesAtLeastSga(hugeMem, sga); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath.Child("hugePages"),
 				hugeMem,
-				fmt.Sprintf(
-					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
-					hugeMem, sga,
-				),
+				err.Error(),
 			),
 		)
 	}
@@ -561,18 +496,13 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 }
 
 // ValidateDelete enforces constraints when OracleRestart resources are deleted.
-func (r *OracleRestart) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cr, ok := obj.(*OracleRestart)
-	if !ok {
-		return nil, fmt.Errorf("expected *OracleRestart but got %T", obj)
-	}
+func (r *OracleRestart) ValidateDelete(ctx context.Context, obj *OracleRestart) (admission.Warnings, error) {
+	cr := obj
 
 	OracleRestartlog.Info("validate delete", "name", cr.Name)
 
 	return nil, nil
 }
-
-//========== User Functions to check the fields ==========
 
 // validateDbSecret checks DB secret fields for required values and encryption
 // compatibility.
@@ -580,17 +510,38 @@ func (r *OracleRestart) validateDbSecret() field.ErrorList {
 	var validationErrs field.ErrorList
 	dbPath := field.NewPath("spec").Child("DbSecret")
 
-	if r.Spec.DbSecret.Name != "" && strings.ToLower(r.Spec.DbSecret.EncryptionType) != "base64" {
+	if r.Spec.DbSecret == nil || r.Spec.DbSecret.Name == "" {
+		return nil
+	}
+
+	if r.Spec.DbSecret.SecretKey != "" {
+		return nil
+	}
+
+	if r.Spec.DbSecret.KeyFileName != "" || r.Spec.DbSecret.PwdFileName != "" {
 		if r.Spec.DbSecret.KeyFileName == "" {
 			validationErrs = append(validationErrs,
-				field.Required(dbPath.Child("KeyFileName"), "KeyFileName cannot be empty when encryptionType is not 'base64'"))
+				field.Invalid(dbPath.Child("KeyFileName"), r.Spec.DbSecret.KeyFileName,
+					"KeyFileName cannot be set to empty"))
 		}
-		if r.Spec.DbSecret.PwdFileName == "" {
+
+		if strings.ToLower(r.Spec.DbSecret.EncryptionType) != "base64" && r.Spec.DbSecret.PwdFileName == "" {
 			validationErrs = append(validationErrs,
 				field.Required(dbPath.Child("PwdFileName"), "PwdFileName cannot be empty when encryptionType is not 'base64'"))
 		}
+
+		if len(validationErrs) > 0 {
+			return validationErrs
+		}
+
+		return nil
 	}
 
+	validationErrs = append(validationErrs, field.Invalid(
+		dbPath,
+		r.Spec.DbSecret,
+		"either 'key' OR 'keyFileName' must be specified; 'pwdFileName' is optional only when encryptionType is 'base64'",
+	))
 	return validationErrs
 }
 
@@ -600,20 +551,38 @@ func (r *OracleRestart) validateTdeSecret() field.ErrorList {
 	var validationErrs field.ErrorList
 	tdePath := field.NewPath("spec").Child("TdeWalletSecret")
 
-	if r.Spec.TdeWalletSecret != nil &&
-		r.Spec.TdeWalletSecret.Name != "" &&
-		strings.ToLower(r.Spec.TdeWalletSecret.EncryptionType) != "base64" {
+	if r.Spec.TdeWalletSecret == nil || r.Spec.TdeWalletSecret.Name == "" {
+		return nil
+	}
 
+	if r.Spec.TdeWalletSecret.SecretKey != "" {
+		return nil
+	}
+
+	if r.Spec.TdeWalletSecret.KeyFileName != "" || r.Spec.TdeWalletSecret.PwdFileName != "" {
 		if r.Spec.TdeWalletSecret.KeyFileName == "" {
 			validationErrs = append(validationErrs,
-				field.Required(tdePath.Child("KeyFileName"), "KeyFileName cannot be empty when encryptionType is not 'base64'"))
+				field.Invalid(tdePath.Child("KeyFileName"), r.Spec.TdeWalletSecret.KeyFileName,
+					"KeyFileName cannot be set to empty"))
 		}
-		if r.Spec.TdeWalletSecret.PwdFileName == "" {
+		if strings.ToLower(r.Spec.TdeWalletSecret.EncryptionType) != "base64" &&
+			r.Spec.TdeWalletSecret.PwdFileName == "" {
 			validationErrs = append(validationErrs,
 				field.Required(tdePath.Child("PwdFileName"), "PwdFileName cannot be empty when encryptionType is not 'base64'"))
 		}
+
+		if len(validationErrs) > 0 {
+			return validationErrs
+		}
+
+		return nil
 	}
 
+	validationErrs = append(validationErrs, field.Invalid(
+		tdePath,
+		r.Spec.TdeWalletSecret,
+		"either 'key' OR 'keyFileName' must be specified; 'pwdFileName' is optional only when encryptionType is 'base64'",
+	))
 	return validationErrs
 }
 
@@ -666,7 +635,7 @@ func (r *OracleRestart) validateServiceSpecs() field.ErrorList {
 func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 	var validationErrs field.ErrorList
 
-	if r.ObjectMeta.DeletionTimestamp != nil {
+	if r.DeletionTimestamp != nil {
 		return validationErrs
 	}
 
@@ -906,27 +875,50 @@ func (r *OracleRestart) validateUpdateDbSecret(old *OracleRestart) field.ErrorLi
 func (r *OracleRestart) validateUpdateTdeSecret(old *OracleRestart) field.ErrorList {
 	var validationErrs field.ErrorList
 
-	if r.Spec.TdeWalletSecret != nil && old.Status.TdeWalletSecret != nil {
-		if r.Spec.TdeWalletSecret.Name != "" && old.Status.TdeWalletSecret.Name != "" &&
-			!strings.EqualFold(old.Status.TdeWalletSecret.Name, r.Spec.TdeWalletSecret.Name) {
-			validationErrs = append(validationErrs,
-				field.Forbidden(field.NewPath("spec").Child("TdeWalletSecret").Child("Name"),
-					"TdeWalletSecret name cannot be changed post creation"))
-		}
+	oldSecret := old.Spec.TdeWalletSecret
+	newSecret := r.Spec.TdeWalletSecret
 
-		if r.Spec.TdeWalletSecret.KeyFileName != "" && old.Status.TdeWalletSecret.KeyFileName != "" &&
-			!strings.EqualFold(old.Status.TdeWalletSecret.KeyFileName, r.Spec.TdeWalletSecret.KeyFileName) {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"),
-					r.Spec.TdeWalletSecret.KeyFileName, "KeyFileName cannot be changed post creation"))
-		}
+	if oldSecret == nil {
+		return nil
+	}
 
-		if r.Spec.TdeWalletSecret.PwdFileName != "" && old.Status.TdeWalletSecret.PwdFileName != "" &&
-			!strings.EqualFold(old.Status.TdeWalletSecret.PwdFileName, r.Spec.TdeWalletSecret.PwdFileName) {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"),
-					r.Spec.TdeWalletSecret.PwdFileName, "PwdFileName cannot be changed post creation"))
-		}
+	if newSecret == nil {
+		validationErrs = append(validationErrs,
+			field.Forbidden(field.NewPath("spec").Child("TdeWalletSecret"),
+				"TdeWalletSecret cannot be removed post creation"))
+		return validationErrs
+	}
+
+	if oldSecret.Name != "" &&
+		!strings.EqualFold(oldSecret.Name, newSecret.Name) {
+		validationErrs = append(validationErrs,
+			field.Forbidden(field.NewPath("spec").Child("TdeWalletSecret").Child("Name"),
+				"TdeWalletSecret name cannot be changed post creation"))
+	}
+
+	if oldSecret.KeyFileName != "" &&
+		!strings.EqualFold(oldSecret.KeyFileName, newSecret.KeyFileName) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"),
+				newSecret.KeyFileName, "KeyFileName cannot be changed post creation"))
+	}
+
+	if oldSecret.SecretKey != "" &&
+		!strings.EqualFold(oldSecret.SecretKey, newSecret.SecretKey) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("key"),
+				newSecret.SecretKey, "key cannot be changed post creation"))
+	}
+
+	if oldSecret.PwdFileName != "" &&
+		!strings.EqualFold(oldSecret.PwdFileName, newSecret.PwdFileName) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"),
+				newSecret.PwdFileName, "PwdFileName cannot be changed post creation"))
+	}
+
+	if len(validationErrs) > 0 {
+		return validationErrs
 	}
 
 	return validationErrs
@@ -1029,47 +1021,14 @@ func (r *OracleRestart) validateAsmRedundancyAndDisks(
 
 // validateMemorySize ensures memory strings use supported units and format.
 func validateMemorySize(sizeStr string) error {
-	matched, _ := regexp.MatchString(`^\d+(Gi|Mi|G|M)$`, sizeStr)
-	if !matched {
-		return fmt.Errorf("memory size must be of form <number>[M|G|Mi|Gi], e.g., 3G, 1024M, 16Gi")
-	}
-	return nil
+	return sharedresources.ValidateMemorySize(sizeStr)
 }
 
 const safetyPct = 0.80 // Only 80% of pod memory can be used for SGA+PGA
 
 // parseMem converts memory strings into byte counts for validation.
 func parseMem(memStr string) (int64, error) {
-	if memStr == "" {
-		return 0, nil
-	}
-
-	// Identify unit (supports M, G, Mi, Gi)
-	var numStr string
-	var multiplier int64
-
-	if strings.HasSuffix(memStr, "Gi") || strings.HasSuffix(memStr, "gi") {
-		numStr = memStr[:len(memStr)-2]
-		multiplier = 1024 * 1024 * 1024
-	} else if strings.HasSuffix(memStr, "Mi") || strings.HasSuffix(memStr, "mi") {
-		numStr = memStr[:len(memStr)-2]
-		multiplier = 1024 * 1024
-	} else if strings.HasSuffix(memStr, "G") || strings.HasSuffix(memStr, "g") {
-		numStr = memStr[:len(memStr)-1]
-		multiplier = 1024 * 1024 * 1024
-	} else if strings.HasSuffix(memStr, "M") || strings.HasSuffix(memStr, "m") {
-		numStr = memStr[:len(memStr)-1]
-		multiplier = 1024 * 1024
-	} else {
-		return 0, fmt.Errorf("invalid memory unit in %s", memStr)
-	}
-
-	num, err := strconv.Atoi(numStr)
-	if err != nil {
-		return 0, fmt.Errorf("invalid numeric value in %s", memStr)
-	}
-
-	return int64(num) * multiplier, nil
+	return sharedresources.ParseMemoryBytes(memStr)
 }
 
 // validateOracleSysctls enforces format and size constraints on Oracle-specific
@@ -1203,5 +1162,3 @@ func validateOracleSysctls(sysctls map[string]string, sgaBytes int64, pageSize i
 	}
 	return errs
 }
-
-// =========================== Update specs checks block ends Here =======================

@@ -42,6 +42,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+// ServiceBuilder defines a fluent builder interface for Kubernetes Service objects.
 type ServiceBuilder interface {
 	SetName(string) *ServiceBuilder
 	SetNamespace(string) *ServiceBuilder
@@ -54,46 +55,65 @@ type ServiceBuilder interface {
 	Build() *corev1.Service
 }
 
+// RealServiceBuilder is a concrete fluent builder for corev1.Service.
 type RealServiceBuilder struct {
 	service corev1.Service
 }
 
+// SetName sets service name.
 func (rsb *RealServiceBuilder) SetName(name string) *RealServiceBuilder {
-	rsb.service.ObjectMeta.Name = name
+	rsb.service.Name = name
 	return rsb
 }
+
+// SetNamespace sets service namespace.
 func (rsb *RealServiceBuilder) SetNamespace(namespace string) *RealServiceBuilder {
-	rsb.service.ObjectMeta.Namespace = namespace
+	rsb.service.Namespace = namespace
 	return rsb
 }
+
+// SetLabels sets service labels.
 func (rsb *RealServiceBuilder) SetLabels(labels map[string]string) *RealServiceBuilder {
-	rsb.service.ObjectMeta.Labels = labels
+	rsb.service.Labels = labels
 	return rsb
 }
+
+// SetAnnotation sets service annotations.
 func (rsb *RealServiceBuilder) SetAnnotation(annotations map[string]string) *RealServiceBuilder {
-	rsb.service.ObjectMeta.Annotations = annotations
+	rsb.service.Annotations = annotations
 	return rsb
 }
+
+// SetPorts sets service ports.
 func (rsb *RealServiceBuilder) SetPorts(ports []corev1.ServicePort) *RealServiceBuilder {
 	rsb.service.Spec.Ports = ports
 	return rsb
 }
+
+// SetSelector sets service selector labels.
 func (rsb *RealServiceBuilder) SetSelector(selector map[string]string) *RealServiceBuilder {
 	rsb.service.Spec.Selector = selector
 	return rsb
 }
+
+// SetPublishNotReadyAddresses sets the publish-not-ready-addresses flag.
 func (rsb *RealServiceBuilder) SetPublishNotReadyAddresses(flag bool) *RealServiceBuilder {
 	rsb.service.Spec.PublishNotReadyAddresses = flag
 	return rsb
 }
+
+// SetType sets the service type.
 func (rsb *RealServiceBuilder) SetType(serviceType corev1.ServiceType) *RealServiceBuilder {
 	rsb.service.Spec.Type = serviceType
 	return rsb
 }
+
+// Build returns the final service object.
 func (rsb *RealServiceBuilder) Build() corev1.Service {
 	return rsb.service
 }
 
+// NewRealServiceBuilder creates a new empty service builder.
 func NewRealServiceBuilder() *RealServiceBuilder {
 	return &RealServiceBuilder{}
 }

@@ -56,7 +56,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/common"
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	adbfamily "github.com/oracle/oracle-database-operator/commons/adb_family"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
@@ -66,9 +66,6 @@ type AutonomousDatabaseRestoreReconciler struct {
 	Log        logr.Logger
 	Scheme     *runtime.Scheme
 	Recorder   record.EventRecorder
-
-	dbService   oci.DatabaseService
-	workService oci.WorkRequestService
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -96,7 +93,7 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	restore := &dbv4.AutonomousDatabaseRestore{}
-	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, restore); err != nil {
+	if err := r.KubeClient.Get(ctx, req.NamespacedName, restore); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
 		// No need to change since we don't know if we obtain the object.
 		if apiErrors.IsNotFound(err) {
@@ -107,10 +104,10 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	}
 
 	/******************************************************************
-	* Look up the owner AutonomousDatabase and set the ownerReference
-	* if the owner hasn't been set yet.
-	******************************************************************/
-	adbOCID, err := r.verifyTargetAdb(restore)
+	 * Look up the owner AutonomousDatabase and set the ownerReference
+	 * if the owner hasn't been set yet.
+	 ******************************************************************/
+	adbOCID, err := r.verifyTargetAdb(ctx, restore)
 	if err != nil {
 		return r.manageError(restore, err)
 	}
@@ -118,7 +115,8 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	/******************************************************************
 	* Get OCI database client and work request client
 	******************************************************************/
-	if err := r.setupOCIClients(restore); err != nil {
+	dbService, workService, err := r.setupOCIClients(ctx, restore)
+	if err != nil {
 		return r.manageError(restore, err)
 	}
 
@@ -130,43 +128,43 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	if restore.Status.WorkRequestOCID == "" {
 		logger.Info("Start restoring the database")
 		// Extract the restoreTime from the spec
-		restoreTime, err := r.getRestoreSDKTime(restore)
+		restoreTime, err := r.getRestoreSDKTime(ctx, restore)
 		if err != nil {
 			return r.manageError(restore, err)
 		}
 
 		logger.Info("Sending RestoreAutonomousDatabase request to OCI")
-		adbResp, err := r.dbService.RestoreAutonomousDatabase(adbOCID, *restoreTime)
+		adbResp, err := dbService.RestoreAutonomousDatabase(ctx, adbOCID, *restoreTime)
 		if err != nil {
 			return r.manageError(restore, err)
 		}
 
 		// Update the restore status
-		workResp, err := r.workService.Get(*adbResp.OpcWorkRequestId)
+		workResp, err := workService.Get(ctx, *adbResp.OpcWorkRequestId)
 		if err != nil {
 			return r.manageError(restore, err)
 		}
 
 		restore.UpdateStatus(adbResp.AutonomousDatabase, workResp)
-		if err := r.KubeClient.Status().Update(context.TODO(), restore); err != nil {
+		if err := r.KubeClient.Status().Update(ctx, restore); err != nil {
 			return r.manageError(restore, err)
 		}
 
 	} else {
 		// Update the status
 		logger.Info("Update the status of the restore session")
-		adbResp, err := r.dbService.GetAutonomousDatabase(adbOCID)
+		adbResp, err := dbService.GetAutonomousDatabase(ctx, adbOCID)
 		if err != nil {
 			return r.manageError(restore, err)
 		}
 
-		workResp, err := r.workService.Get(restore.Status.WorkRequestOCID)
+		workResp, err := workService.Get(ctx, restore.Status.WorkRequestOCID)
 		if err != nil {
 			return r.manageError(restore, err)
 		}
 
 		restore.UpdateStatus(adbResp.AutonomousDatabase, workResp)
-		if err := r.KubeClient.Status().Update(context.TODO(), restore); err != nil {
+		if err := r.KubeClient.Status().Update(ctx, restore); err != nil {
 			return r.manageError(restore, err)
 		}
 	}
@@ -182,10 +180,10 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	return emptyResult, nil
 }
 
-func (r *AutonomousDatabaseRestoreReconciler) getRestoreSDKTime(restore *dbv4.AutonomousDatabaseRestore) (*common.SDKTime, error) {
+func (r *AutonomousDatabaseRestoreReconciler) getRestoreSDKTime(ctx context.Context, restore *dbv4.AutonomousDatabaseRestore) (*common.SDKTime, error) {
 	if restore.Spec.Source.K8sAdbBackup.Name != nil { // restore using backupName
 		backup := &dbv4.AutonomousDatabaseBackup{}
-		if err := k8s.FetchResource(r.KubeClient, restore.Namespace, *restore.Spec.Source.K8sAdbBackup.Name, backup); err != nil {
+		if err := k8s.FetchResource(ctx, r.KubeClient, restore.Namespace, *restore.Spec.Source.K8sAdbBackup.Name, backup); err != nil {
 			return nil, err
 		}
 
@@ -199,19 +197,21 @@ func (r *AutonomousDatabaseRestoreReconciler) getRestoreSDKTime(restore *dbv4.Au
 
 		return restoreTime, nil
 
-	} else { // PIT restore
-		// The validation of the pitr.timestamp has been handled by the webhook, so the error return is ignored
-		restoreTime, _ := restore.GetPIT()
-		return restoreTime, nil
 	}
+	// PIT restore.
+	// The validation of the pitr.timestamp has been handled by the webhook, so the error return is ignored.
+	restoreTime, _ := restore.GetPIT()
+	return restoreTime, nil
 }
 
 // setOwnerAutonomousDatabase sets the owner of the AutonomousDatabaseBackup if the AutonomousDatabase resource with the same database OCID is found
-func (r *AutonomousDatabaseRestoreReconciler) setOwnerAutonomousDatabase(restore *dbv4.AutonomousDatabaseRestore, adb *dbv4.AutonomousDatabase) error {
+func (r *AutonomousDatabaseRestoreReconciler) setOwnerAutonomousDatabase(ctx context.Context, restore *dbv4.AutonomousDatabaseRestore, adb *dbv4.AutonomousDatabase) error {
 	logger := r.Log.WithName("set-owner-reference")
 
-	controllerutil.SetOwnerReference(adb, restore, r.Scheme)
-	if err := r.KubeClient.Update(context.TODO(), restore); err != nil {
+	if err := controllerutil.SetOwnerReference(adb, restore, r.Scheme); err != nil {
+		return err
+	}
+	if err := r.KubeClient.Update(ctx, restore); err != nil {
 		return err
 	}
 	logger.Info(fmt.Sprintf("Set the owner of AutonomousDatabaseRestore %s to AutonomousDatabase %s", restore.Name, adb.Name))
@@ -221,9 +221,9 @@ func (r *AutonomousDatabaseRestoreReconciler) setOwnerAutonomousDatabase(restore
 
 // verifyTargetAdb searches if the target ADB is in the cluster, and set the owner reference to the ADB if it exists.
 // The function returns the OCID of the target ADB.
-func (r *AutonomousDatabaseRestoreReconciler) verifyTargetAdb(restore *dbv4.AutonomousDatabaseRestore) (string, error) {
+func (r *AutonomousDatabaseRestoreReconciler) verifyTargetAdb(ctx context.Context, restore *dbv4.AutonomousDatabaseRestore) (string, error) {
 	// Get the target ADB OCID and the ADB resource
-	ownerAdb, err := adbfamily.VerifyTargetAdb(r.KubeClient, restore.Spec.Target, restore.Namespace)
+	ownerAdb, err := adbfamily.VerifyTargetAdb(ctx, r.KubeClient, restore.Spec.Target, restore.Namespace)
 
 	if err != nil {
 		return "", err
@@ -231,7 +231,7 @@ func (r *AutonomousDatabaseRestoreReconciler) verifyTargetAdb(restore *dbv4.Auto
 
 	// Set the owner reference if needed
 	if len(restore.GetOwnerReferences()) == 0 && ownerAdb != nil {
-		if err := r.setOwnerAutonomousDatabase(restore, ownerAdb); err != nil {
+		if err := r.setOwnerAutonomousDatabase(ctx, restore, ownerAdb); err != nil {
 			return "", err
 		}
 	}
@@ -246,31 +246,30 @@ func (r *AutonomousDatabaseRestoreReconciler) verifyTargetAdb(restore *dbv4.Auto
 	return "", errors.New("cannot get the OCID of the target Autonomous Database")
 }
 
-func (r *AutonomousDatabaseRestoreReconciler) setupOCIClients(restore *dbv4.AutonomousDatabaseRestore) error {
-	var err error
+func (r *AutonomousDatabaseRestoreReconciler) setupOCIClients(ctx context.Context, restore *dbv4.AutonomousDatabaseRestore) (oci.DatabaseService, oci.WorkRequestService, error) {
 
-	authData := oci.ApiKeyAuth{
+	authData := oci.APIKeyAuth{
 		ConfigMapName: restore.Spec.OCIConfig.ConfigMapName,
 		SecretName:    restore.Spec.OCIConfig.SecretName,
 		Namespace:     restore.GetNamespace(),
 	}
 
-	provider, err := oci.GetOciProvider(r.KubeClient, authData)
+	provider, err := oci.GetOciProvider(ctx, r.KubeClient, authData)
 	if err != nil {
-		return err
+		return oci.DatabaseService{}, nil, err
 	}
 
-	r.dbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
+	dbService, err := oci.NewDatabaseService(r.Log, r.KubeClient, provider)
 	if err != nil {
-		return err
+		return oci.DatabaseService{}, nil, err
 	}
 
-	r.workService, err = oci.NewWorkRequestService(r.Log, r.KubeClient, provider)
+	workService, err := oci.NewWorkRequestService(r.Log, r.KubeClient, provider)
 	if err != nil {
-		return err
+		return oci.DatabaseService{}, nil, err
 	}
 
-	return nil
+	return dbService, workService, nil
 }
 
 // manageError doesn't return the error so that the request won't be requeued

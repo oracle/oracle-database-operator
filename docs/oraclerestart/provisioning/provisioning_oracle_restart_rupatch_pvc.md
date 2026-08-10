@@ -37,6 +37,11 @@ For example:
 * Deploy the `oraclerestart_prov_rupatch_pvc.yaml` file:
     ```sh
     kubectl apply -f oraclerestart_prov_rupatch_pvc.yaml
+    ```
+
+    Example output:
+
+    ```text
     oraclerestart.database.oracle.com/oraclerestart-sample created
     ```
 * Check the status of the deployment:
@@ -46,9 +51,14 @@ For example:
 
     # Check the logs of a particular pod. For example, to check status of pod "dbmc1-0":    
     kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===============================
     ORACLE DATABASE IS READY TO USE
     ===============================
     ```
 * Check Details of Kubernetes CRD Object as in this [example](./orestart_rupatch_pvc_object.txt)
-* Refer to the page [Database Connection](./database_connection.md) for the details to connect to Oracle Restart Database deployed using above example.
+* Refer to the page [Database Connection](./database_connection.md) for the details to connect to Oracle Restart Database deployed using the example provided above.

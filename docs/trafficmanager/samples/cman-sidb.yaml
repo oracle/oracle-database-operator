@@ -1,0 +1,54 @@
+# Scenario: one CMAN replica routing to one SIDB with operator-generated rules.
+#
+# The backend Kubernetes Service is sidb-sample and the accepted database
+# service is apppdb1. Replace the image, subnet OCID, namespace, backend Service,
+# and database service name for your environment.
+# Also see:
+#   Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+#   Sample index:  docs/trafficmanager/samples/README.md
+#   Canonical multi-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-peer-filemode.yaml
+#   Canonical single-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-filemode.yaml
+#
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: cman-sidb
+  namespace: default
+spec:
+  type: cman
+  runtime:
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+  cman:
+    logLevel: user
+    traceLevel: user
+    registrationInvitedNodes: "*"
+    rules:
+      - host: sidb-sample.default.svc.cluster.local
+        src: "*"
+        dst: "*"
+        srv: apppdb1
+        action: accept

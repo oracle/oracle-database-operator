@@ -1,0 +1,34 @@
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: case-group-space
+  namespace: default
+spec:
+  dbImage: container-registry.oracle.com/database/enterprise:21.3.0.0
+  gsmImage: container-registry.oracle.com/database/gsm:21.3.0.0
+  dbSecret:
+    name: db-secret
+    pwdFileName: dbpwd
+    encryptionType: base64
+  catalog:
+  - name: cat10
+    sharding: COMPOSITE
+    repl: DG
+    autoVncr: OFF
+    agentPort: 8080
+  gsm:
+  - name: gsm1
+  shardingType: COMPOSITE
+  replicationType: DG
+  shardGroup:
+  - name: sg1
+    region: primary
+    shardSpace: ss1
+    deployAs: PRIMARY
+  shardSpace:
+  - name: ss1
+    chunks: 12
+  shard:
+  - name: shd1
+    shardGroup: sg1
+    shardSpace: ss1

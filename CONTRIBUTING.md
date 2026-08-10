@@ -6,7 +6,7 @@ Oracle welcomes your contributions! There are multiple ways that you can contrib
 
 For bugs or enhancement requests, please file a GitHub issue, unless the problem is security-related.
 
-When filing a bug, remember that the more specific the bug is, the more likely it is to be fixed. If you think you've found a security vulnerability, then do not raise a GitHub issue. Instead, follow the instructions in our [security policy](./SECURITY.md).
+When filing a bug, remember that the more specific the bug is, the more likely it is to be fixed. If you think you've found a security vulnerability, then do not raise a GitHub issue. Instead, follow the instructions in our [security policy](./docs/security/SECURITY.md).
 
 ## Contributing code
 

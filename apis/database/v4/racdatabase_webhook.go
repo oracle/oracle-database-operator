@@ -1,5 +1,19 @@
+// Package v4 provides RAC API definitions aligned with docs/rac and Kubernetes controller guidance.
+//
+// Support:
+//   - Operator user guide: docs/rac
+//   - Kubernetes controller overview: https://kubernetes.io/docs/concepts/architecture/controller/
+//
+// Contributing:
+//   - Repository guidelines: https://github.com/oracle/oracle-database-operator/blob/main/CONTRIBUTING.md
+//   - Example manifests: https://github.com/oracle/oracle-database-operator/blob/main/docs/rac/provisioning/racdb_prov_quickstart.yaml
+//
+// Help:
+//   - Issues tracker: https://github.com/oracle/oracle-database-operator/blob/main/README.md#help
+//   - Sample CRD walkthrough: https://github.com/oracle/oracle-database-operator/blob/main/docs/rac/README.md
+
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -36,38 +50,37 @@
 ** SOFTWARE.
  */
 
+//nolint:unused // legacy validation helpers are retained for staged rollout and backward compatibility.
 package v4
+
+// revive:disable:unused-parameter,receiver-naming,var-naming
+// Legacy webhook signatures and helper names are preserved for backward compatibility.
 
 import (
 	"context"
 	"fmt"
-	"net"
 	"reflect"
-	"regexp"
-	"strconv"
 	"strings"
 
-	"os"
-
-	utils "github.com/oracle/oracle-database-operator/commons/rac/utils"
+	utils "github.com/oracle/oracle-database-operator/commons/crs/rac/utils"
+	sharedresources "github.com/oracle/oracle-database-operator/commons/resources"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var racdatabaselog = logf.Log.WithName("racdatabase-resource")
 
+const racWebhookDevModeEnvVar = "RAC_WEBHOOK_DEV_MODE"
+
 // SetupWebhookWithManager registers the RAC database webhook with the manager.
 func (r *RacDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&RacDatabase{}).
+	return ctrl.NewWebhookManagedBy[*RacDatabase](mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
@@ -75,14 +88,11 @@ func (r *RacDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-racdatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=racdatabases,verbs=create;update,versions=v4,name=mracdatabase.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.CustomDefaulter = &RacDatabase{}
+var _ admission.Defaulter[*RacDatabase] = &RacDatabase{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *RacDatabase) Default(ctx context.Context, obj runtime.Object) error {
-	cr, ok := obj.(*RacDatabase)
-	if !ok {
-		return fmt.Errorf("expected *RacDatabase but got %T", obj)
-	}
+func (r *RacDatabase) Default(ctx context.Context, obj *RacDatabase) error {
+	cr := obj
 
 	racdatabaselog.Info("default", "name", cr.Name)
 
@@ -93,7 +103,7 @@ func (r *RacDatabase) Default(ctx context.Context, obj runtime.Object) error {
 
 	if cr.Spec.SshKeySecret != nil {
 		if cr.Spec.SshKeySecret.KeyMountLocation == "" {
-			cr.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSshSecretMount
+			cr.Spec.SshKeySecret.KeyMountLocation = utils.OraRacSSHSecretMount
 		}
 	}
 
@@ -122,19 +132,50 @@ func (r *RacDatabase) Default(ctx context.Context, obj runtime.Object) error {
 
 	}
 
+	if cr.CreationTimestamp.IsZero() {
+		defaultRacAsmAccessModes(cr)
+	}
+
 	return nil
+}
+
+func defaultRacAsmAccessModes(cr *RacDatabase) {
+	if cr == nil {
+		return
+	}
+	for i := range cr.Spec.AsmStorageDetails {
+		if strings.TrimSpace(cr.Spec.AsmStorageDetails[i].AccessMode) != "" {
+			continue
+		}
+		cr.Spec.AsmStorageDetails[i].AccessMode = defaultRacAsmAccessMode(cr, cr.Spec.AsmStorageDetails[i])
+	}
+}
+
+func defaultRacAsmAccessMode(_ *RacDatabase, _ AsmDiskGroupDetails) string {
+	return string(corev1.ReadWriteMany)
+}
+
+func racAsmNodeCount(cr *RacDatabase) int {
+	if cr == nil || cr.Spec.ClusterDetails == nil || cr.Spec.ClusterDetails.NodeCount <= 0 {
+		return 1
+	}
+	return cr.Spec.ClusterDetails.NodeCount
+}
+
+func resolvedRacAsmAccessMode(cr *RacDatabase, dg AsmDiskGroupDetails) string {
+	if mode := strings.TrimSpace(dg.AccessMode); mode != "" {
+		return mode
+	}
+	return defaultRacAsmAccessMode(cr, dg)
 }
 
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-racdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=racdatabases,versions=v4,name=vracdatabase.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.CustomValidator = &RacDatabase{}
+var _ admission.Validator[*RacDatabase] = &RacDatabase{}
 
 // ValidateCreate implements webhook.CustomValidator
-func (r *RacDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cr, ok := obj.(*RacDatabase)
-	if !ok {
-		return nil, fmt.Errorf("expected *RacDatabase but got %T", obj)
-	}
+func (r *RacDatabase) ValidateCreate(ctx context.Context, obj *RacDatabase) (admission.Warnings, error) {
+	cr := obj
 	racdatabaselog.Info("validate create", "name", cr.Name)
 
 	var validationErrs field.ErrorList
@@ -170,11 +211,8 @@ func (r *RacDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (a
 		cr.validateDbSecret,
 		cr.validateTdeSecret,
 		cr.validateServiceSpecs,
-		cr.validatePrivateIPSpecs,
 		cr.validateAsmStorage,
 		cr.validateGeneric,
-		cr.validateUniquePorts,
-		cr.validateUniqueIPAddresses,
 	} {
 		if errs := vfn(); errs != nil {
 			validationErrs = append(validationErrs, errs...)
@@ -213,66 +251,45 @@ func (r *RacDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (a
 		}
 	}
 
+	sgaInput := ""
+	pgaInput := ""
+	if cp != nil {
+		sgaInput = cp.SgaSize
+		pgaInput = cp.PgaSize
+	}
+
 	// ----- PARSE SGA / PGA -----
-	sga, errSga := parseMem(cp.SgaSize)
-	pga, errPga := parseMem(cp.PgaSize)
+	sga, errSga := parseMem(sgaInput)
+	pga, errPga := parseMem(pgaInput)
 	if errSga != nil {
 		validationErrs = append(validationErrs,
-			field.Invalid(fldPath.Child("sgaSize"), cp.SgaSize, "invalid format"))
+			field.Invalid(fldPath.Child("sgaSize"), sgaInput, "invalid format"))
 	}
 	if errPga != nil {
 		validationErrs = append(validationErrs,
-			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
+			field.Invalid(fldPath.Child("pgaSize"), pgaInput, "invalid format"))
 	}
 
-	// ----- EXTRACT POD MEMORY LIMIT -----
-	var memLimit int64
-	if cr.Spec.Resources != nil {
-		if memQ, ok := cr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
-			memLimit = memQ.Value()
-		}
-	}
-
-	// ----- EXTRACT HUGE PAGES (SEPARATE RESOURCE POOL) -----
-	var hugeMem int64
-	if cr.Spec.Resources != nil {
-		if hpQ, ok := cr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
-			hugeMem = hpQ.Value()
-		}
-		if hugeMem == 0 {
-			if hpQ, ok := cr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
-				hugeMem = hpQ.Value()
-			}
-		}
-	}
+	memLimit, hugeMem := sharedresources.ExtractMemoryAndHugePagesBytes(cr.Spec.Resources)
 
 	// ----- SGA + PGA SAFETY CHECK (FIXED) -----
-	totalMem := sga + pga
-	effectiveMem := memLimit + hugeMem
-
-	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+	if err := sharedresources.ValidateSgaPgaSafety(sga, pga, memLimit, hugeMem, safetyPct); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath,
-				totalMem,
-				fmt.Sprintf(
-					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
-					sga, pga, int(safetyPct*100), memLimit, hugeMem,
-				),
+				sga+pga,
+				err.Error(),
 			),
 		)
 	}
 
 	// ----- VALIDATE HUGEPAGES (FIXED) -----
-	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+	if err := sharedresources.ValidateHugePagesAtLeastSga(hugeMem, sga); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath.Child("hugePages"),
 				hugeMem,
-				fmt.Sprintf(
-					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
-					hugeMem, sga,
-				),
+				err.Error(),
 			),
 		)
 	}
@@ -281,6 +298,7 @@ func (r *RacDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (a
 	const minMemoryBytes = 16 * 1024 * 1024 * 1024 // 16GiB
 	validationErrs = append(validationErrs,
 		validateMinMemoryLimit(
+			cr.Spec.EnvVars,
 			cr.Spec.Resources,
 			minMemoryBytes,
 			field.NewPath("spec"),
@@ -438,6 +456,36 @@ func (cr *RacDatabase) validateAsmStorage() field.ErrorList {
 
 	for idx, dg := range cr.Spec.AsmStorageDetails {
 		dp := field.NewPath("spec").Child("asmDiskGroupDetails").Index(idx)
+		effectiveStorageClass := strings.TrimSpace(dg.StorageClass)
+		if effectiveStorageClass != "" && dg.AsmStorageSizeInGb <= 0 {
+			allErrs = append(allErrs,
+				field.Invalid(
+					dp.Child("asmStorageSizeInGb"),
+					dg.AsmStorageSizeInGb,
+					"asmStorageSizeInGb must be greater than zero when storageClass is configured for this disk group",
+				),
+			)
+		}
+		if accessMode := strings.TrimSpace(dg.AccessMode); accessMode != "" &&
+			accessMode != string(corev1.ReadWriteOnce) &&
+			accessMode != string(corev1.ReadWriteMany) {
+			allErrs = append(allErrs,
+				field.Invalid(
+					dp.Child("accessMode"),
+					dg.AccessMode,
+					"accessMode must be ReadWriteOnce or ReadWriteMany",
+				),
+			)
+		}
+		if strings.TrimSpace(dg.AccessMode) == string(corev1.ReadWriteOnce) && racAsmNodeCount(cr) > 1 {
+			allErrs = append(allErrs,
+				field.Invalid(
+					dp.Child("accessMode"),
+					dg.AccessMode,
+					"accessMode ReadWriteOnce is allowed only for single-node RAC",
+				),
+			)
+		}
 
 		if gridRspSet {
 			// type: Can only be "OTHERS" or blank
@@ -477,44 +525,18 @@ func (cr *RacDatabase) validateAsmStorage() field.ErrorList {
 }
 
 // ValidateDelete implements webhook.CustomValidator
-func (r *RacDatabase) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (r *RacDatabase) ValidateDelete(ctx context.Context, obj *RacDatabase) (admission.Warnings, error) {
 	racdatabaselog.Info("validate delete", "name", r.Name)
 	// Add delete validation logic if needed
 	return nil, nil
 }
 
-// validateUniqueIPAddresses verifies that private IP addresses are unique.
-func (r *RacDatabase) validateUniqueIPAddresses() field.ErrorList {
-	var validationErrs field.ErrorList
-	ipMap := make(map[string]bool)
-
-	for i, inst := range r.Spec.InstDetails {
-		for j, ipDetail := range inst.PrivateIPDetails {
-			ipPath := field.NewPath("spec").Child("instDetails").Index(i).Child("privateIPDetails").Index(j).Child("ip")
-			if ipMap[ipDetail.IP] {
-				validationErrs = append(validationErrs, field.Invalid(ipPath, ipDetail.IP, "IP address must be unique"))
-			} else {
-				ipMap[ipDetail.IP] = true
-			}
-		}
-	}
-
-	return validationErrs
-}
-
 // ValidateUpdate implements webhook.CustomValidator
-func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object, newObj runtime.Object) (admission.Warnings, error) {
+func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *RacDatabase) (admission.Warnings, error) {
 	racdatabaselog.Info("validate update", "name", r.Name)
 
-	oldCr, ok := oldObj.(*RacDatabase)
-	if !ok {
-		return nil, fmt.Errorf("expected *RacDatabase for oldObj but got %T", oldObj)
-	}
-
-	newCr, ok := newObj.(*RacDatabase)
-	if !ok {
-		return nil, fmt.Errorf("expected *RacDatabase for newObj but got %T", newObj)
-	}
+	oldCr := oldObj
+	newCr := newObj
 
 	racdatabaselog.Info("validate update", "name", newCr.Name)
 
@@ -524,7 +546,9 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object,
 	// Block spec updates in certain states
 	if newCr.Status.State == "PROVISIONING" ||
 		newCr.Status.State == "UPDATING" ||
-		newCr.Status.State == "PODAVAILABLE" {
+		newCr.Status.State == "PODAVAILABLE" ||
+		newCr.Status.State == string(RACAddInstState) ||
+		newCr.Status.State == string(RACDeletingState) {
 		if !reflect.DeepEqual(oldCr.Spec, newCr.Spec) {
 			return nil, apierrors.NewForbidden(
 				schema.GroupResource{Group: "database.oracle.com", Resource: "RacDatabase"},
@@ -534,11 +558,14 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object,
 	}
 
 	// Fields locked during ASM disk changes
-	lockedFields := []string{"hostSwStageLocation", "gridSwZipFile", "dbSwZipFile", "image"}
+	lockedFields := []string{"hostSwStageLocation", "swStagePvc", "swStagePvcMountLocation", "gridSwZipFile", "dbSwZipFile", "image", "racSwPrefix"}
 	// if isDiskChanged {
 	if oldCr.Spec.ConfigParams.HostSwStageLocation != newCr.Spec.ConfigParams.HostSwStageLocation ||
+		oldCr.Spec.ConfigParams.SwStagePvc != newCr.Spec.ConfigParams.SwStagePvc ||
+		oldCr.Spec.ConfigParams.SwStagePvcMountLocation != newCr.Spec.ConfigParams.SwStagePvcMountLocation ||
 		oldCr.Spec.ConfigParams.GridSwZipFile != newCr.Spec.ConfigParams.GridSwZipFile ||
 		oldCr.Spec.ConfigParams.DbSwZipFile != newCr.Spec.ConfigParams.DbSwZipFile ||
+		oldCr.Spec.RacSwPrefix != newCr.Spec.RacSwPrefix ||
 		oldCr.Spec.Image != newCr.Spec.Image {
 		return nil, apierrors.NewForbidden(
 			schema.GroupResource{Group: "database.oracle.com", Resource: "RacDatabase"},
@@ -547,6 +574,13 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object,
 			fmt.Errorf("updates to the following fields are not allowed : %v", lockedFields))
 	}
 	// }
+
+	// Metadata-only updates such as deletionTimestamp/finalizer changes must be
+	// allowed without re-running full spec validation, otherwise deletes can
+	// wedge on legacy spec validation errors during finalizer removal.
+	if reflect.DeepEqual(oldCr.Spec, newCr.Spec) && reflect.DeepEqual(oldCr.Status, newCr.Status) {
+		return nil, nil
+	}
 
 	// Reuse create-time validations (optional but sometimes useful)
 	createWarnings, err := newCr.ValidateCreate(ctx, newCr)
@@ -570,11 +604,6 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object,
 		if err != nil {
 			return warnings, err
 		}
-	}
-
-	// Only finalizer updates → allow
-	if reflect.DeepEqual(oldCr.Spec, newCr.Spec) && reflect.DeepEqual(oldCr.Status, newCr.Status) {
-		return nil, nil
 	}
 
 	for _, vfn := range []func(*RacDatabase) field.ErrorList{
@@ -612,6 +641,7 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object,
 
 	validationErrs = append(validationErrs,
 		validateMinMemoryLimit(
+			newCr.Spec.EnvVars,
 			newCr.Spec.Resources,
 			minMemoryBytes,
 			field.NewPath("spec"),
@@ -625,67 +655,46 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object,
 	fldPath := field.NewPath("spec").Child("configParams")
 	const safetyPct = 0.8
 
+	sgaInput := ""
+	pgaInput := ""
+	if cp != nil {
+		sgaInput = cp.SgaSize
+		pgaInput = cp.PgaSize
+	}
+
 	// ----- PARSE SGA / PGA -----
-	sga, errSga := parseMem(cp.SgaSize)
-	pga, errPga := parseMem(cp.PgaSize)
+	sga, errSga := parseMem(sgaInput)
+	pga, errPga := parseMem(pgaInput)
 
 	if errSga != nil {
 		validationErrs = append(validationErrs,
-			field.Invalid(fldPath.Child("sgaSize"), cp.SgaSize, "invalid format"))
+			field.Invalid(fldPath.Child("sgaSize"), sgaInput, "invalid format"))
 	}
 	if errPga != nil {
 		validationErrs = append(validationErrs,
-			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
+			field.Invalid(fldPath.Child("pgaSize"), pgaInput, "invalid format"))
 	}
 
-	// ----- EXTRACT POD MEMORY LIMIT -----
-	var memLimit int64
-	if newCr.Spec.Resources != nil {
-		if memQ, ok := newCr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
-			memLimit = memQ.Value()
-		}
-	}
-
-	// ----- EXTRACT HUGE PAGES -----
-	var hugeMem int64
-	if newCr.Spec.Resources != nil {
-		if hpQ, ok := newCr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
-			hugeMem = hpQ.Value()
-		}
-		if hugeMem == 0 {
-			if hpQ, ok := newCr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
-				hugeMem = hpQ.Value()
-			}
-		}
-	}
+	memLimit, hugeMem := sharedresources.ExtractMemoryAndHugePagesBytes(newCr.Spec.Resources)
 
 	// ----- SGA + PGA SAFETY CHECK -----
-	totalMem := sga + pga
-	effectiveMem := memLimit + hugeMem
-
-	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+	if err := sharedresources.ValidateSgaPgaSafety(sga, pga, memLimit, hugeMem, safetyPct); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath,
-				totalMem,
-				fmt.Sprintf(
-					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
-					sga, pga, int(safetyPct*100), memLimit, hugeMem,
-				),
+				sga+pga,
+				err.Error(),
 			),
 		)
 	}
 
 	// ----- HUGE PAGES >= SGA -----
-	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+	if err := sharedresources.ValidateHugePagesAtLeastSga(hugeMem, sga); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath.Child("hugePages"),
 				hugeMem,
-				fmt.Sprintf(
-					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
-					hugeMem, sga,
-				),
+				err.Error(),
 			),
 		)
 	}
@@ -746,35 +755,6 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object,
 	return warnings, nil
 }
 
-// validateUniquePorts ensures NodePort and service ports do not conflict.
-// validateUniquePorts ensures NodePort and service ports do not conflict.
-func (r *RacDatabase) validateUniquePorts() field.ErrorList {
-	var validationErrs field.ErrorList
-	portMap := make(map[int]bool)
-
-	for _, inst := range r.Spec.InstDetails {
-		// Check for OnsTargetPort if present
-		if inst.OnsTargetPort != nil {
-			if portMap[int(*inst.OnsTargetPort)] {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("instDetails").Child(inst.Name).Child("onsTargetPort"), inst.OnsTargetPort, "onsTargetPort must be unique"))
-			} else {
-				portMap[int(*inst.OnsTargetPort)] = true
-			}
-		}
-
-		// Check for LsnrTargetPort if present
-		if inst.LsnrTargetPort != nil {
-			if portMap[int(*inst.LsnrTargetPort)] {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("instDetails").Child(inst.Name).Child("lsnrTargetPort"), inst.LsnrTargetPort, "lsnrTargetPort must be unique"))
-			} else {
-				portMap[int(*inst.LsnrTargetPort)] = true
-			}
-		}
-	}
-
-	return validationErrs
-}
-
 // validateSshSecret verifies SSH secret references and required fields.
 // validateSshSecret verifies SSH secret references and required fields.
 func (r *RacDatabase) validateSshSecret() field.ErrorList {
@@ -814,25 +794,28 @@ func (r *RacDatabase) validateDbSecret() field.ErrorList {
 
 	var validationErrs field.ErrorList
 
-	if r.Spec.SshKeySecret != nil {
-		if r.Spec.DbSecret.Name != "" && strings.ToLower(r.Spec.DbSecret.EncryptionType) != "base64" {
-			if r.Spec.DbSecret.KeyFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("DbSecret").Child("KeyFileName"), r.Spec.DbSecret.KeyFileName,
-					"KeyFileName cannot be set to empty"))
-			}
-
-			if r.Spec.DbSecret.PwdFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("DbSecret").Child("PwdFileName"), r.Spec.DbSecret.PwdFileName,
-					"PwdFileName cannot be set to empty"))
-			}
-
-		}
-	}
-	if len(validationErrs) > 0 {
-		return validationErrs
+	if r.Spec.DbSecret == nil {
+		return nil
 	}
 
-	return nil
+	if r.Spec.DbSecret.Name == "" {
+		return nil
+	}
+
+	if r.Spec.DbSecret.SecretKey != "" {
+		return nil
+	}
+
+	if r.Spec.DbSecret.KeyFileName != "" || r.Spec.DbSecret.PwdFileName != "" {
+		return nil
+	}
+
+	validationErrs = append(validationErrs, field.Invalid(
+		field.NewPath("spec").Child("DbSecret"),
+		r.Spec.DbSecret,
+		"either 'key', 'pwdFileName', or 'keyFileName' must be specified",
+	))
+	return validationErrs
 }
 
 // validateTdeSecret validates TDE wallet secret references.
@@ -841,25 +824,37 @@ func (r *RacDatabase) validateTdeSecret() field.ErrorList {
 
 	var validationErrs field.ErrorList
 
-	if r.Spec.TdeWalletSecret != nil {
-		if r.Spec.TdeWalletSecret.Name != "" && strings.ToLower(r.Spec.TdeWalletSecret.EncryptionType) != "base64" {
-			if r.Spec.TdeWalletSecret.KeyFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"), r.Spec.TdeWalletSecret.KeyFileName,
-					"KeyFileName cannot be set to empty"))
-			}
+	if r.Spec.TdeWalletSecret == nil {
+		return nil
+	}
 
-			if r.Spec.DbSecret.PwdFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"), r.Spec.TdeWalletSecret.PwdFileName,
-					"PwdFileName cannot be set to empty"))
-			}
+	if r.Spec.TdeWalletSecret.Name == "" {
+		return nil
+	}
 
+	if r.Spec.TdeWalletSecret.SecretKey != "" {
+		return nil
+	}
+
+	if r.Spec.TdeWalletSecret.KeyFileName != "" || r.Spec.TdeWalletSecret.PwdFileName != "" {
+		if r.Spec.TdeWalletSecret.KeyFileName != "" && r.Spec.TdeWalletSecret.PwdFileName == "" {
+			validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"), r.Spec.TdeWalletSecret.PwdFileName,
+				"PwdFileName cannot be set to empty when KeyFileName is specified"))
 		}
-	}
-	if len(validationErrs) > 0 {
-		return validationErrs
+
+		if len(validationErrs) > 0 {
+			return validationErrs
+		}
+
+		return nil
 	}
 
-	return nil
+	validationErrs = append(validationErrs, field.Invalid(
+		field.NewPath("spec").Child("TdeWalletSecret"),
+		r.Spec.TdeWalletSecret,
+		"either 'key', 'pwdFileName', or ('keyFileName' and 'pwdFileName') must be specified",
+	))
+	return validationErrs
 }
 
 // validateServiceSpecs validates RAC service configuration settings.
@@ -916,127 +911,12 @@ func (r *RacDatabase) validateServiceSpecs() field.ErrorList {
 		}
 	}
 
-	nodeCount := 0
-	for index := range r.Spec.InstDetails {
-		if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-			nodeCount = nodeCount + 1
-		}
-	}
-
-	if r.Spec.ServiceDetails.Name != "" {
-		prefAvailCount := len(r.Spec.ServiceDetails.Preferred) + len(r.Spec.ServiceDetails.Available)
-		var a []any = []any{"%s -> %s\n", strconv.Itoa(prefAvailCount), strconv.Itoa(nodeCount)}
-		fmt.Fprintln(os.Stdout, a...)
-		if prefAvailCount > nodeCount {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("ServiceDetails").Child("Preferred"), r.Spec.ServiceDetails.Preferred,
-					"The statefulset counts ["+strconv.Itoa(nodeCount)+"] are not matching with the preferred and available instances ["+strconv.Itoa(prefAvailCount)+"]count"))
-		}
-	}
-
 	// ======> Service Specs Check Ends here here ====>
 
 	if len(validationErrs) > 0 {
 		return validationErrs
 	}
 
-	return nil
-}
-
-// validatePrivateIPSpecs ensures private network specs are well formed.
-// validatePrivateIPSpecs ensures private network specs are well formed.
-func (r *RacDatabase) validatePrivateIPSpecs() field.ErrorList {
-
-	var validationErrs field.ErrorList
-	var status bool
-
-	status = true
-	for index := range r.Spec.InstDetails {
-		if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-			// Checking the mulus configuration
-			//*** IP Block Check Begins - Following block validate Private IPs **///
-			for pindex := range r.Spec.InstDetails[index].PrivateIPDetails {
-				if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name == "" {
-					validationErrs = append(validationErrs,
-						field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails").Child("Name"), r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name,
-							"Multus configuration Name cannot be empty"))
-					status = false
-				}
-				if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name != "" {
-					if r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP == "" {
-						validationErrs = append(validationErrs,
-							field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails").Child("IP"), r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP,
-								"IP cannot be set to empty"))
-						status = false
-					} else {
-						ip1 := net.ParseIP(r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP)
-						if ip1.To4() == nil {
-							validationErrs = append(validationErrs,
-								field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails").Child("IP"), r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP,
-									" IP is set incorrectly"))
-							status = false
-						}
-						if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface == "" {
-							validationErrs = append(validationErrs,
-								field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails").Child("Interface"), r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface,
-									"Interface name cannot be set to empty"))
-							status = false
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if status {
-		for index := range r.Spec.InstDetails {
-			if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-				status = false
-				for pindex := range r.Spec.InstDetails[index].PrivateIPDetails {
-					if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name != "" && r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface != "" && r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP != "" {
-						error := r.checkPrivateNetworkConfiguration(r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name, r.Spec.InstDetails[index].PrivateIPDetails[pindex].IP, r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface)
-						if error != nil {
-							validationErrs = append(validationErrs, error...)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if len(validationErrs) > 0 {
-		return validationErrs
-	}
-
-	return nil
-}
-
-// checkPrivateNetworkConfiguration verifies private network overlap rules.
-func (r *RacDatabase) checkPrivateNetworkConfiguration(name string, ip string, nwcard string) field.ErrorList {
-	var status bool
-	var validationErrs field.ErrorList
-
-	for index := range r.Spec.InstDetails {
-		if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-			status = false
-			for pindex := range r.Spec.InstDetails[index].PrivateIPDetails {
-				if r.Spec.InstDetails[index].PrivateIPDetails[pindex].Name == name && r.Spec.InstDetails[index].PrivateIPDetails[pindex].Interface == nwcard {
-					status = true
-					break
-				}
-			}
-			if !status {
-				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("InstDetails").Child("PrivateIPDetails"), r.Spec.InstDetails[index].PrivateIPDetails,
-						"Multus configuration mismatch. "+name+" or "+nwcard+" is  not matching with other statefulsets multus conifguration"))
-				break
-			}
-		}
-	}
-
-	if len(validationErrs) > 0 {
-		return validationErrs
-	}
 	return nil
 }
 
@@ -1057,29 +937,23 @@ func (r *RacDatabase) validateGeneric() field.ErrorList {
 
 	var validationErrs field.ErrorList
 
-	for index := range r.Spec.InstDetails {
-		if !utils.CheckStatusFlag(r.Spec.InstDetails[index].IsDelete) {
-
-			is_alphanumeric := regexp.MustCompile(`^[a-zA-Z]*[0-9]*$`).MatchString(r.Spec.InstDetails[index].Name)
-			if !is_alphanumeric {
-				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("InstDetails").Child("Name"), r.Spec.InstDetails[index].Name,
-						"Name can be only alphanumeric string"))
-			}
-
-			if r.Spec.InstDetails[index].HostSwLocation == "" && r.Spec.StorageClass == "" {
-				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("InstDetails").Child("HostSwLocation"), r.Spec.InstDetails[index].HostSwLocation,
-						"HostSwLocation and StorageClass both cannot be set to empty. You need set one of them for software location."))
-			}
-		}
-	}
-
 	if r.Spec.ConfigParams == nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(field.NewPath("spec").Child("ConfigParams"), r.Spec.ConfigParams,
 				"ConfigParams cannot be set empty"))
 	} else {
+		if _, err := r.Spec.ResolveSwStorageMode(); err != nil {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec"), r.Spec, err.Error()))
+		}
+		if r.Spec.SwLocStorageSizeInGb > 0 && strings.TrimSpace(r.Spec.SwStorageClass) == "" {
+			validationErrs = append(validationErrs,
+				field.Required(
+					field.NewPath("spec").Child("swStorageClass"),
+					"swStorageClass must be specified when swLocStorageSizeInGb is set to provision the software home PVC",
+				),
+			)
+		}
 
 		cfg := r.Spec.ConfigParams
 
@@ -1273,12 +1147,20 @@ func (r *RacDatabase) validateGeneric() field.ErrorList {
 		}
 
 		if !utils.CheckStatusFlag(r.Spec.UseNfsforSwStorage) {
-			if cfg.HostSwStageLocation == "" {
+			mode, err := cfg.ResolveSwStageMode()
+			if err != nil {
 				validationErrs = append(validationErrs,
 					field.Invalid(
-						field.NewPath("spec").Child("ConfigParams").Child("HostSwStageLocation"),
-						cfg.HostSwStageLocation,
-						"HostSwStageLocation and StorageClass both cannot be empty. You must set one of them.",
+						field.NewPath("spec").Child("ConfigParams"),
+						cfg,
+						err.Error(),
+					))
+			} else if mode == RacSwStageNone {
+				validationErrs = append(validationErrs,
+					field.Invalid(
+						field.NewPath("spec").Child("ConfigParams"),
+						cfg,
+						"either (swStagePvc + swStagePvcMountLocation) OR hostSwStageLocation must be specified",
 					))
 			}
 		}
@@ -1565,8 +1447,10 @@ func (r *RacDatabase) validateUpdateAsmStorage(oldCr *RacDatabase) field.ErrorLi
 
 	var validationErrs field.ErrorList
 	// Map of old group names and types for lookup
+	oldGroups := make(map[string]AsmDiskGroupDetails)
 	oldGroupTypes := make(map[string]AsmDiskDGTypes)
 	for _, dg := range oldCr.Spec.AsmStorageDetails {
+		oldGroups[dg.Name] = dg
 		oldGroupTypes[dg.Name] = dg.Type
 	}
 
@@ -1582,6 +1466,27 @@ func (r *RacDatabase) validateUpdateAsmStorage(oldCr *RacDatabase) field.ErrorLi
 				field.Forbidden(
 					field.NewPath("spec").Child("asmDiskGroupDetails").Index(idx),
 					fmt.Sprintf("Addition of new disk group %q (type: %s) is not allowed except for groups of type OTHERS.", dg.Name, dg.Type)))
+		}
+		if existed {
+			oldDg := oldGroups[dg.Name]
+			oldMode := resolvedRacAsmAccessMode(oldCr, oldGroups[dg.Name])
+			newMode := resolvedRacAsmAccessMode(r, dg)
+			if oldMode != newMode {
+				validationErrs = append(validationErrs,
+					field.Forbidden(
+						field.NewPath("spec").Child("asmDiskGroupDetails").Index(idx).Child("accessMode"),
+						fmt.Sprintf("accessMode cannot be changed after creation (old: %s, new: %s)", oldMode, newMode),
+					),
+				)
+			}
+			if dg.AsmStorageSizeInGb > 0 && oldDg.AsmStorageSizeInGb > 0 && dg.AsmStorageSizeInGb < oldDg.AsmStorageSizeInGb {
+				validationErrs = append(validationErrs,
+					field.Forbidden(
+						field.NewPath("spec").Child("asmDiskGroupDetails").Index(idx).Child("asmStorageSizeInGb"),
+						fmt.Sprintf("asmStorageSizeInGb cannot be decreased after creation (old: %d, new: %d)", oldDg.AsmStorageSizeInGb, dg.AsmStorageSizeInGb),
+					),
+				)
+			}
 		}
 		// Types must be unique per group
 		if existingName, exists := seenTypes[dg.Type]; exists {
@@ -1634,6 +1539,13 @@ func (r *RacDatabase) validateUpdateDbSecret(oldCr *RacDatabase) field.ErrorList
 					r.Spec.DbSecret.KeyFileName, "KeyFileName cannot be changed post creation"))
 		}
 
+		if r.Spec.DbSecret.SecretKey != "" && oldCr.Status.DbSecret.SecretKey != "" &&
+			!strings.EqualFold(oldCr.Status.DbSecret.SecretKey, r.Spec.DbSecret.SecretKey) {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("key"),
+					r.Spec.DbSecret.SecretKey, "key cannot be changed post creation"))
+		}
+
 		if r.Spec.DbSecret.PwdFileName != "" && oldCr.Status.DbSecret.PwdFileName != "" &&
 			!strings.EqualFold(oldCr.Status.DbSecret.PwdFileName, r.Spec.DbSecret.PwdFileName) {
 			validationErrs = append(validationErrs,
@@ -1650,11 +1562,16 @@ func (r *RacDatabase) validateUpdateDbSecret(oldCr *RacDatabase) field.ErrorList
 
 }
 func validateMinMemoryLimit(
+	envVars []corev1.EnvVar,
 	resources *corev1.ResourceRequirements,
 	minBytes int64,
 	fldPath *field.Path,
 ) field.ErrorList {
 	var errs field.ErrorList
+
+	if envVarBoolOrDefault(envVars, racWebhookDevModeEnvVar, false) {
+		return errs
+	}
 
 	if resources == nil {
 		return errs
@@ -1676,32 +1593,68 @@ func validateMinMemoryLimit(
 	return errs
 }
 
+func envVarBoolOrDefault(envVars []corev1.EnvVar, key string, def bool) bool {
+	for _, envVar := range envVars {
+		if !strings.EqualFold(strings.TrimSpace(envVar.Name), key) {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(envVar.Value)) {
+		case "1", "true", "t", "yes", "y", "on":
+			return true
+		case "0", "false", "f", "no", "n", "off":
+			return false
+		default:
+			return def
+		}
+	}
+	return def
+}
+
 // validateUpdateTdeSecret validates updates to the TDE wallet secret.
 func (r *RacDatabase) validateUpdateTdeSecret(oldCr *RacDatabase) field.ErrorList {
 
 	var validationErrs field.ErrorList
 
-	if r.Spec.TdeWalletSecret != nil && oldCr.Status.TdeWalletSecret != nil {
-		if r.Spec.TdeWalletSecret.Name != "" && oldCr.Status.TdeWalletSecret.Name != "" &&
-			!strings.EqualFold(oldCr.Status.TdeWalletSecret.Name, r.Spec.TdeWalletSecret.Name) {
-			validationErrs = append(validationErrs,
-				field.Forbidden(field.NewPath("spec").Child("TdeWalletSecret").Child("Name"),
-					"TdeWalletSecret name cannot be changed post creation"))
-		}
+	oldSecret := oldCr.Spec.TdeWalletSecret
+	newSecret := r.Spec.TdeWalletSecret
 
-		if r.Spec.TdeWalletSecret.KeyFileName != "" && oldCr.Status.TdeWalletSecret.KeyFileName != "" &&
-			!strings.EqualFold(oldCr.Status.TdeWalletSecret.KeyFileName, r.Spec.TdeWalletSecret.KeyFileName) {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"),
-					r.Spec.TdeWalletSecret.KeyFileName, "KeyFileName cannot be changed post creation"))
-		}
+	if oldSecret == nil {
+		return nil
+	}
 
-		if r.Spec.TdeWalletSecret.PwdFileName != "" && oldCr.Status.TdeWalletSecret.PwdFileName != "" &&
-			!strings.EqualFold(oldCr.Status.TdeWalletSecret.PwdFileName, r.Spec.TdeWalletSecret.PwdFileName) {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"),
-					r.Spec.TdeWalletSecret.PwdFileName, "PwdFileName cannot be changed post creation"))
-		}
+	if newSecret == nil {
+		validationErrs = append(validationErrs,
+			field.Forbidden(field.NewPath("spec").Child("TdeWalletSecret"),
+				"TdeWalletSecret cannot be removed post creation"))
+		return validationErrs
+	}
+
+	if oldSecret.Name != "" &&
+		!strings.EqualFold(oldSecret.Name, newSecret.Name) {
+		validationErrs = append(validationErrs,
+			field.Forbidden(field.NewPath("spec").Child("TdeWalletSecret").Child("Name"),
+				"TdeWalletSecret name cannot be changed post creation"))
+	}
+
+	if oldSecret.KeyFileName != "" &&
+		!strings.EqualFold(oldSecret.KeyFileName, newSecret.KeyFileName) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"),
+				newSecret.KeyFileName, "KeyFileName cannot be changed post creation"))
+	}
+
+	if oldSecret.SecretKey != "" &&
+		!strings.EqualFold(oldSecret.SecretKey, newSecret.SecretKey) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("key"),
+				newSecret.SecretKey, "key cannot be changed post creation"))
+	}
+
+	if oldSecret.PwdFileName != "" &&
+		!strings.EqualFold(oldSecret.PwdFileName, newSecret.PwdFileName) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"),
+				newSecret.PwdFileName, "PwdFileName cannot be changed post creation"))
 	}
 
 	if len(validationErrs) > 0 {

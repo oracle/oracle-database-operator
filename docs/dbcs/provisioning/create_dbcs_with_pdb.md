@@ -38,7 +38,12 @@ Use the file: [dbcs_service_with_pdb.yaml](./dbcs_service_with_pdb.yaml) for thi
 
 1. Deploy the .yaml file:  
 ```bash
-[root@docker-test-server OBDS]# kubectl apply -f dbcs_service_with_pdb.yaml
+kubectl apply -f dbcs_service_with_pdb.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-create-with-pdb created
 ```
 
@@ -47,7 +52,7 @@ dbcssystem.database.oracle.com/dbcssystem-create-with-pdb created
 NOTE: Check the DB Operator Pod name in your environment.
 
 ```bash
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

@@ -31,6 +31,8 @@ For example:
         - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
         - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
 ```
+  * This procedure is for adding new ASM disks. It is different from increasing the size of an existing storage-class-backed ASM PVC by changing `asmStorageSizeInGb`.
+  * After increasing the size of an existing storage-class-backed ASM PVC, you must manually grow or rebalance ASM inside the pod to use the additional capacity.
   * The default value in YAML file is `autoUpdate: "true"`, which will delete and recreate the pod with updated ASM disks in the Oracle Restart Deployment. In this case, the new disks will be automatically added to the existing Diskgroup.
   * If the value in the YAML file is set to `autoUpdate: "false"`, then the Oracle Restart Database Pod is recreated, but the additional disks are _not_ added to the ASM Disk Group automatically.
 

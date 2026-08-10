@@ -40,7 +40,12 @@ Use the file: [dbcs_service_with_all_parameters_asm.yaml](./dbcs_service_with_al
 
 1. Deploy the .yaml file:  
 ```sh
-[root@docker-test-server OBDS]# kubectl apply -f dbcs_service_with_all_parameters_asm.yaml
+kubectl apply -f dbcs_service_with_all_parameters_asm.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-create created
 ```
 
@@ -48,8 +53,8 @@ dbcssystem.database.oracle.com/dbcssystem-create created
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

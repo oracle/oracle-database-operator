@@ -1,0 +1,176 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+# Canonical multi-backend CMAN file-mode sample: cman-sidb-peer-filemode.yaml
+#
+# The active example demonstrates the most complete topology:
+#   - two CMAN replicas for availability; replica count scales independently
+#     from the number of database backends
+#   - two example Oracle Database listener backends; add the same alias/rule
+#     pattern for N database services
+#   - two service-aware aliases, where appservice1 and appservice2 select
+#     different Oracle Database backends; these are not global next_hop blocks
+#
+# Simplify this template as described inline when you need only one CMAN replica,
+# one database/global next-hop, or operator-generated CMAN rules. Backend
+# listeners may be provided by any Oracle Database controller or an externally
+# managed Oracle database.
+#
+# Sample index: docs/trafficmanager/samples/README.md
+# Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+# Focused examples: docs/trafficmanager/samples/
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cman-config
+  namespace: default
+data:
+  cman.ora: |
+    ######################################################################
+    # MULTIPLE DATABASES / SERVICE-AWARE NEXT HOPS
+    #
+    # Use this alias pattern when one CMAN endpoint must route different
+    # requested service names to different Oracle Database listener endpoints.
+    # The two entries below are examples. For N database services, add one alias
+    # and one accept rule per database/service pair.
+    #
+    # The CMAN image must extract the block between CMAN_TNSNAMES_BEGIN and
+    # CMAN_TNSNAMES_END into $ORACLE_HOME/network/admin/tnsnames.ora.
+    ######################################################################
+    # CMAN_TNSNAMES_BEGIN
+    # appservice1 =
+    #   (description=
+    #     (address=(protocol=tcp)(host=database-one.default.svc.cluster.local)(port=1521))
+    #     (connect_data=(service_name=appservice1))
+    #   )
+    #
+    # appservice2 =
+    #   (description=
+    #     (address=(protocol=tcp)(host=database-two.default.svc.cluster.local)(port=1521))
+    #     (connect_data=(service_name=appservice2))
+    #   )
+    # CMAN_TNSNAMES_END
+
+    CMAN_cman.default.svc.cluster.local =
+    (configuration=
+      (address=(protocol=tcp)(host=cman.default.svc.cluster.local)(port=1521))
+
+      ####################################################################
+      # ONE DATABASE / GLOBAL NEXT HOP ALTERNATIVE
+      #
+      # Use a global next_hop only when every accepted request must go to
+      # the same database listener. A global next_hop is not service-aware.
+      # To use it, remove use_service_as_tnsnames_alias below, remove the
+      # embedded alias block above, keep only the applicable accept rule,
+      # and uncomment this block:
+      #
+      # (next_hop=
+      #   (description=
+      #     (address=(protocol=tcp)(host=database-one.default.svc.cluster.local)(port=1521))
+      #   )
+      # )
+      ####################################################################
+
+      (parameter_list =
+        (connection_statistics=yes)
+        (log_directory=/u01/app/oracle/product/23ai/client_1/network/log)
+        (log_level=user)
+        (trace_directory=/u01/app/oracle/product/23ai/client_1/network/trace)
+        (trace_level=user)
+        (valid_node_checking_registration=on)
+        (registration_invited_nodes=*)
+        (use_service_as_tnsnames_alias=on)
+      )
+      (rule_list=
+        (rule=
+           (src=*)(dst=*)(srv=appservice1)(act=accept)
+           (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+        (rule=
+           (src=*)(dst=*)(srv=appservice2)(act=accept)
+           (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+      )
+    )
+---
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: cman
+  namespace: default
+spec:
+  type: cman
+
+  runtime:
+    ## Use replicas=2 or greater when CMAN availability is required. Replica
+    ## count is independent of the number of Oracle Database backends.
+    ## Use replicas=1 for development or when CMAN pod redundancy is not needed.
+    image: "<cman-container-image-with-embedded-tnsnames-support>"
+    imagePullPolicy: Always
+    replicas: 2
+
+  service:
+    ## The internal Service provides the stable in-cluster CMAN listener name.
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+
+    ## Enable the external Service when clients connect from outside the cluster.
+    ## Disable it when every client is inside the cluster.
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+
+  cman:
+    ######################################################################
+    # FILE MODE (ACTIVE)
+    #
+    # File mode is required for next_hop and service-aware alias routing.
+    # TrafficManager mounts the selected ConfigMap key as cman.ora.
+    ######################################################################
+    configSource:
+      configMapRef:
+        name: cman-config
+        key: cman.ora
+
+    ######################################################################
+    # GENERATED-RULE MODE ALTERNATIVE
+    #
+    # Prefer generated rules when the databases register with CMAN and you
+    # need filtering rules only. Do not use generated rules when next_hop,
+    # use_service_as_tnsnames_alias, or other custom cman.ora settings are
+    # required.
+    #
+    # To use generated mode, remove configSource above and uncomment the
+    # following fields. Add one rule per database/service pair.
+    #
+    # logLevel: user
+    # traceLevel: user
+    # registrationInvitedNodes: "*"
+    # rules:
+    #   - host: database-one.default.svc.cluster.local
+    #     src: "*"
+    #     dst: "*"
+    #     srv: appservice1
+    #     action: accept
+    #   - host: database-two.default.svc.cluster.local
+    #     src: "*"
+    #     dst: "*"
+    #     srv: appservice2
+    #     action: accept
+    ######################################################################

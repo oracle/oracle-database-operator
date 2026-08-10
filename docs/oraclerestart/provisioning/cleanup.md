@@ -8,6 +8,11 @@ This example uses `oraclerestart_prov.yaml` to clean up an Oracle Restart Databa
 1. Use the file `oraclerestart_prov.yaml` to delete an existing deployment:
     ```sh
     kubectl delete -f oraclerestart_prov.yaml
+    ```
+
+    Example output:
+
+    ```text
     oraclerestart.database.oracle.com/oraclerestart-sample deleted
     ```
 2. Check the status of the deployment:

@@ -28,7 +28,12 @@ Use the file: [scale_up_dbcs_system_shape.yaml](./scale_up_dbcs_system_shape.yam
 
 1. Deploy the `.yaml` file:  
 ```sh
-[root@docker-test-server OBDS]# kubectl apply -f scale_up_dbcs_system_shape.yaml
+kubectl apply -f scale_up_dbcs_system_shape.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
@@ -36,8 +41,8 @@ dbcssystem.database.oracle.com/dbcssystem-existing configured
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

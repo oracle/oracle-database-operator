@@ -1,0 +1,158 @@
+/*
+** Copyright (c) 2022 Oracle and/or its affiliates.
+**
+** The Universal Permissive License (UPL), Version 1.0
+**
+** Subject to the condition set forth below, permission is hereby granted to any
+** person obtaining a copy of this software, associated documentation and/or data
+** (collectively the "Software"), free of charge and under any and all copyright
+** rights in the Software, and any and all patent rights owned or freely
+** licensable by each licensor hereunder covering either (i) the unmodified
+** Software as contributed to or provided by such licensor, or (ii) the Larger
+** Works (as defined below), to deal in both
+**
+** (a) the Software, and
+** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
+** one is included with the Software (each a "Larger Work" to which the Software
+** is contributed by such licensors),
+**
+** without restriction, including without limitation the rights to copy, create
+** derivative works of, display, perform, and distribute the Software and make,
+** use, sell, offer for sale, import, export, have made, and have sold the
+** Software and the Larger Work(s), and to sublicense the foregoing rights on
+** either these or other terms.
+**
+** This license is subject to the following condition:
+** The above copyright notice and either this complete permission notice or at
+** a minimum a reference to the UPL must be included in all copies or
+** substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+** SOFTWARE.
+ */
+
+package k8s
+
+import (
+	"context"
+	"errors"
+
+	corev1 "k8s.io/api/core/v1"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+)
+
+// FetchResource gets a namespaced object by name into the provided target object.
+func FetchResource(ctx context.Context, kubeClient client.Client, namespace string, name string, object client.Object) error {
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	if err := kubeClient.Get(ctx, namespacedName, object); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// FetchAutonomousDatabaseWithOCID returns the first AutonomousDatabase matching the given OCID.
+// It may return nil,nil if no matching ADB exists in the namespace.
+func FetchAutonomousDatabaseWithOCID(ctx context.Context, kubeClient client.Client, namespace string, ocid string) (*dbv4.AutonomousDatabase, error) {
+	adbList, err := fetchAutonomousDatabases(ctx, kubeClient, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, adb := range adbList.Items {
+		if adb.Spec.Details.Id != nil && *adb.Spec.Details.Id == ocid {
+			return &adb, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func fetchAutonomousDatabases(ctx context.Context, kubeClient client.Client, namespace string) (*dbv4.AutonomousDatabaseList, error) {
+	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
+	adbList := &dbv4.AutonomousDatabaseList{}
+
+	if err := kubeClient.List(ctx, adbList, &client.ListOptions{Namespace: namespace}); err != nil {
+		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
+		// No need to change the since we don't know if we obtain the object.
+		if !apiErrors.IsNotFound(err) {
+			return adbList, err
+		}
+	}
+
+	return adbList, nil
+}
+
+// FetchAutonomousDatabaseBackups lists AutonomousDatabaseBackup resources for a given ADB name.
+func FetchAutonomousDatabaseBackups(ctx context.Context, kubeClient client.Client, namespace string, adbName string) (*dbv4.AutonomousDatabaseBackupList, error) {
+	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
+	backupList := &dbv4.AutonomousDatabaseBackupList{}
+
+	// Create a label selector
+	selector := labels.Set{"adb": adbName}.AsSelector()
+
+	if err := kubeClient.List(
+		ctx,
+		backupList,
+		&client.ListOptions{
+			Namespace:     namespace,
+			LabelSelector: selector,
+		}); err != nil {
+		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
+		// No need to change the since we don't know if we obtain the object.
+		if !apiErrors.IsNotFound(err) {
+			return backupList, err
+		}
+	}
+
+	return backupList, nil
+}
+
+// FetchConfigMap returns the ConfigMap with the given namespace and name.
+func FetchConfigMap(ctx context.Context, kubeClient client.Client, namespace string, name string) (*corev1.ConfigMap, error) {
+	configMap := &corev1.ConfigMap{}
+
+	if err := FetchResource(ctx, kubeClient, namespace, name, configMap); err != nil {
+		return nil, err
+	}
+
+	return configMap, nil
+}
+
+// FetchSecret returns the Secret with the given namespace and name.
+func FetchSecret(ctx context.Context, kubeClient client.Client, namespace string, name string) (*corev1.Secret, error) {
+	secret := &corev1.Secret{}
+
+	if err := FetchResource(ctx, kubeClient, namespace, name, secret); err != nil {
+		return nil, err
+	}
+
+	return secret, nil
+}
+
+// GetSecretValue returns a string value for a key from a Kubernetes Secret.
+func GetSecretValue(ctx context.Context, kubeClient client.Client, namespace string, name string, key string) (string, error) {
+	secret, err := FetchSecret(ctx, kubeClient, namespace, name)
+	if err != nil {
+		return "", err
+	}
+
+	val, ok := secret.Data[key]
+	if !ok {
+		return "", errors.New("Secret key not found: " + key)
+	}
+	return string(val), nil
+}

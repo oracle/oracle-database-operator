@@ -35,8 +35,6 @@
 ## OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ## SOFTWARE.
 
-# not used, unset to avoid warning message
-unset JAVA_TOOL_OPTIONS
 
 dump_stack(){
 _log_date=$(date "+%y:%m:%d %H:%M:%S")
@@ -61,7 +59,11 @@ sub(){
 }
 
 #------------------------------------------------------------------------------
-function global_parameters(){
+function apex_parameters(){
+
+	sub "APEX parameters"
+	echo "external_apex          : ${external_apex:?}"
+	echo "download_apex          : ${download_apex:?}"
 
 	APEX_INSTALL=/opt/oracle/apex
 	# backward compatibility for ORDS images prior to 24.1.x (included)
@@ -74,25 +76,49 @@ function global_parameters(){
 	APEX_IMAGES=${APEX_INSTALL}/images
     APEX_VERSION_TXT=${APEX_IMAGES}/apex_version.txt 
 
-	sub "global parameters"
-	echo "external_apex          : ${external_apex:?}"
-	echo "download_apex          : ${download_apex:?}"
-	
 	if [[ ${download_apex} == "true" ]] 
 	then
 	  echo "download_url_apex      : ${download_url_apex:?}"
 	fi
 
-	if [[ ( ${external_apex} == "true" ) || ( ${download_apex} == "true" ) ]]
+    echo "APEX_INSTALL           : $APEX_INSTALL"
+    echo "APEX_IMAGES            : $APEX_IMAGES"
+
+}
+
+function setup_instance_api_user(){
+  sub "Instance API User"
+
+  if [[ -z "${instance_api_admin_password}" ]]; then
+    echo "ERROR: instance_api_admin_password not set; cannot create Instance API admin user"
+    return 1
+  fi
+  
+  echo "Configuring ORDS instance API admin user: ${instance_api_admin_user}"
+  local IAPIUSR="${instance_api_admin_user}"
+  local IAPIPWD="${instance_api_admin_password}"
+  
+  printf '%s\n%s\n' "${IAPIPWD}" "${IAPIPWD}" | ords --config "${ORDS_CONFIG}" config user add "${IAPIUSR}" "System Administrator" 
+  echo "User list"
+  ords --config "${ORDS_CONFIG}" config user list		
+
+}
+
+function global_parameters(){
+
+	# not used, unset to avoid warning message
+    unset JAVA_TOOL_OPTIONS
+	if [[ -n "${JDK_JAVA_OPTIONS}" ]]
 	then
-	  echo "APEX_INSTALL           : $APEX_INSTALL"
-	  echo "APEX_IMAGES            : $APEX_IMAGES"
+		echo "JDK_JAVA_OPTIONS: ${JDK_JAVA_OPTIONS}"
 	fi
-	
-	if [[ -n ${central_config_url} ]] 
-	then
-	  echo "central_config_url     : ${central_config_url}"
-    fi
+
+	sub "Creating config/global subfolders"
+	echo "ORDS_CONFIG: ${ORDS_CONFIG}"
+	mkdir -pv "${ORDS_CONFIG}/global/doc_root"
+
+	sub "Cloning setup from staging to global"
+	cp -rLv "${ORDS_CONFIG}/stage/"* "${ORDS_CONFIG}/global/"
 
 	# check for password encryption
 	if [[ -n "${ENC_PRV_KEY}" ]]; then
@@ -194,9 +220,9 @@ function run_sql {
 		WHENEVER OSERROR EXIT 1
 		set cloudconfig ${config[cloudconfig]}
 		connect ${config[connect]}
-		set serveroutput on echo off pause off feedback off
+		set serveroutput on size 10000 echo off pause off feedback off
 		set heading ${_heading} wrap off linesize 1000 pagesize 0
-		SET TERMOUT OFF VERIFY OFF
+		SET TERMOUT OFF VERIFY OFF DEFINE OFF
 		${_sql}
 		exit;
 		EOSQL
@@ -208,6 +234,38 @@ function run_sql {
 		echo "SQLERROR: ${_output}"
 	fi
 	
+	return $_rc
+}
+
+#------------------------------------------------------------------------------
+function run_sql_stream {
+	local -r _sql="${1}"
+	local -i _rc=0
+
+	if [[ -z ${_sql} ]]; then
+		dump_stack
+		echo "FATAL: missing SQL calling run_sql_stream" && exit 1
+	fi
+
+	# NOTE to maintainer; the heredoc must be TAB indented
+	sql -S -nohistory -noupdates /nolog <<-EOSQL
+		WHENEVER SQLERROR EXIT 1
+		WHENEVER OSERROR EXIT 1
+		set cloudconfig ${config[cloudconfig]}
+		connect ${config[connect]}
+		set serveroutput on size 10000 echo off pause off feedback off
+		set heading off wrap off linesize 1000 pagesize 0
+	    SET TERMOUT ON VERIFY OFF DEFINE OFF
+		${_sql}
+		exit;
+		EOSQL
+	_rc=$?
+
+	if (( _rc > 0 )); then
+		dump_stack
+		echo "SQLERROR: streamed SQL failed"
+	fi
+
 	return $_rc
 }
 
@@ -251,6 +309,20 @@ function check_adb() {
 	return ${_rc}
 }
 
+# Escape a shell value so it can be safely embedded as a PL/SQL string literal.
+# Example: abc'def -> 'abc''def'
+function plsql_literal() {
+	local _value="${1}"
+
+	if [[ "${_value}" == *$'\n'* || "${_value}" == *$'\r'* ]]; then
+		echo "FATAL: value must not contain newline characters" >&2
+		return 1
+	fi
+
+	_value="${_value//\'/\'\'}"
+	printf "'%s'" "${_value}"
+}
+
 function create_adb_user() {
 	local -r _pool_name="${1}"
                         
@@ -263,22 +335,54 @@ function create_adb_user() {
 		return 1
 	fi
 
+	if [[ "${config[dbpassword]}" == *"'"* || "${config[dbpassword]}" == *'"'* ]]; then
+		echo "FATAL: dbpassword contains unsupported characters" >&2
+		return 1
+	fi
+	
+	local _config_user_lit
+	local _dbpassword_lit
+	_config_user_lit=$(plsql_literal "${_config_user}") || return 1
+	_dbpassword_lit=$(plsql_literal "${config[dbpassword]}") || return 1
+
 	local -r _adb_user_sql="
     DECLARE
-      l_user VARCHAR2(255);
-      l_cdn  VARCHAR2(255);
+      l_user        VARCHAR2(255);
+      l_cdn         VARCHAR2(255);
+      l_config_user VARCHAR2(255)  := ${_config_user_lit};
+      l_dbpassword  VARCHAR2(4000) := ${_dbpassword_lit};
+
+      FUNCTION quote_user(p_value VARCHAR2) RETURN VARCHAR2 IS
+      BEGIN
+        RETURN DBMS_ASSERT.ENQUOTE_NAME(p_value, FALSE);
+      END;
+
+      FUNCTION quote_password(p_value VARCHAR2) RETURN VARCHAR2 IS
+	  BEGIN
+        RETURN '\"' || p_value || '\"';
+      END;
+
     BEGIN
       BEGIN
-        SELECT USERNAME INTO l_user FROM DBA_USERS WHERE USERNAME='${_config_user}';
-        EXECUTE IMMEDIATE 'ALTER USER \"${_config_user}\" PROFILE ORA_APP_PROFILE';
-        EXECUTE IMMEDIATE 'ALTER USER \"${_config_user}\" IDENTIFIED BY \"${config[dbpassword]}\"';
-		DBMS_OUTPUT.PUT_LINE('${_config_user} Exists - Password reset');
+        SELECT USERNAME INTO l_user FROM DBA_USERS WHERE USERNAME = l_config_user;
+
+        EXECUTE IMMEDIATE 'ALTER USER ' || quote_user(l_config_user) || ' PROFILE ORA_APP_PROFILE';
+
+        EXECUTE IMMEDIATE 'ALTER USER ' || quote_user(l_config_user) ||
+                          ' IDENTIFIED BY ' || quote_password(l_dbpassword);
+
+		DBMS_OUTPUT.PUT_LINE(l_config_user || ' Exists - Password reset');
       EXCEPTION
         WHEN NO_DATA_FOUND THEN
-          EXECUTE IMMEDIATE 'CREATE USER \"${_config_user}\" IDENTIFIED BY \"${config[dbpassword]}\" PROFILE ORA_APP_PROFILE';
-		  DBMS_OUTPUT.PUT_LINE('${_config_user} Created');
+          EXECUTE IMMEDIATE 'CREATE USER ' || quote_user(l_config_user) ||
+                            ' IDENTIFIED BY ' || quote_password(l_dbpassword) ||
+                            ' PROFILE ORA_APP_PROFILE';
+
+		  DBMS_OUTPUT.PUT_LINE(l_config_user || ' Created');
       END;
-      EXECUTE IMMEDIATE 'GRANT CONNECT TO \"${_config_user}\"';
+
+      EXECUTE IMMEDIATE 'GRANT CONNECT TO ' || quote_user(l_config_user);
+
       BEGIN
         SELECT USERNAME INTO l_user FROM DBA_USERS WHERE USERNAME='ORDS_PLSQL_GATEWAY_OPER';
           EXECUTE IMMEDIATE 'ALTER USER \"ORDS_PLSQL_GATEWAY_OPER\" PROFILE DEFAULT';
@@ -289,16 +393,22 @@ function create_adb_user() {
             EXECUTE IMMEDIATE 'CREATE USER \"ORDS_PLSQL_GATEWAY_OPER\" NO AUTHENTICATION PROFILE DEFAULT';
 			DBMS_OUTPUT.PUT_LINE('ORDS_PLSQL_GATEWAY_OPER Created');
       END;
+
       EXECUTE IMMEDIATE 'GRANT CONNECT TO \"ORDS_PLSQL_GATEWAY_OPER\"';
-      EXECUTE IMMEDIATE 'ALTER USER \"ORDS_PLSQL_GATEWAY_OPER\" GRANT CONNECT THROUGH \"${_config_user}\"';
+
+      EXECUTE IMMEDIATE 'ALTER USER \"ORDS_PLSQL_GATEWAY_OPER\" GRANT CONNECT THROUGH ' ||
+                        quote_user(l_config_user);
+
       ORDS_ADMIN.PROVISION_RUNTIME_ROLE (
-          p_user => '${_config_user}'
+          p_user => l_config_user
         ,p_proxy_enabled_schemas => TRUE
       );
+
       ORDS_ADMIN.CONFIG_PLSQL_GATEWAY (
-          p_runtime_user => '${_config_user}'
+          p_runtime_user => l_config_user
         ,p_plsql_gateway_user => 'ORDS_PLSQL_GATEWAY_OPER'
       );
+
 	  -- TODO: Only do this if ADB APEX Version <> this ORDS Version
       BEGIN
         SELECT images_version INTO L_CDN
@@ -310,6 +420,7 @@ function create_adb_user() {
         select version_no INTO L_CDN
           from APEX_RELEASE;
       END;
+
       apex_instance_admin.set_parameter(
           p_parameter => 'IMAGE_PREFIX',
           p_value     => 'https://static.oracle.com/cdn/apex/'||L_CDN||'/'
@@ -385,7 +496,7 @@ setup_credentials(){
 
 		# reading users from env
 		for key in dbusername dbadminuser dbcdbadminuser dbconnectiontype; do
-                var_key="${pool_name_underscore}_${key}"
+                var_key="${pool_prefix}_${key}"
 				var_val="${!var_key}"
 				if [[ (-n "${var_val}") ]]; then  
                   config[${key}]="${var_val}"
@@ -394,7 +505,7 @@ setup_credentials(){
 
 		# reading passwords from env and eventually decrypting
         for key in dbpassword dbadminuserpassword dbcdbadminuserpassword; do
-                var_key="${pool_name_underscore}_${key}"
+                var_key="${pool_prefix}_${key}"
                 echo "Obtaining value from initContainer variable: ${var_key}"
                 var_val="${!var_key}"
 				if [[ (-n "${var_val}") && (-n "${ENC_PRV_KEY}") && (-f "${ENC_PRV_KEY_FILE}") ]]; then 
@@ -462,44 +573,89 @@ ords_upgrade() {
 #------------------------------------------------------------------------------
 function get_apex_version() {
 	local -n _db_apex_version="${1}"
+	local -n _db_apex_status="${2}"
+	local -n _db_apex_schema="${3}"
 	local -i _rc=0
 
 	sub "APEX version check"
 
-	local -r _ver_sql="SELECT VERSION FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
-	#local -r _ver_sql="SELECT SCHEMA FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
-	run_sql "${_ver_sql}" "_db_apex_version"
+	local -r _ver_sql="
+		SELECT NVL(VERSION, '-') || '|' || NVL(STATUS, '-') || '|' || NVL(SCHEMA, '-')
+		  FROM DBA_REGISTRY
+		 WHERE COMP_ID='APEX';"
+	local _apex_registry=""
+	run_sql "${_ver_sql}" "_apex_registry"
 	_rc=$?
 
 	if (( _rc > 0 )); then
-		echo "FATAL: Unable to get APEX version"
+		echo "FATAL: Unable to get APEX registry state"
 		dump_stack
 		return $_rc
 	fi
 
-	_db_apex_version=${_db_apex_version//[^0-9.]/}
-	#_db_apex_version="${_db_apex_version//[[:space:]]}"
-	if [[ -z "${_db_apex_version}" ]]; then
+	_apex_registry="${_apex_registry//[[:space:]]/}"
+	if [[ -z "${_apex_registry}" ]]; then
 		_db_apex_version="NotInstalled"
-	fi	
+		_db_apex_status="NotInstalled"
+		_db_apex_schema=""
+	else
+		IFS='|' read -r _db_apex_version _db_apex_status _db_apex_schema <<< "${_apex_registry}"
+		if [[ "${_db_apex_version}" == "-" ]]; then
+			_db_apex_version="NotInstalled"
+		else
+			_db_apex_version=${_db_apex_version//[^0-9.]/}
+		fi
+		[[ "${_db_apex_status}" == "-" ]] && _db_apex_status="UNKNOWN"
+		[[ "${_db_apex_schema}" == "-" ]] && _db_apex_schema=""
+	fi
+
+	if [[ "${_db_apex_status}" == "NotInstalled" ]]; then
+		local -r _schema_sql="
+			SELECT LISTAGG(USERNAME, ',') WITHIN GROUP (ORDER BY USERNAME)
+			  FROM DBA_USERS
+			 WHERE REGEXP_LIKE(USERNAME, '^APEX_[0-9]+$');"
+		local _apex_schemas=""
+		run_sql "${_schema_sql}" "_apex_schemas"
+		_rc=$?
+		if (( _rc > 0 )); then
+			echo "FATAL: Unable to check APEX schemas"
+			dump_stack
+			return $_rc
+		fi
+		_apex_schemas="${_apex_schemas//[[:space:]]/}"
+		if [[ -n "${_apex_schemas}" ]]; then
+			_db_apex_status="PARTIAL"
+			_db_apex_schema="${_apex_schemas}"
+		fi
+	fi
+
 	echo "Database APEX Version: ${_db_apex_version}"
+	echo "Database APEX Status : ${_db_apex_status}"
+	echo "Database APEX Schema : ${_db_apex_schema}"
 
 	return $_rc
 }
 
 #------------------------------------------------------------------------------
 function get_apex_action(){
-	local -r _conn_string="${1}"
-        local -r _db_apex_version="${2}"
-        local -n _action="${3}"
+        local -r _db_apex_version="${1}"
+        local -r _db_apex_status="${2}"
+        local -r _db_apex_schema="${3}"
+        local -n _action="${4}"
         local -i _rc=0
 
 	sub "APEX installation check"
 
 	_action="error"
-	if [[ ( -z "${_db_apex_version}" ) || ( "${_db_apex_version}" == "NotInstalled" ) ]]; then
+	if [[ "${_db_apex_status}" == "NotInstalled" ]]; then
                 echo "Installing APEX ${APEX_VER}"
                 _action="install"
+        elif [[ "${_db_apex_status}" != "VALID" ]]; then
+                echo "FATAL: APEX registry status is ${_db_apex_status}; schema \"${_db_apex_schema}\" requires cleanup before install or upgrade"
+                return 1
+        elif [[ ( -z "${_db_apex_version}" ) || ( "${_db_apex_version}" == "NotInstalled" ) ]]; then
+                echo "FATAL: APEX registry status is VALID but version is not available"
+                return 1
         elif apex_compare_versions "${_db_apex_version}" "${APEX_VER}"; then
                 echo "Upgrading from ${_db_apex_version} to ${APEX_VER}"
                 _action="upgrade"
@@ -517,7 +673,7 @@ function check_apex_installation_version(){
     sub "APEX installation files"
 
    	if [[ ! (-f ${APEX_VERSION_TXT}) ]]; then
-		echo "APEX installation not found, missing ${APEX_VERSION_TXT}"
+		echo "APEX installation files not found"
 		return 1
 	fi
 
@@ -580,14 +736,16 @@ function apex_download(){
 		return 0
 	fi
 
-	mkdir -p "${APEX_INSTALL}"
-	rm -rf "${APEX_INSTALL:?}/*"
+	mkdir -pv "${APEX_INSTALL}"
+	[ -n "${APEX_INSTALL:-}" ] && [ "${APEX_INSTALL}" != "/" ] || exit 1
+	rm -rf -- "${APEX_INSTALL:?}/"*
 	cd /tmp || return
 	echo "Downloading ${download_url_apex}"
 	curl -o apex.zip "${download_url_apex}"
+	ls -l "/tmp/apex.zip"
 	echo "Extracting apex.zip"
 	jar xf apex.zip
-       	mv "/tmp/apex/*" "${APEX_INSTALL}"
+    mv "/tmp/apex/"* "${APEX_INSTALL}"
 
 	if [[ ! (-f ${APEXINS}) ]]; then
 		echo "ERROR: ${APEXINS} not found, APEX download failed"
@@ -626,9 +784,8 @@ function apex_upgrade() {
 		cd "${APEX_INSTALL}" || return 1
 		SEC=${config["dbpassword"]}
 		local -r _install_sql="@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ $SEC $SEC $SEC $SEC"
-		run_sql "${_install_sql}" "_install_output"
+		run_sql_stream "${_install_sql}"
 		_rc=$?
-		echo "Installation Output: ${_install_output:?}"
 	fi
 
 	return $_rc
@@ -636,9 +793,14 @@ function apex_upgrade() {
 
 #------------------------------------------------------------------------------
 function apex_housekeeping(){
+	local db_apex_version=""
+	local db_apex_status=""
+	local db_apex_schema=""
+	local db_apex_action=""
+	local -i rc=0
 
 	# check database APEX version regardless of APEX parameters
-	get_apex_version "db_apex_version"
+	get_apex_version "db_apex_version" "db_apex_status" "db_apex_schema"
         if [[ -z "${db_apex_version}" ]]; then
                 echo "FATAL: Unable to get APEX Version for pool \"${pool_name}\""
                 return 1
@@ -648,20 +810,23 @@ function apex_housekeeping(){
         if [[ "${apex_upgrade}" != "true" ]]; then
                 echo "APEX Install/Upgrade not requested for pool \"${pool_name}\""
                 return 0
-        fi
+	fi
 
 	# get suggested action
-        get_apex_action "${config[adminconnect]}" "${db_apex_version}" "db_apex_action"
-        if [[ -z "${db_apex_action}" ]]; then
+        get_apex_action "${db_apex_version}" "${db_apex_status}" "${db_apex_schema}" "db_apex_action"
+	rc=$?
+        if (( rc > 0 )) || [[ -z "${db_apex_action}" ]]; then
                 echo "FATAL: Unable to get APEX suggested action for pool \"${pool_name}\""
                 return 1
         fi
 
 	# upgrade
-        echo "APEX version : \"${db_apex_version}\""
-        echo "APEX suggested action : $db_apex_action"
+        echo "APEX version : ${db_apex_version}"
+        echo "APEX status  : ${db_apex_status}"
+        echo "APEX schema  : ${db_apex_schema}"
+        echo "APEX suggested action : ${db_apex_action}"
         if [[ ${db_apex_action} != "none" ]]; then
-                apex_upgrade "${pool_name_underscore}_autoupgrade_apex"
+                apex_upgrade "${pool_prefix}_autoupgrade_apex"
 				rc=$?
                 if (( rc > 0 )); then
                         echo "FATAL: Unable to ${db_apex_action} APEX for pool \"${pool_name}\""
@@ -678,12 +843,12 @@ function apex_housekeeping(){
 function pool_parameters(){
 
 	sub "pool parameters"
-    apex_upgrade_var=${pool_name_underscore}_autoupgrade_apex
+    apex_upgrade_var=${pool_prefix}_autoupgrade_apex
     apex_upgrade=${!apex_upgrade_var}
 	[[ -z "$apex_upgrade" ]] && apex_upgrade=false
     echo "${pool_name} - autoupgrade_apex  : ${apex_upgrade}"
 
-    ords_upgrade_var=${pool_name_underscore}_autoupgrade_ords
+    ords_upgrade_var=${pool_prefix}_autoupgrade_ords
     ords_upgrade=${!ords_upgrade_var}
 	[[ -z "$ords_upgrade" ]] && ords_upgrade=false
     echo "${pool_name} - autoupgrade_ords  : ${ords_upgrade}"
@@ -729,6 +894,12 @@ pool_admin_setup(){
 		# Create ORDS User
 		echo "Processing ADB in Pool: ${pool_name}"
 		create_adb_user "${pool_name}"
+		rc=$?
+		if (( rc > 0 )); then
+			echo "FATAL: unable to create/configure ADB ORDS user for pool \"${pool_name}\""
+			pool_exit[${pool_name}]=1
+			return ${rc}
+		fi
 		return 0
 	fi	
 
@@ -784,7 +955,7 @@ pool_check(){
 	config[connect]=${_connect}
 	if [[ -z ${config[connect]} ]]; then
 		echo "Unable to get database connect string for pool \"${pool_name}\""
-		echo "Possible wallet/tnsnames for a pool defined in a Central Configuration Manager, ignoring"	
+		echo "Possible wallet/tnsnames for a pool defined in a Central Configuration Server, ignoring"	
 		return 0
 	fi
 
@@ -821,22 +992,53 @@ pool_check(){
 	echo "SQL check SUCCESS"
 }
 
+pool_prefix_from_pool_name() {
+  local pool_name="$1"
+  local s="$pool_name"
+
+  s="${s//-/_}"
+  s="${s//./_}"
+
+  # Replace anything not [A-Za-z0-9_] with underscore (defensive)
+  s="$(printf '%s' "$s" | sed -E 's/[^A-Za-z0-9_]/_/g')"
+
+  # (Optional) trim leading/trailing underscores – keep or drop, but match Go
+  # s="$(printf '%s' "$s" | sed -E 's/^_+//; s/_+$//')"
+
+  [[ -z "$s" ]] && s="pool"
+  [[ "$s" =~ ^[0-9] ]] && s="p_${s}"
+
+  printf '%s' "$s"
+}
+
 #------------------------------------------------------------------------------
 # INIT
 #------------------------------------------------------------------------------
 declare -A pool_exit
 sep
-sub "ORDSSRVS init"
+sub "OrdsSrvs init"
 sep
 
 global_parameters
 ords_client_version
 
-apex_download
-apex_external
+[[ -n ${instance_api_admin_user} ]] && setup_instance_api_user
+
+[[ ${download_apex} == "true" || ${external_apex} == "true" ]] && apex_parameters
+[[ ${download_apex} == "true" ]] && apex_download
+[[ ${external_apex} == "true" ]] && apex_external
 
 # check APEX installation files version, downloaded or mounted by PVC
 check_apex_installation_version
+
+if [[ -n ${central_config_url} ]] 
+then
+	sub "Central Configuration Server"	
+	echo "central_config_url     : ${central_config_url}"
+fi
+
+sub "Pools"
+echo "Looking for pools.."
 
 if [[ ! ( -d "${ORDS_CONFIG}/databases/" ) ]]
 then
@@ -846,10 +1048,15 @@ then
   exit 0
 fi
 
+ls -l "${ORDS_CONFIG}/databases/"
+
 for pool in "${ORDS_CONFIG}/databases/"*; do
 	rc=0
 	pool_name=$(basename "$pool")
-	pool_name_underscore=${pool_name//-/_}
+	
+	# pool prefix for env variables
+	pool_prefix="$(pool_prefix_from_pool_name "$pool_name")"
+
 	pool_exit[${pool_name}]=0
 	ords_cfg_cmd="ords --config $ORDS_CONFIG config --db-pool ${pool_name}"
     declare -A config=()
@@ -859,6 +1066,11 @@ for pool in "${ORDS_CONFIG}/databases/"*; do
 	echo "poolName: ${pool_name}"
 
 	pool_parameters
+	rc=$?
+	if (( rc > 0 )); then
+      pool_exit[${pool_name}]=1
+      continue
+    fi
 
 	setup_credentials
 	rc=$?
@@ -925,6 +1137,7 @@ for key in "${!pool_exit[@]}"; do
 	fi
 done
 
+echo "hostname : ${HOSTNAME:-unknown}"
 echo POOLERRORS $poolerrors POOLS $pools
-echo "init end"
+echo "init end ($rc)"
 exit $rc

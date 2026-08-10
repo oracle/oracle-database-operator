@@ -1,0 +1,83 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+# Canonical single-backend CMAN file-mode sample: cman-sidb-filemode.yaml
+#
+# Use file mode when you need CMAN settings that are not represented by
+# spec.cman.rules. TrafficManager mounts the selected ConfigMap key as-is; keep
+# the CMAN listener host, namespace, image paths, and rules aligned with your
+# environment.
+#
+#
+# Sample index: docs/trafficmanager/samples/README.md
+# Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+# Focused examples: docs/trafficmanager/samples/
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cman-sidb-filemode-config
+  namespace: default
+data:
+  cman.ora: |
+    ######################################################################
+    # CMAN file-mode example. File mode copies this file as-is.
+    ######################################################################
+
+    CMAN_cman-sidb.default.svc.cluster.local =
+    (configuration=
+      (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
+      (parameter_list =
+        (connection_statistics=yes)
+        (log_directory=/u01/app/oracle/product/23ai/client_1/network/log)
+        (log_level=user)
+        (trace_directory=/u01/app/oracle/product/23ai/client_1/network/trace)
+        (trace_level=user)
+        (valid_node_checking_registration=on)
+        (registration_invited_nodes=*)
+      )
+      (rule_list=
+        (rule=
+           (src=*)(dst=*)(srv=*)(act=accept)
+           (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+      )
+    )
+---
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: cman-sidb
+  namespace: default
+spec:
+  type: cman
+  runtime:
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+  cman:
+    configSource:
+      configMapRef:
+        name: cman-sidb-filemode-config
+        key: cman.ora

@@ -1,57 +1,44 @@
 # OrdsSrvs Controller: Oracle API for MongoDB Support
 
-This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database to enable MongoDB API Support.
+This example walks through using the **OrdsSrvs controller** with a Containerized Oracle Database to enable MongoDB API Support.
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 ### Database Access
 
 This example assumes you have a running, accessible Oracle Database.  For demonstration purposes,
-the [Containerised Single Instance Database using the OraOperator](sidb_container.md) will be used.
+the [Containerized Single Instance Database using the OraOperator](sidb_container.md) will be used.
 
-### Rest Enable a Schema
+### REST-enable a Schema
 
-In the database, create an ORDS-enabled user.  As this example uses the [Containerised Single Instance Database using the OraOperator](sidb_container.md), the following was performed:
+In the database, create an ORDS-enabled user.  As this example uses the [Containerized Single Instance Database using the OraOperator](sidb_container.md), the following was performed:
 
 
-1. Connect to the database: 
+1. Connect to the database:
 
     ```bash
-    DB_PWD=$(kubectl get secrets sidb-db-auth --template='{{.data.password | base64decode}}')
-    POD_NAME=$(kubectl get pod -l "app=oraoper-sidb" -o custom-columns=NAME:.metadata.name --no-headers)
-    kubectl exec -it ${POD_NAME} -- sqlplus SYSTEM/${DB_PWD}@FREEPDB1
+    DBPWD=$(kubectl get secrets ordssrvs-auth -n ordsnamespace --template='{{.data.adminAuth | base64decode}}')
+    POD_NAME=$(kubectl get pod -l "app=oraoper-sidb" -n ordsnamespace -o custom-columns=NAME:.metadata.name --no-headers)
+    kubectl exec -it ${POD_NAME} -n ordsnamespace -- sqlplus SYSTEM/${DBPWD}@FREEPDB1
     ```
-    
+
 1. Create the User:
     ```sql
     create user MONGO identified by "<password>";
-    grant soda_app, create session, create table, create view, create sequence, create procedure, create job, 
+    grant soda_app, create session, create table, create view, create sequence, create procedure, create job,
     unlimited tablespace to MONGO;
     -- Connect as new user
     conn MONGO/<password>@FREEPDB1;
     exec ords.enable_schema;
     ```
 
-### Create encrypted secrets 
-
-```bash
-
-openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
-openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
-
-echo -n "Enter password: " && read -s DBPWD
-echo -n "${DBPWD}" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
-kubectl create secret generic sidb-db-auth-enc --from-file=password=e_db-auth -n  ordsnamespace
-rm e_db-auth
-```
-
 ### Create ordssrvs Resource
 
-1. Retrieve the Connection String from the containerised SIDB.
+1. Reuse the `ordssrvs-auth` Secret from the [Containerized Single Instance Database using the OraOperator](sidb_container.md) example and retrieve the Connection String from the containerized SIDB.
 
     ```bash
     CONN_STRING=$(kubectl get singleinstancedatabase oraoper-sidb \
+      -n ordsnamespace \
       -o jsonpath='{.status.pdbConnectString}')
 
     echo $CONN_STRING
@@ -68,16 +55,19 @@ rm e_db-auth
 
     ```bash
     echo "
-    apiVersion: database.oracle.com/v4
     kind: OrdsSrvs
+    ```
+
+    Example output:
+
+    ```text
+    apiVersion: database.oracle.com/v4
     metadata:
       name: ords-sidb
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:25.1.0
+      image: container-registry.oracle.com/database/ords:<ords-version>
       forceRestart: true
-      encPrivKey:
-        secretName: prvkey
       globalSettings:
         database.api.enabled: true
         mongo.enabled: true
@@ -95,21 +85,20 @@ rm e_db-auth
           db.customURL: jdbc:oracle:thin:@//${CONN_STRING}
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName:  sidb-db-auth-enc
+            secretName:  ordssrvs-auth
+            passwordKey: dbAuth
           db.adminUser: SYS
           db.adminUser.secret:
-            secretName:  sidb-db-auth-enc" | kubectl apply -f -
+            secretName:  ordssrvs-auth
+            passwordKey: adminAuth" | kubectl apply -f -
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
-
-    
-1. Watch the restdataservices resource until the status is **Healthy**:
+1. Watch the OrdsSrvs resource until the status is **Healthy**:
     ```bash
-    kubectl get ordssrvs ords-sidb -w
+    kubectl get ordssrvs ords-sidb -n ordsnamespace -w
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
-    is being installed for the first time by the Operator, it may remain in the **Preparing** 
+    is being installed for the first time by the Operator, it may remain in the **Preparing**
     status for an additional 5 minutes.
 
     You can watch the APEX/ORDS Installation progress by running:
@@ -117,7 +106,7 @@ rm e_db-auth
     ```bash
     POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-sidb" -o custom-columns=NAME:.metadata.name -n ordsnamespace --no-headers)
 
-    kubectl logs ${POD_NAME} -c ords-sidb-init -n ordsnamespace -f
+    kubectl logs ${POD_NAME} -c ordssrvs-init -n ordsnamespace -f
     ```
 
 ### Test
@@ -129,7 +118,7 @@ rm e_db-auth
 
 1. Connect to ORDS using the MongoDB shell:
     ```bash
-    mongosh  --tlsAllowInvalidCertificates 'mongodb://MONGO:<password>!@localhost:27017/MONGO?authMechanism=PLAIN&authSource=$external&tls=true&retryWrites=false&loadBalanced=true' 
+    mongosh  --tlsAllowInvalidCertificates 'mongodb://MONGO:<password>!@localhost:27017/MONGO?authMechanism=PLAIN&authSource=$external&tls=true&retryWrites=false&loadBalanced=true'
     ```
 
 1. Insert some data:
@@ -147,7 +136,7 @@ This example has a single database pool, named `default`.  It is set to:
 * Automatically restart when the configuration changes: `forceRestart: true`
 * Automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
 * Use a basic connection string to connect to the database: `db.customURL: jdbc:oracle:thin:@//${CONN_STRING}`
-* The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
+* The `passwordKey` fields identify the credential keys used by `db.secret` and `db.adminUser.secret`
 * The MongoAPI service has been enabled: `mongo.enabled: true`
 * The MongoAPI service will default to port: `27017` as the property: `mongo.port` has been left undefined
 * A number of JDBC parameters were set at the pool level for achieving high performance:

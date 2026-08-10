@@ -18,9 +18,16 @@ spec:
   ## DB edition.
   edition: enterprise
 
-  ## Secret containing SIDB password mapped to secretKey 
-  adminPassword:
-    secretName: db-admin-secret
+  ## Grouped security settings.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
 
   ## DB character set
   charset: AL32UTF8
@@ -31,19 +38,44 @@ spec:
   ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
   archiveLog: true
 
+  ## Optional TCPS settings.
+  #  tcps:
+  #    enabled: true
+  #    tlsSecret: sidb-primary-tcps-tls
+
+  ## Optional True Cache blob preparation for a primary database.
+  ## generateBlob ensures the in-pod blob file exists.
+  ## createConfigMap publishes that blob for truecache consumers.
+  ## The legacy generateEnabled=true still enables both behaviors.
+  ## Blob generation requires edition=enterprise and archiveLog=true.
+  ## The generated ConfigMap name defaults to <database-name>-truecache-blob.
+  # trueCache:
+  #   generateBlob: true
+  #   createConfigMap: true
+  #   generateEnabled: true
+  #   generatePath: /tmp/tc_config_blob.tar.gz
+
   ## Database image details
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise_ru:19
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
     pullSecrets: oracle-container-registry-secret
+
+  ## Optional node selector to restrict the database pod to nodes having specific labels.
+  ## For a single exact node, kubernetes.io/hostname can be used.
+  # nodeSelector:
+  #   kubernetes.io/hostname: worker-node.example
 
   ## size is the required minimum size of the persistent volume
   ## storageClass is specified for automatic volume provisioning
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
-    size: 100Gi
-    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
-    storageClass: "oci-bv"
-    accessMode: "ReadWriteOnce"
+    oradata:
+      size: 100Gi
+      # oci-bv applies to OCI block volumes. 
+      # Use "standard" storageClass for dynamic provisioning in Minikube.
+      # Update as appropriate for other cloud service providers
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
 
   ## Count of Database Pods.
   replicas: 1

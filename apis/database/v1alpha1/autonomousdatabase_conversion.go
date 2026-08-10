@@ -90,11 +90,11 @@ func (src *AutonomousDatabase) ConvertTo(dstRaw conversion.Hub) error {
 			dstProfile := v4.ConnectionStringProfile{}
 
 			// convert status.allConnectionStrings[i].tlsAuthentication
-			if val, ok := v4.GetTLSAuthenticationEnumFromString(string(srcProfile.TLSAuthentication)); !ok {
+			val, ok := v4.GetTLSAuthenticationEnumFromString(string(srcProfile.TLSAuthentication))
+			if !ok {
 				return errors.New("Unable to convert to TLSAuthenticationEnum: " + string(srcProfile.TLSAuthentication))
-			} else {
-				dstProfile.TLSAuthentication = val
 			}
+			dstProfile.TLSAuthentication = val
 
 			// convert status.allConnectionStrings[i].connectionStrings
 			dstProfile.ConnectionStrings = make([]v4.ConnectionStringSpec, len(srcProfile.ConnectionStrings))
@@ -113,8 +113,8 @@ func (src *AutonomousDatabase) ConvertTo(dstRaw conversion.Hub) error {
 	return nil
 }
 
-// ConvertFrom converts from the Hub version (v4) to v1alpha1
-func (dst *AutonomousDatabase) ConvertFrom(srcRaw conversion.Hub) error {
+// ConvertFrom converts from the Hub version (v4) to v1alpha1.
+func (dst *AutonomousDatabase) ConvertFrom(srcRaw conversion.Hub) error { //nolint:revive // keep dst receiver for conversion target clarity
 	src := srcRaw.(*v4.AutonomousDatabase)
 
 	// Convert the Spec
@@ -197,11 +197,11 @@ func (dst *AutonomousDatabase) ConvertFrom(srcRaw conversion.Hub) error {
 			dstProfile := ConnectionStringProfile{}
 
 			// convert status.allConnectionStrings[i].tlsAuthentication
-			if val, ok := GetTLSAuthenticationEnumFromString(string(srcProfile.TLSAuthentication)); !ok {
+			val, ok := GetTLSAuthenticationEnumFromString(string(srcProfile.TLSAuthentication))
+			if !ok {
 				return errors.New("Unable to convert to TLSAuthenticationEnum: " + string(srcProfile.TLSAuthentication))
-			} else {
-				dstProfile.TLSAuthentication = val
 			}
+			dstProfile.TLSAuthentication = val
 
 			// convert status.allConnectionStrings[i].connectionStrings
 			dstProfile.ConnectionStrings = make([]ConnectionStringSpec, len(srcProfile.ConnectionStrings))
@@ -220,6 +220,7 @@ func (dst *AutonomousDatabase) ConvertFrom(srcRaw conversion.Hub) error {
 	return nil
 }
 
+// ConvertTo converts this AutonomousDatabaseBackup to the Hub version (v4).
 func (src *AutonomousDatabaseBackup) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v4.AutonomousDatabaseBackup)
 
@@ -246,7 +247,8 @@ func (src *AutonomousDatabaseBackup) ConvertTo(dstRaw conversion.Hub) error {
 	return nil
 }
 
-func (dst *AutonomousDatabaseBackup) ConvertFrom(srcRaw conversion.Hub) error {
+// ConvertFrom converts from the Hub version (v4) to v1alpha1.
+func (dst *AutonomousDatabaseBackup) ConvertFrom(srcRaw conversion.Hub) error { //nolint:revive // keep dst receiver for conversion target clarity
 	src := srcRaw.(*v4.AutonomousDatabaseBackup)
 
 	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
@@ -272,6 +274,7 @@ func (dst *AutonomousDatabaseBackup) ConvertFrom(srcRaw conversion.Hub) error {
 	return nil
 }
 
+// ConvertTo converts this AutonomousDatabaseRestore to the Hub version (v4).
 func (src *AutonomousDatabaseRestore) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v4.AutonomousDatabaseRestore)
 
@@ -294,7 +297,8 @@ func (src *AutonomousDatabaseRestore) ConvertTo(dstRaw conversion.Hub) error {
 	return nil
 }
 
-func (dst *AutonomousDatabaseRestore) ConvertFrom(srcRaw conversion.Hub) error {
+// ConvertFrom converts from the Hub version (v4) to v1alpha1.
+func (dst *AutonomousDatabaseRestore) ConvertFrom(srcRaw conversion.Hub) error { //nolint:revive // keep dst receiver for conversion target clarity
 	src := srcRaw.(*v4.AutonomousDatabaseRestore)
 
 	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
@@ -316,6 +320,7 @@ func (dst *AutonomousDatabaseRestore) ConvertFrom(srcRaw conversion.Hub) error {
 	return nil
 }
 
+// ConvertTo converts this AutonomousContainerDatabase to the Hub version (v4).
 func (src *AutonomousContainerDatabase) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v4.AutonomousContainerDatabase)
 
@@ -325,11 +330,11 @@ func (src *AutonomousContainerDatabase) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Spec.AutonomousExadataVMClusterOCID = src.Spec.AutonomousExadataVMClusterOCID
 	dst.Spec.PatchModel = src.Spec.PatchModel
 
-	if val, ok := v4.GetAcdActionEnumFromString(string(src.Spec.Action)); !ok {
+	val, ok := v4.GetAcdActionEnumFromString(string(src.Spec.Action))
+	if !ok {
 		return errors.New("Unable to convert to AcdActionEnum: " + string(src.Spec.Action))
-	} else {
-		dst.Spec.Action = val
 	}
+	dst.Spec.Action = val
 
 	dst.Spec.FreeformTags = src.Spec.FreeformTags
 	dst.Spec.OCIConfig.ConfigMapName = src.Spec.OCIConfig.ConfigMapName
@@ -343,7 +348,8 @@ func (src *AutonomousContainerDatabase) ConvertTo(dstRaw conversion.Hub) error {
 	return nil
 }
 
-func (dst *AutonomousContainerDatabase) ConvertFrom(srcRaw conversion.Hub) error {
+// ConvertFrom converts from the Hub version (v4) to v1alpha1.
+func (dst *AutonomousContainerDatabase) ConvertFrom(srcRaw conversion.Hub) error { //nolint:revive // keep dst receiver for conversion target clarity
 	src := srcRaw.(*v4.AutonomousContainerDatabase)
 
 	dst.Spec.AutonomousContainerDatabaseOCID = src.Spec.AutonomousContainerDatabaseOCID
@@ -352,11 +358,11 @@ func (dst *AutonomousContainerDatabase) ConvertFrom(srcRaw conversion.Hub) error
 	dst.Spec.AutonomousExadataVMClusterOCID = src.Spec.AutonomousExadataVMClusterOCID
 	dst.Spec.PatchModel = src.Spec.PatchModel
 
-	if val, ok := GetAcdActionEnumFromString(string(src.Spec.Action)); !ok {
+	val, ok := GetAcdActionEnumFromString(string(src.Spec.Action))
+	if !ok {
 		return errors.New("Unable to convert to AcdActionEnum: " + string(src.Spec.Action))
-	} else {
-		dst.Spec.Action = val
 	}
+	dst.Spec.Action = val
 
 	dst.Spec.FreeformTags = src.Spec.FreeformTags
 	dst.Spec.OCIConfig.ConfigMapName = src.Spec.OCIConfig.ConfigMapName

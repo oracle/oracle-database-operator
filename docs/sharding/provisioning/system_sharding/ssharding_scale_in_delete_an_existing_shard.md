@@ -1,47 +1,66 @@
-# Scale In - Delete an existing Shard from a working Oracle Globally Distributed Database provisioned earlier with System-Managed Sharding
+# Scale in an existing Oracle GDD deployment with System-Managed Sharding and Data Guard replication
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller. 
+**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-This use case demonstrates how to delete an existing Shard from an existing Oracle Database sharding topology with System-Managed Sharding provisioned using Oracle Database Sharding controller.
+This use case demonstrates how to delete a shard from an existing Oracle GDD deployment with System-Managed Sharding that was provisioned using the Oracle Sharding Controller.
 
-**NOTE** The deletion of a shard is done after verifying the Chunks have been moved out of that shard.
+**NOTE:** A shard is deleted only after all chunks have been moved out of it.
 
-In this use case, the existing database Sharding is having:
+This example assumes the existing Oracle GDD deployment includes:
 
-* Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Five Shard Database Pods: `shard1`, `shard2`, `shard3`, `shard4` and `shard5`
-* One Catalog Database Pod: `catalog`
+* Primary GSM pod: `gsm1`
+* Standby GSM pod: `gsm2`
+* Three shard database pods (`shardNum: 3`)
+* One catalog database pod: `catalog`
+* `shardingType: SYSTEM` (System-Managed Sharding)
+* Replication type: Data Guard (replicationType: DG)
 * Namespace: `shns`
 
-In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
-  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the namespace `shns`. Please refer to [this page](./../container_reg_secret.md) for the details. 
-  * If you plan to build and use the images, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_delshard.yaml`. 
-  * To understand Database and Global Data Services Docker images prerequsites, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images) 
-  * The version of `openssl` in the Oracle Database and Oracle GSM images must be compatible with the `openssl` version on the machine where you will run the openssl commands to generate the encrypted password file during the deployment. 
+This example uses pre-built Oracle Database and Global Data Services container images available from [Oracle Container Registry](https://container-registry.oracle.com/).
 
-NOTE: Use tag `isDelete: enable` to delete the shard you want.
+* To pull the images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the `shns` namespace. For details, see [Creating an image pull secret](../container_reg_secret.md).
+* If you plan to build and use the images, update the `dbImage` and `gsmImage` values to reference the images built in your environment.
+* For prerequisites for Oracle Database and Global Data Services container images, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images).
+* If you want to use the [Oracle AI Database 26ai Free](https://www.oracle.com/database/free/get-started/) image for the database and GSM, add the additional parameter `dbEdition: "free"` to the YAML manifest.
 
-This use case deletes the shard `shard4` from the above Sharding Topology.
+Scale in the deployment by changing `shardNum` from `3` to `2` in the manifest and applying the updated configuration.
 
-Use the file: [ssharding_shard_prov_delshard.yaml](./ssharding_shard_prov_delshard.yaml) for this use case as below:
+Use the manifest: [ssharding_shard_prov_delshard.yaml](./ssharding_shard_prov_delshard.yaml) for this deployment:
 
-1. Deploy the `ssharding_shard_prov_delshard.yaml` file:
+1. Deploy the `ssharding_shard_prov_delshard.yaml` manifest:
+
     ```sh
     kubectl apply -f ssharding_shard_prov_delshard.yaml
     ```
+
 2. Check the status of the deployment:
+
     ```sh
-    # Check the status of the Kubernetes Pods:
+    # Check the status of the Kubernetes pods:
     kubectl get all -n shns
+    ```
 
-**NOTE:** After you apply `ssharding_shard_prov_delshard.yaml`, the change may not be visible immediately. First the chunks will be moved out of that shard that is going to be deleted and then the shard will be removed from the topology.
+    **NOTE:** After you apply `ssharding_shard_prov_delshard.yaml`, the change may not be be visible immediately. The shard is removed only after all its chunks have been relocated.
 
-To monitor the chunk movement, use the following command:
+    To monitor the chunk movement, use the following command:
 
-```sh
-# Switch to the primary GSM Container:
-kubectl exec -i -t gsm1-0 -n shns /bin/bash
+    ```sh
+    # Switch to the primary GSM Container:
+    kubectl exec -i -t gsm1-0 -n shns /bin/bash
 
-# Check the status of the chunks and repeat to observe the chunk movement:
-gdsctl config chunks
-```
+    # Check the chunk distribution. Repeat this command to monitor chunk relocation:
+    gdsctl config chunks
+    ```
+
+3. Verify using the following commands:
+
+    ```sh
+    # Switch to the primary GSM container:
+    kubectl exec -i -t gsm1-0 -n shns /bin/bash
+
+    # Check the status of the shards:
+    gdsctl config shard
+
+    # Check the status of the chunks:
+    gdsctl config chunks
+    ```

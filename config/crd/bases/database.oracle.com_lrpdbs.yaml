@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: lrpdbs.database.oracle.com
 spec:
   group: database.oracle.com
@@ -132,8 +132,10 @@ spec:
               alterSystem:
                 type: string
               alterSystemParameter:
+                maxLength: 20
                 type: string
               alterSystemValue:
+                maxLength: 4000
                 type: string
               asClone:
                 type: boolean
@@ -172,57 +174,13 @@ spec:
                 - KEEP
                 type: string
               fileNameConversions:
+                maxLength: 513
                 type: string
               getScript:
                 default: false
                 type: boolean
               imperativeLrpdbDeletion:
                 type: boolean
-              lrpdbTlsCat:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              lrpdbTlsCrt:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              lrpdbTlsKey:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
               modifyOption:
                 enum:
                 - IMMEDIATE
@@ -234,6 +192,8 @@ spec:
               modifyOption2:
                 default: NONE
                 type: string
+              monitorinitparameter:
+                type: boolean
               parameterScope:
                 type: string
               passwordProtection:
@@ -256,16 +216,21 @@ spec:
                 - RESET
                 - NONE
                 type: string
+              pdbappuser:
+                type: string
               pdbconfigmap:
                 type: string
               plsqlexemode:
                 type: integer
-              reststate:
+              resetstate:
                 type: integer
+              resetstrstate:
+                type: string
               reuseTempFile:
                 default: true
                 type: boolean
               sourceFileNameConversions:
+                maxLength: 513
                 type: string
               sparseClonePath:
                 type: string
@@ -316,40 +281,10 @@ spec:
               unlimitedStorage:
                 default: true
                 type: boolean
-              webServerPwd:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              webServerUser:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
               xmlFileName:
+                maxLength: 513
                 type: string
             required:
-            - imperativeLrpdbDeletion
             - passwordProtection
             type: object
           status:

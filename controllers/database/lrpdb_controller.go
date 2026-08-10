@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+// Package controllers - Oracle Database Operator
 package controllers
 
 import (
@@ -44,32 +45,37 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"io"
 	"reflect"
 	"sort"
 
 	//"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
+
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+	//databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -92,6 +98,7 @@ import (
    FNALAZ = 0x00000040 -- Finalizer configured
    PDBUPL = 0x00000080 -- Unplug pdb
    PDBPLG = 0x00000100 -- plug pdb
+   APPUSR = 0x00000200 -- Application user created
    -- Error section --
    PDBCRE = 0x00001000 -- PDB creation error
    PDBOPE = 0x00002000 -- PDB open error
@@ -103,6 +110,7 @@ import (
    PDBPLE = 0x00080000 -- Plug Error
    PDBPLW = 0x00100000 -- Plug Warining
    PDBCNE = 0x00200000 -- Call Error
+   APPERR = 0x00400000 -- Application user erro
    -- Autodiscover
    PDBAUT = 0x01000000 -- Autodisover
 
@@ -127,17 +135,19 @@ type LRPDBReconciler struct {
 	Scheme   *runtime.Scheme
 	Interval time.Duration
 	Recorder record.EventRecorder
+	Authz    kubernetes.Interface
 }
 
 type restSQLCollection struct {
 	Env struct {
 		DefaultTimeZone string `json:"defaultTimeZone,omitempty"`
 	} `json:"env"`
-	Items []SQL_Item `json:"items"`
+	Items []SQLItem `json:"items"`
 }
 
-type SQL_Item struct {
-	StatementId  int      `json:"statementId,omitempty"`
+// SQLItem Oracle handle error output
+type SQLItem struct {
+	StatementID  int      `json:"statementId,omitempty"`
 	Response     []string `json:"response"`
 	ErrorCode    int      `json:"errorCode,omitempty"`
 	ErrorLine    int      `json:"errorLine,omitempty"`
@@ -146,6 +156,7 @@ type SQL_Item struct {
 	Result       int      `json:"result,omitempty"`
 }
 
+// LRESTError json errorcode
 type LRESTError struct {
 	Code     string `json:"code,omitempty"`
 	Message  string `json:"message,omitempty"`
@@ -153,26 +164,27 @@ type LRESTError struct {
 	Instance string `json:"instance,omitempty"`
 }
 
+// PLSQLPayLoad plsql/sql code tokes
 type PLSQLPayLoad struct {
 	Values    map[string]string
 	Sqltokens []string
 }
 
+// LRPDBFinalizer finalyzer name
 const LRPDBFinalizer = "database.oracle.com/LRPDBfinalizer"
 
-var tde_Password string
-var tde_Secret string
-var flood_control bool = false
-var imperativeLpdbDeletion bool = false /* Global variable for imperative pdb deletion */
-/*
-	        We need to record the config map name after pdb creation
-		in order to use it during open and clone op if config map
-		name is not set the open and clone yaml file
-*/
-var globalconfigmap string
-var globalsqlcode int
+// var tdePassword string
+// var tdeSecret string
+var floodcontrol = false
+
+// var imperativeLpdbDeletion = false --> Unsed
+
+//cdxhint: get rid of global variable defaultconfigmap
+//var defaultconfigmap string
+//var globalsqlcode int
 
 /* mind  https://github.com/kubernetes-sigs/kubebuilder/issues/549 */
+
 //+kubebuilder:rbac:groups=database.oracle.com,resources=lrpdbs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=events,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=lrpdbs/status,verbs=get;update;patch
@@ -189,7 +201,7 @@ var globalsqlcode int
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.9.2/pkg/reconcile
 
-/**** RECONCILIATION LOOP ****/
+// Reconcile reconciliation loop
 func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("multitenantoperator", req.NamespacedName)
 	log.Info("Reconcile requested")
@@ -201,8 +213,8 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	var err error
 	lrpdb := &dbapi.LRPDB{}
 
-	/**** GET CLIENT ****/
-	err = r.Client.Get(context.TODO(), req.NamespacedName, lrpdb)
+	// lint QF1008 r.Client.Get(..)
+	err = r.Get(context.TODO(), req.NamespacedName, lrpdb)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("PDB resource not found", "Pdb", lrpdb.Spec.LRPDBName)
@@ -211,6 +223,14 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		log.Info("Client.Get Error")
 		return requeueN, err
 	}
+
+	/*
+		lrest, err := r.getLRESTResource(ctx, req, lrpdb)
+		if err != nil {
+			log.Error(err, err.Error())
+			return requeueY, err
+		}
+	*/
 
 	/****  CREATE ****/
 	if Bit(lrpdb.Status.PDBBitMask, PDBCRT) == false && Bit(lrpdb.Status.PDBBitMask, PDBCRE) == false && lrpdb.Spec.SrcLRPDBName == "" && lrpdb.Spec.XMLFileName == "" {
@@ -229,9 +249,23 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		r.InitConfigMap(ctx, req, lrpdb)
 	}
 
+	/*** MONITOR CONFIG MAP ***/
+	if lrpdb.Spec.MonitorInitParameter == true &&
+		(Bit(lrpdb.Status.CmBitstat, MPAPPL) == true || Bit(lrpdb.Status.CmBitstat, MPWARN) == true) &&
+		Bit(lrpdb.Status.PDBBitMask, PDBCRT) == true &&
+		Bit(lrpdb.Status.PDBBitMask, PDBOPN) == true {
+		log.Info("REC. LOOP: monitor config map")
+		//cdxhint: MonitorCofingMap check return code
+		if err := r.MonitorConfigMap(ctx, req, lrpdb); err != nil {
+			log.Error(err, "MonitorConfigMapFailed")
+			return requeueY, err
+		}
+	}
+
 	/*** FINALYZER ***/
 	if Bit(lrpdb.Status.PDBBitMask, FNALAZ) == false && Bit(lrpdb.Status.PDBBitMask, PDBCRT) == true {
-		if lrpdb.ObjectMeta.DeletionTimestamp.IsZero() {
+		// fix lint QF1008 if lrpdb.ObjectMeta.DeletionTimestamp.IsZero() {
+		if lrpdb.DeletionTimestamp.IsZero() {
 			if !controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
 				log.Info("add finalizer:" + lrpdb.Spec.LRPDBName)
 				controllerutil.AddFinalizer(lrpdb, LRPDBFinalizer)
@@ -268,7 +302,9 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	/**** DELETE (imperative approach) ****/
-	if !lrpdb.ObjectMeta.DeletionTimestamp.IsZero() &&
+	//  lint QF1008
+	//	if !lrpdb.ObjectMeta.DeletionTimestamp.IsZero() &&
+	if !lrpdb.DeletionTimestamp.IsZero() &&
 		Bit(lrpdb.Status.PDBBitMask, PDBCRT) == true &&
 		Bit(lrpdb.Status.PDBBitMask, FNALAZ) == true &&
 		Bit(lrpdb.Status.PDBBitMask, PDBDIC) == false {
@@ -335,7 +371,19 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return requeueN, err
 		}
 		if Bit(lrpdb.Spec.Trclvl, TRCCFM) == true {
-			fmt.Printf("TRCCFM: Config. Map Cardinality:" + strconv.FormatInt(int64(Cardinality), 10))
+			fmt.Printf("TRCCFM: Config. Map Cardinality:%s", strconv.FormatInt(int64(Cardinality), 10))
+		}
+	}
+
+	/**** APPLY USERS CREATION ****/
+	//if lrpdb.Spec.Pdbappuser != "" && Bit(lrpdb.Status.PDBBitMask, APPUSR) == false && Bit(lrpdb.Status.PDBBitMask, PDBOPN) == true && Bit(lrpdb.Status.PDBBitMask, PDBCRT) == true && lrpdb.Spec.LRPDBState != "UNPLUG" {
+	if lrpdb.Spec.Pdbappuser != "" && Bit(lrpdb.Status.PDBBitMask, PDBOPN) == true && Bit(lrpdb.Status.PDBBitMask, PDBCRT) == true && lrpdb.Spec.LRPDBState != "UNPLUG" {
+		log.Info("REC. LOOP: apply user")
+		log.Info("Secret will be deleted after user creation")
+
+		err = r.CreateApplicanUsers(ctx, req, lrpdb, lrpdb.Spec.Pdbappuser)
+		if err != nil {
+			return requeueN, err
 		}
 	}
 
@@ -369,49 +417,70 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			log.Error(err, err.Error())
 			return requeueN, err
 		}
-
 	}
 
 	/* REST STAT */
-	if lrpdb.Spec.PDBBitMask != 0 && lrpdb.Spec.LRPDBState == "RESET" {
+	if (lrpdb.Spec.PDBBitMask != 0 || lrpdb.Spec.PDBBitMaskStr != "") && lrpdb.Spec.LRPDBState == "RESET" {
 		log.Info("REC. LOOP: reset state")
-		lrpdb.Status.PDBBitMask = lrpdb.Spec.PDBBitMask
-		log.Info("lrpdb.Status.PDBBitMask:" + strconv.Itoa(lrpdb.Status.PDBBitMask))
-		log.Info("lrpdb.Spec.PDBBitMask:" + strconv.Itoa(lrpdb.Spec.PDBBitMask))
-		if Bit(lrpdb.Spec.PDBBitMask, PDBAUT) == true {
-			log.Info("reset state PDBAUT")
-			if controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
-				lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAZ)
+		if lrpdb.Spec.PDBBitMask != 0 {
+			lrpdb.Status.PDBBitMask = lrpdb.Spec.PDBBitMask
+			log.Info("lrpdb.Status.PDBBitMask:" + strconv.Itoa(lrpdb.Status.PDBBitMask))
+			log.Info("lrpdb.Spec.PDBBitMask:" + strconv.Itoa(lrpdb.Spec.PDBBitMask))
+			if Bit(lrpdb.Spec.PDBBitMask, PDBAUT) == true {
+				log.Info("reset state PDBAUT")
+				if controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
+					lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAZ)
+				}
+
+				lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT)
 			}
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+			r.UpdateStatus(ctx, req, lrpdb)
 
-			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT)
+			lrpdb.Spec.PDBBitMask = 0
+			lrpdb.Spec.LRPDBState = "NONE"
+
+			err = r.Update(ctx, lrpdb)
+			if err != nil {
+				log.Error(err, err.Error())
+				return requeueN, err
+			}
 		}
-		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
-		r.UpdateStatus(ctx, req, lrpdb)
 
-		lrpdb.Spec.PDBBitMask = 0
-		lrpdb.Spec.LRPDBState = "NONE"
+		if lrpdb.Spec.PDBBitMaskStr != "" {
+			log.Info("Rest bitmask status using string values")
+			/* reset bitmask status using string */
+			newBitMaskValue := ParseStrStatus(lrpdb.Spec.PDBBitMaskStr)
+			if newBitMaskValue != 0 {
+				lrpdb.Status.PDBBitMask = newBitMaskValue
+				lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+				r.UpdateStatus(ctx, req, lrpdb)
+				lrpdb.Spec.PDBBitMask = 0
+				lrpdb.Spec.LRPDBState = "NONE"
 
-		err = r.Update(ctx, lrpdb)
-		if err != nil {
-			log.Error(err, err.Error())
-			return requeueN, err
+				err = r.Update(ctx, lrpdb)
+				if err != nil {
+					log.Error(err, err.Error())
+					return requeueN, err
+				}
+
+			} else {
+				log.Info("Invalid reset value")
+			}
 		}
 	}
 
 	return requeueY, nil
 }
 
-/*
-*********************************************************************
-  - MONITOR PDB
-
-*********************************************************************
-*/
-
+// MonitorLRPDB : check open and close status
 func (r *LRPDBReconciler) MonitorLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 	log := r.Log.WithValues("MonitorLRPDB ", req.NamespacedName)
-	r.getLRPDBState(ctx, req, lrpdb)
+	err := r.getLRPDBState(ctx, req, lrpdb)
+	if err != nil {
+		log.Info("getLRPDBState cannot find the resource ")
+		return err
+	}
 
 	/* Check open mode consistency */
 	if Bit(lrpdb.Status.PDBBitMask, PDBCLS) == true && lrpdb.Status.OpenMode == "READ WRITE" {
@@ -439,29 +508,33 @@ func (r *LRPDBReconciler) MonitorLRPDB(ctx context.Context, req ctrl.Request, lr
 		return nil
 	}
 
+	// Check config map existencs
+	if lrpdb.Spec.PDBConfigMap == "" && Bit(lrpdb.Status.CmBitstat, MPINIT) == true {
+		log.Info("Init config map no longer specified in attribute of " + lrpdb.Name)
+		lrpdb.Status.CmBitstat = Bis(lrpdb.Status.CmBitstat, MPRMVD)
+		lrpdb.Status.CmBitStatStr = CMBitmaskprint(lrpdb.Status.CmBitstat)
+		r.UpdateStatus(ctx, req, lrpdb)
+	}
+
 	return nil
 }
 
-/*
-*********************************************************************
-  - PLUG PDB
-
-*********************************************************************
-*/
-
+// PlugLRPDB : plug pdb
 func (r *LRPDBReconciler) PlugLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 	log := r.Log.WithValues("PlugLRPDB", req.NamespacedName)
 	log.Info("Begin call")
-	globalsqlcode = 0
+	//globalsqlcode = 0
 
 	var err error
 	// var tde_Password string
 	// var tde_Secret string
 
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		return err
-	}
+	/*
+		lrest, err := r.getLRESTResource(ctx, req, lrpdb)
+		if err != nil {
+			return err
+		}
+	*/
 	if Bit(lrpdb.Spec.Trclvl, TRCPLG) == true {
 		fmt.Printf("TRCPLG: PDB:[%s] XMLFILE:[%s]\n", lrpdb.Spec.LRPDBName, lrpdb.Spec.XMLFileName)
 	}
@@ -508,19 +581,22 @@ func (r *LRPDBReconciler) PlugLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 	lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 	r.UpdateStatus(ctx, req, lrpdb)
 
-	url := r.BaseUrl(ctx, req, lrpdb, lrest)
+	url := r.BaseURL2(req, lrpdb)
 
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "POST")
+	respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "POST")
 	if err != nil {
 		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
-	globalsqlcode = lrpdb.Status.SqlCode
+	if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		log.Error(err, "GetSQLCodeFailure")
+		return err
+	}
+	//globalsqlcode = lrpdb.Status.SqlCode
 
 	if lrpdb.Status.SqlCode != 0 {
-		globalsqlcode = lrpdb.Status.SqlCode
+		//globalsqlcode = lrpdb.Status.SqlCode
 		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBPLE) /* Upplug error */
 		lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBPLG) /* Remove unplug flag */
 		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -535,22 +611,19 @@ func (r *LRPDBReconciler) PlugLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Created", "TRCPLG: '%s' plugged successfully", lrpdb.Spec.LRPDBName)
 	}
 
-	if lrest.Spec.DBServer != "" {
-		lrpdb.Status.ConnString = lrest.Spec.DBServer + ":" + strconv.Itoa(lrest.Spec.DBPort) + "/" + lrpdb.Spec.LRPDBName
-	} else {
-		if Bit(lrpdb.Spec.Trclvl, TRCPLG) == true {
-			fmt.Printf("TRCPLG: Parsing connectstring")
-		}
-		lrpdb.Status.ConnString = lrest.Spec.DBTnsurl
-		parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName), lrpdb.Spec.Trclvl)
-	}
+	r.RetriveTnsAlias(ctx, req, lrpdb)
 
-	imperativeLpdbDeletion = lrpdb.Spec.ImperativeLrpdbDeletion
+	//imperativeLpdbDeletion = lrpdb.Spec.ImperativeLrpdbDeletion
 	if lrpdb.Spec.ImperativeLrpdbDeletion == true {
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Plug", "PDB '%s' imperative pdb deletion turned on", lrpdb.Spec.LRPDBName)
 	}
 
-	r.getLRPDBState(ctx, req, lrpdb)
+	//r.getLRPDBState(ctx, req, lrpdb, lrest)
+
+	if err = r.getLRPDBState(ctx, req, lrpdb); err != nil {
+		log.Error(err, "getLRPDBState")
+		return err
+	}
 
 	lrpdb.Status.Msg = "plug:[op. completed]"
 	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT) /* Set the creation flag */
@@ -565,27 +638,23 @@ func (r *LRPDBReconciler) PlugLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 	return nil
 }
 
-/*
-*********************************************************************
-  - UNPLUG PDB
-
-*********************************************************************
-*/
-
+// UnplugLRPDB : unplug pdb
 func (r *LRPDBReconciler) UnplugLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 
 	log := r.Log.WithValues("unplugLRPDB", req.NamespacedName)
-	globalsqlcode = 0
+	//globalsqlcode = 0
 
 	log.Info("Begin call")
 	var err error
 	//var tde_Password string
 	//var tde_Secret string
 
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		return err
-	}
+	/*
+		lrest, err := r.getLRESTResource(ctx, req, lrpdb)
+		if err != nil {
+			return err
+		}
+	*/
 
 	values := map[string]string{
 		"method":      "UNPLUG",
@@ -626,23 +695,27 @@ func (r *LRPDBReconciler) UnplugLRPDB(ctx context.Context, req ctrl.Request, lrp
 	}
 
 	r.UpdateStatus(ctx, req, lrpdb)
-	url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdb.Spec.LRPDBName
+	url := r.BaseURL2(req, lrpdb) + lrpdb.Spec.LRPDBName
 
 	if Bit(lrpdb.Spec.Trclvl, TRCUPL) == true {
 		fmt.Printf("TRCUPL: Starting unplugging process\n")
 	}
 
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "POST")
+	respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "POST")
 	if err != nil {
 		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		log.Error(err, "GetSQLCodeFailure")
+		return err
+	}
+
 	r.UpdateStatus(ctx, req, lrpdb)
 
 	if lrpdb.Status.SqlCode != 0 {
-		globalsqlcode = lrpdb.Status.SqlCode
+		//globalsqlcode = lrpdb.Status.SqlCode
 		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBUPE) /* Upplug error */
 		lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBUPL) /* Remove unplug flag */
 		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -685,7 +758,7 @@ func (r *LRPDBReconciler) UnplugLRPDB(ctx context.Context, req ctrl.Request, lrp
 	}
 
 	r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Unplugged", "LRPDB '%s' unplugged successfully", lrpdb.Spec.LRPDBName)
-	globalsqlcode = 0
+	//globalsqlcode = 0
 
 	if Bit(lrpdb.Spec.Trclvl, TRCUPL) == true {
 		fmt.Printf("TRCUPL: Successfully unplugged LRPDB resource")
@@ -693,22 +766,18 @@ func (r *LRPDBReconciler) UnplugLRPDB(ctx context.Context, req ctrl.Request, lrp
 	return nil
 }
 
-/*
-*********************************************************************
-  - OPEN PDB
-
-*********************************************************************
-*/
+// OpenLRPDB : open pdb
 func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
-
 	log := r.Log.WithValues("OpenLRPDB", req.NamespacedName)
 	log.Info("Begin call")
 
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		log.Info("TRCOPN: Failure cannot get lrest resource")
-		return err
-	}
+	/*
+		lrest, err := r.getLRESTResource(ctx, req, lrpdb)
+		if err != nil {
+			log.Info("TRCOPN: Failure cannot get lrest resource")
+			return err
+		}
+	*/
 
 	/* If open is called directly by the create pdb function */
 	ModOption := lrpdb.Spec.ModifyOption
@@ -719,8 +788,8 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 		PdbState = "OPEN"
 	}
 
-	values := map[string]string{}
-	values = map[string]string{
+	//values := map[string]string{}
+	values := map[string]string{
 		"state":         PdbState,
 		"modifyOption":  ModOption,
 		"modifyOption2": lrpdb.Spec.ModifyOption2,
@@ -737,18 +806,23 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 	}
 
 	lrpdbName := lrpdb.Spec.LRPDBName
-	url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
+	url := r.BaseURL2(req, lrpdb) + lrpdbName
 
 	lrpdb.Status.Msg = "open:[op in progress]"
 	r.UpdateStatus(ctx, req, lrpdb)
 
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "POST")
+	respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "POST")
 	if err != nil {
 		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		log.Error(err, "GetSQLCodeFailure")
+		return err
+	}
+
 	/* if sqlcode is zero then unset the closebit */
 	if lrpdb.Status.SqlCode == 0 {
 		lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBCLS)
@@ -762,28 +836,28 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 
 	/* Return Error if sqlcode != */
 	if lrpdb.Status.SqlCode != 0 {
-		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBOPE)
-		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+		if DiscardableError(lrpdb.Status.SqlCode) == false {
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBOPE)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+		}
 		oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
 		lrpdb.Status.Msg = "open:[" + oer + "]"
 		r.UpdateStatus(ctx, req, lrpdb)
-		return errors.New(oer)
+		if DiscardableError(lrpdb.Status.SqlCode) == false {
+			return errors.New(oer)
+		}
 	}
 
-	globalsqlcode = lrpdb.Status.SqlCode
-	r.getLRPDBState(ctx, req, lrpdb)
+	if err = r.getLRPDBState(ctx, req, lrpdb); err != nil {
+		log.Error(err, "getLRPDBState")
+		return err
+	}
 
 	if lrpdb.Spec.LRPDBState == "OPEN" || lrpdb.Spec.LRPDBState == "CLOSE" {
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Modified", " '%s' modified successfully '%s'", lrpdb.Spec.LRPDBName, lrpdb.Spec.LRPDBState)
 	}
 
-	if lrest.Spec.DBServer != "" {
-		lrpdb.Status.ConnString = lrest.Spec.DBServer + ":" + strconv.Itoa(lrest.Spec.DBPort) + "/" + lrpdb.Spec.LRPDBName
-	} else {
-		lrpdb.Status.ConnString = lrest.Spec.DBTnsurl
-		parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName), lrpdb.Spec.Trclvl)
-
-	}
+	r.RetriveTnsAlias(ctx, req, lrpdb)
 
 	log.Info("Successfully modified LRPDB state", "LRPDB Name", lrpdb.Spec.LRPDBName)
 
@@ -793,7 +867,11 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 			if Bit(lrpdb.Spec.Trclvl, TRCOPN) == true {
 				fmt.Printf("TRCOPN: re-apply config map\n")
 			}
-			r.ApplyConfigMap(ctx, req, lrpdb)
+			crdnlty, err := r.ApplyConfigMap(ctx, req, lrpdb)
+			if err != nil {
+				log.Info("ApplyConfigMap Failure")
+				fmt.Printf("ConfigMap Num Element:%d", crdnlty)
+			}
 
 		}
 	}
@@ -809,12 +887,7 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 	return nil
 }
 
-/*
-*********************************************************************
-  - CLOSE PDB
-
-*********************************************************************
-*/
+// CloseLRPDB : close plb
 func (r *LRPDBReconciler) CloseLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 
 	log := r.Log.WithValues("CloseLRPDB", req.NamespacedName)
@@ -823,16 +896,17 @@ func (r *LRPDBReconciler) CloseLRPDB(ctx context.Context, req ctrl.Request, lrpd
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Close", "Info:'%s %s %s' ", lrpdb.Spec.LRPDBName, lrpdb.Spec.LRPDBState, lrpdb.Status.ModifyOption)
 	}
 
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		log.Info("Failure: Cannot get lrest info")
-		return err
+	var modoption string
+
+	if lrpdb.Spec.ModifyOption == "" {
+		modoption = "IMMEDIATE"
+	} else {
+		modoption = lrpdb.Spec.ModifyOption
 	}
 
-	values := map[string]string{}
-	values = map[string]string{
+	values := map[string]string{
 		"state":         lrpdb.Spec.LRPDBState,
-		"modifyOption":  lrpdb.Spec.ModifyOption,
+		"modifyOption":  modoption,
 		"modifyOption2": lrpdb.Spec.ModifyOption2,
 		"getScript":     strconv.FormatBool(*(lrpdb.Spec.GetScript))}
 
@@ -844,18 +918,23 @@ func (r *LRPDBReconciler) CloseLRPDB(ctx context.Context, req ctrl.Request, lrpd
 	}
 
 	lrpdbName := lrpdb.Spec.LRPDBName
-	url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
+	url := r.BaseURL2(req, lrpdb) + lrpdbName
 
 	lrpdb.Status.Msg = "close:[op. in progress]"
 	r.UpdateStatus(ctx, req, lrpdb)
 
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "POST")
+	respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "POST")
 	if err != nil {
 		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	//	r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		log.Error(err, "GetSQLCodeFailure")
+		return err
+	}
+
 	/* if sqlcode is zero then unset the openbit */
 	if lrpdb.Status.SqlCode == 0 {
 		lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBOPN)
@@ -869,32 +948,33 @@ func (r *LRPDBReconciler) CloseLRPDB(ctx context.Context, req ctrl.Request, lrpd
 
 	/* Return Error if sqlcode != */
 	if lrpdb.Status.SqlCode != 0 {
-		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCLE)
-		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+		if DiscardableError(lrpdb.Status.SqlCode) == false {
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCLE)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+		}
 		oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
 		lrpdb.Status.Msg = "close:[" + oer + "]"
 		if Bit(lrpdb.Spec.Trclvl, TRCCLS) == true {
 			fmt.Printf("TRCCLS: lrpdb.Status.SqlCode=%d\n", lrpdb.Status.SqlCode)
 		}
 		r.UpdateStatus(ctx, req, lrpdb)
-		return errors.New(oer)
+		if DiscardableError(lrpdb.Status.SqlCode) == false {
+			return errors.New(oer)
+		}
 	}
 
-	globalsqlcode = lrpdb.Status.SqlCode
-	r.getLRPDBState(ctx, req, lrpdb)
+	//globalsqlcode = lrpdb.Status.SqlCode
+	//r.getLRPDBState(ctx, req, lrpdb, lrest)
+	if err = r.getLRPDBState(ctx, req, lrpdb); err != nil {
+		log.Error(err, "getLRPDBState")
+		return err
+	}
 
 	if lrpdb.Spec.LRPDBState == "OPEN" || lrpdb.Spec.LRPDBState == "CLOSE" {
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Modified", " '%s' modified successfully '%s'", lrpdb.Spec.LRPDBName, lrpdb.Spec.LRPDBState)
 	}
 
-	if lrest.Spec.DBServer != "" {
-		lrpdb.Status.ConnString = lrest.Spec.DBServer + ":" + strconv.Itoa(lrest.Spec.DBPort) + "/" + lrpdb.Spec.LRPDBName
-	} else {
-		lrpdb.Status.ConnString = lrest.Spec.DBTnsurl
-		parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName), lrpdb.Spec.Trclvl)
-
-	}
-
+	r.RetriveTnsAlias(ctx, req, lrpdb)
 	lrpdb.Status.Msg = "close:[op. completed]"
 	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCLS)
 	lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -909,22 +989,17 @@ func (r *LRPDBReconciler) CloseLRPDB(ctx context.Context, req ctrl.Request, lrpd
 	return nil
 }
 
-/*
-*********************************************************************
-  - DELETE PDB - IMPERATIVE APPROAC
-
-*********************************************************************
-*/
+// DeleteLRPDB : delete pdb
 func (r *LRPDBReconciler) DeleteLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 	log := r.Log.WithValues("deleteLRPDB", req.NamespacedName)
 
-	var err error
-
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		log.Info("Failure: Cannot get lrest info")
-		return err
-	}
+	/*
+		lrest, err := r.getLRESTResource(ctx, req, lrpdb)
+		if err != nil {
+			log.Info("Failure: Cannot get lrest info")
+			return err
+		}
+	*/
 
 	if lrpdb.Spec.ImperativeLrpdbDeletion == true {
 		/* Close the pdb if it's open */
@@ -934,9 +1009,14 @@ func (r *LRPDBReconciler) DeleteLRPDB(ctx context.Context, req ctrl.Request, lrp
 				"modifyOption": "IMMEDIATE",
 				"getScript":    "FALSE"}
 			lrpdbName := lrpdb.Spec.LRPDBName
-			url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
-			respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, valuesclose, "POST")
-			r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+			url := r.BaseURL2(req, lrpdb) + lrpdbName
+			respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, valuesclose, "POST")
+			//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+			if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+				log.Error(err, "GetSQLCodeFailure")
+				return err
+			}
+
 			if lrpdb.Status.SqlCode != 0 {
 				oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
 				lrpdb.Status.Msg = "close:[" + oer + "]"
@@ -962,16 +1042,21 @@ func (r *LRPDBReconciler) DeleteLRPDB(ctx context.Context, req ctrl.Request, lrp
 		}
 
 		lrpdbName := lrpdb.Spec.LRPDBName
-		url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
+		url := r.BaseURL2(req, lrpdb) + lrpdbName
 
-		respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "DELETE")
+		respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "DELETE")
 		if err != nil {
 			log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 			return err
 		}
 
-		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
-		globalsqlcode = lrpdb.Status.SqlCode
+		//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+		if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+			log.Error(err, "GetSQLCodeFailure")
+			return err
+		}
+
+		//globalsqlcode = lrpdb.Status.SqlCode
 		if lrpdb.Status.SqlCode != 0 {
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAE)
 			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -999,23 +1084,19 @@ func (r *LRPDBReconciler) DeleteLRPDB(ctx context.Context, req ctrl.Request, lrp
 	return nil
 }
 
-/*
-*********************************************************************
-  - DELETE PDB - DECLARATIVE APPROACH
-
-*********************************************************************
-*/
-
+// DeleteLRPDBDeclarative : remove pdb crd and drop pdb
 func (r *LRPDBReconciler) DeleteLRPDBDeclarative(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 	log := r.Log.WithValues("deleteLRPDBDeclaratve", req.NamespacedName)
 
 	var err error
 
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		log.Info("Failure: Cannot get lrest info")
-		return err
-	}
+	/*
+		lrest, err := r.getLRESTResource(ctx, req, lrpdb)
+		if err != nil {
+			log.Info("Failure: Cannot get lrest info")
+			return err
+		}
+	*/
 
 	if lrpdb.Spec.ImperativeLrpdbDeletion == true {
 		/* Close the pdb if it's open */
@@ -1025,9 +1106,14 @@ func (r *LRPDBReconciler) DeleteLRPDBDeclarative(ctx context.Context, req ctrl.R
 				"modifyOption": "IMMEDIATE",
 				"getScript":    "FALSE"}
 			lrpdbName := lrpdb.Spec.LRPDBName
-			url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
-			respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, valuesclose, "POST")
-			r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+			url := r.BaseURL2(req, lrpdb) + lrpdbName
+			respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, valuesclose, "POST")
+			//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+			if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+				log.Error(err, "GetSQLCodeFailure")
+				return err
+			}
+
 			if lrpdb.Status.SqlCode != 0 {
 				oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
 				lrpdb.Status.Msg = "close:[" + oer + "]"
@@ -1053,16 +1139,21 @@ func (r *LRPDBReconciler) DeleteLRPDBDeclarative(ctx context.Context, req ctrl.R
 		}
 
 		lrpdbName := lrpdb.Spec.LRPDBName
-		url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
+		url := r.BaseURL2(req, lrpdb) + lrpdbName
 
-		respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "DELETE")
+		respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "DELETE")
 		if err != nil {
 			log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 			return err
 		}
 
-		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
-		globalsqlcode = lrpdb.Status.SqlCode
+		//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+		if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+			log.Error(err, "GetSQLCodeFailure")
+			return err
+		}
+
+		//globalsqlcode = lrpdb.Status.SqlCode
 		if lrpdb.Status.SqlCode != 0 {
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAE)
 			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -1106,8 +1197,9 @@ func (r *LRPDBReconciler) DeleteLRPDBDeclarative(ctx context.Context, req ctrl.R
 func (r *LRPDBReconciler) checkPDBforCloninig(ctx context.Context, req ctrl.Request, targetPdbName string) (int, error) {
 	log := r.Log.WithValues("checkPDBforCloninig", req.NamespacedName)
 	log.Info("Begin call")
+	// lint S1021 pdbCounter = 0
+	// lit drop =0 hint var pdbCounter int = 0
 	var pdbCounter int
-	pdbCounter = 0
 
 	lrpdbList := &dbapi.LRPDBList{}
 	listOpts := []client.ListOption{client.InNamespace(req.Namespace), client.MatchingFields{"spec.pdbName": targetPdbName}}
@@ -1143,12 +1235,7 @@ func (r *LRPDBReconciler) checkPDBforCloninig(ctx context.Context, req ctrl.Requ
 	return pdbCounter, err
 }
 
-/*
-*********************************************************************
-  - CLONE PDB
-
-*********************************************************************
-*/
+// CloneLRPDB Clone pdb
 func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 
 	log := r.Log.WithValues("CloneLRPDB", req.NamespacedName)
@@ -1158,13 +1245,15 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 		return nil
 	}
 
-	globalsqlcode = 0
+	//globalsqlcode = 0
 	var err error
 
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		return err
-	}
+	/*
+		lrest, err := r.getLRESTResource(ctx, req, lrpdb)
+		if err != nil {
+			return err
+		}
+	*/
 
 	/* Prevent cloning an existing lrpdb */
 	err = r.getLRPDBState(ctx, req, lrpdb)
@@ -1194,7 +1283,12 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 	if pdbCounter == 0 {
 		log.Info("target pdb " + lrpdb.Spec.SrcLRPDBName + " does not exists or is not open")
 		allErrs = append(allErrs, field.NotFound(field.NewPath("Spec").Child("LRPDBName"), " "+lrpdb.Spec.LRPDBName+" does not exist :  failure"))
-		r.Delete(context.Background(), lrpdb, client.GracePeriodSeconds(1))
+		LenErrorList := len(allErrs)
+		fmt.Printf("checkPDBforCloninig len(allErrs)=%d\n", LenErrorList)
+
+		if r.Delete(context.Background(), lrpdb, client.GracePeriodSeconds(1)) != nil {
+			log.Info("r.Delete(context.Background(), lrpdb... failure")
+		}
 		return nil
 	}
 
@@ -1211,19 +1305,24 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 		values["tempSize"] = lrpdb.Spec.TempSize
 	}
 
-	url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdb.Spec.LRPDBName + "/"
+	url := r.BaseURL2(req, lrpdb) + lrpdb.Spec.LRPDBName + "/"
 
 	lrpdb.Status.Msg = "clone:[op. in progress]"
 	r.UpdateStatus(ctx, req, lrpdb)
 
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "POST")
+	respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "POST")
 	if err != nil {
 		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
-	globalsqlcode = lrpdb.Status.SqlCode
+	//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		log.Error(err, "GetSQLCodeFailure")
+		return err
+	}
+
+	//globalsqlcode = lrpdb.Status.SqlCode
 	r.UpdateStatus(ctx, req, lrpdb)
 
 	if lrpdb.Status.SqlCode != 0 {
@@ -1243,20 +1342,24 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Created", "LRPDB '%s' cloned successfully", lrpdb.Spec.LRPDBName)
 		fmt.Printf("TRCCLN: PDBBitMask[%d] PDBBitMaskStr[%s]\n", lrpdb.Status.PDBBitMask, lrpdb.Status.PDBBitMaskStr)
 	}
-	lrpdb.Status.TotalSize = r.GetPdbSize(ctx, req, lrpdb, lrpdb.Spec.SrcLRPDBName)
+	lrpdb.Status.TotalSize = r.GetPdbSize(ctx, req, lrpdb)
 
-	if lrest.Spec.DBServer != "" {
-		lrpdb.Status.ConnString = lrest.Spec.DBServer + ":" + strconv.Itoa(lrest.Spec.DBPort) + "/" + lrpdb.Spec.LRPDBName
-	} else {
-		lrpdb.Status.ConnString = strings.TrimSpace(lrest.Spec.DBTnsurl)
-		parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName), lrpdb.Spec.Trclvl)
+	/*
+		if lrest.Spec.DBServer != "" {
+			lrpdb.Status.ConnString = lrest.Spec.DBServer + ":" + strconv.Itoa(lrest.Spec.DBPort) + "/" + lrpdb.Spec.LRPDBName
+		} else {
+			lrpdb.Status.ConnString = strings.TrimSpace(lrest.Spec.DBTnsurl)
+			parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName), lrpdb.Spec.Trclvl)
 
-	}
+		}
+	*/
+
+	r.RetriveTnsAlias(ctx, req, lrpdb)
 	if Bit(lrpdb.Spec.Trclvl, TRCCLN) == true {
 		fmt.Printf("TRCCLN: tnsalias=%s\n", lrpdb.Status.ConnString)
 	}
 
-	imperativeLpdbDeletion = lrpdb.Spec.ImperativeLrpdbDeletion
+	//imperativeLpdbDeletion = lrpdb.Spec.ImperativeLrpdbDeletion
 	if lrpdb.Spec.ImperativeLrpdbDeletion == true {
 
 		if Bit(lrpdb.Spec.Trclvl, TRCCLN) == true {
@@ -1268,7 +1371,11 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 	if Bit(lrpdb.Spec.Trclvl, TRCCLN) == true {
 		fmt.Printf("TRCCLN: Clone completed successfully Source[%s]->Clone[%s]\n", lrpdb.Spec.SrcLRPDBName, lrpdb.Spec.LRPDBName)
 	}
-	r.getLRPDBState(ctx, req, lrpdb)
+	//r.getLRPDBState(ctx, req, lrpdb, lrest)
+	if err = r.getLRPDBState(ctx, req, lrpdb); err != nil {
+		log.Error(err, "getLRPDBState")
+		return err
+	}
 
 	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT)
 	lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
@@ -1291,125 +1398,53 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 	return nil
 }
 
-/*
-*********************************************************************
-  - GET THE CUSTOM RESOURCE FOR THE LREST MENTIONED IN THE LRPDB SPEC
-
-*********************************************************************
-*/
-func (r *LRPDBReconciler) getLRESTResource(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) (dbapi.LREST, error) {
-
-	log := r.Log.WithValues("getLRESTResource", req.NamespacedName)
-
-	var lrest dbapi.LREST // LREST CR corresponding to the LREST name specified in the LRPDB spec
-
-	// Name of the LREST CR that holds the LREST container
-	lrestResName := lrpdb.Spec.CDBResName
-	lrestNamespace := lrpdb.Spec.CDBNamespace
-
-	if Bit(lrpdb.Spec.Trclvl, TRCGLR) == true {
-		fmt.Printf("lrestResName...........:%s", lrestResName)
-		fmt.Printf("lrestNamespace.........:%s", lrestNamespace)
-	}
-
-	// Get LREST CR corresponding to the LREST name specified in the LRPDB spec
-	err := r.Get(context.Background(), client.ObjectKey{
-		Namespace: lrestNamespace,
-		Name:      lrestResName,
-	}, &lrest)
-
-	if err != nil {
-		log.Info("Failed to get CRD for LREST", "Name", lrestResName, "Namespace", lrestNamespace, "Error", err.Error())
-		lrpdb.Status.Msg = "Unable to get CRD for LREST : " + lrestResName
-		r.Status().Update(ctx, lrpdb)
-		return lrest, err
-	}
-
-	return lrest, nil
-}
-
-/*
-*********************************************************************
-  - GET THE LREST POD FOR THE LREST MENTIONED IN THE LRPDB SPEC
-  - Decommissione function
-*********************************************************************
-*/
-/*
-func (r *LRPDBReconciler) getLRESTPod(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) (corev1.Pod, error) {
-
-	log := r.Log.WithValues("getLRESTPod", req.NamespacedName)
-
-	var lrestPod corev1.Pod // LREST Pod container with connection to the concerned LREST
-
-	// Name of the LREST CR that holds the LREST container
-	lrestResName := lrpdb.Spec.CDBResName
-
-	// Get LREST Pod associated with the LREST Name specified in the LRPDB Spec
-	err := r.Get(context.Background(), client.ObjectKey{
-		Namespace: req.Namespace,
-		Name:      lrestResName + "-lrest",
-	}, &lrestPod)
-
-	if err != nil {
-		log.Info("Failed to get Pod for LREST", "Name", lrestResName, "Namespace", req.Namespace, "Error", err.Error())
-		lrpdb.Status.Msg = "Unable to get LREST Pod for LREST : " + lrestResName
-		return lrestPod, err
-	}
-
-	log.Info("Found LREST Pod for LREST", "Name", lrestResName, "Pod Name", lrestPod.Name, "LREST Container hostname", lrestPod.Spec.Hostname)
-	return lrestPod, nil
-}
-*/
-
-/*
-*********************************************************************
-  - CREATE PDB
-
-*********************************************************************
-*/
+// CreateLRPDB create pluggable database
 func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 
 	log := r.Log.WithValues("CreateLRPDB", req.NamespacedName)
 	if Bit(lrpdb.Spec.Trclvl, TRCCRT) == true {
 		fmt.Print("TRCCRT: call  getLRESTResource \n")
 	}
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		return err
-	}
+
 	log.Info("lrpdb.Spec.LRPDBName:" + lrpdb.Spec.LRPDBName)
 	/* If it's not created by lrest autodiscover */
 	if Bit(lrpdb.Status.PDBBitMask, PDBAUT) == false && lrpdb.Spec.PDBBitMask == 0 {
 
 		var err error
-		var tde_Password string
-		var tde_Secret string
+		var tdePassword string
+		var tdeSecret string
 
-		AutoDiscover := lrest.Spec.PdbAutoDiscover
-		err = r.AutoDiscoverActivation(ctx, req, lrpdb, false)
+		/*
+			AutoDiscover := lrest.Spec.PdbAutoDiscover
+			err = r.AutoDiscoverActivation(req, lrpdb, false)
+			if err != nil {
+				log.Error(err, "Autodiscovery deactivstion")
+				return err
+			}
+		*/
 
 		/*** reset sqlcode***/
 		lrpdb.Status.SqlCode = 0
 
-		lrpdbAdminName, err := getGenericSecret3(r, ctx, req, lrpdb, lrpdb.Spec.AdminpdbUser.Secret.SecretName,
+		lrpdbAdminName, err := getGenericSecret3(ctx, r, req, lrpdb, lrpdb.Spec.AdminpdbUser.Secret.SecretName,
 			lrpdb.Spec.AdminpdbUser.Secret.Key,
 			lrpdb.Spec.LRPDBPriKey.Secret.SecretName,
 			lrpdb.Spec.LRPDBPriKey.Secret.Key,
 			NULL, NULL, true)
 		if err != nil {
 			log.Error(err, "Unable to find pdb admin user ")
-			_ = r.AutoDiscoverActivation(ctx, req, lrpdb, AutoDiscover)
+			//_ = r.AutoDiscoverActivation(req, lrpdb, AutoDiscover)
 			return err
 		}
 
-		lrpdbAdminPwd, err := getGenericSecret3(r, ctx, req, lrpdb, lrpdb.Spec.AdminpdbPass.Secret.SecretName,
+		lrpdbAdminPwd, err := getGenericSecret3(ctx, r, req, lrpdb, lrpdb.Spec.AdminpdbPass.Secret.SecretName,
 			lrpdb.Spec.AdminpdbPass.Secret.Key,
 			lrpdb.Spec.LRPDBPriKey.Secret.SecretName,
 			lrpdb.Spec.LRPDBPriKey.Secret.Key,
 			NULL, NULL, true)
 		if err != nil {
 			log.Error(err, "Unable to find pdb admin password ")
-			_ = r.AutoDiscoverActivation(ctx, req, lrpdb, AutoDiscover)
+			//_ = r.AutoDiscoverActivation(req, lrpdb, AutoDiscover)
 			return err
 		}
 
@@ -1442,27 +1477,27 @@ func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrp
 
 		if *(lrpdb.Spec.LTDEImport) {
 			//tde_Password, err = r.getSecret(ctx, req, lrpdb, lrpdb.Spec.LTDEPassword.Secret.SecretName, lrpdb.Spec.LTDEPassword.Secret.Key)
-			tde_Password, err = getGenericSecret3(r, ctx, req, lrpdb, lrpdb.Spec.LTDEPassword.Secret.SecretName,
+			tdePassword, err = getGenericSecret3(ctx, r, req, lrpdb, lrpdb.Spec.LTDEPassword.Secret.SecretName,
 				lrpdb.Spec.LTDEPassword.Secret.Key, NULL, NULL, NULL, NULL, true)
 			if err != nil {
-				_ = r.AutoDiscoverActivation(ctx, req, lrpdb, AutoDiscover)
+				//_ = r.AutoDiscoverActivation(req, lrpdb, AutoDiscover)
 				return err
 			}
-			tde_Secret, err = getGenericSecret3(r, ctx, req, lrpdb, lrpdb.Spec.LTDESecret.Secret.SecretName,
+			tdeSecret, err = getGenericSecret3(ctx, r, req, lrpdb, lrpdb.Spec.LTDESecret.Secret.SecretName,
 				lrpdb.Spec.LTDESecret.Secret.Key, NULL, NULL, NULL, NULL, true)
 			if err != nil {
-				_ = r.AutoDiscoverActivation(ctx, req, lrpdb, AutoDiscover)
+				//_ = r.AutoDiscoverActivation(req, lrpdb, AutoDiscover)
 				return err
 			}
 
-			tde_Secret = tde_Secret[:len(tde_Secret)-1]
-			tde_Password = tde_Secret[:len(tde_Password)-1]
-			values["tde_Password"] = tde_Password
+			tdeSecret = tdeSecret[:len(tdeSecret)-1]
+			tdePassword = tdeSecret[:len(tdePassword)-1]
+			values["tde_Password"] = tdePassword
 			values["tdeKeystorePath"] = lrpdb.Spec.LTDEKeystorePath
-			values["tde_Secret"] = tde_Secret
+			values["tde_Secret"] = tdeSecret
 		}
 
-		url := r.BaseUrl(ctx, req, lrpdb, lrest)
+		url := r.BaseURL2(req, lrpdb)
 		if Bit(lrpdb.Spec.Trclvl, TRCCRT) == true {
 			fmt.Print("TRCCRT:==== URL ===\n")
 			fmt.Print("TRCCRT:" + url)
@@ -1472,45 +1507,61 @@ func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrp
 
 		r.UpdateStatus(ctx, req, lrpdb)
 
-		respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "POST")
+		respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "POST")
 		if err != nil {
 			log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
-			_ = r.AutoDiscoverActivation(ctx, req, lrpdb, AutoDiscover)
+			//_ = r.AutoDiscoverActivation(req, lrpdb, AutoDiscover)
 			return err
 		}
 
-		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
-		globalsqlcode = lrpdb.Status.SqlCode
+		//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+		if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+			log.Error(err, "GetSQLCodeFailure")
+			//return err
+		}
+
+		//globalsqlcode = lrpdb.Status.SqlCode
 		if lrpdb.Status.SqlCode != 0 {
-			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRE)
-			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+			if DiscardableError(lrpdb.Status.SqlCode) == false {
+				lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRE)
+				lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+			}
 			oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
 			lrpdb.Status.Msg = "create:[" + oer + "]"
 			r.UpdateStatus(ctx, req, lrpdb)
-			return errors.New(oer)
+			if DiscardableError(lrpdb.Status.SqlCode) == false {
+				return errors.New(oer)
+			}
 		} else {
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT)
 			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 			r.UpdateStatus(ctx, req, lrpdb)
 		}
 
-		r.getLRPDBState(ctx, req, lrpdb)
+		if err = r.getLRPDBState(ctx, req, lrpdb); err != nil {
+			log.Error(err, "getLRPDBState")
+			return err
+		}
+
 		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal,
 			"Created", "LRPDB '%s' created successfully", lrpdb.Spec.LRPDBName)
 
 		if Bit(lrpdb.Spec.Trclvl, TRCCRT) == true {
 			fmt.Printf("TRCCRT: Parsing connectstring")
 		}
-		lrpdb.Status.ConnString = strings.TrimSpace(lrest.Spec.DBTnsurl)
-		parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName), lrpdb.Spec.Trclvl)
+		/*
+			lrpdb.Status.ConnString = strings.TrimSpace(lrest.Spec.DBTnsurl)
+			parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName), lrpdb.Spec.Trclvl)
+		*/
+		r.RetriveTnsAlias(ctx, req, lrpdb)
 		r.UpdateStatus(ctx, req, lrpdb)
 
-		imperativeLpdbDeletion = lrpdb.Spec.ImperativeLrpdbDeletion
+		//imperativeLpdbDeletion = lrpdb.Spec.ImperativeLrpdbDeletion
 		if lrpdb.Spec.ImperativeLrpdbDeletion == true {
 			r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Created", "PDB '%s' imperative pdb deletion turned on", lrpdb.Spec.LRPDBName)
 		}
 
-		_ = r.AutoDiscoverActivation(ctx, req, lrpdb, AutoDiscover)
+		//_ = r.AutoDiscoverActivation(req, lrpdb, AutoDiscover)
 
 		lrpdb.Status.Msg = "create:[op completed]"
 		r.UpdateStatus(ctx, req, lrpdb)
@@ -1532,7 +1583,8 @@ func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrp
 		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT)
 		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBAUT)
 		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
-		lrpdb.Status.ConnString = strings.TrimSpace(lrest.Spec.DBTnsurl)
+		r.RetriveTnsAlias(ctx, req, lrpdb)
+		r.UpdateStatus(ctx, req, lrpdb)
 		parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName), lrpdb.Spec.Trclvl)
 		lrpdb.Status.Msg = "autodiscover:[op completed]"
 		if Bit(lrpdb.Spec.Trclvl, TRCCRT) == true {
@@ -1548,11 +1600,80 @@ func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrp
 ALTER SYSTEM lRPDB
 **************************************************/
 
+func (r *LRPDBReconciler) alterSystemLRPDB2(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB, parameter string, value string, scope string, infocaller string) error {
+
+	log := r.Log.WithValues("alterSystemLRPDB2", req.NamespacedName)
+	//globalsqlcode = 0
+
+	payload := map[string]string{
+		"state":                "ALTER",
+		"alterSystemParameter": parameter,
+		"alterSystemValue":     value,
+		"parameterScope":       scope,
+	}
+
+	lrpdbName := lrpdb.Spec.LRPDBName
+	url := r.BaseURL2(req, lrpdb) + lrpdbName
+
+	lrpdb.Status.ModifyOption = infocaller + ":[" + parameter + "][" + value + "]"
+	lrpdb.Status.Msg = "alter system2:[op. in progress]"
+	r.UpdateStatus(ctx, req, lrpdb)
+
+	respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, payload, "POST")
+	if err != nil {
+		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
+		return err
+	}
+
+	//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		log.Error(err, "GetSQLCodeFailure")
+		return err
+	}
+
+	//globalsqlcode = lrpdb.Status.SqlCode
+
+	if lrpdb.Status.SqlCode == 0 {
+
+		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "Altered", "resync param(name,cmd,sqlcode) '%s %s %d' ",
+			parameter, value, lrpdb.Status.SqlCode)
+		lrpdb.Status.Msg = "alter system2:[op. completed]"
+		r.UpdateStatus(ctx, req, lrpdb)
+		if err := r.Update(ctx, lrpdb); err != nil {
+			log.Error(err, "Cannot rest lrpdb Spec  :"+lrpdb.Name, "err", err.Error())
+			return err
+		}
+
+		return nil
+
+	}
+
+	if lrpdb.Status.SqlCode != 0 {
+
+		r.Recorder.Eventf(lrpdb, corev1.EventTypeWarning, "alter system failure", "LRPDB(name,cmd,sqlcode) '%s %s %d' ", lrpdb.Spec.LRPDBName, lrpdb.Spec.AlterSystem, lrpdb.Status.SqlCode)
+		r.Recorder.Eventf(lrpdb, corev1.EventTypeNormal, "failure", "resync param(name,cmd,sqlcode) '%s %s %d' ",
+			parameter, value, lrpdb.Status.SqlCode)
+		erralter := errors.New("Error: cannot modify parameter")
+
+		lrpdb.Status.Msg = "alter system2:[op. failure]"
+		r.UpdateStatus(ctx, req, lrpdb)
+
+		if err := r.Update(ctx, lrpdb); err != nil {
+			log.Error(err, "Cannot rest lrpdb Spec  :"+lrpdb.Name, "err", err.Error())
+			return err
+		}
+
+		return erralter
+	}
+
+	return nil
+}
+
 /**just push the trasnsaction **/
 func (r *LRPDBReconciler) alterSystemLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 
 	log := r.Log.WithValues("alterSystemLRPDB", req.NamespacedName)
-	globalsqlcode = 0
+	//globalsqlcode = 0
 
 	var err error
 	err = r.getLRPDBState(ctx, req, lrpdb)
@@ -1561,12 +1682,6 @@ func (r *LRPDBReconciler) alterSystemLRPDB(ctx context.Context, req ctrl.Request
 			log.Info("Warning LRPDB does not exist", "LRPDB Name", lrpdb.Spec.LRPDBName)
 			return nil
 		}
-		return err
-	}
-
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		log.Info("Cannot find LREST server")
 		return err
 	}
 
@@ -1580,7 +1695,7 @@ func (r *LRPDBReconciler) alterSystemLRPDB(ctx context.Context, req ctrl.Request
 	}
 
 	lrpdbName := lrpdb.Spec.LRPDBName
-	url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
+	url := r.BaseURL2(req, lrpdb) + lrpdbName
 	log.Info("alter system payload...:", "lrpdb.Spec.AlterSystemValue=", lrpdb.Spec.AlterSystemValue)
 	log.Info("alter system payload...:", "lrpdb.Spec.AlterSystemParameter=", lrpdb.Spec.AlterSystemParameter)
 	log.Info("alter system payload...:", "lrpdb.Spec.ParameterScope=", lrpdb.Spec.ParameterScope)
@@ -1590,14 +1705,19 @@ func (r *LRPDBReconciler) alterSystemLRPDB(ctx context.Context, req ctrl.Request
 	lrpdb.Status.Msg = "alter system:[op. in progress]"
 	r.UpdateStatus(ctx, req, lrpdb)
 
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "POST")
+	respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "POST")
 	if err != nil {
 		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 		return err
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
-	globalsqlcode = lrpdb.Status.SqlCode
+	//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		log.Error(err, "GetSQLCodeFailure")
+		return err
+	}
+
+	//globalsqlcode = lrpdb.Status.SqlCode
 
 	if lrpdb.Status.SqlCode == 0 {
 
@@ -1651,14 +1771,9 @@ func (r *LRPDBReconciler) execPLSQL(ctx context.Context, req ctrl.Request, lrpdb
 	if Bit(lrpdb.Spec.Trclvl, TRCPSQ) == true {
 		fmt.Printf("TRCPSQ: Reafing configmap %s\n", lrpdb.Spec.PLSQLBlock)
 	}
-	configmap, err := r.GetConfigMapCode(ctx, req, lrpdb)
+	configmap, err := r.GetConfigMapCode(req, lrpdb)
 	if err != nil {
 		log.Error(err, "Fail to fetch code configmap", "err", err.Error())
-		return err
-	}
-
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
 		return err
 	}
 
@@ -1702,15 +1817,19 @@ func (r *LRPDBReconciler) execPLSQL(ctx context.Context, req ctrl.Request, lrpdb
 			fmt.Printf("TRCPSQ: %s\n", string(encjson))
 		}
 
-		url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
+		url := r.BaseURL2(req, lrpdb) + lrpdbName
 
-		respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, jsonpayload, "POST")
+		respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, jsonpayload, "POST")
 		if err != nil {
 			log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 			return err
 		}
 
-		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+		//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+		if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+			// In case of error we log the information in the event
+			log.Info("Waring error during plsqlexecution:see event for details")
+		}
 
 		EvLevel := corev1.EventTypeNormal
 		skey := fmt.Sprintf("[%s]", key)
@@ -1754,27 +1873,17 @@ func (r *LRPDBReconciler) execPLSQL(ctx context.Context, req ctrl.Request, lrpdb
 	return nil
 }
 
-/*
-************************************************
-  - Get LRPDB State
-
-************************************************
-*/
+// getLRPDBState : retrieves the resource status
 func (r *LRPDBReconciler) getLRPDBState(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 	log := r.Log.WithValues("getLRPDBState", req.NamespacedName)
 	log.Info("Begin call")
 
 	var err error
 
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		return err
-	}
-
 	lrpdbName := lrpdb.Spec.LRPDBName
-	url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName + "/status/"
+	url := r.BaseURL2(req, lrpdb) + lrpdbName + "/status/"
 
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, nil, "GET")
+	respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, nil, "GET")
 	/* Connection failure */
 	if err != nil {
 		lrpdb.Status.Msg = "getLRPDBState failure : callAPI connection failure "
@@ -1793,13 +1902,18 @@ func (r *LRPDBReconciler) getLRPDBState(ctx context.Context, req ctrl.Request, l
 		r.UpdateStatus(ctx, req, lrpdb)
 	}
 
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
-	globalsqlcode = lrpdb.Status.SqlCode
+	//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+	if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+		log.Error(err, "GetSQLCodeFailure")
+		return err
+	}
+
+	//globalsqlcode = lrpdb.Status.SqlCode
 	if lrpdb.Status.SqlCode == 1403 {
 		lrpdb.Status.OpenMode = "N/A"
 		lrpdb.Status.Msg = "N/A ORA-1403"
 		if Bit(lrpdb.Spec.Trclvl, TRCSTA) == true {
-			fmt.Printf("TRCSTA: SqlCode[NO_DATA_FOUND]:[%d]\n", lrpdb.Status.OpenMode)
+			fmt.Printf("TRCSTA: SqlCode[NO_DATA_FOUND]:[%s]\n", lrpdb.Status.OpenMode)
 		}
 		return errors.New("NO_DATA_FOUND")
 	}
@@ -1824,13 +1938,7 @@ func (r *LRPDBReconciler) getLRPDBState(ctx context.Context, req ctrl.Request, l
 	return nil
 }
 
-/*
-***********************************************************
-  - SetupWithManager sets up the controller with the Manager
-
-************************************************************
-*/
-
+// SetupWithManager sets up the controller with the Manager
 func (r *LRPDBReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.LRPDB{}).
@@ -1859,7 +1967,9 @@ func parseTnsAlias(tns *string, lrpdbsrv *string, tracelevel int) {
 		fmt.Printf("TRCTNS: Replacing srv.........:[%s]\n", *lrpdbsrv)
 		fmt.Printf("TRCTNS: Newstring.............:[%s]\n", *tns)
 	}
+
 	var swaptns string
+	var swapcid string
 
 	if strings.Contains(strings.ToUpper(*tns), "SERVICE_NAME") == false && (strings.ContainsRune(*tns, ':') == false || strings.ContainsRune(*tns, '/') == false) {
 		if Bit(tracelevel, TRCTNS) == true {
@@ -1885,8 +1995,15 @@ func parseTnsAlias(tns *string, lrpdbsrv *string, tracelevel int) {
 	} else {
 		fmt.Printf("TRCTNS: ......................:[%s]\n", "Long string format")
 		swaptns = fmt.Sprintf("SERVICE_NAME=%s", *lrpdbsrv)
+		swapcid = ""
 		tnsreg := regexp.MustCompile(`SERVICE_NAME=\w+`)
+		// tnsreg2 := regexp.MustCompile(`CID=\(PROGRAM=\w+\)`)
+		// remove cid information
+		// tnsreg2 := regexp.MustCompile(`\(CID=\(PROGRAM=\w+\)(HOST=\w+\)\(USER=\w+\)\)`)
+		tnsreg2 := regexp.MustCompile(`\(CID=\(PROGRAM=[^)]*\)\(HOST=[^)]*\)\(USER=[^)]*\)\)`)
+
 		*tns = tnsreg.ReplaceAllString(*tns, swaptns)
+		*tns = tnsreg2.ReplaceAllString(*tns, swapcid)
 	}
 
 	if Bit(tracelevel, TRCTNS) == true {
@@ -1895,84 +2012,123 @@ func parseTnsAlias(tns *string, lrpdbsrv *string, tracelevel int) {
 
 }
 
-// Compose url
-func (r *LRPDBReconciler) BaseUrl(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB, lrest dbapi.LREST) string {
+// BaseURL composes  url path for the rest calls
+func (r *LRPDBReconciler) BaseURL2(req ctrl.Request, lrpdb *dbapi.LRPDB) string {
 	log := r.Log.WithValues("BaseUrl", req.NamespacedName)
-	baseurl := "https://" + lrpdb.Spec.CDBResName + "-lrest." + lrpdb.Spec.CDBNamespace + ":" + strconv.Itoa(lrest.Spec.LRESTPort) + "/database/pdbs/"
+	baseurl := "https://" + lrpdb.Spec.CDBResName + "-lrest." + lrpdb.Spec.CDBNamespace + ":" + strconv.Itoa(8888) + "/database/pdbs/"
 	if Bit(lrpdb.Spec.Trclvl, TRCSQL) == true {
 		log.Info("Baseurl:" + baseurl)
 	}
 	return baseurl
 }
 
-/*
-func (r *LRPDBReconciler) manageLRPDBDeletion2(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
-	log := r.Log.WithValues("manageLRPDBDeletion", req.NamespacedName)
-	if lrpdb.ObjectMeta.DeletionTimestamp.IsZero() {
-		if !controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
-			controllerutil.AddFinalizer(lrpdb, LRPDBFinalizer)
-			if err := r.Update(ctx, lrpdb); err != nil {
-				return err
-			}
+// MonitorConfigMap : method to monitor pdb init settings. It compares config map contents with the v$parameter check divergnences
+// an take an action
+func (r *LRPDBReconciler) MonitorConfigMap(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
+	log := r.Log.WithValues("InitConfigMap", req.NamespacedName)
+	log.Info("Monitoring configmap")
+	lrpdbName := lrpdb.Spec.LRPDBName
+
+	url := r.BaseURL2(req, lrpdb) + lrpdbName + "/modparameters/"
+
+	// get data from v$parameter
+	output, err := NewCallAPISQL(ctx, r, req, lrpdb, url, nil, "GET")
+	if err != nil {
+		log.Info("NewCallAPISQL Error")
+	}
+
+	// The logic is for each row in the v$parameter check the
+	// the entry in configmap
+
+	data := []byte(` {"INIT":` + output + `}`)
+	var idata interface{}
+	err = json.Unmarshal(data, &idata)
+	if err != nil {
+		log.Info("error json.Unmarshal")
+		return err
+	}
+
+	mdata, ok := idata.(map[string]interface{})
+	if !ok {
+		return errors.New("Fail to cast idata")
+	}
+
+	ndata, ok := mdata["INIT"].([]interface{})
+	if !ok {
+		return errors.New("Fail to cast mdata")
+	}
+
+	fmt.Printf(":%s:\n", ndata)
+
+	configmap, err := r.GetConfigMap(req, lrpdb)
+	if err != nil {
+		log.Error(err, "Fail to fetch code configmap", "err", err.Error())
+		return err
+	}
+	tokens := ParseConfigMapData(configmap, lrpdb.Spec.Trclvl)
+
+	// Pushing configmap values into a bidimensional hash array
+	// 0->key [0][value] [0][scope]
+	mapMatrix := make(map[string]map[string]string)
+
+	for cnt := range tokens {
+		Parameter := strings.Split(tokens[cnt], " ")
+		if len(Parameter) == 3 {
+			mapMatrix[Parameter[0]] = make(map[string]string)
+			mapMatrix[Parameter[0]]["value"] = Parameter[1]
+			mapMatrix[Parameter[0]]["scope"] = Parameter[2]
 		}
-	} else {
-		log.Info("Pdb marked to be delted")
-		if controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
-			if imperativeLpdbDeletion == true {
-				log.Info("Deleting lrpdb CRD: Imperative approach is turned on ")
-				lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-				if err != nil {
-					log.Error(err, "Cannont find cdb resource ", "err", err.Error())
-					return err
-				}
+	}
+	// select json_arrayagg( json_object( 'name' is a.name, 'value' is a.value,'issys_modifiable' is a.issys_modifiable)
+	// returning clob pretty ) from v$parameter  a where a.ismodified = 'SYSTEM_MOD'
 
-				lrpdbName := lrpdb.Spec.LRPDBName
-				if lrpdb.Status.OpenMode == "READ WRITE" {
-					valuesclose := map[string]string{
-						"state":        "CLOSE",
-						"modifyOption": "IMMEDIATE",
-						"getScript":    "FALSE"}
-					lrpdbName := lrpdb.Spec.LRPDBName
-					url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName + "/status/"
-					_, errclose := r.callAPI(ctx, req, lrpdb, url, valuesclose, "POST")
-					if errclose != nil {
-						log.Info("Warning error closing lrpdb continue anyway")
-					}
-				}
+	for idx := range ndata {
+		name, ok := ndata[idx].(map[string]interface{})["name"].(string)
+		if !ok {
+			return errors.New("fail to cast v$parameter.name")
+		}
+		value, ok := ndata[idx].(map[string]interface{})["value"].(string)
+		if !ok {
+			return errors.New("fail to cast v$parameter.value")
+		}
+		ismod, ok := ndata[idx].(map[string]interface{})["issys_modifiable"].(string)
+		if !ok {
+			return errors.New("fail to cast v$parameter.issys_modifiable")
+		}
+		if Bit(lrpdb.Spec.Trclvl, TRCCFM) == true {
+			fmt.Printf("TRCCFM: [v$parameter].name=%s value=%s issys_modifiable=%s\n", name, value, ismod)
 
-				valuesdrop := map[string]string{
-					"action":    "INCLUDING",
-					"getScript": "FALSE"}
-				url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
-
-				log.Info("Call Delete()")
-				_, errdelete := r.callAPI(ctx, req, lrpdb, url, valuesdrop, "DELETE")
-				if errdelete != nil {
-					log.Error(errdelete, "Fail to delete lrpdb :"+lrpdb.Name, "err", errdelete.Error())
-					return errdelete
-				}
-
-			}
-
-			log.Info("Marked to be deleted")
-			lrpdb.Status.Status = true
-			r.Status().Update(ctx, lrpdb)
-
-			controllerutil.RemoveFinalizer(lrpdb, LRPDBFinalizer)
-			if err := r.Update(ctx, lrpdb); err != nil {
-				log.Info("Cannot remove finalizer")
-				return err
-			}
-
+			// check matrix
+			fmt.Printf("TRCCFM: mapMatrix[%s][value]=%s\n", name, mapMatrix[name]["value"])
+			fmt.Printf("TRCCFM: mapMatrix[%s][scope]=%s\n", name, mapMatrix[name]["scope"])
 		}
 
-		return nil
+		// We monitor the config not the altersystem via kubectl this is the case mapMatrix is nil
+		if value != mapMatrix[name]["value"] && mapMatrix[name]["value"] != "" {
+			log.Info("config map and v$parameter out of sync")
+			if r.alterSystemLRPDB2(ctx, req, lrpdb, name, mapMatrix[name]["value"], mapMatrix[name]["scope"], "resyncparameter") != nil {
+				//log.Error(err, "alterSystemLRPDB2 failure ", "err", err.Error())
+				log.Info("alterSystemLRPDB2 failure")
+			}
+
+			if Bit(lrpdb.Spec.Trclvl, TRCCFM) == true {
+				fmt.Printf("TRCCFM: MonitorConfigMap................:%s\n", lrpdb.Name)
+				fmt.Printf("TRCCFM: MonitorConfigMpp nmsp...........:%s\n", lrpdb.Namespace)
+				fmt.Printf("TRCCFM: Parameter out sync..............:%s\n", name)
+				fmt.Printf("TRCCFM: CM value          ..............:%s\n", mapMatrix[name]["value"])
+				fmt.Printf("TRCCFM: v$parameter value ..............:%s\n", value)
+			}
+
+		} else {
+			log.Info("config map and v$parameter sync")
+		}
 	}
 
 	return nil
 }
-*/
 
+// InitConfigMap  Initialize the parameter config map; if user does not specificate a cm
+// then it creates an empty one as a place holder
 func (r *LRPDBReconciler) InitConfigMap(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) *corev1.ConfigMap {
 	log := r.Log.WithValues("InitConfigMap", req.NamespacedName)
 	log.Info("Begin call")
@@ -1992,38 +2148,56 @@ func (r *LRPDBReconciler) InitConfigMap(ctx context.Context, req ctrl.Request, l
 		future pdb parameter  modification */
 
 		var SystemParameters map[string]string
+		var cfgmp string
 
 		if Bit(lrpdb.Spec.Trclvl, TRCCFM) == true {
 			fmt.Printf("TRCCFM: (init)Generating an empty configmap")
 		}
-		globalconfigmap = "configmap-" + lrpdb.Spec.LRPDBName + "-default"
+		cfgmp = "configmap-" + lrpdb.Spec.LRPDBName + "-default"
 		// RFC 1123
-		globalconfigmap = strings.ToLower(globalconfigmap)
-		globalconfigmap = strings.ReplaceAll(globalconfigmap, "_", "-")
+		cfgmp = strings.ToLower(cfgmp)
+		cfgmp = strings.ReplaceAll(cfgmp, "_", "-")
 
-		DbParameters := &corev1.ConfigMap{
+		DBParameters := &corev1.ConfigMap{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "configmap",
 				APIVersion: "v1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      globalconfigmap,
+				Name:      cfgmp,
 				Namespace: lrpdb.Namespace,
 			},
 			Data: SystemParameters,
 		}
 
-		if err := ctrl.SetControllerReference(lrpdb, DbParameters, r.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(lrpdb, DBParameters, r.Scheme); err != nil {
 			log.Error(err, "Fail to set SetControllerReference", "err", err.Error())
 			return nil
 		}
 
-		if err := r.Create(ctx, DbParameters); err != nil {
-			log.Error(err, "Failed to create the default configmap", "Namespace", lrpdb.Namespace, "Default configmap", globalconfigmap)
-			return nil
+		if err := r.Create(ctx, DBParameters); err != nil {
+			if Bit(lrpdb.Spec.Trclvl, TRCCFM) == true {
+				fmt.Printf("TRCCFM: (init) Configmap creatio")
+			}
+			if apierrors.IsAlreadyExists(err) == true {
+				log.Info("Default configmap already exists")
+				if Bit(lrpdb.Spec.Trclvl, TRCCFM) == true {
+					fmt.Printf("TRCCFM: (init) Configmap already exists\n")
+					fmt.Printf("TRCCFM: (init) Configmap Status[%s][%d][%s]\n", lrpdb.Spec.LRPDBName, lrpdb.Status.CmBitstat, lrpdb.Status.CmBitStatStr)
+					fmt.Printf("TRCCFM: (init) defaultconfigmap=%s\n", cfgmp)
+				}
+				return nil
+			}
+
+			if err != nil {
+				log.Info("Cannot create config map")
+				r.Recorder.Eventf(lrpdb, corev1.EventTypeWarning, "LRPDBError", "Failed configmap: %v", err)
+				return nil
+			}
+
 		}
 
-		lrpdb.Spec.PDBConfigMap = globalconfigmap
+		lrpdb.Spec.PDBConfigMap = cfgmp
 		if err := r.Update(ctx, lrpdb); err != nil {
 			log.Error(err, "Failure updating Spec.PDBConfigMap ", "err", err.Error())
 			return nil
@@ -2034,45 +2208,57 @@ func (r *LRPDBReconciler) InitConfigMap(ctx context.Context, req ctrl.Request, l
 			fmt.Printf("TRCCFM: (init) Configmap Status[%s][%d][%s]\n", lrpdb.Spec.LRPDBName, lrpdb.Status.CmBitstat, lrpdb.Status.CmBitStatStr)
 		}
 		r.UpdateStatus(ctx, req, lrpdb)
-		return DbParameters
+		return DBParameters
 
 	} else {
 
 		lrpdb.Status.CmBitstat = Bis(lrpdb.Status.CmBitstat, MPINIT)
 		lrpdb.Status.CmBitStatStr = CMBitmaskprint(lrpdb.Status.CmBitstat)
-		globalconfigmap = lrpdb.Spec.PDBConfigMap
+		//defaultconfigmap = lrpdb.Spec.PDBConfigMap
 		if Bit(lrpdb.Spec.Trclvl, TRCCFM) == true {
 			fmt.Printf("TRCCFM: (init) Configmap Status[%s][%d][%s]\n", lrpdb.Spec.LRPDBName, lrpdb.Status.CmBitstat, lrpdb.Status.CmBitStatStr)
 		}
-		DbParameters, err := r.GetConfigMap(ctx, req, lrpdb)
+		DBParameters, err := r.GetConfigMap(req, lrpdb)
 		if err != nil {
 			log.Error(err, "Fail to fetch configmap ", "err", err.Error())
 			return nil
 		}
 
 		r.UpdateStatus(ctx, req, lrpdb)
-		return DbParameters
+		return DBParameters
 	}
 
-	// return nil
+	//return nil
 }
 
-func (r *LRPDBReconciler) GetConfigMap(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) (*corev1.ConfigMap, error) {
+// GetConfigMap : wrappinh method - k8s.FetchConfigMap
+func (r *LRPDBReconciler) GetConfigMap(req ctrl.Request, lrpdb *dbapi.LRPDB) (*corev1.ConfigMap, error) {
 	log := r.Log.WithValues("GetConfigMap", req.NamespacedName)
-	log.Info("ConfigMapGlobal.............:" + globalconfigmap)
-	DbParameters, err := k8s.FetchConfigMap(r.Client, lrpdb.Namespace, globalconfigmap)
+	var cfgmp string
+
+	if lrpdb.Spec.PDBConfigMap == "" {
+		cfgmp = "configmap-" + lrpdb.Spec.LRPDBName + "-default"
+		cfgmp = strings.ToLower(cfgmp)
+		cfgmp = strings.ReplaceAll(cfgmp, "_", "-")
+	} else {
+		cfgmp = lrpdb.Spec.PDBConfigMap
+	}
+	log.Info("GetapGlobal.............:" + cfgmp)
+
+	DBParameters, err := r.fetchCfgm2(r.Client, lrpdb.Namespace, cfgmp)
 	if err != nil {
 		log.Error(err, "Fail to fetch configmap", "err", err.Error())
 		return nil, err
 	}
 
-	return DbParameters, nil
+	return DBParameters, nil
 }
 
-func (r *LRPDBReconciler) GetConfigMapCode(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) (*corev1.ConfigMap, error) {
+// GetConfigMapCode : reads plsql sql code from code config map
+func (r *LRPDBReconciler) GetConfigMapCode(req ctrl.Request, lrpdb *dbapi.LRPDB) (*corev1.ConfigMap, error) {
 	log := r.Log.WithValues("GetConfigMapCode", req.NamespacedName)
 	log.Info("CodeMapGlobal.............:" + lrpdb.Spec.PLSQLBlock)
-	CodeBlock, err := k8s.FetchConfigMap(r.Client, lrpdb.Namespace, lrpdb.Spec.PLSQLBlock)
+	CodeBlock, err := r.fetchCfgm2(r.Client, lrpdb.Namespace, lrpdb.Spec.PLSQLBlock)
 	if err != nil {
 		log.Error(err, "Fail to fetch configmap", "err", err.Error())
 		return nil, err
@@ -2081,12 +2267,13 @@ func (r *LRPDBReconciler) GetConfigMapCode(ctx context.Context, req ctrl.Request
 	return CodeBlock, nil
 }
 
+// ApplyConfigMap : Apply init config map to the pdb
 func (r *LRPDBReconciler) ApplyConfigMap(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) (int32, error) {
 	log := r.Log.WithValues("ApplyConfigMap", req.NamespacedName)
 	/* We read the config map and apply the setting to the  pdb */
 
 	log.Info("Begin call")
-	configmap, err := r.GetConfigMap(ctx, req, lrpdb)
+	configmap, err := r.GetConfigMap(req, lrpdb)
 	if err != nil {
 		log.Info("Cannot get config map in the open yaml file")
 		return 0, nil
@@ -2104,11 +2291,6 @@ func (r *LRPDBReconciler) ApplyConfigMap(ctx context.Context, req ctrl.Request, 
 		fmt.Printf("TRCCFM: (apply) ConfigMap cardinality %d\n", Cardinality)
 	}
 
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		log.Info("Cannot find lrest server")
-		return 0, nil
-	}
 	tokens := ParseConfigMapData(configmap, lrpdb.Spec.Trclvl)
 	for cnt := range tokens {
 		if len(tokens[cnt]) != 0 {
@@ -2134,39 +2316,40 @@ func (r *LRPDBReconciler) ApplyConfigMap(ctx context.Context, req ctrl.Request, 
 					"alterSystemValue":     Parameter[1],
 					"parameterScope":       Parameter[2],
 				}
-				url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdb.Spec.LRPDBName
-				respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, AlterSystemPayload, "POST")
+				url := r.BaseURL2(req, lrpdb) + lrpdb.Spec.LRPDBName
+				respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, AlterSystemPayload, "POST")
 				if err != nil {
 					log.Error(err, "callAPI failure durring Apply Config Map", "err", err.Error())
 					return 0, err
 				}
 				/* check sql code execution */
-				var retJson map[string]interface{}
-				if err := json.Unmarshal([]byte(respData), &retJson); err != nil {
+				var retJSON map[string]interface{}
+				if err := json.Unmarshal([]byte(respData), &retJSON); err != nil {
 					log.Error(err, "failed to get Data from callAPI", "err", err.Error())
 					return 0, err
 				}
 				/* We do not the execution if something goes wrong for a single parameter
 				   just report the error in the event queue */
-				SqlCode := strconv.Itoa(int(retJson["sqlcode"].(float64)))
-				AlterMsg := fmt.Sprintf("pdb=%s:%s:%s:%s:%s", lrpdb.Spec.LRPDBName, Parameter[0], Parameter[1], Parameter[2], SqlCode)
+				SQLCode := strconv.Itoa(int(retJSON["sqlcode"].(float64)))
+				AlterMsg := fmt.Sprintf("pdb=%s:%s:%s:%s:%s", lrpdb.Spec.LRPDBName, Parameter[0], Parameter[1], Parameter[2], SQLCode)
 				if Bit(lrpdb.Spec.Trclvl, TRCCFM) == true {
 					fmt.Printf("TRCCFM: (apply) Config Map Applied......%s\n", AlterMsg)
 				}
 
-				if SqlCode != "0" {
-					r.Recorder.Eventf(lrpdb, corev1.EventTypeWarning, "lrpdbinfo", AlterMsg)
+				if SQLCode != "0" {
+					r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "lrpdbinfo", AlterMsg)
 					lrpdb.Status.CmBitstat = Bis(lrpdb.Status.CmBitstat, MPWARN)
 				}
 
 			}
 		}
-
 	}
 
-	if err := r.Update(ctx, lrpdb); err != nil {
-		log.Error(err, "Cannot rest lrpdb Spec  :"+lrpdb.Name, "err", err.Error())
-	}
+	/*
+		if err := r.Update(ctx, lrpdb); err != nil {
+			log.Error(err, "Cannot rest lrpdb Spec  :"+lrpdb.Name, "err", err.Error())
+		}
+	*/
 
 	lrpdb.Status.CmBitstat = Bis(lrpdb.Status.CmBitstat, MPAPPL)
 	lrpdb.Status.CmBitStatStr = CMBitmaskprint(lrpdb.Status.CmBitstat)
@@ -2178,6 +2361,7 @@ func (r *LRPDBReconciler) ApplyConfigMap(ctx context.Context, req ctrl.Request, 
 	return Cardinality, nil
 }
 
+// ManageConfigMapForCloningAndPlugin : Manage config maps during clone process
 func (r *LRPDBReconciler) ManageConfigMapForCloningAndPlugin(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 	log := r.Log.WithValues("ManageConfigMapForCloningAndPlugin", req.NamespacedName)
 	log.Info("Begin Call")
@@ -2200,13 +2384,13 @@ func (r *LRPDBReconciler) ManageConfigMapForCloningAndPlugin(ctx context.Context
 		if Cardinality == 0 {
 			return nil
 		}
-
 	}
 	return nil
 }
 
-func (r *LRPDBReconciler) GetSqlCode(rsp string, sqlcode *int, tracelevel int) error {
-	log := r.Log.WithValues("GetSqlCode", "callAPI(...)")
+// GetSQLCode reads sqlcode from resource status and copy into sqlcode pointer
+func (r *LRPDBReconciler) GetSQLCode(rsp string, sqlcode *int, tracelevel int) error {
+	log := r.Log.WithValues("GetSQLCode", "callAPI(...)")
 	log.Info("Begin call")
 
 	var objmap map[string]interface{}
@@ -2217,15 +2401,12 @@ func (r *LRPDBReconciler) GetSqlCode(rsp string, sqlcode *int, tracelevel int) e
 
 	*sqlcode = int(objmap["sqlcode"].(float64))
 	if Bit(tracelevel, TRCSQL) == true {
-		fmt.Printf("TRCSQL :sqlcode.......:ora-" + strconv.Itoa(*sqlcode))
+		fmt.Printf("TRCSQL :sqlcode.......:ora-%s\n", strconv.Itoa(*sqlcode))
 	}
 	if *sqlcode != 0 {
-		switch strconv.Itoa(*sqlcode) {
-		case "65019": /* already open */
-			log.Info("ORA-65019 pdb already open")
-			return nil
-		case "65020": /* already closed */
-			log.Info("ORA-65020 pdb already closed")
+		// Check the white list
+		if DiscardableError(*sqlcode) == true {
+			log.Info("Discardable error: ora-" + strconv.Itoa(*sqlcode))
 			return nil
 		}
 		err := fmt.Errorf("%v", sqlcode)
@@ -2234,45 +2415,46 @@ func (r *LRPDBReconciler) GetSqlCode(rsp string, sqlcode *int, tracelevel int) e
 	return nil
 }
 
-func (r *LRPDBReconciler) GetRestricted(rsp string, restrictmode *string) error {
+// GetRestricted checks whether or not the pdb is in restricted mode
+func (r *LRPDBReconciler) GetRestricted(rsp string, restrictmode *string) {
 	log := r.Log.WithValues("GetRestriced", "callAPI(...)")
 
 	var objmap map[string]interface{}
 	if err := json.Unmarshal([]byte(rsp), &objmap); err != nil {
 		log.Error(err, "failed to get respData from callAPI", "err", err.Error())
-		return err
+		*restrictmode = "GetRestricted failure"
 	}
 
 	*restrictmode = string(objmap["restricted"].(string))
 
-	return nil
 }
 
-func (r *LRPDBReconciler) GetPdbSize2(rsp string, pdbsize *string) error {
+// GetPdbSize2 Return the size of the pluggable database
+func (r *LRPDBReconciler) GetPdbSize2(rsp string, pdbsize *string) {
 	log := r.Log.WithValues("GetPdbSize2", "callAPI(...)")
 	var objmap map[string]interface{}
 	if err := json.Unmarshal([]byte(rsp), &objmap); err != nil {
 		log.Error(err, "failed to get respData from callAPI", "err", err.Error())
-		return err
+		*pdbsize = "GetPdbSize2 Failure"
 	}
 	*pdbsize = fmt.Sprintf("%4.2f", ((objmap["total_size"].(float64))/1024/1024/1024)) + "G"
-	return nil
 }
 
-func (r *LRPDBReconciler) GetOpenMode(rsp string, openmode *string) error {
+// GetOpenMode returns the openmode status
+func (r *LRPDBReconciler) GetOpenMode(rsp string, openmode *string) {
 	log := r.Log.WithValues("GetRestriced", "callAPI(...)")
 
 	var objmap map[string]interface{}
 	if err := json.Unmarshal([]byte(rsp), &objmap); err != nil {
 		log.Error(err, "failed to get respData from callAPI", "err", err.Error())
-		return err
+		*openmode = "GetOpenMode failure"
 	}
 
 	*openmode = string(objmap["open_mode"].(string))
 
-	return nil
 }
 
+// ParseSQLPayload read plsqlcode from config map
 func ParseSQLPayload(payload *PLSQLPayLoad, Trclvl int) string {
 	var Buffer string
 
@@ -2302,53 +2484,15 @@ func ParseSQLPayload(payload *PLSQLPayLoad, Trclvl int) string {
 	return Buffer
 }
 
-func (r *LRPDBReconciler) AutoDiscoverActivation(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB, active bool) error {
-
-	log := r.Log.WithValues("AutoDiscoverActivation", req.NamespacedName)
-	if active == false {
-		if Bit(lrpdb.Spec.Trclvl, TRCAUT) == true {
-			fmt.Printf("TRCAUT:  Disable autodiscover")
-		}
-	} else {
-		if Bit(lrpdb.Spec.Trclvl, TRCAUT) == true {
-			fmt.Printf("TRCAUT:  Enable autodiscover")
-		}
-	}
-
-	var lrest dbapi.LREST
-	lrestResName := lrpdb.Spec.CDBResName
-	lrestNamespace := lrpdb.Spec.CDBNamespace
-	err := r.Get(context.Background(), client.ObjectKey{
-		Namespace: lrestNamespace,
-		Name:      lrestResName,
-	}, &lrest)
-	lrest.Spec.PdbAutoDiscover = active
-	err = r.Update(context.TODO(), &lrest)
-	if err != nil {
-		log.Info("Failed to update LREST autodiscovery setting")
-		return err
-	}
-	if Bit(lrpdb.Spec.Trclvl, TRCAUT) == true {
-		fmt.Printf("TRCAUT: Setting completed\n")
-	}
-
-	return nil
-}
-
-func (r *LRPDBReconciler) GetPdbSize(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB, pdbaname string) string {
+// GetPdbSize : returns the size of pdb
+func (r *LRPDBReconciler) GetPdbSize(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) string {
 	log := r.Log.WithValues("GetPdbSize", req.NamespacedName)
 	var PdbSize string
-	// if we cannot get the pdbsize ,whatever reason, we return "undefined" size
-	lrest, err := r.getLRESTResource(ctx, req, lrpdb)
-	if err != nil {
-		log.Info("Cannot get lrest server")
-		return "undefined"
-	}
 
 	lrpdbName := lrpdb.Spec.LRPDBName
-	url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName + "/status/"
+	url := r.BaseURL2(req, lrpdb) + lrpdbName + "/status/"
 
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, nil, "GET")
+	respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, nil, "GET")
 	if err != nil {
 		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 		return "undefined"
@@ -2364,7 +2508,8 @@ func (r *LRPDBReconciler) GetPdbSize(ctx context.Context, req ctrl.Request, lrpd
 	return PdbSize
 }
 
-func (r *LRPDBReconciler) UpdateStatus(ctx context.Context, req ctrl.Request, lrpdb *databasev4.LRPDB) {
+// UpdateStatus : method to update the resource status and check the op return spoke
+func (r *LRPDBReconciler) UpdateStatus(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) {
 	log := r.Log.WithValues("UpdateStatus", req.NamespacedName)
 	err := r.Status().Update(ctx, lrpdb)
 	if err != nil {
@@ -2376,31 +2521,35 @@ func (r *LRPDBReconciler) UpdateStatus(ctx context.Context, req ctrl.Request, lr
 	}
 }
 
-func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcrd interface{}, url string, payload interface{}, action string) (string, error) {
-	//var c client.Client
+// NewCallAPISQL : - DO NOT SWITCH TO LOCAL - lrest controller invokes this function for autodiscover
+// and pdb deletion
+func NewCallAPISQL(ctx context.Context, intr interface{}, req ctrl.Request, lrcrd interface{}, url string, payload interface{}, action string) (string, error) {
+	var c client.Client
 	var r logr.Logger
 	var e record.EventRecorder
 	var TestBuffer string
 	var jsonMap map[string]interface{}
 	var webUser string
 	var webUserPwd string
-	var rsaKeyPEM string
-	var rsaCertPEM string
-	var caCert string
+	/*
+		var rsaKeyPEM string
+		var rsaCertPEM string
+	*/
+	//var caCert string
 	var err error
 	var Trclvl int
-	var NmTlsKey = [2]string{"", ""}
-	var NmTlsCrt = [2]string{"", ""}
-	var NmTlsCat = [2]string{"", ""}
-	var NmPriKey = [2]string{"", ""}
-	var NmWebUse = [2]string{"", ""}
-	var NmWebPwd = [2]string{"", ""}
+	//var NmTLSKey = [2]string{"", ""}
+	//var NmTLSCrt = [2]string{"", ""}
+	//var NmTLSCat = [2]string{"", ""}
+	//var NmPriKey = [2]string{"", ""}
+	//var NmWebUse = [2]string{"", ""}
+	//var NmWebPwd = [2]string{"", ""}
 	var respData string
 
 	recpdb, ok1 := intr.(*LRPDBReconciler)
 	if ok1 {
 		// fmt.Printf("func NewCallApiSQL ((*PDBReconciler),......)\n")
-		// c = recpdb.Client
+		c = recpdb.Client
 		e = recpdb.Recorder
 		r = recpdb.Log
 	}
@@ -2408,7 +2557,7 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 	reccdb, ok2 := intr.(*LRESTReconciler)
 	if ok2 {
 		// fmt.Printf("func NewCallApiSQL ((*CDBReconciler),......)\n")
-		// c = reccdb.Client
+		c = reccdb.Client
 		e = reccdb.Recorder
 		r = reccdb.Log
 	}
@@ -2419,48 +2568,78 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 
 	if ok3 {
 
-		NmTlsKey[0] = lrpdb.Spec.LRPDBTlsKey.Secret.SecretName
-		NmTlsKey[1] = lrpdb.Spec.LRPDBTlsKey.Secret.Key
+		//NmTLSKey[0] = lrpdb.Spec.LRPDBTlsKey.Secret.SecretName
+		//NmTLSKey[1] = lrpdb.Spec.LRPDBTlsKey.Secret.Key
 
-		NmTlsCrt[0] = lrpdb.Spec.LRPDBTlsCrt.Secret.SecretName
-		NmTlsCrt[1] = lrpdb.Spec.LRPDBTlsCrt.Secret.Key
+		//NmTLSCrt[0] = lrpdb.Spec.LRPDBTlsCrt.Secret.SecretName
+		//NmTLSCrt[1] = lrpdb.Spec.LRPDBTlsCrt.Secret.Key
 
-		NmTlsCat[0] = lrpdb.Spec.LRPDBTlsCat.Secret.SecretName
-		NmTlsCat[1] = lrpdb.Spec.LRPDBTlsCat.Secret.Key
+		//NmTLSCat[0] = lrpdb.Spec.LRPDBTlsCat.Secret.SecretName
+		//NmTLSCat[1] = lrpdb.Spec.LRPDBTlsCat.Secret.Key
 
 		Trclvl = lrpdb.Spec.Trclvl
+		/*
+			NmWebUse[0] = lrpdb.Spec.WebLrpdbServerUser.Secret.SecretName
+			NmWebUse[1] = lrpdb.Spec.WebLrpdbServerUser.Secret.Key
 
-		NmWebUse[0] = lrpdb.Spec.WebLrpdbServerUser.Secret.SecretName
-		NmWebUse[1] = lrpdb.Spec.WebLrpdbServerUser.Secret.Key
-
-		NmWebPwd[0] = lrpdb.Spec.WebLrpdbServerPwd.Secret.SecretName
-		NmWebPwd[1] = lrpdb.Spec.WebLrpdbServerPwd.Secret.Key
-
-		NmPriKey[0] = lrpdb.Spec.LRPDBPriKey.Secret.SecretName
-		NmPriKey[1] = lrpdb.Spec.LRPDBPriKey.Secret.Key
+			NmWebPwd[0] = lrpdb.Spec.WebLrpdbServerPwd.Secret.SecretName
+			NmWebPwd[1] = lrpdb.Spec.WebLrpdbServerPwd.Secret.Key
+		*/
+		//NmPriKey[0] = lrpdb.Spec.LRPDBPriKey.Secret.SecretName
+		//NmPriKey[1] = lrpdb.Spec.LRPDBPriKey.Secret.Key
 	}
 
 	if ok4 {
-		NmTlsKey[0] = lrest.Spec.LRESTTlsKey.Secret.SecretName
-		NmTlsKey[1] = lrest.Spec.LRESTTlsKey.Secret.Key
+		//NmTLSKey[0] = lrest.Spec.LRESTTlsKey.Secret.SecretName
+		//NmTLSKey[1] = lrest.Spec.LRESTTlsKey.Secret.Key
 
-		NmTlsCrt[0] = lrest.Spec.LRESTTlsCrt.Secret.SecretName
-		NmTlsCrt[1] = lrest.Spec.LRESTTlsCrt.Secret.Key
+		//NmTLSCrt[0] = lrest.Spec.LRESTTlsCrt.Secret.SecretName
+		//NmTLSCrt[1] = lrest.Spec.LRESTTlsCrt.Secret.Key
 
-		NmTlsCat[0] = lrest.Spec.LRESTTlsCat.Secret.SecretName
-		NmTlsCat[1] = lrest.Spec.LRESTTlsCat.Secret.Key
+		//NmTLSCat[0] = lrest.Spec.LRESTTlsCat.Secret.SecretName
+		//NmTLSCat[1] = lrest.Spec.LRESTTlsCat.Secret.Key
 
 		Trclvl = lrest.Spec.Trclvl
 
-		NmWebUse[0] = lrest.Spec.WebLrestServerUser.Secret.SecretName
-		NmWebUse[1] = lrest.Spec.WebLrestServerUser.Secret.Key
+		//NmWebUse[0] = lrest.Spec.WebLrestServerUser.Secret.SecretName
+		//NmWebUse[1] = lrest.Spec.WebLrestServerUser.Secret.Key
 
-		NmWebPwd[0] = lrest.Spec.WebLrestServerPwd.Secret.SecretName
-		NmWebPwd[1] = lrest.Spec.WebLrestServerPwd.Secret.Key
+		//NmWebPwd[0] = lrest.Spec.WebLrestServerPwd.Secret.SecretName
+		//NmWebPwd[1] = lrest.Spec.WebLrestServerPwd.Secret.Key
 
-		NmPriKey[0] = lrest.Spec.LRESTPriKey.Secret.SecretName
-		NmPriKey[1] = lrest.Spec.LRESTPriKey.Secret.Key
+		//NmPriKey[0] = lrest.Spec.LRESTPriKey.Secret.SecretName
+		//NmPriKey[1] = lrest.Spec.LRESTPriKey.Secret.Key
 
+	}
+
+	/* FIX for pin CA */
+	var lrestName, lrestNamespace string
+
+	if ok3 {
+		lrestName = lrpdb.Spec.CDBResName
+		lrestNamespace = lrpdb.Spec.CDBNamespace
+	}
+
+	if ok4 {
+		lrestName = lrest.Name
+		lrestNamespace = lrest.Namespace
+	}
+
+	secret := &corev1.Secret{}
+
+	err = c.Get(ctx, types.NamespacedName{Name: lrestCAPinSecretName(lrestName), Namespace: lrestNamespace}, secret)
+	if err != nil {
+		return "", err
+	}
+
+	caPEM, ok := secret.Data[lrestCAPinSecretKey]
+	if !ok || len(caPEM) == 0 {
+		return "", fmt.Errorf("missing %s in %s/%s", lrestCAPinSecretKey, lrestNamespace, secret.Name)
+	}
+
+	caCertPool := x509.NewCertPool()
+	if ok := caCertPool.AppendCertsFromPEM(caPEM); !ok {
+		return "", fmt.Errorf("invalid pinned CA in %s/%s", lrestNamespace, secret.Name)
 	}
 
 	if Bit(Trclvl, TRCAPI) == true {
@@ -2475,35 +2654,39 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 		}
 	}
 
-	rsaKeyPEM, err = getGenericSecret3(intr, ctx, req, lrcrd,
-		NULL, NULL, NULL, NULL, NmTlsKey[0], NmTlsKey[1], true)
-	if CheckErr(err, intr, ctx, req, lrcrd, nil) == true {
+	/* DROP TEST
+	rsaKeyPEM, err = getGenericSecret3(ctx, intr, req, lrcrd,
+		NULL, NULL, NULL, NULL, NmTLSKey[0], NmTLSKey[1], true)
+	if CheckErr(ctx, err, intr, req, lrcrd, nil) == true {
 		return "", err
 	}
 
-	rsaCertPEM, err = getGenericSecret3(intr, ctx, req, lrcrd,
-		NULL, NULL, NULL, NULL, NmTlsCrt[0], NmTlsCrt[1], true)
-	if CheckErr(err, intr, ctx, req, lrcrd, nil) == true {
+	rsaCertPEM, err = getGenericSecret3(ctx, intr, req, lrcrd,
+		NULL, NULL, NULL, NULL, NmTLSCrt[0], NmTLSCrt[1], true)
+	if CheckErr(ctx, err, intr, req, lrcrd, nil) {
 		return "", err
 	}
+	*/
 
-	caCert, err = getGenericSecret3(intr, ctx, req, lrcrd,
-		NULL, NULL, NULL, NULL, NmTlsCat[0], NmTlsCat[1], true)
-	if CheckErr(err, intr, ctx, req, lrcrd, nil) == true {
-		return "", err
-	}
+	/*
+		caCert, err = getGenericSecret3(ctx, intr, req, lrcrd,
+			NULL, NULL, NULL, NULL, NmTLSCat[0], NmTLSCat[1], true)
+		if CheckErr(ctx, err, intr, req, lrcrd, nil) == true {
+			return "", err
+		}
+	*/
 
-	certificate, err := tls.X509KeyPair([]byte(rsaCertPEM), []byte(rsaKeyPEM))
-	if err != nil {
-		log.Info("Error tls.X509KeyPair")
-		return "", err
-	}
+	/*
+		certificate, err := tls.X509KeyPair([]byte(rsaCertPEM), []byte(rsaKeyPEM))
+		if err != nil {
+			log.Info("Error tls.X509KeyPair")
+			return "", err
+		}
+	*/
 
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM([]byte(caCert))
-
-	tlsConf := &tls.Config{Certificates: []tls.Certificate{certificate},
-		RootCAs:                  caCertPool,
+	// DROP TEST
+	//	tlsConf := &tls.Config{Certificates: []tls.Certificate{certificate},
+	tlsConf := &tls.Config{RootCAs: caCertPool,
 		CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
 		PreferServerCipherSuites: true,
 		CipherSuites: []uint16{
@@ -2522,6 +2705,7 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 		fmt.Printf("TRCAPI: Restcall [URL]:[%s] [ACTION]:[%s]\n", url, action)
 	}
 
+	/**
 	webUser, err = getGenericSecret3(intr, ctx, req, lrcrd,
 		NmWebUse[0], NmWebUse[1],
 		NmPriKey[0], NmPriKey[1],
@@ -2537,18 +2721,40 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 	if CheckErr(err, intr, ctx, req, lrcrd, nil) == true {
 		return "", err
 	}
+	**/
+
+	/*
+		webUser = GenHash(GetBaseName(url), "USR")
+		webUserPwd = GenHash(GetBaseName(url), "PWD")
+	*/
+	webUser = string(secret.Data[consR3])
+	webUserPwd = string(secret.Data[consR4])
 
 	var Httpreq *http.Request
 
+	if url == "" {
+		return "", errors.New("Null url passed")
+	}
+
 	if action == "GET" {
 		Httpreq, err = http.NewRequest(action, url, nil)
+		if err != nil {
+			log.Info("http request error hhtp.NewRequest")
+			if Bit(Trclvl, TRCAPI) == true {
+				log.Error(err, err.Error())
+			}
+		}
 	} else {
 		/* Section to execute sql and plsql code */
 		if payload != nil {
 			payloadsql, oksql := payload.(*PLSQLPayLoad)
 			if oksql {
 				TestBuffer = ParseSQLPayload(payloadsql, Trclvl)
-				json.Unmarshal([]byte(TestBuffer), &jsonMap)
+				//json.Unmarshal([]byte(TestBuffer), &jsonMap)
+				if err = json.Unmarshal([]byte(TestBuffer), &jsonMap); err != nil {
+					log.Info("Unmarshall Warning")
+					//return "", err
+				}
 				jsonValue, _ := json.Marshal(jsonMap)
 				Httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
 				if Bit(Trclvl, TRCAPI) == true {
@@ -2590,30 +2796,36 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 			errmsg := err.Error()
 			log.Error(err, "Failed - Could not connect to LREST Pod", "err", err.Error())
 			lrpdb.Status.Msg = "Error: Could not connect to LREST Pod"
-			e.Eventf(lrpdb, corev1.EventTypeWarning, "LRESTError", errmsg)
+			e.Event(lrpdb, corev1.EventTypeWarning, "LRESTError", errmsg)
 			return "", err
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			bb, _ := ioutil.ReadAll(resp.Body)
+			// lint SA1019 bb, _ := ioutil.ReadAll(resp.Body)
+			bb, _ := io.ReadAll(resp.Body)
 
 			if resp.StatusCode == 404 {
 				lrpdb.Status.ConnString = ""
 				lrpdb.Status.Msg = lrpdb.Spec.LRPDBName + " not found"
 
 			} else {
-				if flood_control == false {
+				if floodcontrol == false {
 					lrpdb.Status.Msg = "LREST Error - HTTP Status Code:" + strconv.Itoa(resp.StatusCode)
 				}
 			}
 
-			if flood_control == false {
+			if floodcontrol == false {
 				log.Info("LREST Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
 			}
 
 			var apiErr LRESTError
-			json.Unmarshal([]byte(bb), &apiErr)
-			if flood_control == false {
+			//json.Unmarshal([]byte(bb), &apiErr)
+			if err = json.Unmarshal([]byte(bb), &apiErr); err != nil {
+				log.Info("Unmarshal warning")
+				//return "", err
+			}
+
+			if floodcontrol == false {
 				e.Eventf(lrpdb, corev1.EventTypeWarning, "LRESTError", "Failed: %s", apiErr.Message)
 			}
 			if Bit(lrpdb.Spec.Trclvl, TRCAPI) == true {
@@ -2623,14 +2835,19 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 				fmt.Printf("TRCAPI:resp.StatusCode=%s\n", strconv.Itoa(resp.StatusCode))
 				fmt.Printf("\n================== APIERR ======================\n")
 			}
-			flood_control = true
+			floodcontrol = true
 			return "", errors.New("LREST Error")
 		}
-		flood_control = false
+		floodcontrol = false
 
-		defer resp.Body.Close()
+		defer func() {
+			if resp.Body.Close() != nil {
+				log.Info("Body.Close failure")
+			}
+		}()
 
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		// lint SA1019 bodyBytes, err := ioutil.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Print(err.Error())
 		}
@@ -2643,7 +2860,12 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 		}
 
 		var apiResponse restSQLCollection
-		json.Unmarshal([]byte(bodyBytes), &apiResponse)
+		//json.Unmarshal([]byte(bodyBytes), &apiResponse)
+		if err = json.Unmarshal([]byte(bodyBytes), &apiResponse); err != nil {
+			log.Info("Unmarshal waring")
+			//return "", err
+		}
+
 		if Bit(lrpdb.Spec.Trclvl, TRCAPI) == true {
 			fmt.Printf("TRCAPI: BEGIN REST API RESPONSE\n")
 			fmt.Printf("TRCAPI:%#v\n", apiResponse)
@@ -2676,30 +2898,35 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 			errmsg := err.Error()
 			log.Error(err, "Failed - Could not connect to LREST Pod", "err", err.Error())
 			lrest.Status.Msg = "Error: Could not connect to LREST Pod"
-			e.Eventf(lrest, corev1.EventTypeWarning, "LRESTError", errmsg)
+			e.Event(lrest, corev1.EventTypeWarning, "LRESTError", errmsg)
 			return "", err
 		}
 
-		e.Eventf(lrest, corev1.EventTypeWarning, "Done", lrest.Spec.LRESTName)
+		e.Event(lrest, corev1.EventTypeWarning, "Done", lrest.Spec.LRESTName)
 		if resp.StatusCode != http.StatusOK {
-			bb, _ := ioutil.ReadAll(resp.Body)
+			// lint SA1019 bb, _ := ioutil.ReadAll(resp.Body)
+			bb, _ := io.ReadAll(resp.Body)
 
 			if resp.StatusCode == 404 {
 				log.Info("error 404")
 
 			} else {
-				if flood_control == false {
+				if floodcontrol == false {
 					lrest.Status.Msg = "LREST Error - HTTP Status Code:" + strconv.Itoa(resp.StatusCode)
 				}
 			}
 
-			if flood_control == false {
+			if floodcontrol == false {
 				log.Info("LREST Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
 			}
 
 			var apiErr LRESTError
-			json.Unmarshal([]byte(bb), &apiErr)
-			if flood_control == false {
+			if err = json.Unmarshal([]byte(bb), &apiErr); err != nil {
+				log.Error(err, "Warning Unmarshal error")
+				//return "", err
+			}
+
+			if floodcontrol == false {
 				e.Eventf(lrest, corev1.EventTypeWarning, "LRESTError", "Failed: %s", apiErr.Message)
 			}
 			fmt.Printf("\n================== APIERR ======================\n")
@@ -2707,21 +2934,33 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 			fmt.Printf("URL=%s\n", url)
 			fmt.Printf("resp.StatusCode=%s\n", strconv.Itoa(resp.StatusCode))
 			fmt.Printf("\n================== APIERR ======================\n")
-			flood_control = true
+			floodcontrol = true
 			return "", errors.New("LREST Error")
 		}
-		flood_control = false
+		floodcontrol = false
 
-		defer resp.Body.Close()
+		//defer resp.Body.Close()
+		defer func() {
+			if resp.Body.Close() != nil {
+				log.Info("Body.Close failure")
+			}
+		}()
 
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		// lint SA1019 bodyBytes, err := ioutil.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Print(err.Error())
 		}
 		respData = string(bodyBytes)
 
 		var apiResponse restSQLCollection
-		json.Unmarshal([]byte(bodyBytes), &apiResponse)
+		//json.Unmarshal([]byte(bodyBytes), &apiResponse)
+		if err = json.Unmarshal([]byte(bodyBytes), &apiResponse); err != nil {
+			log.Info("Unmarshal warning")
+			//return "", err
+
+		}
+
 		if Bit(lrest.Spec.Trclvl, TRCAPI) == true {
 			fmt.Printf("TRCAPI: CALL API return msg.....:%s\n", string(bodyBytes))
 			fmt.Printf("TRCAPI: apiResponse %#v\n", apiResponse)
@@ -2747,4 +2986,339 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrcr
 	}
 
 	return respData, nil
+}
+
+/* We remove secrets regardles the status of user creation */
+func (r *LRPDBReconciler) DropUserSecret(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB, usrsec *corev1.Secret) error {
+	log := r.Log.WithValues("dropUserSecret", req.NamespacedName)
+
+	err := r.Delete(context.TODO(), usrsec)
+	if err != nil {
+		log.Info("Failed to delete app user creation secret: ")
+		return err
+	}
+
+	log.Info("pdb user secrets deletion completed")
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("TRCUSR: Secret  deleted\n")
+	}
+
+	return nil
+}
+
+// CreateApplicanUsers method creates pdb application users
+// Input parameters:
+//   - context
+//   - request
+//   - lrpdb crd
+//   - pdbname
+//   - Secret name
+func (r *LRPDBReconciler) CreateApplicanUsers(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB, Secname string) error {
+	log := r.Log.WithValues("CreateApplicanUsers", req.NamespacedName)
+
+	// bug 	39214736
+	defer func() {
+		orgcp := lrpdb.DeepCopy()
+		lrpdb.Spec.Pdbappuser = ""
+		if err := r.Patch(ctx, lrpdb, client.MergeFrom(orgcp)); err != nil {
+			log.Info("Resource patch failure")
+		}
+
+	}()
+
+	/* Cannot create users if  pdb is not open */
+	if Bit(lrpdb.Status.PDBBitMask, PDBCLS) == true {
+		log.Info("Cannot create users : pdb not open")
+		lrpdb.Status.Msg = "Cannot create user"
+		r.UpdateStatus(ctx, req, lrpdb)
+		return nil
+	}
+
+	usersec := &corev1.Secret{}
+
+	// Testing lint correction QF1008
+	// err := r.Client.Get(ctx, types.NamespacedName{Name: Secname, Namespace: lrpdb.Namespace}, usersec)
+	err := r.Get(ctx, types.NamespacedName{Name: Secname, Namespace: lrpdb.Namespace}, usersec)
+	if err != nil {
+		log.Info("Error: cannot get secret " + Secname)
+		return err
+	}
+
+	lrpdb.Status.Msg = "create user:[op. in progress]"
+	r.UpdateStatus(ctx, req, lrpdb)
+
+	log.Info("Starting user analysis")
+	credential := []string{}
+
+	cnt := 0
+
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("TRCUSR: key={")
+	}
+	for key := range usersec.Data {
+		cnt++
+		if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+			fmt.Printf("%s ", key)
+		}
+		credential = append(credential, key)
+	}
+
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("}\n")
+	}
+
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("TRCUSR: Order array by key name\n")
+	}
+
+	sort.Strings(credential)
+	arrsz := len(credential)
+
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("TRCUSR: Validate number of keys in the secret\n")
+	}
+
+	if (arrsz % 3) != 0 {
+		if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+			fmt.Printf("TRCUSR: array size=%d \n", arrsz)
+			fmt.Printf("TRCUSR: Worng number of elements\n")
+		}
+
+		r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "Crt usr malformed secret[0]", Secname)
+		lrpdb.Status.Msg = "create user:[malformed secrets:0]"
+		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, APPERR)
+		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+		r.UpdateStatus(ctx, req, lrpdb)
+		log.Info("Malformed information - Secrets will be removed")
+
+		err = r.DropUserSecret(ctx, req, lrpdb, usersec)
+		if err != nil {
+			log.Info("Failed to delete app user creation secret: ")
+			return err
+		}
+
+		if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+			fmt.Printf("TRCUSR: Restting lrpdb.Spec.Pdbappuser")
+		}
+
+		return errors.New("Wrong number of arguments")
+
+	}
+
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("TRCUSR: Arraysize=%d\n", arrsz)
+	}
+
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("TRCUSR: Validate key format\n")
+	}
+	reu := regexp.MustCompile(`^usr\d+$`)
+	rep := regexp.MustCompile(`^pwd\d+$`)
+	rgr := regexp.MustCompile(`^grt\d+$`)
+
+	for cnt := 0; cnt <= (arrsz)-1; cnt++ {
+		if rep.MatchString(credential[cnt]) == true {
+
+			if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+				fmt.Printf("TRCUSR: %s \t[OK]:rep\n", credential[cnt])
+			}
+		} else if reu.MatchString(credential[cnt]) {
+			if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+				fmt.Printf("TRCUSR: %s \t[OK]:reu\n", credential[cnt])
+			}
+		} else if rgr.MatchString(credential[cnt]) {
+			if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+				fmt.Printf("TRCUSR: %s \t[OK]:rgr\n", credential[cnt])
+			}
+		} else {
+			r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "Crt usr malformed secret[1]", Secname)
+			lrpdb.Status.Msg = "create user:[malformed secrets:1]"
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, APPERR)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+			log.Info("Malformed information - Secrets will be removed")
+			r.UpdateStatus(ctx, req, lrpdb)
+			if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+				fmt.Printf("TRCUSR: Wrong secret format\n")
+			}
+			err = r.DropUserSecret(ctx, req, lrpdb, usersec)
+			if err != nil {
+				log.Info("Failed to delete app user creation secret: ")
+				return err
+			}
+			return errors.New("Create user: Wrong secret format [1]")
+		}
+	}
+
+	for cnt := 0; cnt <= (arrsz/3)-1; cnt++ {
+
+		//b39595046
+		//b39595519
+		uind, _ := strconv.Atoi(credential[cnt+2*((arrsz)/3)][3:])
+		pind, _ := strconv.Atoi(credential[cnt+((arrsz)/3)][3:])
+		gind, _ := strconv.Atoi(credential[cnt][3:])
+
+		if reu.MatchString(credential[cnt+2*((arrsz)/3)]) == false ||
+			rep.MatchString(credential[cnt+((arrsz)/3)]) == false ||
+			rgr.MatchString(credential[cnt]) == false ||
+			(uind != pind) || (pind != gind) {
+			r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "Crt usr malformed secret[2]", Secname)
+			lrpdb.Status.Msg = "create user:[malformed secrets:2]"
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, APPERR)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+			log.Info("Malformed information - Secrets will be removed")
+			r.UpdateStatus(ctx, req, lrpdb)
+			if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+				fmt.Printf("TRCUSR: Wrong secret format\n")
+			}
+			err = r.DropUserSecret(ctx, req, lrpdb, usersec)
+			if err != nil {
+				log.Info("Failed to delete app user creation secret: ")
+				return err
+			}
+			return errors.New("Create user: Wrong secret format [2]")
+
+		}
+
+	}
+	var User string
+	var Pass string
+	var Grnt string
+	oneError := false
+	for cnt := 0; cnt <= (arrsz/3)-1; cnt++ {
+		log.Info("begin:user creation ")
+		if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+			// Variables schema:
+			// ~~~~~~~~~~~~~~~
+			// usernane: usersec.Data[credential[cnt+2*((arrsz)/3)]]
+			// password: usersec.Data[credential[cnt+((arrsz)/3)]]
+			// grants  : usersec.Data[credential[cnt]]
+
+			fmt.Printf("User creation\n")
+			sqlCreateUser := "create user " + string(usersec.Data[credential[cnt+2*((arrsz)/3)]]) + " identified by........."
+			sqlUserPrvileges := "grant " + string(usersec.Data[credential[cnt]]) + " to " + string(usersec.Data[credential[cnt+2*((arrsz)/3)]])
+			fmt.Printf("TRCUSR: SQL=%s\n", sqlCreateUser)
+			fmt.Printf("TRCUSR: SQL=%s\n", sqlUserPrvileges)
+		}
+		User = string(usersec.Data[credential[cnt+2*((arrsz)/3)]])
+		Pass = string(usersec.Data[credential[cnt+((arrsz)/3)]])
+		Grnt = string(usersec.Data[credential[cnt]])
+
+		values := map[string]string{
+			"method":   "CREATEUSER",
+			"appUsr":   User,
+			"appPwd":   Pass,
+			"appGrant": Grnt}
+
+		url := r.BaseURL2(req, lrpdb) + lrpdb.Spec.LRPDBName
+
+		respData, err := NewCallAPISQL(ctx, r, req, lrpdb, url, values, "POST")
+		if err != nil {
+			log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
+			return err
+		}
+
+		//r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl)
+		if err := r.GetSQLCode(respData, &(lrpdb.Status.SqlCode), lrpdb.Spec.Trclvl); err != nil {
+			log.Info("GetSQLCode Warning")
+		}
+
+		//globalsqlcode = lrpdb.Status.SqlCode
+		if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+			fmt.Printf("TRCUSR: url=%s\n", url)
+			fmt.Printf("TRCUSR: sqlcode=%s\n", strconv.Itoa(lrpdb.Status.SqlCode))
+		}
+		if lrpdb.Status.SqlCode != 0 {
+			log.Info("SQL error during user creation [ORA-" + strconv.Itoa(lrpdb.Status.SqlCode) + "]")
+			r.Recorder.Event(lrpdb, corev1.EventTypeWarning, "Create user ORA-", strconv.Itoa(lrpdb.Status.SqlCode))
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, APPERR)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+			lrpdb.Status.Msg = "create users:[USR:" + User + " ora-" + strconv.Itoa(lrpdb.Status.SqlCode) + "]"
+			oneError = true
+			r.UpdateStatus(ctx, req, lrpdb)
+		}
+
+	}
+
+	log.Info("Deleting secrets")
+	err = r.Delete(context.TODO(), usersec)
+	if err != nil {
+		log.Info("Failed to delete app user creation secret: ")
+		return err
+	}
+
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("TRCUSR: Secret deleted\n")
+	}
+
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("TRCUSR: Restting lrpdb.Spec.Pdbappuser")
+	}
+
+	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, APPUSR)
+	lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+	if oneError == false {
+		lrpdb.Status.Msg = "create users:[op. completed]"
+	}
+	if Bit(lrpdb.Spec.Trclvl, TRCUSR) == true {
+		fmt.Printf("TRCUSR: Bitmask:[%s]\n", lrpdb.Status.PDBBitMaskStr)
+	}
+	r.UpdateStatus(ctx, req, lrpdb)
+	return nil
+}
+
+/* RetriveTnsAlias: this function retrives the tnsalias w/o reading lrest objects */
+func (r *LRPDBReconciler) RetriveTnsAlias(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
+	log := r.Log.WithValues("CreateApplicanUsers", req.NamespacedName)
+	tracelevel := lrpdb.Spec.Trclvl
+
+	url := "https://" + lrpdb.Spec.CDBResName + "-lrest." + lrpdb.Spec.CDBNamespace + ":" + strconv.Itoa(8888) + "/database/lrest/ConnectString/"
+	if Bit(tracelevel, TRCTNS) == true {
+		fmt.Printf("TRCTNS: RetriveTnsAlias(url)..:[%s]\n", url)
+	}
+	ConnectioInfo, err := NewCallAPISQL(ctx, r, req, lrpdb, url, nil, "GET")
+	if err != nil {
+		log.Info(" NewcallAPISQL err : cannot get tns string information from rest server")
+		return err
+	}
+
+	if Bit(tracelevel, TRCTNS) == true {
+		fmt.Printf("TRCTNS: connection info.......:[%s]\n", ConnectioInfo)
+	}
+
+	var objmap map[string]interface{}
+	if err := json.Unmarshal([]byte(ConnectioInfo), &objmap); err != nil {
+		log.Error(err, "Cannot Unamarshal tnsstring connection info")
+		log.Info("Cannot unmarshal connect string information from lrest server")
+		lrpdb.Status.ConnString = "[get tnsstring failure]"
+		if Bit(tracelevel, TRCTNS) == true {
+			fmt.Printf("TRCTNS: Unmarshal failure.......[%s]\n", err.Error())
+		}
+		return err
+	} else {
+		lrpdb.Status.ConnString = objmap["tnsstring"].(string)
+	}
+
+	parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName), tracelevel)
+
+	/* Parse the tnsstring to replace  */
+	return nil
+}
+
+func (r *LRPDBReconciler) fetchCfgm2(kubeClient client.Client, namespace string, name string) (*corev1.ConfigMap, error) {
+	log := r.Log.WithValues("FetchCfgm2", namespace)
+	configMap := &corev1.ConfigMap{}
+
+	log.Info("Fetching config map")
+	fmt.Printf("ConfigMap:%s Namespace:%s\n", name, namespace)
+
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	if err := kubeClient.Get(context.TODO(), namespacedName, configMap); err != nil {
+		log.Info("Cannot  retrieve config Map")
+		return nil, err
+	}
+
+	return configMap, nil
 }

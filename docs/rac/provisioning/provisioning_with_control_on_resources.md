@@ -35,9 +35,13 @@ Use the file: [racdb_prov_memory_cpu.yaml](./racdb_prov_memory_cpu.yaml) for thi
     # Check the status of the Kubernetes Pods:
     kubectl get all -n rac
 
-
     # Check the logs of a particular pod. For example, to check status of pod "racnode1-0":
     kubectl exec -it pod/racnode1-0 -n rac -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===================================
     ORACLE RAC DATABASE IS READY TO USE
     ===================================

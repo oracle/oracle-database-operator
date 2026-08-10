@@ -1,0 +1,60 @@
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: ${SHARDING_NAME}
+  namespace: ${E2E_NAMESPACE}
+spec:
+  dbImage: ${DB_IMAGE}
+  gsmImage: ${GSM_IMAGE}
+  storageClass: ${SHARDING_STORAGE_CLASS}
+  shardingType: SYSTEM
+  isDownloadScripts: true
+  scriptsLocation: |-
+    set -ex
+    cd /tmp
+    curl -LJ "${SHARDING_SCRIPTS_URL}" -o /tmp/db-sharding-main.tar.gz
+    tar -xvzf /tmp/db-sharding-main.tar.gz
+    [ ! -d "/opt/oracle/scripts/sharding" ] && mkdir -p /opt/oracle/scripts/sharding || echo "Directory /opt/oracle/scripts/sharding already exists"
+    cp -i -f -r /tmp/db-sharding/container-based-sharding-deployment/containerfiles/scripts/* /opt/oracle/scripts/sharding
+    [ ! -d "/opt/oracle/scripts/sharding/scripts" ] && mkdir -p /opt/oracle/scripts/sharding/scripts || echo "Directory /opt/oracle/scripts/sharding/scripts already exists"
+    chown 54321:54321 /opt/oracle/scripts/sharding/scripts
+    cp -i -f -r /tmp/db-sharding/container-based-sharding-deployment/containerfiles/scripts/* /opt/oracle/scripts/sharding/scripts
+  dbSecret:
+    name: ${SHARDING_DB_SECRET}
+    dbAdmin:
+      passwordKey: ${SHARDING_DB_PWD_KEY}
+      privateKeyKey: ${SHARDING_DB_PRIV_KEY}
+  catalog:
+    - name: catalog
+      storageSizeInGb: 50
+      imagePullPolicy: Always
+      resources:
+        requests:
+          cpu: "2"
+          memory: "8Gi"
+        limits:
+          cpu: "2"
+          memory: "8Gi"
+  gsmInfo:
+    storageSizeInGb: 50
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: "1"
+        memory: "2Gi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+    gsm:
+      - name: gsm1
+        region: primary
+      - name: gsm2
+        region: standby
+  shardInfo:
+    - shardPreFixName: pshardp
+      shardNum: 3
+      shape: kodb4
+      shardGroupDetails:
+        name: pshg1
+        region: primary
+        deployAs: PRIMARY

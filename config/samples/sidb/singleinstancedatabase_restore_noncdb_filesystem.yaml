@@ -1,0 +1,184 @@
+#
+# Copyright (c) 2023, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  ## Name of the SIDB custom resource and the generated Kubernetes services.
+  name: sidb-restore-ncdb-fss
+  namespace: sidb
+
+spec:
+  ## Provision a new primary database by restoring an existing backup.
+  createAs: primary
+
+  ## SID of the restored database.
+  ## This can be the same as or different from the source database SID.
+  ## If you change this value, update restore.target.walletRoot accordingly.
+  sid: ORCLCDB
+
+  ## Uncomment for a CDB restore.
+  ## Specify the PDB name from the source database.
+  ## The target PDB name must match the source PDB name.
+  ## Leave this field commented for a non-CDB restore.
+  # pdbName: ORCL1PDB
+
+  # Database edition for the restored database.
+  # This value must match the edition of the source database.
+  edition: enterprise
+
+  ## Database image details
+  ## Base DB images are available at container-registry.oracle.com or build from https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance
+  ## Build patched DB images from https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching
+  ## Use a database image whose version supports RMAN restore from the source database version.
+  image:
+    pullFrom:
+    imagePullPolicy: IfNotPresent
+    pullSecrets:
+
+  ## Grouped security settings
+  security:
+    secrets:
+      admin:
+        # Database administrator password Secret.
+        secretName: sidb-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+
+  ## Database storage details
+  ## persistence.oradata contains the primary datafiles volume configuration
+  persistence:
+    oradata:
+      ## if the storageClass supports volume expansion, patch the size attribute to expand the volume
+      ## Shrinking volumes is not allowed
+      size: 100Gi
+      ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud services
+      storageClass: "oci-bv"
+      ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
+      accessMode: "ReadWriteOnce"
+
+    ## FSS RESTORE ONLY:
+    ## Uncomment this block when restore.fileSystem is used. The PVC must already
+    ## exist in the same namespace and contain the source backup in path
+    ## specified by restore.fileSystem.backupPath
+    ##
+    additionalPVCs:
+      - mountPath: /FileSystem_SIDB_BACKUP
+        pvcName: pvc-sidb-deployment
+
+  envVars:
+    ## Location used by the restore scripts for the generated backup configuration.
+    - name: BACKUP_CONFIG_FILE
+      value: /opt/oracle/oradata/oci/config/ocibackup.conf
+
+    ## If enabled, the database container remains running after a restore failure to aid troubleshooting.
+    ## Set to "false" for normal operation.
+    # - name: ENABLE_DEBUG
+    #   value: "true"
+
+    # FSS RESTORE ONLY:
+    # Uncomment and set the DBID of the source database backup.
+    - name: DBID
+      value: "REPLACE_WITH_SOURCE_DATABASE_DBID"
+
+  restore:
+    ## Select exactly one restore source: objectStore or fileSystem.
+
+    ## --------------------------------------------------------------------------
+    ## OPTION 1: OBJECT STORAGE RESTORE
+    ## Keep this block for an Object Storage restore. Comment out the complete
+    ## block when restore.fileSystem is enabled.
+    ## --------------------------------------------------------------------------
+    #objectStore:
+    #  ociConfig:
+    #    ## ConfigMap containing the OCI configuration in the oci.env key.
+    #    configMapName: sidb-oci-config
+    #    key: oci.env
+
+    #  privateKey:
+    #    ## Secret containing the OCI API private key for the OCI user configured in the OCI configuration file.
+    #    secretName: sidb-oci-privatekey
+    #    key: ssh-privatekey
+
+    #  sourceDbWallet:
+    #    ## Secret containing the source database TDE wallet archive.
+    #    secretName: source-db-tde-wallet
+    #    key: sourcedb_tde_wallet_files
+
+    #  sourceDbWalletPassword:
+    #    ## Secret containing the source database wallet password.
+    #    secretName: source-db-wallet-password
+    #    key: sourcedb_wallet_pwd
+
+    #  opcInstallerZip:
+    #    ## ConfigMap containing the OCI Backup Module installer zip file.
+    #    configMapName: opc-installer-zipfile
+    #    key: opc_installer_zipfile
+
+    #  backupIdentity:
+    #    ## Replace with the OCI Object Storage backup information.
+    #    bucketName: "REPLACE_WITH_BUCKET_NAME"
+    #    dbid: "REPLACE_WITH_SOURCE_DBID"
+    #    compartmentOcid: "REPLACE_WITH_COMPARTMENT_OCID"
+
+    #  ## ENCRYPTED BACKUP ONLY:
+    #  ## Uncomment this block and reference the RMAN decrypt-password Secret.
+    #  #encryptedBackup:
+    #  #  enabled: true
+    #  #  decryptPasswordSecret:
+    #  #    secretName: rman-decrypt-password
+    #  #    key: decrypt_pwd
+
+    ## --------------------------------------------------------------------------
+    ## OPTION 2: FILE-SYSTEM OR FSS RESTORE
+    ## To use this option:
+    ##   1. Comment out the complete objectStore block above.
+    ##   2. Uncomment this fileSystem block.
+    ##   3. Uncomment persistence.additionalPVCs.
+    ##   4. Uncomment the DBID environment variable.
+    ## --------------------------------------------------------------------------
+    fileSystem:
+       # Path to the backup inside the mounted PVC.
+       backupPath: /FileSystem_SIDB_BACKUP/sidb_backup
+    
+       # Optional. Defaults to backupPath when omitted.
+       # catalogStartWith: /FileSystem_SIDB_BACKUP/sidb_backup
+    
+       sourceDbWallet:
+         secretName: source-db-tde-wallet
+         key: sourcedb_tde_wallet_files
+    
+       sourceDbWalletPassword:
+         secretName: source-db-wallet-password
+         key: sourcedb_wallet_pwd
+    
+       # ENCRYPTED BACKUP ONLY:
+       # encryptedBackup:
+       #   enabled: true
+       #   decryptPasswordSecret:
+       #     secretName: rman-decrypt-password
+       #     key: decrypt_pwd
+
+    target:
+      # Root location for restored data files.
+      dataRoot: /opt/oracle/oradata
+
+      # Wallet location for the target SID. Update ORCLCDB if spec.sid changes.
+      walletRoot: /opt/oracle/oradata/ORCLCDB/wallets
+
+    options:
+      # Database name stored in the source backup, not the target SID.
+      sourceDbName: "ORCL"
+
+    #  # Relevant to the OCI Backup Module installation flow.
+    #  forceOpcReinstall: false
+
+      # Crosscheck the available backup pieces before restore.
+      runCrosscheck: true
+
+      # Set to true to validate the backup without performing the restore.
+      runValidateOnly: false
+
+  # SIDB supports one database pod for this restore example.
+  replicas: 1

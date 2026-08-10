@@ -44,6 +44,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+// PodBuilder defines a fluent builder interface for Kubernetes Pod objects.
 type PodBuilder interface {
 	SetNamespacedName(types.NamespacedName) *PodBuilder
 	SetLabels(map[string]string) *PodBuilder
@@ -55,36 +56,43 @@ type PodBuilder interface {
 	Build() corev1.Pod
 }
 
+// RealPodBuilder is a concrete fluent builder for corev1.Pod.
 type RealPodBuilder struct {
 	pod corev1.Pod
 }
 
+// SetNamespacedName sets pod namespace/name metadata.
 func (rpb *RealPodBuilder) SetNamespacedName(namespacedName types.NamespacedName) *RealPodBuilder {
-	rpb.pod.ObjectMeta.Name = namespacedName.Name
-	rpb.pod.ObjectMeta.Namespace = namespacedName.Namespace
+	rpb.pod.Name = namespacedName.Name
+	rpb.pod.Namespace = namespacedName.Namespace
 	return rpb
 }
 
+// SetLabels sets pod labels.
 func (rpb *RealPodBuilder) SetLabels(labels map[string]string) *RealPodBuilder {
-	rpb.pod.ObjectMeta.Labels = labels
+	rpb.pod.Labels = labels
 	return rpb
 }
 
+// SetTerminationGracePeriodSeconds sets pod termination grace period.
 func (rpb *RealPodBuilder) SetTerminationGracePeriodSeconds(terminationGracePeriod int64) *RealPodBuilder {
 	rpb.pod.Spec.TerminationGracePeriodSeconds = &terminationGracePeriod
 	return rpb
 }
 
+// SetNodeSelector sets pod node selector rules.
 func (rpb *RealPodBuilder) SetNodeSelector(nsRule map[string]string) *RealPodBuilder {
 	rpb.pod.Spec.NodeSelector = nsRule
 	return rpb
 }
 
+// SetSecurityContext sets pod security context.
 func (rpb *RealPodBuilder) SetSecurityContext(podSecurityContext corev1.PodSecurityContext) *RealPodBuilder {
 	rpb.pod.Spec.SecurityContext = &podSecurityContext
 	return rpb
 }
 
+// SetImagePullSecrets sets one image pull secret on the pod.
 func (rpb *RealPodBuilder) SetImagePullSecrets(imagePullSecret string) *RealPodBuilder {
 	rpb.pod.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 		{
@@ -94,15 +102,18 @@ func (rpb *RealPodBuilder) SetImagePullSecrets(imagePullSecret string) *RealPodB
 	return rpb
 }
 
+// AppendContainers appends a container to the pod spec.
 func (rpb *RealPodBuilder) AppendContainers(container corev1.Container) *RealPodBuilder {
 	rpb.pod.Spec.Containers = append(rpb.pod.Spec.Containers, container)
 	return rpb
 }
 
+// Build returns the final pod object.
 func (rpb *RealPodBuilder) Build() corev1.Pod {
 	return rpb.pod
 }
 
+// NewRealPodBuilder creates a new empty pod builder.
 func NewRealPodBuilder() *RealPodBuilder {
 	return &RealPodBuilder{}
 }

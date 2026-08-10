@@ -35,6 +35,8 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
+
+//nolint:revive // v1alpha1 legacy API fields and names are preserved for backward compatibility.
 package v1alpha1
 
 // PDBConfig defines details of PDB struct for DBCS systems

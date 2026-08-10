@@ -38,7 +38,11 @@
 
 package v4
 
+// revive:disable:exported,var-naming
+// Legacy API field/type names are preserved for backward compatibility.
+
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -54,63 +58,409 @@ type SingleInstanceDatabaseSpec struct {
 	Edition string `json:"edition,omitempty"`
 
 	// SID must be alphanumeric (no special characters, only a-z, A-Z, 0-9), and no longer than 12 characters.
-	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]+$`
 	// +kubebuilder:validation:MaxLength:=12
-	Sid                   string            `json:"sid,omitempty"`
-	Charset               string            `json:"charset,omitempty"`
-	Pdbname               string            `json:"pdbName,omitempty"`
-	LoadBalancer          bool              `json:"loadBalancer,omitempty"`
-	ListenerPort          int               `json:"listenerPort,omitempty"`
-	TcpsListenerPort      int               `json:"tcpsListenerPort,omitempty"`
-	ServiceAnnotations    map[string]string `json:"serviceAnnotations,omitempty"`
-	FlashBack             *bool             `json:"flashBack,omitempty"`
-	ArchiveLog            *bool             `json:"archiveLog,omitempty"`
-	ForceLogging          *bool             `json:"forceLog,omitempty"`
-	EnableTCPS            bool              `json:"enableTCPS,omitempty"`
-	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
-	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
+	Sid string `json:"sid,omitempty"`
 
-	PrimaryDatabaseRef string `json:"primaryDatabaseRef,omitempty"`
+	Charset string `json:"charset,omitempty"`
+	Pdbname string `json:"pdbName,omitempty"`
+
+	// Deprecated: use spec.services.endpoints.
+	LoadBalancer bool `json:"loadBalancer,omitempty"`
+	// Deprecated: use spec.services.endpoints.tcp.
+	ListenerPort int `json:"listenerPort,omitempty"`
+	// Deprecated: use spec.services.endpoints.tcps.
+	TcpsListenerPort int `json:"tcpsListenerPort,omitempty"`
+	// Deprecated: use spec.services.endpoints.annotations.
+	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
+
+	FlashBack    *bool `json:"flashBack,omitempty"`
+	ArchiveLog   *bool `json:"archiveLog,omitempty"`
+	ForceLogging *bool `json:"forceLog,omitempty"`
+
+	// Security groups security-related settings (secrets and TCPS).
+	Security *SingleInstanceDatabaseSecurity `json:"security,omitempty"`
+	// Services configures Kubernetes Service exposure for the database.
+	Services *SingleInstanceDatabaseServices `json:"services,omitempty"`
+
+	// TNSAliases configures explicit tnsnames.ora aliases managed by the operator.
+	TNSAliases []SingleInstanceDatabaseTNSAlias `json:"tnsAliases,omitempty"`
+
+	// Deprecated: use spec.security.tcps.enabled.
+	EnableTCPS bool `json:"enableTCPS,omitempty"`
+	// Deprecated: use spec.security.tcps.certRenewInterval.
+	TcpsCertRenewInterval string `json:"tcpsCertRenewInterval,omitempty"`
+	// Deprecated: use spec.security.tcps.tlsSecret.
+	TcpsTlsSecret string `json:"tcpsTlsSecret,omitempty"`
+
+	// Deprecated: use spec.primarySource.databaseRef.
+	PrimaryDatabaseRef string                               `json:"primaryDatabaseRef,omitempty"`
+	PrimarySource      *SingleInstanceDatabasePrimarySource `json:"primarySource,omitempty"`
+	Dataguard          *DataguardProducerSpec               `json:"dataguard,omitempty"`
+
 	// +kubebuilder:validation:Enum=primary;standby;clone;truecache
-	CreateAs             string   `json:"createAs,omitempty"`
-	ReadinessCheckPeriod int      `json:"readinessCheckPeriod,omitempty"`
-	ServiceAccountName   string   `json:"serviceAccountName,omitempty"`
-	TrueCacheServices    []string `json:"trueCacheServices,omitempty"`
+	CreateAs string `json:"createAs,omitempty"`
+
+	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
+	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
+	// +kubebuilder:default:=false
+	AutomountServiceAccountToken *bool    `json:"automountServiceAccountToken,omitempty"`
+	TrueCacheServices            []string `json:"trueCacheServices,omitempty"`
 
 	// +k8s:openapi-gen=true
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=1
 	Replicas int `json:"replicas,omitempty"`
 
-	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`
+	NodeSelector map[string]string  `json:"nodeSelector,omitempty"`
+	HostAliases  []corev1.HostAlias `json:"hostAliases,omitempty"`
+	// Deprecated: use spec.security.secrets.admin.
 	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
 	Image         SingleInstanceDatabaseImage         `json:"image"`
 	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
-	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
-	Resources     SingleInstanceDatabaseResources     `json:"resources,omitempty"`
+	// Scripts configures optional PVC-backed setup and startup script mounts.
+	Scripts    *SingleInstanceDatabaseScriptsSpec `json:"scripts,omitempty"`
+	InitParams *SingleInstanceDatabaseInitParams  `json:"initParams,omitempty"`
+	// ShmSize configures the memory-backed /dev/shm volume size. If omitted, the pod uses the container runtime default.
+	ShmSize string `json:"shmSize,omitempty"`
+	// Resources configures standard Kubernetes container resource requests and limits.
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	// Deprecated: use spec.resources.
+	ResourceRequirements          *corev1.ResourceRequirements `json:"resourceRequirements,omitempty" protobuf:"bytes,1,opt,name=resourceRequirements"`
+	DisableDefaultDiagVolumeClaim bool                         `json:"disableDefaultDiagVolumeClaim,omitempty"`
+	SecurityContext               *corev1.PodSecurityContext   `json:"securityContext,omitempty"`
+	Capabilities                  *corev1.Capabilities         `json:"capabilities,omitempty"`
 
-	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
+	ConvertToSnapshotStandby bool            `json:"convertToSnapshotStandby,omitempty"`
+	EnvVars                  []corev1.EnvVar `json:"envVars,omitempty"`
+	// Restore config enables primary creation from backup sources.
+	Restore *SingleInstanceDatabaseRestoreSpec `json:"restore,omitempty"`
+
+	// - For primary: enables blob generation and sets generation path
+	// - For truecache: references existing blob ConfigMap and sets mount path
+	TrueCache *SingleInstanceDatabaseTrueCacheSpec `json:"trueCache,omitempty"`
 }
 
-type SingleInstanceDatabaseResource struct {
-	Cpu    string `json:"cpu,omitempty"`
-	Memory string `json:"memory,omitempty"`
+// SingleInstanceDatabaseRestoreSpec defines restore-from-backup settings for primary creation.
+type SingleInstanceDatabaseRestoreSpec struct {
+	// ObjectStore source parameters. Mutually exclusive with fileSystem.
+	ObjectStore *SingleInstanceDatabaseRestoreObjectStoreSpec `json:"objectStore,omitempty"`
+	// FileSystem source parameters. Mutually exclusive with objectStore.
+	FileSystem *SingleInstanceDatabaseRestoreFileSystemSpec `json:"fileSystem,omitempty"`
+	// Target restore layout overrides.
+	Target *SingleInstanceDatabaseRestoreTargetSpec `json:"target,omitempty"`
+	// Optional restore behavior overrides.
+	Options *SingleInstanceDatabaseRestoreOptionsSpec `json:"options,omitempty"`
 }
 
-type SingleInstanceDatabaseResources struct {
-	Requests *SingleInstanceDatabaseResource `json:"requests,omitempty"`
-	Limits   *SingleInstanceDatabaseResource `json:"limits,omitempty"`
+type SingleInstanceDatabaseScriptsSpec struct {
+	Setup   *SingleInstanceDatabaseScriptLocation `json:"setup,omitempty"`
+	Startup *SingleInstanceDatabaseScriptLocation `json:"startup,omitempty"`
+}
+
+type SingleInstanceDatabaseScriptLocation struct {
+	PvcName string `json:"pvcName,omitempty"`
+}
+
+type SingleInstanceDatabaseSecretKeyRef struct {
+	SecretName string `json:"secretName,omitempty"`
+	Key        string `json:"key,omitempty"`
+}
+
+type SingleInstanceDatabaseConfigMapKeyRef struct {
+	ConfigMapName string `json:"configMapName,omitempty"`
+	Key           string `json:"key,omitempty"`
+}
+
+type SingleInstanceDatabaseRestoreObjectStoreSpec struct {
+	OCIConfig        *SingleInstanceDatabaseConfigMapKeyRef `json:"ociConfig,omitempty"`
+	PrivateKey       *SingleInstanceDatabaseSecretKeyRef    `json:"privateKey,omitempty"`
+	SourceDBWallet   *SingleInstanceDatabaseSecretKeyRef    `json:"sourceDbWallet,omitempty"`
+	SourceDBWalletPw *SingleInstanceDatabaseSecretKeyRef    `json:"sourceDbWalletPassword,omitempty"`
+	BackupModuleConf *SingleInstanceDatabaseConfigMapKeyRef `json:"backupModuleConfig,omitempty"`
+	OpcInstallerZip  *SingleInstanceDatabaseConfigMapKeyRef `json:"opcInstallerZip,omitempty"`
+	BackupIdentity   *SingleInstanceDatabaseBackupIdentity  `json:"backupIdentity,omitempty"`
+	EncryptedBackup  *SingleInstanceDatabaseEncryptedBackup `json:"encryptedBackup,omitempty"`
+}
+
+type SingleInstanceDatabaseRestoreFileSystemSpec struct {
+	BackupPath       string                                 `json:"backupPath,omitempty"`
+	CatalogStartWith string                                 `json:"catalogStartWith,omitempty"`
+	SourceDBWallet   *SingleInstanceDatabaseSecretKeyRef    `json:"sourceDbWallet,omitempty"`
+	SourceDBWalletPw *SingleInstanceDatabaseSecretKeyRef    `json:"sourceDbWalletPassword,omitempty"`
+	EncryptedBackup  *SingleInstanceDatabaseEncryptedBackup `json:"encryptedBackup,omitempty"`
+}
+
+type SingleInstanceDatabaseBackupIdentity struct {
+	BucketName      string `json:"bucketName,omitempty"`
+	DBID            string `json:"dbid,omitempty"`
+	CompartmentOCID string `json:"compartmentOcid,omitempty"`
+}
+
+type SingleInstanceDatabaseEncryptedBackup struct {
+	Enabled               bool                                `json:"enabled,omitempty"`
+	DecryptPasswordSecret *SingleInstanceDatabaseSecretKeyRef `json:"decryptPasswordSecret,omitempty"`
+}
+
+type SingleInstanceDatabaseRestoreTargetSpec struct {
+	DataRoot   string `json:"dataRoot,omitempty"`
+	WalletRoot string `json:"walletRoot,omitempty"`
+}
+
+type SingleInstanceDatabaseRestoreOptionsSpec struct {
+	SourceDBName      string `json:"sourceDbName,omitempty"`
+	RunCrosscheck     *bool  `json:"runCrosscheck,omitempty"`
+	RunValidateOnly   *bool  `json:"runValidateOnly,omitempty"`
+	ForceOpcReinstall *bool  `json:"forceOpcReinstall,omitempty"`
+}
+
+// SingleInstanceDatabaseSecurityTCPS defines the grouped security.tcps settings.
+// This path intentionally excludes service exposure knobs such as listenerPort.
+type SingleInstanceDatabaseSecurityTCPS struct {
+	Enabled bool `json:"enabled,omitempty"`
+	// TlsSecret references the Kubernetes TLS secret containing tls.crt and tls.key.
+	TlsSecret string `json:"tlsSecret,omitempty"`
+	// ClientWalletSecret optionally overrides the Secret used by DataguardBroker
+	// for TCPS client connectivity. When unset, the SIDB controller publishes an
+	// operator-generated wallet secret for Data Guard consumers.
+	ClientWalletSecret string `json:"clientWalletSecret,omitempty"`
+	// Deprecated: certificate renewal is managed by the owner of TlsSecret.
+	// Retained only to support existing self-signed TCPS resources during migration.
+	CertRenewInterval string `json:"certRenewInterval,omitempty"`
+	// CertMountLocation is the in-pod mount path for the TCPS TLS secret.
+	// Defaults to /run/secrets/tls_secret when not set.
+	CertMountLocation string `json:"certMountLocation,omitempty"`
+}
+
+type SingleInstanceDatabaseServices struct {
+	// Endpoints configures client-facing Kubernetes Services. The cluster
+	// endpoint is always created with TCP port 1521 even when omitted here.
+	// +kubebuilder:validation:MaxItems=3
+	Endpoints []SingleInstanceDatabaseServiceEndpoint `json:"endpoints,omitempty"`
+	// Deprecated: use endpoints with name=loadbalancer.
+	External *SingleInstanceDatabaseServiceEndpoint `json:"external,omitempty"`
+}
+
+type SingleInstanceDatabaseServiceEndpointName string
+
+const (
+	SingleInstanceDatabaseServiceEndpointNameCluster      SingleInstanceDatabaseServiceEndpointName = "cluster"
+	SingleInstanceDatabaseServiceEndpointNameNodePort     SingleInstanceDatabaseServiceEndpointName = "nodeport"
+	SingleInstanceDatabaseServiceEndpointNameLoadBalancer SingleInstanceDatabaseServiceEndpointName = "loadbalancer"
+)
+
+type SingleInstanceDatabaseServiceEndpointType string
+
+const (
+	SingleInstanceDatabaseServiceEndpointTypeClusterIP    SingleInstanceDatabaseServiceEndpointType = "ClusterIP"
+	SingleInstanceDatabaseServiceEndpointTypeNodePort     SingleInstanceDatabaseServiceEndpointType = "NodePort"
+	SingleInstanceDatabaseServiceEndpointTypeLoadBalancer SingleInstanceDatabaseServiceEndpointType = "LoadBalancer"
+)
+
+type SingleInstanceDatabaseServiceEndpoint struct {
+	// +kubebuilder:validation:Enum=cluster;nodeport;loadbalancer
+	Name SingleInstanceDatabaseServiceEndpointName `json:"name,omitempty"`
+	// +kubebuilder:validation:Enum=ClusterIP;NodePort;LoadBalancer
+	Type SingleInstanceDatabaseServiceEndpointType `json:"type,omitempty"`
+	// IsKeep preserves this Service across SIDB delete and recreate by
+	// omitting the controller owner reference from the managed Service.
+	// +optional
+	IsKeep bool `json:"isKeep,omitempty"`
+	// Annotations are applied to this Service regardless of its rendered Service type.
+	Annotations map[string]string `json:"annotations,omitempty"`
+	// +kubebuilder:validation:Enum=Cluster;Local
+	ExternalTrafficPolicy corev1.ServiceExternalTrafficPolicyType    `json:"externalTrafficPolicy,omitempty"`
+	TCP                   *SingleInstanceDatabaseServiceEndpointPort `json:"tcp,omitempty"`
+	TCPS                  *SingleInstanceDatabaseServiceEndpointPort `json:"tcps,omitempty"`
+}
+
+type SingleInstanceDatabaseServiceEndpointPort struct {
+	Enabled bool `json:"enabled,omitempty"`
+	// Port configures the Service port for ClusterIP or LoadBalancer exposure.
+	Port int `json:"port,omitempty"`
+	// NodePort pins the allocated nodePort when type=NodePort.
+	NodePort int `json:"nodePort,omitempty"`
+}
+
+// SingleInstanceDatabaseTNSAliasProtocol identifies the transport protocol for a TNS alias.
+type SingleInstanceDatabaseTNSAliasProtocol string
+
+const (
+	// SingleInstanceDatabaseTNSAliasProtocolTCP configures a TCP TNS alias.
+	SingleInstanceDatabaseTNSAliasProtocolTCP SingleInstanceDatabaseTNSAliasProtocol = "TCP"
+	// SingleInstanceDatabaseTNSAliasProtocolTCPS configures a TCPS TNS alias.
+	SingleInstanceDatabaseTNSAliasProtocolTCPS SingleInstanceDatabaseTNSAliasProtocol = "TCPS"
+)
+
+// SingleInstanceDatabaseTNSAlias defines a managed entry in tnsnames.ora.
+type SingleInstanceDatabaseTNSAlias struct {
+	// +kubebuilder:validation:Pattern=^[A-Za-z0-9][A-Za-z0-9_.-]*$
+	Name        string                                 `json:"name,omitempty"`
+	Host        string                                 `json:"host,omitempty"`
+	Port        int                                    `json:"port,omitempty"`
+	ServiceName string                                 `json:"serviceName,omitempty"`
+	Protocol    SingleInstanceDatabaseTNSAliasProtocol `json:"protocol,omitempty"`
+	SSLServerDN string                                 `json:"sslServerDN,omitempty"`
+}
+
+// SingleInstanceDatabaseSecurity defines grouped security configuration.
+type SingleInstanceDatabaseSecurity struct {
+	// TCPS groups TCPS-related settings.
+	TCPS *SingleInstanceDatabaseSecurityTCPS `json:"tcps,omitempty"`
+	// Secrets groups password/secret references used by SIDB flows.
+	Secrets *SingleInstanceDatabaseSecrets `json:"secrets,omitempty"`
+}
+
+// SingleInstanceDatabaseSecrets defines grouped secret references.
+type SingleInstanceDatabaseSecrets struct {
+	// Admin password secret config.
+	Admin *SingleInstanceDatabaseAdminPassword `json:"admin,omitempty"`
+	// TDE password secret config.
+	TDE *SingleInstanceDatabasePasswordSecret `json:"tde,omitempty"`
+}
+
+// SingleInstanceDatabasePasswordSecret defines a generic secret ref and optional mount path.
+type SingleInstanceDatabasePasswordSecret struct {
+	SecretName string `json:"secretName,omitempty"`
+	SecretKey  string `json:"secretKey,omitempty"`
+	MountPath  string `json:"mountPath,omitempty"`
+	// WalletZipFileKey points to the secret key containing the standby wallet zip artifact.
+	WalletZipFileKey string `json:"walletZipFileKey,omitempty"`
+	// WalletRoot is the destination wallet root used for standby TDE wallet import/open operations.
+	WalletRoot string `json:"walletRoot,omitempty"`
+}
+
+// SingleInstanceDatabaseTrueCacheDBCredentialsWallet defines the mounted wallet
+// directory used by True Cache DBCA to authenticate to the primary database.
+type SingleInstanceDatabaseTrueCacheDBCredentialsWallet struct {
+	SecretName string `json:"secretName,omitempty"`
+	MountPath  string `json:"mountPath,omitempty"`
+}
+
+// Unified sub-struct for TrueCache options
+type SingleInstanceDatabaseTrueCacheSpec struct {
+	// --- For primary databases (createAs: primary) ---
+	TruedbUniqueName string `json:"truedbUniqueName,omitempty"`
+
+	// Enable automatic TrueCache blob generation in the primary pod (default: false).
+	// When true, the operator will run dbca to create the blob and store it in a ConfigMap.
+	// When false, the operator will not create the blob and the user must provide the ConfigMap for truecache consumers.
+	// Deprecated: use generateBlob and createConfigMap for independent control.
+	// +optional
+	GenerateEnabled bool `json:"generateEnabled,omitempty"`
+
+	// Enable automatic TrueCache blob generation in the primary pod (default: false).
+	// When true, the operator ensures the blob file exists on the primary pod.
+	// +optional
+	GenerateBlob bool `json:"generateBlob,omitempty"`
+
+	// Enable automatic ConfigMap creation from the TrueCache blob file (default: false).
+	// When true, the operator ensures the blob ConfigMap exists for truecache consumers.
+	// +optional
+	CreateConfigMap bool `json:"createConfigMap,omitempty"`
+
+	// Path inside the primary pod where the blob file is generated or read when blob generation
+	// or ConfigMap creation is enabled (default: /tmp/tc_config_blob.tar.gz). When the path ends
+	// with .tar.gz, the operator materializes the generated DBCA blob back to that exact file path.
+	// +optional
+	GeneratePath string `json:"generatePath,omitempty"`
+
+	// --- For truecache instances (createAs: truecache) ---
+
+	// Name of an existing ConfigMap containing the TrueCache blob file.
+	// If set, the operator skips blob creation and uses this ConfigMap.
+	// +optional
+	BlobConfigMapRef string `json:"blobConfigMapRef,omitempty"`
+
+	// Key within the ConfigMap that holds the blob file content (default: "tc_config_blob.tar.gz").
+	// +optional
+	BlobConfigMapKey string `json:"blobConfigMapKey,omitempty"`
+
+	// Path inside the truecache container where the blob file is mounted (default: /stage/tc_config_blob.tar.gz).
+	// +optional
+	BlobMountPath string `json:"blobMountPath,omitempty"`
+
+	// DBCredentialsWallet references the mounted wallet directory used by
+	// dbca -createTrueCacheInstance for primary SYS authentication.
+	// +optional
+	DBCredentialsWallet *SingleInstanceDatabaseTrueCacheDBCredentialsWallet `json:"dbCredentialsWallet,omitempty"`
+
+	// AutoTCServiceRegistration enables the post-create primary-side service registration flow.
+	// When omitted or false, the primary administrator must manually create, start, and associate
+	// the primary-side service for mappings listed in trueCacheServices.
+	// +optional
+	AutoTCServiceRegistration      bool     `json:"autoTCServiceRegistration,omitempty"`
+	PrimarySchedulerCredentialName string   `json:"primarySchedulerCredentialName,omitempty"`
+	TrueCacheServices              []string `json:"trueCacheServices,omitempty"`
+}
+
+func (tc *SingleInstanceDatabaseTrueCacheSpec) BlobGenerationEnabled() bool {
+	return tc != nil && (tc.GenerateBlob || tc.GenerateEnabled)
+}
+
+func (tc *SingleInstanceDatabaseTrueCacheSpec) BlobConfigMapCreationEnabled() bool {
+	return tc != nil && (tc.CreateConfigMap || tc.GenerateEnabled)
+}
+
+type SingleInstanceDatabasePrimaryDetails struct {
+	Host    string `json:"host,omitempty"`
+	Port    int    `json:"port,omitempty"`
+	Sid     string `json:"sid,omitempty"`
+	Pdbname string `json:"pdbName,omitempty"`
+}
+
+type SingleInstanceDatabasePrimarySource struct {
+	DatabaseRef   string `json:"databaseRef,omitempty"`
+	ConnectString string `json:"connectString,omitempty"`
+	// DBName optionally supplies the primary CDB DB_NAME when it differs from the connect string service name.
+	DBName string `json:"dbName,omitempty"`
+	// Pdbname optionally supplies the primary PDB name when the source is expressed as connectString.
+	Pdbname string                                `json:"pdbName,omitempty"`
+	Details *SingleInstanceDatabasePrimaryDetails `json:"details,omitempty"`
 }
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
 type SingleInstanceDatabasePersistence struct {
-	Size         string `json:"size,omitempty"`
+	// Oradata config for primary datafiles volume.
+	Oradata *SingleInstanceDatabasePersistenceOradata `json:"oradata,omitempty"`
+	// Fra config for fast recovery area volume.
+	Fra *SingleInstanceDatabasePersistenceFra `json:"fra,omitempty"`
+	// Additional PVCs for custom mount paths.
+	AdditionalPVCs []AdditionalPVCSpec `json:"additionalPVCs,omitempty"`
+
+	// Deprecated: use persistence.oradata.size.
+	Size string `json:"size,omitempty"`
+	// Deprecated: use persistence.oradata.storageClass.
 	StorageClass string `json:"storageClass,omitempty"`
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
-	AccessMode            string `json:"accessMode,omitempty"`
-	DatafilesVolumeName   string `json:"datafilesVolumeName,omitempty"`
+	// Deprecated: use persistence.oradata.accessMode.
+	AccessMode string `json:"accessMode,omitempty"`
+	// Deprecated: use persistence.oradata.pvcName.
+	DatafilesVolumeName string `json:"datafilesVolumeName,omitempty"`
+	// Deprecated: use spec.scripts with pvcName references for setup/startup script mounts.
 	ScriptsVolumeName     string `json:"scriptsVolumeName,omitempty"`
 	VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
 	SetWritePermissions   *bool  `json:"setWritePermissions,omitempty"`
+}
+
+type SingleInstanceDatabasePersistenceOradata struct {
+	PvcName      string `json:"pvcName,omitempty"`
+	Size         string `json:"size,omitempty"`
+	StorageClass string `json:"storageClass,omitempty"`
+	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
+	AccessMode string `json:"accessMode,omitempty"`
+}
+
+type SingleInstanceDatabasePersistenceFra struct {
+	PvcName      string `json:"pvcName,omitempty"`
+	Size         string `json:"size,omitempty"`
+	StorageClass string `json:"storageClass,omitempty"`
+	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
+	AccessMode string `json:"accessMode,omitempty"`
+	MountPath  string `json:"mountPath,omitempty"`
+	// RecoveryAreaSize is translated to db_recovery_file_dest_size for FRA use-cases.
+	RecoveryAreaSize string `json:"recoveryAreaSize,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters
@@ -126,15 +476,21 @@ type SingleInstanceDatabaseImage struct {
 	Version     string `json:"version,omitempty"`
 	PullFrom    string `json:"pullFrom"`
 	PullSecrets string `json:"pullSecrets,omitempty"`
-	PrebuiltDB  bool   `json:"prebuiltDB,omitempty"`
+	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
+	ImagePullPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	// Deprecated: use imagePullPolicy.
+	PullPolicy *corev1.PullPolicy `json:"pullPolicy,omitempty"`
+	PrebuiltDB bool               `json:"prebuiltDB,omitempty"`
 }
 
 // SingleInsatnceAdminPassword defines the secret containing Admin Password mapped to secretKey for Database
 type SingleInstanceDatabaseAdminPassword struct {
 	SecretName string `json:"secretName"`
 	// +kubebuilder:default:="oracle_pwd"
-	SecretKey  string `json:"secretKey,omitempty"`
-	KeepSecret *bool  `json:"keepSecret,omitempty"`
+	SecretKey      string `json:"secretKey,omitempty"`
+	KeepSecret     *bool  `json:"keepSecret,omitempty"`
+	MountPath      string `json:"mountPath,omitempty"`
+	SkipInitWallet bool   `json:"skipInitWallet,omitempty"`
 }
 
 // SingleInstanceDatabaseStatus defines the observed state of SingleInstanceDatabase
@@ -177,9 +533,17 @@ type SingleInstanceDatabaseStatus struct {
 	CertCreationTimestamp string `json:"certCreationTimestamp,omitempty"`
 	CertRenewInterval     string `json:"certRenewInterval,omitempty"`
 	ClientWalletLoc       string `json:"clientWalletLoc,omitempty"`
+	ClientWalletSecret    string `json:"clientWalletSecret,omitempty"`
 	PrimaryDatabase       string `json:"primaryDatabase,omitempty"`
 	// +kubebuilder:default:=""
 	TcpsTlsSecret string `json:"tcpsTlsSecret"`
+	// TcpsTlsSecretHash stores the last successfully applied content hash of the referenced TCPS TLS secret.
+	TcpsTlsSecretHash string                   `json:"tcpsTlsSecretHash,omitempty"`
+	Dataguard         *ProducerDataguardStatus `json:"dataguard,omitempty"`
+	// DataguardPrereqsHash stores the last successfully applied SIDB Data Guard prerequisite configuration hash.
+	DataguardPrereqsHash string `json:"dataguardPrereqsHash,omitempty"`
+	// DataguardPrereqsRerunToken stores the last processed explicit rerun token annotation value.
+	DataguardPrereqsRerunToken string `json:"dataguardPrereqsRerunToken,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
@@ -206,6 +570,7 @@ type SingleInstanceDatabaseStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.pdbConnectString",name="Pdb Connect Str",type="string",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.tcpsConnectString",name="TCPS Connect Str",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.tcpsPdbConnectString",name="TCPS Pdb Connect Str",type="string", priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.clientWalletSecret",name="Wallet Secret",type="string",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.oemExpressUrl",name="Oem Express Url",type="string"
 
 // SingleInstanceDatabase is the Schema for the singleinstancedatabases API

@@ -8,8 +8,8 @@ Deploy an Oracle RAC Database and Grid Infrastructure using Oracle RAC Controlle
 * In this case, the Oracle RAC Database is deployed with with different diskgroups for CRS and RDBMS. 
 * The diskgroups have different redundancy levels. 
 * This example uses `racdb_prov_diff_dg_for_db_and_crs_with_diff_redundancy.yaml` to provision an Oracle RAC Database using Oracle RAC Controller. The provisioning includes:
-  * Two Kubernetes Pods as the RAC Nodes
-  * Headless services for RAC
+  * Two Kubernetes Pods as the Oracle RAC Nodes
+  * Headless services for Oracle RAC
     * VIP Service
     * Scan Service
     * RAC Node hostname
@@ -50,6 +50,11 @@ Complete these steps:
     
     # Check the logs of a particular pod. For example, to check status of pod "racnode1-0":    
     kubectl exec -it pod/racnode1-0 -n rac -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===================================
     ORACLE RAC DATABASE IS READY TO USE
     ===================================
@@ -63,7 +68,12 @@ Complete these steps:
     su - grid
     
     # Check the details of the diskgroups:
-    [grid@racnode1-0 ~]$ asmcmd lsdg
+    asmcmd lsdg
+    ```
+
+    Example output:
+
+    ```text
     State    Type    Rebal  Sector  Logical_Sector  Block       AU  Total_MB  Free_MB  Req_mir_free_MB  Usable_file_MB  Offline_disks  Voting_files  Name
     MOUNTED  EXTERN  N         512             512   4096  4194304    102392   102040                0          102040              0             Y  CRSDATA/
     MOUNTED  NORMAL  N         512             512   4096  1048576    204792   191624            51198           70213              0             N  DATA/

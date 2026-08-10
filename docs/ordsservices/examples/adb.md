@@ -1,11 +1,11 @@
 # OrdsSrvs Example: Autonomous Database without the OraOperator
 
-This example walks through using the **ORDSSRVS controller** with an Oracle Autonomous Database.  
+This example walks through using the **OrdsSrvs controller** with an Oracle Autonomous Database.
 
-This assumes that an ADB has already been provisioned and is configured as "Secure Access from Anywhere".  
+This assumes that an ADB has already been provisioned and is configured as "Secure Access from Anywhere".
 Note that if behind a Proxy, this example will not work as the Wallet will need to be modified to support the proxy configuration.
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 ### ADB Wallet Secret
 
@@ -16,22 +16,18 @@ kubectl create secret generic adb-wallet \
   --from-file=<full_path_to_wallet.zip> -n ordsnamespace
 ```
 
-### ADB ADMIN Password Secret
+### Database Credential Secrets
 
-Create a Secret for the ADB ADMIN password, replacing <ADMIN_PASSWORD> with the real password:
+This example uses native Kubernetes Secrets for credentials.
 
 ```bash
-echo -n "Enter ADB ADMIN password: " && read -s ADMIN_PASSWORD
-openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
-openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=secret=ca.key  -n ordsnamespace
-echo -n "${ADMIN_PASSWORD}" |openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
-kubectl create secret generic adb-oraoper-db-auth-enc  --from-file=password=e_db-auth -n  ordsnamespace
-rm e_db-auth ca.key public.pem
-unset ADMIN_PASSWORD
+kubectl create secret generic ordssrvs-auth \
+  --from-literal=dbAuth='<ords-db-credential>' \
+  --from-literal=adminAuth='<adb-admin-credential>' \
+  -n ordsnamespace
 ```
 
-### Create RestDataServices Resource
+### Create OrdsSrvs Resource
 
 1. Create a manifest for ORDS.
 
@@ -47,9 +43,7 @@ unset ADMIN_PASSWORD
       name: ords-adb
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:25.1.0
-      encPrivKey:
-        secretName: prvkey
+      image: container-registry.oracle.com/database/ords:<ords-version>
       globalSettings:
         database.api.enabled: true
       poolSettings:
@@ -62,20 +56,20 @@ unset ADMIN_PASSWORD
             walletName: Wallet_<ADB_NAME>.zip
           db.username: ORDS_PUBLIC_USER_OPER
           db.secret:
-            secretName:  adb-oraoper-db-auth-enc
+            secretName:  ordssrvs-auth
+            passwordKey: dbAuth
           db.adminUser: ADMIN
           db.adminUser.secret:
-            secretName:  adb-oraoper-db-auth-enc
+            secretName:  ordssrvs-auth
+            passwordKey: adminAuth
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
-    
-1. Watch the restdataservices resource until the status is **Healthy**:
+1. Watch the OrdsSrvs resource until the status is **Healthy**:
     ```bash
     kubectl get -n ordsnamespace ordssrvs ords-adb -w
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
-    is being installed for the first time by the Operator, it may remain in the **Preparing** 
+    is being installed for the first time by the Operator, it may remain in the **Preparing**
     status for an additional 5 minutes.
 
 ### Test
@@ -92,8 +86,8 @@ Direct your browser to: `https://localhost:8443/ords/adb`
 
 This example has a single database pool, named `adb`.  It is set to:
 
-* Not automatically restart when the configuration changes: `forceRestart` is not set.  
-  The pod must be manually resarted for new configurations to be picked-up.
+* Not automatically restart when the configuration changes: `forceRestart` is not set.
+  The pod must be manually restarted for new configurations to be picked up.
 * Automatically install/update APEX on startup, if required: This occurs due to the database being detected as an ADB.
-* The ADB `ADMIN` user will be used to connect the ADB to install APEX/ORDS
+* The ADB admin user will be used to connect the ADB to install APEX/ORDS
 * Use the ADB Wallet file to connect to the database: `db.wallet.zip.service: adbpoc_tp` and `dbWalletSecret`

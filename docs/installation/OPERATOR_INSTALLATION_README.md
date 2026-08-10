@@ -12,6 +12,11 @@ Validate using `uname`. For example:
 
   ```sh
   uname -r
+  ```
+
+  Example output:
+
+  ```text
   4.14.35-1902.0.18.el7uek.x86_64
   ```
 
@@ -82,10 +87,13 @@ If you want to run the operator inside the cluster, then run the following steps
   ```
 
 ## Check the YAML File
-You should see file `oracle-database-operator.yaml`. This file will perform the following operations:
-  * Create CRDs
-  * Create Roles and Bindings
-  * Operator Deployment
+You should see these generated files:
+
+* `oracle-database-operator-rbac.yaml`: creates the namespace, service account, roles, and role bindings.
+* `oracle-database-operator-system.yaml`: creates CRDs, webhooks, services, certificates, network policies, and the operator deployment.
+* `oracle-database-operator.yaml`: combined compatibility manifest for existing install flows.
+
+For new installs, apply `oracle-database-operator-rbac.yaml` first and `oracle-database-operator-system.yaml` second.
 
 ## Run the Quick Install 
 

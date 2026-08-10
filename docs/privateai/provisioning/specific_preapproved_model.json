@@ -1,0 +1,10 @@
+{
+  "models": [
+    {
+      "modelname": "<< Replace with the specific pre-approved model name you want to use>>",
+      "modelfile": "<< Name of the modelfile for the specific pre-approved model name you want to use>>",
+      "modelfunction": "EMBEDDING",
+      "cache_on_startup": false
+    }
+  ]
+}

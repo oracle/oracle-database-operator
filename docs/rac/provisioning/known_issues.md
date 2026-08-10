@@ -8,7 +8,14 @@ With a three node Oracle RAC Database setup with two worker nodes `ocne17-worker
 
 
 ```sh
-[root@ocne17-oper yamls]# kubectl get all -n rac -o wide
+kubectl get all -n rac -o wide
+crsctl stat res -t
+srvctl status database -d PORCLCDB
+```
+
+Example output:
+
+```text
 NAME             READY   STATUS    RESTARTS   AGE     IP            NODE             NOMINATED NODE   READINESS GATES
 pod/racnode1-0   1/1     Running   0          3h29m   10.244.1.7    ocne17-worker1   <none>           <none>
 pod/racnode3-0   0/1     Running   0          3h2m    10.244.3.92   ocne17-worker2   <none>           <none>
@@ -21,11 +28,9 @@ service/racnode3-0       ClusterIP   None         <none>        <none>    3h2m  
 service/racnode3-0-vip   ClusterIP   None         <none>        <none>    3h2m    statefulset.kubernetes.io/pod-name=racnode3-0
 
 NAME                        READY   AGE     CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     3h29m   racnode1     dbocir/oracle/database-rac:23.26.0-rac-slim
-statefulset.apps/racnode3   0/1     3h2m    racnode3     dbocir/oracle/database-rac:23.26.0-rac-slim
+statefulset.apps/racnode1   1/1     3h29m   racnode1     dbocir/oracle/database-rac:23.26.0-slim
+statefulset.apps/racnode3   0/1     3h2m    racnode3     dbocir/oracle/database-rac:23.26.0-slim
 
-
-[grid@racnode1-0 trace]$ crsctl stat res -t
 --------------------------------------------------------------------------------
 Name           Target  State        Server                   State details
 --------------------------------------------------------------------------------
@@ -104,14 +109,9 @@ ora.scan2.vip
       1        ONLINE  OFFLINE                               STABLE
 --------------------------------------------------------------------------------
 
-
-
-
-[oracle@racnode1-0 ~]$ srvctl status database -d PORCLCDB
 Instance PORCLCDB1 is running on node racnode1-0
 Instance PORCLCDB2 is not running on node racnode2-0
 Instance PORCLCDB3 is running on node racnode3-0
-[oracle@racnode1-0 ~]$
 ```
 
 
@@ -122,7 +122,14 @@ While we are not able to reach on the listener node port, the Scan Listener Node
 Below is an example setup using Node ports:
 
 ```sh
-[root@ocne17-oper ~]# kubectl get all -n rac -o wide
+kubectl get all -n rac -o wide
+kubectl get ep -n rac
+kubectl get nodes -o wide
+```
+
+Example output:
+
+```text
 NAME             READY   STATUS    RESTARTS   AGE   IP            NODE             NOMINATED NODE   READINESS GATES
 pod/racnode1-0   1/1     Running   0          25m   10.244.1.8    ocne17-worker1   <none>           <none>
 pod/racnode2-0   1/1     Running   0          25m   10.244.3.93   ocne17-worker2   <none>           <none>
@@ -140,12 +147,9 @@ service/racnode2-0-ons      NodePort    10.110.24.81     <none>        6200:3020
 service/racnode2-0-vip      ClusterIP   None             <none>        <none>            25m   statefulset.kubernetes.io/pod-name=racnode2-0
 
 NAME                        READY   AGE   CONTAINERS   IMAGES
-statefulset.apps/racnode1   1/1     25m   racnode1     dbocir/oracle/database-rac:23.26.0-rac-slim
-statefulset.apps/racnode2   1/1     25m   racnode2     dbocir/oracle/database-rac:23.26.0-rac-slim
-[root@ocne17-oper ~]#
+statefulset.apps/racnode1   1/1     25m   racnode1     dbocir/oracle/database-rac:23.26.0-slim
+statefulset.apps/racnode2   1/1     25m   racnode2     dbocir/oracle/database-rac:23.26.0-slim
 
-
-[root@ocne17-oper ~]# kubectl get ep -n rac
 NAME                ENDPOINTS                          AGE
 racnode-scan        10.244.1.8                         94m
 racnode-scan-lsnr   10.244.1.8:1521,10.244.3.93:1521   94m
@@ -158,7 +162,6 @@ racnode2-0-lsnr     10.244.3.93:31523                  57s
 racnode2-0-ons      10.244.3.93:6200                   57s
 racnode2-0-vip      10.244.3.93                        94m
 
-[root@ocne17-oper yamls]# kubectl get nodes -o wide
 NAME             STATUS   ROLES           AGE   VERSION         INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                  KERNEL-VERSION                   CONTAINER-RUNTIME
 ocne17-master1   Ready    control-plane   19d   v1.26.6+1.el8   10.0.1.170    <none>        Oracle Linux Server 8.8   5.15.0-103.114.4.el8uek.x86_64   cri-o://1.26.3
 ocne17-worker1   Ready    <none>          19d   v1.26.6+1.el8   10.0.1.60     <none>        Oracle Linux Server 8.8   5.15.0-103.114.4.el8uek.x86_64   cri-o://1.26.3
@@ -171,39 +174,38 @@ ocne17-worker5   Ready    <none>          19d   v1.26.6+1.el8   10.0.1.9      <n
 Test to reach the node port for ONS and Listener:
 ```sh
 root@ocne17-oper ~]# telnet 10.0.1.60 31521
-Trying 10.0.1.60...
-Connected to 10.0.1.60.
-Escape character is '^]'.
-^C
-
-
-[root@ocne17-oper ~]# telnet 10.0.1.124 31521
-Trying 10.0.1.124...
-Connected to 10.0.1.124.
-Escape character is '^]'.
-^C
-
-
-[root@ocne17-oper ~]#
-[root@ocne17-oper ~]# telnet 10.0.1.60 30200
-Trying 10.0.1.60...
-Connected to 10.0.1.60.
-Escape character is '^]'.
-^C
-
-[root@ocne17-oper ~]# telnet 10.0.1.124 30201
-Trying 10.0.1.124...
-Connected to 10.0.1.124.
-Escape character is '^]'.
-^C
-
-[root@ocne17-oper ~]#
-[root@ocne17-oper ~]# telnet 10.0.1.60 31522
-Trying 10.0.1.60...
+telnet 10.0.1.124 31521
+telnet 10.0.1.60 30200
+telnet 10.0.1.124 30201
+telnet 10.0.1.60 31522
 telnet: connect to address 10.0.1.60: Connection refused
-[root@ocne17-oper ~]# telnet 10.0.1.124 31523
-Trying 10.0.1.124...
+telnet 10.0.1.124 31523
 telnet: connect to address 10.0.1.124: Connection refused
-[root@ocne17-oper ~]#
-[root@ocne17-oper ~]#
+```
+
+Example output:
+
+```text
+Trying 10.0.1.60...
+Connected to 10.0.1.60.
+Escape character is '^]'.
+^C
+
+Trying 10.0.1.124...
+Connected to 10.0.1.124.
+Escape character is '^]'.
+^C
+
+Trying 10.0.1.60...
+Connected to 10.0.1.60.
+Escape character is '^]'.
+^C
+
+Trying 10.0.1.124...
+Connected to 10.0.1.124.
+Escape character is '^]'.
+^C
+
+Trying 10.0.1.60...
+Trying 10.0.1.124...
 ```

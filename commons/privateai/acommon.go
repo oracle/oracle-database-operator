@@ -41,6 +41,8 @@ package commons
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
@@ -49,21 +51,31 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	piDataMount     = "/stage"
-	defaultLogMount = "/privateai/logs"
+	piDataMount                 = "/stage"
+	defaultLogMount             = "/privateai/logs"
+	privateAIResourceNameLabel  = "app.kubernetes.io/privateai-resource-name"
+	privateAIResourceNamePrefix = "PrivateAi-"
 )
 
+func setPrivateAIResourceNameLabel(labels map[string]string, instance *privateaiv4.PrivateAi) map[string]string {
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[privateAIResourceNameLabel] = privateAIResourceNamePrefix + instance.Name
+	return labels
+}
+
+// LogMessages emits structured logs based on message type and debug settings.
 func LogMessages(msgtype string, msg string, err error, instance *privateaiv4.PrivateAi, logger logr.Logger) {
 	// setting logrus formatter
 	//logrus.SetFormatter(&logrus.JSONFormatter{})
 	//logrus.SetOutput(os.Stdout)
 
-	if msgtype == "DEBUG" && instance.Spec.IsDebug == true {
+	if msgtype == "DEBUG" && privateaiv4.EffectiveDebug(&instance.Spec) {
 		if err != nil {
 			logger.Error(err, msg)
 		} else {
@@ -85,15 +97,23 @@ func getOwnerRef(instance *privateaiv4.PrivateAi,
 }
 
 // FUnction to build the svc definition for catalog/shard and GSM
-func buildSvcPortsDef(instance *privateaiv4.PrivateAi) []corev1.ServicePort {
+func buildSvcPortsDef(instance *privateaiv4.PrivateAi, svcType string) []corev1.ServicePort {
 	var result []corev1.ServicePort
-	if len(instance.Spec.PaiService.PortMappings) > 0 {
-		for _, portMapping := range instance.Spec.PaiService.PortMappings {
+	if service := privateaiv4.EffectiveService(&instance.Spec); service != nil && len(service.Ports) > 0 {
+		for _, portMapping := range service.Ports {
+			protocol := portMapping.Protocol
+			if protocol == "" {
+				protocol = corev1.ProtocolTCP
+			}
+			name := strings.TrimSpace(portMapping.Name)
+			if name == "" {
+				name = generateServicePortName(portMapping.Port, portMapping.TargetPort)
+			}
 			servicePort :=
 				corev1.ServicePort{
-					Protocol: portMapping.Protocol,
+					Protocol: protocol,
 					Port:     portMapping.Port,
-					Name:     generatePortMapping(portMapping),
+					Name:     name,
 					TargetPort: intstr.IntOrString{
 						Type:   intstr.Int,
 						IntVal: portMapping.TargetPort,
@@ -102,31 +122,57 @@ func buildSvcPortsDef(instance *privateaiv4.PrivateAi) []corev1.ServicePort {
 			result = append(result, servicePort)
 		}
 	}
+
+	if svcType != "external" {
+		return result
+	}
+
+	external := resolvePaiExternalServiceSettings(instance)
+	if external.Port == 0 && external.TargetPort == 0 {
+		return result
+	}
+
+	if len(result) == 0 {
+		targetPort, _, _, _ := resolveServicePort(&instance.Spec)
+		if external.TargetPort > 0 {
+			targetPort = external.TargetPort
+		}
+		servicePort := targetPort
+		if external.Port > 0 {
+			servicePort = external.Port
+		}
+		return []corev1.ServicePort{{
+			Protocol: corev1.ProtocolTCP,
+			Port:     servicePort,
+			Name:     fmt.Sprintf("tcp-%d-%d", servicePort, targetPort),
+			TargetPort: intstr.IntOrString{
+				Type:   intstr.Int,
+				IntVal: targetPort,
+			},
+		}}
+	}
+
+	if external.Port > 0 {
+		result[0].Port = external.Port
+	}
+	if external.TargetPort > 0 {
+		result[0].TargetPort = intstr.FromInt(int(external.TargetPort))
+	}
+	result[0].Name = generateServicePortName(result[0].Port, result[0].TargetPort.IntVal)
 	return result
 }
 
-// Function to generate the port mapping
-func generatePortMapping(portMapping privateaiv4.PaiPortMapping) string {
-	return generateName(fmt.Sprintf("%s-%d-%d-", "tcp",
-		portMapping.Port, portMapping.TargetPort))
+func generateServicePortName(port, targetPort int32) string {
+	return fmt.Sprintf("tcp-%d-%d", port, targetPort)
 }
 
-// Function to generate the Name
-func generateName(base string) string {
-	maxNameLength := 50
-	randomLength := 5
-	maxGeneratedLength := maxNameLength - randomLength
-	if len(base) > maxGeneratedLength {
-		base = base[:maxGeneratedLength]
-	}
-	return fmt.Sprintf("%s%s", base, rand.String(randomLength))
-}
-
+// GetFmtStr formats a value for bracketed log display.
 func GetFmtStr(pstr string,
 ) string {
 	return "[" + pstr + "]"
 }
 
+// CheckDepSet returns the deployment for the given PrivateAi instance.
 func CheckDepSet(instance *privateaiv4.PrivateAi, kClient client.Client) (*appsv1.Deployment, error) {
 	sfSetFound := &appsv1.Deployment{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
@@ -139,6 +185,7 @@ func CheckDepSet(instance *privateaiv4.PrivateAi, kClient client.Client) (*appsv
 	return sfSetFound, nil
 }
 
+// DelPvc deletes the named PVC in the PrivateAi namespace.
 func DelPvc(pvcName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger) error {
 
 	LogMessages("DEBUG", "Inside the delPvc and received param: "+GetFmtStr(pvcName), nil, instance, logger)
@@ -155,6 +202,7 @@ func DelPvc(pvcName string, instance *privateaiv4.PrivateAi, kClient client.Clie
 	return nil
 }
 
+// CheckSvc fetches the named service in the PrivateAi namespace.
 func CheckSvc(svcName string, instance *privateaiv4.PrivateAi, kClient client.Client) (*corev1.Service, error) {
 	// If this is a PrivateAi instance
 	//	if instance.Kind == "PrivateAi" && !strings.HasSuffix(svcName, "-svc") {
@@ -184,10 +232,11 @@ func checkPvc(pvcName string, instance *privateaiv4.PrivateAi, kClient client.Cl
 	return pvcFound, nil
 }
 
-func CheckSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger) (*corev1.Secret, error) {
+// CheckSecret fetches the named secret in the PrivateAi namespace.
+func CheckSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, _ logr.Logger) (*corev1.Secret, error) {
 
 	sc := &corev1.Secret{}
-	var err error = kClient.Get(context.TODO(), types.NamespacedName{
+	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      secName,
 		Namespace: instance.Namespace,
 	}, sc)
@@ -195,10 +244,11 @@ func CheckSecret(secName string, instance *privateaiv4.PrivateAi, kClient client
 	return sc, err
 }
 
-func CheckConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger) (*corev1.ConfigMap, error) {
+// CheckConfigMap fetches the named ConfigMap in the PrivateAi namespace.
+func CheckConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient client.Client, _ logr.Logger) (*corev1.ConfigMap, error) {
 
 	sc := &corev1.ConfigMap{}
-	var err error = kClient.Get(context.TODO(), types.NamespacedName{
+	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      cName,
 		Namespace: instance.Namespace,
 	}, sc)
@@ -206,14 +256,16 @@ func CheckConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient clien
 	return sc, err
 }
 
+func logSecretKeyFound(key string, value []byte, instance *privateaiv4.PrivateAi, logger logr.Logger) {
+	LogMessages("DEBUG", "Key : "+GetFmtStr(key)+" Value : [REDACTED] Length : "+GetFmtStr(strconv.Itoa(len(value))), nil, instance, logger)
+}
+
+// ReadSecret reads key fields from the named secret and returns api-key/cert values.
 func ReadSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) (string, string) {
 
 	var apiKeyVal string
 	var certPemVal string
-	sc := &corev1.Secret{}
-	//var err error
-
 	sc, err := CheckSecret(secName, instance, kClient, logger)
 
 	if err != nil {
@@ -224,11 +276,11 @@ func ReadSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.
 	for k, val := range sc.Data {
 		if k == "api-key" {
 			apiKeyVal = string(val)
-			LogMessages("DEBUG", "Key : "+GetFmtStr(k)+" Value : "+GetFmtStr(apiKeyVal)+"   Val: "+GetFmtStr(string(val)), nil, instance, logger)
+			logSecretKeyFound(k, val, instance, logger)
 		}
 		if k == "cert.pem" {
 			certPemVal = string(val)
-			LogMessages("DEBUG", "Key : "+GetFmtStr(k)+" Value : "+GetFmtStr(certPemVal)+"   Val: "+GetFmtStr(string(val)), nil, instance, logger)
+			logSecretKeyFound(k, val, instance, logger)
 		}
 	}
 	if apiKeyVal == "" {
@@ -241,11 +293,9 @@ func ReadSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.
 	return apiKeyVal, certPemVal
 }
 
+// PatchSecret patches ownership labels onto the named secret.
 func PatchSecret(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) error {
-
-	sc := &corev1.Secret{}
-	//var err error
 
 	// Reading a Secret
 	sc, err := CheckSecret(secName, instance, kClient, logger)
@@ -253,16 +303,8 @@ func PatchSecret(secName string, instance *privateaiv4.PrivateAi, kClient client
 		return err
 	}
 
-	scLabels := sc.GetLabels()
-	if len(scLabels) != 0 {
-		if _, ok := scLabels["app.kubernetes.io/privateai-resource-name"]; ok {
-			return nil
-		}
-	}
-
 	scCopy := sc.DeepCopy()
-	scCopy.Labels = make(map[string]string)
-	scCopy.Labels["app.kubernetes.io/privateai-resource-name"] = "PrivateAi-" + instance.Name
+	scCopy.Labels = setPrivateAIResourceNameLabel(scCopy.Labels, instance)
 	patch := client.MergeFrom(sc)
 	err = kClient.Patch(context.Background(), scCopy, patch)
 	if err != nil {
@@ -271,11 +313,9 @@ func PatchSecret(secName string, instance *privateaiv4.PrivateAi, kClient client
 	return nil
 }
 
+// PatchConfigMap patches ownership labels onto the named ConfigMap.
 func PatchConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) error {
-
-	cc := &corev1.ConfigMap{}
-	//var err error
 
 	// Reading a configmap
 	cc, err := CheckConfigMap(cName, instance, kClient, logger)
@@ -283,16 +323,8 @@ func PatchConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient clien
 		return err
 	}
 
-	cLabels := cc.GetLabels()
-	if len(cLabels) != 0 {
-		if _, ok := cLabels["app.kubernetes.io/privateai-resource-name"]; ok {
-			return nil
-		}
-	}
-
 	ccCopy := cc.DeepCopy()
-	ccCopy.Labels = make(map[string]string)
-	ccCopy.Labels["app.kubernetes.io/privateai-resource-name"] = "PrivateAi-" + instance.Name
+	ccCopy.Labels = setPrivateAIResourceNameLabel(ccCopy.Labels, instance)
 	patch := client.MergeFrom(cc)
 	err = kClient.Patch(context.Background(), ccCopy, patch)
 	if err != nil {
@@ -301,6 +333,7 @@ func PatchConfigMap(cName string, instance *privateaiv4.PrivateAi, kClient clien
 	return nil
 }
 
+// GetSecretResourceVersion returns the resourceVersion for the named secret.
 func GetSecretResourceVersion(secName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) string {
 	sc, err := CheckSecret(secName, instance, kClient, logger)
@@ -310,6 +343,7 @@ func GetSecretResourceVersion(secName string, instance *privateaiv4.PrivateAi, k
 	return sc.ResourceVersion
 }
 
+// GetConfigMapResourceVersion returns the resourceVersion for the named ConfigMap.
 func GetConfigMapResourceVersion(cName string, instance *privateaiv4.PrivateAi, kClient client.Client, logger logr.Logger,
 ) string {
 	cc, err := CheckConfigMap(cName, instance, kClient, logger)
@@ -319,6 +353,7 @@ func GetConfigMapResourceVersion(cName string, instance *privateaiv4.PrivateAi, 
 	return cc.ResourceVersion
 }
 
+// TernaryCondition returns trueVal when condition is true, otherwise falseVal.
 func TernaryCondition[Y any](condition bool, trueVal, falseVal Y) Y {
 	if condition {
 		return trueVal
@@ -326,6 +361,7 @@ func TernaryCondition[Y any](condition bool, trueVal, falseVal Y) Y {
 	return falseVal
 }
 
+// GetSvcName builds a service name for the given service kind.
 func GetSvcName(name string, svctype string) string {
 	var svcName string
 	if svctype == "local" {
@@ -334,6 +370,12 @@ func GetSvcName(name string, svctype string) string {
 
 	if svctype == "external" {
 		svcName = name + "-svc" // consistent single svc name
+	}
+	if svctype == "publicLoadBalancer" {
+		svcName = name + "-public-lb"
+	}
+	if svctype == "privateLoadBalancer" {
+		svcName = name + "-private-lb"
 	}
 	return svcName
 }

@@ -1,42 +1,59 @@
-# Provisioning Oracle Globally Distributed Database with System-Managed Sharding with number of chunks specified
+# Deploy Oracle GDD with System-Managed Sharding and Data Guard replication using a custom number of chunks
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database.
+In this use case, DBCA automatically creates the shard and catalog databases during provisioning.
 
-**NOTE:** In this use case, because DBCA creates the database automatically during the deployment, the time required to create the database is greater than the time it takes when the database is created by cloning from a Database Gold Image.
+**NOTE:** Because DBCA creates the databases during deployment, provisioning takes longer than when the databases are cloned from a Database Gold Image.
 
-By default, the System-Managed Sharding deploys the Oracle Globally Distributed Database with 120 chunks per Shard Database. If, for example, we have three shards, it will be total of 360 chunks. 
+By default, System-Managed Sharding creates 120 chunks per shard database. For example, if the deployment contains two shard databases, a total of 240 chunks are created.
 
-In this example, the Oracle Globally Distributed Database will be deployed with non-default number of chunks specified using parameter `CATALOG_CHUNKS`.
+This example sets the total number of chunks by using the `CATALOG_CHUNKS` environment variable.
 
-This example uses `ssharding_shard_prov_chunks.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
+This example uses `ssharding_shard_prov_chunks.yaml` to provision an Oracle GDD system with the Oracle Sharding Controller using:
 
-* Primary GSM Pods `gsm1` and standby GSM Pod `gsm2` 
-* Three Shard Database Pods: `shard1`, `shard2` and `shard3` 
-* One Catalog Database Pod: `catalog` 
-* Total number of chunks as `120` specified by variable `CATALOG_CHUNKS` (it will be 40 chunks per shard) 
-* Namespace: `shns` 
+* Primary GSM pod: `gsm1`
+* Standby GSM pod: `gsm2`
+* Two shard database pods (`shardNum: 2`)
+* One catalog database pod: `catalog`
+* Total chunks: `120` (configured using `CATALOG_CHUNKS`, resulting in 60 chunks per shard)
+* `shardingType: SYSTEM` (System-Managed Sharding)
+* Replication type: Data Guard (replicationType: DG)
+* Namespace: `shns`
 
+This example uses pre-built Oracle Database and Global Data Services container images available from [Oracle Container Registry](https://container-registry.oracle.com/).
 
-In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
-  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the namespace `shns`. Please refer to [this page](./../container_reg_secret.md) for the details. 
-  * If you plan to build and use the images, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov.yaml`.
-  * To understand Database and Global Data Services Docker images prerequsites, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images)
-  * The version of `openssl` in the Oracle Database and Oracle GSM images must be compatible with the `openssl` version on the machine where you will run the openssl commands to generate the encrypted password file during the deployment.
-  
+* To pull the images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the `shns` namespace. For details, see [Creating an image pull secret](../container_reg_secret.md).
+* If you plan to build and use the images, update the `dbImage` and `gsmImage` values to reference the images built in your environment.
+* For prerequisites for Oracle Database and Global Data Services container images, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images).
 
-Use the file: [ssharding_shard_prov_chunks.yaml](./ssharding_shard_prov_chunks.yaml) for this use case as below:
+Use this manifest: [`ssharding_shard_prov_chunks.yaml`](./ssharding_shard_prov_chunks.yaml)
 
-1. Deploy the `ssharding_shard_prov_chunks.yaml` file:
+1. Deploy the `ssharding_shard_prov_chunks.yaml` manifest:
+
     ```sh
     kubectl apply -f ssharding_shard_prov_chunks.yaml
     ```
-1. Check the status of the deployment:
+
+2. Check the status of the deployment:
+
     ```sh
-    # Check the status of the Kubernetes Pods:
+    # Check the status of the Kubernetes pods:
     kubectl get all -n shns
 
-    # Check the logs of a particular pod. For example, to check status of pod "shard1-0":
-    kubectl logs -f pod/shard1-0 -n shns
+    # View the logs for a specific pod (for example, "pshard1-0"):
+    kubectl logs -f pod/pshard1-0 -n shns
+    ```
+
+3. Verify using the following commands:
+
+    ```sh
+    # Switch to the primary GSM container:
+    kubectl exec -i -t gsm1-0 -n shns /bin/bash
+
+    # Check the status of the shards:
+    gdsctl config shard
+
+    # Check the status of the chunks:
+    gdsctl config chunks
     ```

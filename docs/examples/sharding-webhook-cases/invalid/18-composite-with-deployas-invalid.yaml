@@ -1,0 +1,27 @@
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: inv-comp-depas
+  namespace: default
+spec:
+  dbImage: container-registry.oracle.com/database/enterprise:21.3.0.0
+  gsmImage: container-registry.oracle.com/database/gsm:21.3.0.0
+  dbSecret:
+    name: db-secret
+    pwdFileName: dbpwd
+    encryptionType: base64
+  catalog:
+  - name: cati8
+    sharding: COMPOSITE
+    repl: DG
+    autoVncr: OFF
+    agentPort: 8080
+  gsm:
+  - name: gsm1
+  shardingType: COMPOSITE
+  replicationType: DG
+  shard:
+  - name: shd1
+    shardGroup: sg1
+    shardSpace: ss1
+    deployAs: PRIMARY

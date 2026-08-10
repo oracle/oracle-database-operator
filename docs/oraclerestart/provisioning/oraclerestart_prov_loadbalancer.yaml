@@ -19,12 +19,16 @@ spec:
     workerNode:
       - 10.0.10.58                   # IP address of the target node for deployment
 
-    # Environment variables in case you want to want to ignore prerequisite checks during the GI/RDBSMS Install
-#    envVars:
-#      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
-#        value: "true"
-#      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
-#        value: "true"
+    # Environment variables must be specified under spec.instDetails.
+    # envVars:
+    #   - name: LOG_DIR                # Optional log directory used by container setup scripts.
+    #     value: "/tmp/orod"
+    #   - name: ORA_LOG_MAX_BYTES      # Optional max bytes per setup log before rotation/truncation.
+    #     value: "104857"
+    #   - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
+    #     value: "true"
+    #   - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
+    #     value: "true"
 
   # Load Balancer service configuration
   lbService:
@@ -58,6 +62,12 @@ spec:
   # Secret containing DB user credentials
   dbSecret:
     name: db-user-pass-pkutl     # Secret name
+    keyFileName: key.pem         # Key file name inside secret
+    pwdFileName: pwdfile.enc     # Password file name inside secret
+
+  # Secret for configuring Transparent Data Encryption (TDE)
+  tdeWalletSecret:
+    name: tde-user-pass-pkutl    # Secret name
     keyFileName: key.pem         # Key file name inside secret
     pwdFileName: pwdfile.enc     # Password file name inside secret
 

@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,var-naming
+// Legacy API field/type names are preserved for compatibility with existing CR specs.
+
 // LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
 const LastSuccessfulSpec string = "lastSuccessfulSpec"
 

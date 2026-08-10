@@ -1,183 +1,488 @@
-# Using Oracle PrivateAI Controller with Oracle Database Operator for Kubernetes
+# Managing Oracle Private AI Services Container with Oracle Database Operator for Kubernetes
 
-Oracle PrivateAI Controller streamlines the deployment and use of the Oracle Private AI Service Container. The Private AI Services Container is a lightweight, containerized web service that provides an interface for performing inference on ONNX format models using REST. This container can run on your laptop, in your data center, or on computer nodes in the public cloud.
-For details, refer [Private AI Services Container documentaion](https://docs.oracle.com/en/database/oracle/oracle-database/26/prvai/index.html)
+Oracle Database Operator for Kubernetes includes the `PrivateAi` controller for deploying and operating Oracle Private AI Services Container on Kubernetes. This guide is organized around the current `privateai.oracle.com/v4` API and the sample manifests under [`docs/privateai/provisioning`](./provisioning/).
 
-Kubernetes provides foundational infrastructure components—including compute, storage, and networking—exposed programmatically as code. With Kubernetes, resources such as deployments play a central role in managing and updating applications. Deployments support declarative updates, ensuring the desired number of application replicas are running, and automate tasks such as scaling, rolling updates, and rollbacks. 
 
-Within this environment, the PrivateAI controller in the Oracle Database Operator automates the deployment of the Oracle Private AI Service Container to Kubernetes clusters, utilizing the Oracle Private AI Service Container image. The Oracle PrivateAI controller delivers complete automation for deploying Oracle Private AI Service Containers in Kubernetes clusters. 
+Use this document when you want to:
 
-### Oracle Private AI Controller Capabilities:
-#### Automated Container Deployment
-Automates the deployment of Oracle PrivateAI Container in Kubernetes clusters using the Oracle Database Operator. Ensures end-to-end automation for lifecycle management (deployment, scaling, updates, rollback). 
-#### Inference as a Service
-Provides a lightweight, containerized web service interface for performing AI inference on ONNX models via REST APIs. 
-#### Compute Offloading
-Offloads compute-intensive AI operations (e.g., embedding generation) from the database, freeing up resources for database-native functions like indexing and search. 
-#### Integration with Kubernetes
-Utilizes Kubernetes resource constructs (deployments, sets) for robust container orchestration. Leverages Kubernetes infrastructure primitives (compute, storage, networking) and makes them available as code (Infrastructure as Code). Enables declarative updates, scaling, rolling updates, and rollbacks for high availability and simplified management. 
-#### Image-based Deployment
-Uses Oracle PrivateAI Container images for reproducible and consistent environment provisioning. 
-1. Targeted for AI Vector Search Customers:   
-2. Designed to address needs of customers who require efficient handling of AI tasks external to the database, specifically in the context of AI-powered vector search use cases.
+- deploy a new PrivateAI instance on Kubernetes
+- start with a minimal HTTPS-only configuration
+- expose a deployment through public or internal load balancers
+- scale replicas, adjust resources, or change the container image
+- use config map based model catalogs, filesystem-backed models, or Traffic Manager integration
 
-## Using Oracle Database Operator PrivateAI Controller
+For product background, see the [Oracle Private AI Services Container documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/prvai/index.html). For operator installation, see the [main operator README](../../README.md).
 
-Following sections provide the details for deploying Oracle Private AI Service Container using Oracle Database Operator PrivateAI Controller with different use cases:
+## Contents
 
-* [Prerequisites for running Oracle PrivateAI Controller](#prerequisites-for-running-oracle-privartai-controller)
-* [Quick Start](#quick-start)
-* [Accessing Private AI Service Container Pods](#accessing-the-privateai-container-pod-in-kubernetes)
-* [Debugging and Troubleshooting](#debugging-and-troubleshooting)
+- [Before You Begin](#before-you-begin)
+- [Quick Start](#quick-start)
+- [Scenario Guide](#scenario-guide)
+- [PrivateAI v4 Resource Model](#privateai-v4-resource-model)
+- [Traffic Manager](#traffic-manager)
+- [Status and Verification](#status-and-verification)
+- [Advanced Scenarios](#advanced-scenarios)
+- [Compatibility Notes](#compatibility-notes)
 
-**Note:** Before proceeding to the next section, you must complete the instructions given in each section, based on your enviornment, before proceeding to next section.
+## Before You Begin
 
-## Prerequisites for running Oracle PrivartAI Controller
+Complete these steps before using the examples in this directory. Other PrivateAI how-to guides assume this section is already complete.
 
-**IMPORTANT:** You must make the changes specified in this section before you proceed to the next section.
+### Create the namespace
 
-### 1. Kubernetes Cluster: To deploy Oracle PrivateAI controller with Oracle Database Operator, you need a Kubernetes Cluster which can be one of the following: 
-
-* A Cloud-based Kubernetes cluster, such as [OCI on Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) or  
-* An On-Premises Kubernetes Cluster, such as [Oracle CNE)](https://docs.oracle.com/en/operating-systems/olcne/) cluster.
-
-To use Oracle PrivateAI Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Release Status Section](../../README.md#release-status).
-
-#### Mandatory roles and privileges requirements for Oracle PrivateAI Controller 
-
-  Oracle PrivateAI Controller uses Kubernetes objects such as :-
-
-  | Resources | Verbs |
-  | --- | --- |
-  | Pods | create delete get list patch update watch | 
-  | Containers | create delete get list patch update watch |
-  | PersistentVolumeClaims | create delete get list patch update watch | 
-  | Services | create delete get list patch update watch | 
-  | Secrets | create delete get list patch update watch | 
-  | Events | create patch |
-
-### 2. Deploy Oracle Database Operator
-
-To deploy Oracle Database Operator in a Kubernetes cluster, go to the section [Install Oracle DB Operator](../../README.md#install-oracle-db-operator) in the README.md, and complete the operator deployment before you proceed further. If you have already deployed the operator, then proceed to the next section.
-
-**IMPORTANT:** Make sure you have completed the steps for [Role Binding for access management](../../README.md#role-binding-for-access-management) as well before installing the Oracle DB Operator. 
-
-### 3. Create a namespace for the Oracle PrivateAI Setup
-
-  Create a Kubernetes namespace named `pai`. All the resources belonging to the Oracle PrivateAI topology setup will be provisioned in this namespace named `pai`. For example:
-
-  ```sh
-  #### Create the namespace 
-  kubectl create ns pai
-
-  #### Check the created namespace 
-  kubectl get ns
-  ```
-
-Note: If you are using a different namespace, make sure to update any references from the `pai` namespace to the one you intend to use.
-
-### 4. Oracle Private AI Service Container Image
-The pre-built Private AI Service container image is available on [Oracle Container Registry](https://container-registry.oracle.com/ords/ocr/ba/database/private-ai) and fully supported by Oracle for production uses.
-
-1. Log into Oracle Container Registry and accept the license agreement for the Private AI Service container image; ignore if you have accepted the license agreement already.
-
-2. If you have not already done so, create an image pull secret for the Oracle Container Registry:
-```
-$ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<container-registry-auth-token>' --docker-email='<oracle-sso-email-address>' -n pai
-```
-Note: Generate the auth token from user profile section on top right of the page after logging into container-registry.oracle.com
-
-3. This secret can also be created from the docker config.json or from podman auth.json after a successful login  
-```
-docker login container-registry.oracle.com
-kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=.docker/config.json --type=kubernetes.io/dockerconfigjson -n pai
-```
-or
-
-```
-podman login container-registry.oracle.com
-kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json --type=kubernetes.io/ dockerconfigjson  -n pai
-```
-
-### 5. Create a configmap for the Oracle PrivateAI Deployment
-
-In this step, a configmap will be created which has the details of the AI Model File. The configmap will be created according to the type of the Private AI Deployment. Below are examples of configmap used in the later examples:
-
-You need to download the models and you need to make sure they are available through HTTPS access such as object store pre-authenticated URL. For the model details, you can refer the section `Available Embedding Models' in [Private AI Services Container documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/prvai/index.html).
-
-- [Configmap using Single AI Model with HTTPS URL](./configmap_single_model_https.md) 
-- [Configmap using Multiple AI Models with HTTPS URL](./configmap_multi_model_https.md) 
-- [Configmap using Multiple AI Models on File System](./configmap_multi_model_filesystem.md) 
-
-### 6. Reserve LoadBalancer Public IP
-
-- The SSL certificate used during the Private AI Service Container Deployment will need a common name(hostname or IP) to be specified during the certificate creation.
-- Later, for a secure communication with the Private AI Service Container Deployed in a Kuberentes Cluster, the client will use the same `cert.pem` file and will send the connection request to same hostname or IP.
-- If you are deploying Private AI Service Container on an OKE cluster, you will need to reserve a Public IP in OCI. - OCI allows provisioning a Public LoadBalancer and assigning a reserved public ip to it. Refer the [documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
-- To reserve a Public IP in OCI, refer to [OCI LoadBalancer Documentation](https://docs.public.oneportal.content.oci.oraclecloud.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm) for the details.
-- Once you have reserved the Public IP, use this Public IP as `Common Name` while generating the openssl certificate in the next step.
-
-**NOTE:** This step is required only if you are going to deploy the Private AI Service Container on OKE Cluster using OCI Public LoadBalancer.
-
-**NOTE:** The option to reserve a Private IP and use that with an OCI Internal LoadBalancer is not available as of now. Refer the [documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
-
-### 7. Create Kubernetes secret for the Oracle PrivateAI Deployment
-
-**IMPORTANT:** Make sure the version of `openssl` in the Oracle Private AI Services container image is compatible with the `openssl` version on the machine where you will run the openssl commands to generate the encrypted password file during the deployment.
-
-Create a file `privateai-ssl-pwd` with the password you want to use. This password will be used in the next step. The script [pai_secret.sh](./provisioning/pai_secret.sh) has the command to generate the required keys and an SSL certificate.
-
-Use the Shell Script `pai_secret.sh` to create the required secrets for the Oracle Private AI Service Container Deployment. Run this file as below and enter the password when prompted.
-
-In case of the Public LoadBalancer, use the reserved Public IP as the `common name`.
-In case of the Internal LoadBalancer, do not provide any value for `common name`.
+Create the namespace to deploy the PrivateAI Services Container in your Kubernetes Cluster. In this example, the namespace is `pai`.
 
 ```sh
-cd provisioning
-echo "<password>" > privateai-ssl-pwd
-./pai_secret.sh
+kubectl create namespace pai
 ```
 
-**NOTE:** In case of the Internal LoadBalancer, we can't use a reserved Private IP. In this case, you can leave `common name` empty.
+### Basic prerequisites
 
-Use below command to check the Kubernetes Secret Created:
+Make sure the following are already in place:
+
+1. Oracle Database Operator is installed in the cluster.
+2. You have accepted the Oracle Container Registry license for the Private AI image.
+3. In case of Namespace-scoped deployment, the required role binding is created and the namespace `pai` is added to `WATCH_NAMESPACE` during the Oracle Database Operator Deployment.
+
+### Create the image pull secret
+
+Create a Kubernetes Secret to be used during pulling container image from Oracle Container Registry:
 
 ```sh
-kubectl get secret -n pai
-kubectl describe secret paisecret -n pai
+kubectl create secret docker-registry oracle-container-registry-secret \
+  --docker-server=container-registry.oracle.com \
+  --docker-username='<oracle-sso-email-address>' \
+  --docker-password='<container-registry-auth-token>' \
+  --docker-email='<oracle-sso-email-address>' \
+  -n pai
 ```
 
-After you have the above prerequisites completed, you can proceed to the next section for your environment to deploy the Oracle PrivateAI Controller.
+If you already logged in with `podman`, you can also create the secret from your local auth file.
 
+### Create an auth secret for authenticated deployments
+
+The quickest path uses `spec.security.authEnabled: true`. Create or provision the auth secret before applying the `PrivateAi` resource with `spec.security.authEnabled: true`.
+
+Quick creation example: After cloning the GitHub repository, run the below command:
+
+```sh
+cd oracle-database-operator-system/docs/privateai/auth-secret
+
+./create_auth_secret.sh \
+  --namespace pai \
+  --secret-name paisecret \
+  --generate-api-key \
+  --ssl-pwd-value '<PASSWORD>' \
+  --list-secret
+```
+
+For detailed examples, secret updates, multiple API keys, and manual patch commands, see [PrivateAI Auth Secret](./auth-secret/README.md).
+
+The legacy helper assets under [`provisioning`](./provisioning/) are still available for teams that use a shared secret containing `api-key`, `cert.pem`, `key.pem`, and related files.
+
+### Create a TLS secret for HTTPS deployments
+
+The quickest path uses HTTPS. You can create the TLS secret manually, but the recommended flow is to use cert-manager and the helper under [TLS certificate generation](./tls-cert-manager/README.md).
+
+Quick creation example:
+
+`PrivateAi` deployment also needs `keystore.p12` in the same TLS secret, use the helper with PKCS#12 enabled and point the password reference at an existing secret such as the auth secret:
+
+```sh
+cd oracle-database-operator-system/docs/privateai/tls-cert-manager
+
+NAMESPACE=pai \
+TARGET=pai \
+ISSUER_NAME=tcps-selfsigned-bootstrap \
+ISSUER_KIND=ClusterIssuer \
+COMMON_NAME=api.example.com \
+DNS_NAMES="api.example.com,pai-sample.pai.svc,pai-sample.pai.svc.cluster.local" \
+IP_ADDRESSES="<IP_ADDRESS>" \
+GENERATE_PKCS12=true \
+PASSWORD_SECRET_NAME=paisecret \
+PASSWORD_SECRET_KEY=privateai-ssl-pwd \
+./tr_cert_manager.sh
+```
+
+List the generated certificate and secret:
+
+```sh
+kubectl get certificate -n pai
+kubectl get secret privateai-tls -n pai
+```
+
+Use that guide when you need either of these:
+
+- a `PrivateAi` TLS secret wired through `spec.security.tls.secretName`
+- a `TrafficManager` nginx TLS secret wired through `spec.security.tls.secretName`
+
+The guide includes:
+
+- a target-aware script so you can create either `pai` or `nginx` certificates
+- SAN and IP examples for internal and external endpoints
+- renewal behavior, forced renewal steps, and secret update notes
+- common pitfalls such as hostname mismatch and wrong secret wiring
+
+For detailed procedure, renewal steps, and troubleshooting notes, see [TLS certificate generation](./tls-cert-manager/README.md).
+
+Some older provisioning manifests in this directory still reference `paisecret`. You can either keep using that secret name when you run the helper, or update the manifest to point at your newer TLS secret name.
+
+### Optional: Create model config maps
+
+When no configuration file is specified during the deployment, the PrivateAI container will start and make all the pre-approved models available.
+
+Use these helper guides when you want config map based model catalogs:
+
+- [Use only Specific Pre-approved model](./configmap_specific_preapproved_model.md)
+- [Single model using HTTPS URL](./configmap_single_model_https.md)
+- [Multiple models using HTTPS URL](./configmap_multi_model_https.md)
+- [Multiple models on file system](./configmap_multi_model_filesystem.md)
 
 ## Quick Start
 
-There are multiple use case possible for deploying the Private AI Service Container in Kubernetes Cluster covered by below examples:
+This example demonstrates the simplest working `PrivateAI` deployment using the grouped `v4` configuration fields. The deployment is configured with:
 
-**NOTE:** All the below deployments are using an OCI OKE Cluster.
+- A single replica
+- HTTPS listener only
+- Internal service only
+- Default models included in the container image
+- No external load balancer
 
-- **Private AI Service Container using OCI Public LoadBalancer**
-  - [Change the Private AI Service Container Image](./change_privateai_container_image.md) 
-  - [Private AI Service Container using OCI Public LoadBalancer without configmap](./deploy_privateai_publiclb_without_configmap.md) 
-  - [Private AI Service Container using OCI Public LoadBalancer with multiple replica](./deploy_privateai_publiclb_multi_replica.md) 
-    - [Scale-out](./scale_out_privateai.md)
-    - [Scale-in](./scale_in_privateai.md)
-  - [Private AI Service Container using OCI Public LoadBalancer with worker node selection](./deploy_privateai_publiclb_worker_node.md) 
-  - [Private AI Service Container using OCI Public LoadBalancer with memory and cpu limits for pods](./deploy_privateai_publiclb_mem_cpu_limit.md) 
-  - [Change the memory and cpu limits for pods](./change_privateai_publiclb_mem_cpu_limit.md) 
-- **Private AI Service Container using an Internal LoadBalancer**
-  - [Private AI Service Container using Single AI Model with HTTPS URL and an Internal LoadBalancer](./deploy_privateai_internallb.md) 
-  - [Private AI Service Container using Multiple AI Models with HTTPS URL and an Internal LoadBalancer](./deploy_privateai_multi_model_https_internallb.md) 
-    - [Add New Model](./deploy_privateai_multi_model_https_internallb_add_model.md) 
-    - [Remove an existing model](./deploy_privateai_multi_model_https_internallb_remove_model.md) 
-  - [Private AI Service Container using Multiple AI Models on File System and an Internal LoadBalancer](./deploy_privateai_multi_model_filesystem_internallb.md)   
+Apply this minimal manifest:
 
-## Accessing the Private AI Service Container Pod in Kubernetes
+```yaml
+apiVersion: privateai.oracle.com/v4
+kind: PrivateAi
+metadata:
+  name: pai-quickstart
+  namespace: pai
+spec:
+  security:
+    authEnabled: true
+    secret:
+      name: paisecret
+      mountLocation: /privateai/ssl
+    tls:
+      secretName: privateai-tls
+      mountLocation: /privateai/ssl
+  runtime:
+    image:
+      name: container-registry.oracle.com/database/private-ai:latest
+      pullSecret: oracle-container-registry-secret
+    replicas: 1
+  networking:
+    service:
+      ports:
+      - port: 8443
+        targetPort: 8443
+        protocol: TCP
+```
 
-**IMPORTANT:** This example assumes that you have an existing Oracle Private AI Service Container Deployment in the `pai` namespace in Kuberentes Cluster and you have the Reserved Public IP of the LoadBalancer.
+Apply and verify:
 
-Please refer to [this page](./access_privateai.md) for the details to access the Private AI Service Container Pod in Kubernetes.
+```sh
+kubectl apply -f pai-quickstart.yaml
+kubectl get pai,pods,svc -n pai
+kubectl get pai pai-quickstart -n pai -o jsonpath='{.status.status}{"\n"}'
+```
 
-## Debugging and Troubleshooting
+When the deployment is ready, the status becomes `Healthy`.
 
-Refer to [this page](./debug_privateai.md) for the details to access the Private AI Service Container Pod in Kubernetes.
+To access it locally, first start port forwarding in one session as below:
+
+```sh
+kubectl port-forward svc/pai-quickstart 8443:8443 -n pai
+```
+
+Once port forwarding is started, from another session, run below command to check the health of the deployment:
+
+```sh
+curl -k -v https://127.0.0.1:8443/health
+```
+
+You can get the AI Models deployed using below command:
+
+```sh
+curl -k --noproxy '*' --header "Authorization: Bearer `cat <PATH of the api-key file>/api-key`" https://127.0.0.1:8443/v1/models
+```
+
+For detailed instructions on accessing the deployed PrivateAI service, refer to [Access the deployed service](./access_privateai.md)
+
+## Scenario Guide
+
+Use this section as a quick entry point for the most common PrivateAI scenarios.
+
+| Scenario | Where to start |
+| --- | --- |
+| Minimal deployment | [Quick Start](#quick-start) |
+| Generate or update auth secret | [PrivateAI Auth Secret](./auth-secret/README.md) |
+| Generate TLS secret for PrivateAI or nginx | [TLS certificate generation](./tls-cert-manager/README.md) |
+| Public load balancer | [Deploy with public load balancer](./deploy_privateai_publiclb.md) |
+| Public load balancer without config map | [Deploy with public load balancer and no config map](./deploy_privateai_publiclb_without_configmap.md) |
+| Internal load balancer | [Deploy with internal load balancer](./deploy_privateai_internallb.md) |
+| Multiple HTTPS models | [Deploy with multiple HTTPS models and internal load balancer](./deploy_privateai_multi_model_https_internallb.md) |
+| Multiple filesystem-backed models | [Deploy with multiple filesystem-backed models and internal load balancer](./deploy_privateai_multi_model_filesystem_internallb.md) |
+| Scale out or scale in | [Scale out](./scale_out_privateai.md) or [Scale in](./scale_in_privateai.md) |
+| Change CPU and memory | [Deploy with memory and CPU limits](./deploy_privateai_publiclb_mem_cpu_limit.md) or [Change memory and CPU limits](./change_privateai_publiclb_mem_cpu_limit.md) |
+| Change the container image | [Change the container image](./change_privateai_container_image.md) |
+| Worker node placement | [Deploy with worker node selection](./deploy_privateai_publiclb_worker_node.md) |
+| Access the service | [Access the deployed service](./access_privateai.md) |
+| PVC-backed model storage | [Create OCI FSS based PVCs](./create_oci_fss_based_pvc.md) |
+| Traffic Manager with NGINX or CMAN | [Traffic Manager documentation](../trafficmanager/README.md) |
+| Read logs on OKE | [Read PrivateAI logs with OKE Logging](./oke-logging.md) |
+| Debugging | [Debug and troubleshoot](./debug_privateai.md) |
+
+## PrivateAI v4 Resource Model
+
+The current `v4` API is organized around grouped configuration blocks. New manifests and updated samples should use this structure.
+
+| Area | v4 fields | Purpose |
+| --- | --- | --- |
+| Authentication and TLS | `spec.security` | Auth secret and TLS secret configuration |
+| Runtime | `spec.runtime` | Image, pull secret, replicas, env, resources, debug, worker nodes |
+| Model config | `spec.configuration` | ConfigMap-based runtime configuration |
+| Storage | `spec.storage` | Storage class, PVC mounts, size, log location, delete-on-delete |
+| Networking | `spec.networking` | HTTP/HTTPS listeners, local service, external service, nodeports, Traffic Manager |
+| Logging | `spec.runtime.env` | Optional application log level or format settings supported by the image |
+
+On OKE, log collection should use the main PrivateAI container `stdout` and
+`stderr` stream together with cluster workload logging. See [Read PrivateAI
+logs with OKE Logging](./oke-logging.md).
+
+### Key grouped fields
+
+| Need | Preferred fields |
+| --- | --- |
+| Auth secret | `spec.security.authEnabled`, `spec.security.secret` |
+| TLS secret | `spec.security.tls` |
+| Image and pull secret | `spec.runtime.image` |
+| Replica count | `spec.runtime.replicas` |
+| Resource limits | `spec.runtime.resources` |
+| Worker node selection | `spec.runtime.workerNodes` |
+| Workload and pod annotations | `spec.runtime.annotations` |
+| Config map | `spec.configuration.configFile` |
+| PVC mounts | `spec.storage.pvcList` |
+| Service ports | `spec.networking.service.ports` |
+| Public load balancer | `spec.networking.service.publicLoadBalancer` |
+| Private load balancer | `spec.networking.service.privateLoadBalancer` |
+| Traffic Manager integration | `spec.networking.trafficManager` |
+
+### Defaults and validation
+
+The PrivateAI controller applies several important defaults and checks:
+
+- If neither listener is explicitly enabled, HTTPS is used by default.
+- HTTPS defaults to port `8443` and HTTP defaults to `8080`.
+- `spec.configuration.configFile.mountLocation` defaults to `/privateai/config`.
+- `spec.security.secret.mountLocation` and `spec.security.tls.mountLocation` default to `/privateai/ssl`.
+- `spec.networking.service.ports` defaults to HTTPS service port `443` targeting the active PrivateAI listener.
+- `spec.networking.service.cluster.enabled` defaults to `true`.
+- `spec.networking.service.publicLoadBalancer.enabled` and `spec.networking.service.privateLoadBalancer.enabled` default to `false`.
+- `spec.networking.trafficManager.routePath` defaults to `/<resource-name>/v1/` when omitted.
+- Secret and config map mount locations must be absolute paths.
+
+### Networking services
+
+PrivateAI uses the `spec.networking.service` structure:
+
+```yaml
+networking:
+  service:
+    ports:
+    - name: https
+      port: 443
+      targetPort: 8443
+      protocol: TCP
+    cluster:
+      enabled: true
+    publicLoadBalancer:
+      enabled: false
+    privateLoadBalancer:
+      enabled: false
+```
+
+The `ports` entries are the service port mappings. `port` is the exposed Service port and `targetPort` is the container listener port. Use `publicLoadBalancer` and `privateLoadBalancer` independently when both public and private access are required.
+
+For `privateLoadBalancer`, the controller automatically adds:
+
+```text
+service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+```
+
+## Traffic Manager
+
+Use Traffic Manager when multiple PrivateAI deployments should share one routed endpoint. The full NGINX and CMAN field reference, examples, and use cases are in [Traffic Manager documentation](../trafficmanager/README.md). This section shows only one PrivateAI use case.
+
+The example below creates one NGINX Traffic Manager and routes two PrivateAI deployments through different paths:
+
+```yaml
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: pai-nginx
+  namespace: pai
+spec:
+  type: nginx
+  runtime:
+    image: nginx:1.27
+    replicas: 1
+  security:
+    tls:
+      enabled: true
+      secretName: nginx-tls
+      mountLocation: /etc/nginx/tls
+  service:
+    internal:
+      enabled: true
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      port: 443
+      targetPort: 8443
+---
+apiVersion: privateai.oracle.com/v4
+kind: PrivateAi
+metadata:
+  name: pai-finance
+  namespace: pai
+spec:
+  security:
+    authEnabled: true
+    secret:
+      name: paisecret
+      mountLocation: /privateai/ssl
+    tls:
+      secretName: privateai-tls
+      mountLocation: /privateai/ssl
+  runtime:
+    image:
+      name: container-registry.oracle.com/database/private-ai:latest
+      pullSecret: oracle-container-registry-secret
+    replicas: 1
+  networking:
+    trafficManager:
+      ref: pai-nginx
+      routePath: /finance/v1/
+---
+apiVersion: privateai.oracle.com/v4
+kind: PrivateAi
+metadata:
+  name: pai-hr
+  namespace: pai
+spec:
+  security:
+    authEnabled: true
+    secret:
+      name: paisecret
+      mountLocation: /privateai/ssl
+    tls:
+      secretName: privateai-tls
+      mountLocation: /privateai/ssl
+  runtime:
+    image:
+      name: container-registry.oracle.com/database/private-ai:latest
+      pullSecret: oracle-container-registry-secret
+    replicas: 1
+  networking:
+    trafficManager:
+      ref: pai-nginx
+      routePath: /hr/v1/
+```
+
+Requests sent to `/finance/v1/` are routed to `pai-finance`; requests sent to `/hr/v1/` are routed to `pai-hr`. For NGINX TLS, backend TLS verification, private load balancer examples, CMAN generated config, CMAN file config, CMAN REST API, and all `TrafficManager` fields, use [Traffic Manager documentation](../trafficmanager/README.md).
+
+Verify the routed endpoint:
+
+```sh
+kubectl get trafficmanager pai-nginx -n pai
+kubectl get trafficmanager pai-nginx -n pai \
+  -o jsonpath='{.status.status}{"\n"}{.status.externalEndpoint}{"\n"}{.status.nginx.routes}{"\n"}'
+```
+
+### Workload and pod annotations
+
+User annotations can be applied to the generated Deployment object and pod template:
+
+```yaml
+runtime:
+  annotations:
+    workload:
+      company.com/change-ticket: CHG-12345
+    pod:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8443"
+```
+
+Annotations under the `privateai.oracle.com/` prefix are reserved for the operator.
+
+## Status and Verification
+
+Use these commands to check deployment health and discover access details:
+
+```sh
+kubectl get pai -n pai
+kubectl describe pai <name> -n pai
+kubectl get pai <name> -n pai -o jsonpath='{.status.status}{"\n"}{.status.mode}{"\n"}{.status.localService}{"\n"}{.status.publicLoadBalancerService}{"\n"}{.status.privateLoadBalancerService}{"\n"}{.status.loadBalancerIP}{"\n"}'
+```
+
+Typical status fields include:
+
+- `status.status`
+- `status.replicas`
+- `status.localService`
+- `status.publicLoadBalancerService`
+- `status.privateLoadBalancerService`
+- `status.loadBalancerIP`
+- `status.mode`
+- `status.trafficManager`
+
+## Advanced Scenarios
+
+After the quick start, these are the most common production follow-on scenarios.
+
+### Deployment patterns
+
+- [Deploy with public load balancer](./deploy_privateai_publiclb.md)
+- [Deploy with public load balancer and no config map](./deploy_privateai_publiclb_without_configmap.md)
+- [Deploy with internal load balancer](./deploy_privateai_internallb.md)
+- [Deploy with multiple HTTPS models and internal load balancer](./deploy_privateai_multi_model_https_internallb.md)
+- [Deploy with multiple filesystem-backed models and internal load balancer](./deploy_privateai_multi_model_filesystem_internallb.md)
+
+### Model configuration
+
+- [Single model using HTTPS URL](./configmap_single_model_https.md)
+- [Multiple models using HTTPS URL](./configmap_multi_model_https.md)
+- [Multiple models on file system](./configmap_multi_model_filesystem.md)
+- [Add a model to an existing multi-model HTTPS deployment](./deploy_privateai_multi_model_https_internallb_add_model.md)
+- [Remove a model from an existing multi-model HTTPS deployment](./deploy_privateai_multi_model_https_internallb_remove_model.md)
+
+### Scaling and updates
+
+- [Deploy with multiple replicas](./deploy_privateai_publiclb_multi_replica.md)
+- [Scale out](./scale_out_privateai.md)
+- [Scale in](./scale_in_privateai.md)
+- [Deploy with memory and CPU limits](./deploy_privateai_publiclb_mem_cpu_limit.md)
+- [Change memory and CPU limits](./change_privateai_publiclb_mem_cpu_limit.md)
+- [Change the container image](./change_privateai_container_image.md)
+- [Deploy with worker node selection](./deploy_privateai_publiclb_worker_node.md)
+
+### Access, storage, and troubleshooting
+
+- [Access the deployed service](./access_privateai.md)
+- [Create OCI FSS based PVCs](./create_oci_fss_based_pvc.md)
+- [Read PrivateAI logs with OKE Logging](./oke-logging.md)
+- [Debug and troubleshoot](./debug_privateai.md)
+
+## Compatibility Notes
+
+The `v4` API still accepts older flat fields such as `paiConfigFile`, `paiEnableAuthentication`, `paiSecret`, `paiImage`, `replicas`, `paiService`, and `isExternalSvc`, but those fields are deprecated.
+
+The documentation and provisioning samples in this directory now prefer the grouped layout:
+
+- `spec.security`
+- `spec.runtime`
+- `spec.configuration`
+- `spec.storage`
+- `spec.networking`
+
+For new manifests, avoid mixing deprecated flat fields with grouped `v4` fields unless the example is specifically about backward compatibility.

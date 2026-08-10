@@ -38,8 +38,13 @@
 
 package commons
 
+// revive:disable:var-naming,exported
+// Legacy constant names are intentionally preserved for compatibility across controllers/scripts.
+
+// CONTAINER_LISTENER_PORT is the default TCP listener port exposed by SIDB pods.
 const CONTAINER_LISTENER_PORT int32 = 1521
 
+// CONTAINER_TCPS_PORT is the default TCPS listener port exposed by SIDB pods.
 const CONTAINER_TCPS_PORT int32 = 2484
 
 const ORACLE_UID int64 = 54321
@@ -141,6 +146,16 @@ ${PRIMARY_SID} =
    )
  )
  `
+const PrimaryTnsnamesEntrySharding string = `
+${PRIMARY_SID} =
+(DESCRIPTION =
+  (ADDRESS = (PROTOCOL = TCP)(HOST = ${PRIMARY_IP})(PORT = ${PRIMARY_DB_PORT:-1521} ))
+  (CONNECT_DATA =
+    (SERVER = DEDICATED)
+    (SERVICE_NAME = ${PRIMARY_SID})
+  )
+)
+`
 
 const ListenerEntry string = `LISTENER = 
 (DESCRIPTION_LIST = 
@@ -172,7 +187,7 @@ SID_LIST_LISTENER =
 DEDICATED_THROUGH_BROKER_LISTENER=ON
 `
 
-const CreateAdminPasswordFile string = "umask 177\n cat > admin.pwd <<EOF\n%s\nEOF\n umask 022"
+const CreateAdminPasswordFile string = "umask 177\n cat > admin.pwd <<'EOF'\n%s\nEOF\n umask 022"
 
 const CreateDGMGRLScriptFile string = "umask 177\n echo -e \"%s\" > dgmgrl.cmd\n umask 022"
 
@@ -215,7 +230,7 @@ const DataguardBrokerGetDatabaseCMD string = "SELECT DATABASE || ':' || DATAGUAR
 
 const EnableFSFOCMD string = "ENABLE FAST_START FAILOVER;"
 
-const DisableFSFOCMD string = "STOP OBSERVER %s" +
+const DisableFSFOCMD string = "STOP OBSERVER %s;" +
 	"\nDISABLE FAST_START FAILOVER;"
 
 const RemoveDataguardConfiguration string = "DISABLE FAST_START FAILOVER;" +
@@ -260,7 +275,7 @@ const GetUserORDSSchemaStatusSQL string = "alter session set container=%[2]s;" +
 	"\nselect 'STATUS:'||status as status from ords_metadata.ords_schemas where upper(parsing_schema) = upper('%[1]s');"
 
 const CreateORDSSchemaSQL = "\nALTER SESSION SET CONTAINER=%[3]s;" +
-	"\nCREATE USER %[1]s IDENTIFIED BY \\\"%[2]s\\\";" +
+	"\nCREATE USER %[1]s IDENTIFIED BY \"%[2]s\";" +
 	"\nGRANT CONNECT, RESOURCE, DBA, PDB_DBA TO %[1]s;"
 
 const EnableORDSSchemaSQL string = "\nALTER SESSION SET CONTAINER=%[4]s;" +
@@ -269,78 +284,89 @@ const EnableORDSSchemaSQL string = "\nALTER SESSION SET CONTAINER=%[4]s;" +
 
 	// SetupORDSCMD is run only for the FIRST TIME, ORDS is installed. Once ORDS is installed, we delete the pod that ran SetupORDSCMD and create new ones.
 	// Newly created pod doesn't run this SetupORDSCMD.
-const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.admin.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property dbc.auth.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property restEnabledSql.active true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property db.serviceNameSuffix \"\" " + // Mandatory when ORDS Installing at CDB Level -> Maps PDB's
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InitialLimit 5" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.MaxLimit 20" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InactivityTimeout 300" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property pdb.open.asneeded true" +
-	"\numask 177" +
-	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
-	"\necho db.cdb.adminUser.password=\"%[4]s\" >> cdbAdmin.properties" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
-	"\nrm -f cdbAdmin.properties" +
-	"\necho db.username=APEX_LISTENER > apexlistener" +
-	"\necho db.password=\"%[2]s\" >> apexlistener" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_al apexlistener" +
-	"\nrm -f apexlistener" +
-	"\necho db.username=APEX_REST_PUBLIC_USER > apexRestPublicUser" +
-	"\necho db.password=\"%[2]s\" >> apexRestPublicUser" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_rt apexRestPublicUser" +
-	"\nrm -f apexRestPublicUser" +
-	"\necho db.username=APEX_PUBLIC_USER > apexPublicUser" +
-	"\necho db.password=\"%[2]s\" >> apexPublicUser" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex apexPublicUser" +
-	"\nrm -f apexPublicUser" +
-	"\necho db.adminUser=C##_DBAPI_PDB_ADMIN > pdbAdmin.properties" +
-	"\necho db.adminUser.password=\"%[4]s\">> pdbAdmin.properties" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu pdbAdmin.properties" +
-	"\nrm -f pdbAdmin.properties" +
-	"\necho -e \"%[1]s\n%[1]s\" > sqladmin.passwd" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
-	"\nrm -f sqladmin.passwd" +
-	"\numask 022" +
-	"\nsed -i 's,jetty.port=8888,jetty.secure.port=8443\\nssl.cert=\\nssl.cert.key=\\nssl.host=%[3]s,g' /opt/oracle/ords/config/ords/standalone/standalone.properties " +
-	"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
+	/*
+		const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.admin.enabled true" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property dbc.auth.enabled true" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property restEnabledSql.active true" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property db.serviceNameSuffix \"\" " + // Mandatory when ORDS Installing at CDB Level -> Maps PDB's
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InitialLimit 5" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.MaxLimit 20" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InactivityTimeout 300" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property pdb.open.asneeded true" +
+			"\numask 177" +
+			"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
+			"\necho db.cdb.adminUser.password=\"%[4]s\" >> cdbAdmin.properties" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
+			"\nrm -f cdbAdmin.properties" +
+			"\necho db.username=APEX_LISTENER > apexlistener" +
+			"\necho db.password=\"%[2]s\" >> apexlistener" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_al apexlistener" +
+			"\nrm -f apexlistener" +
+			"\necho db.username=APEX_REST_PUBLIC_USER > apexRestPublicUser" +
+			"\necho db.password=\"%[2]s\" >> apexRestPublicUser" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_rt apexRestPublicUser" +
+			"\nrm -f apexRestPublicUser" +
+			"\necho db.username=APEX_PUBLIC_USER > apexPublicUser" +
+			"\necho db.password=\"%[2]s\" >> apexPublicUser" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex apexPublicUser" +
+			"\nrm -f apexPublicUser" +
+			"\necho db.adminUser=C##_DBAPI_PDB_ADMIN > pdbAdmin.properties" +
+			"\necho db.adminUser.password=\"%[4]s\">> pdbAdmin.properties" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu pdbAdmin.properties" +
+			"\nrm -f pdbAdmin.properties" +
+			"\necho -e \"%[1]s\n%[1]s\" > sqladmin.passwd" +
+			"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
+			"\nrm -f sqladmin.passwd" +
+			"\numask 022" +
+			"\nsed -i 's,jetty.port=8888,jetty.secure.port=8443\\nssl.cert=\\nssl.cert.key=\\nssl.host=%[3]s,g' /opt/oracle/ords/config/ords/standalone/standalone.properties " +
+			"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
+	*/
 
-const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then exit ;fi;" +
-	"\nexport APEXI=$ORDS_HOME/config/apex/images" +
-	"\n$ORDS_HOME/runOrds.sh --setuponly" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.admin.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property dbc.auth.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property restEnabledSql.active true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property db.serviceNameSuffix \"\" " + // Mandatory when ORDS Installing at CDB Level -> Maps PDB's
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InitialLimit 5" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.MaxLimit 20" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InactivityTimeout 300" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
-	"\nmkdir -p $ORDS_HOME/config/ords/conf" +
-	"\numask 177" +
-	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
-	"\necho db.cdb.adminUser.password=\"${ORACLE_PWD}\" >> cdbAdmin.properties" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
-	"\nrm -f cdbAdmin.properties" +
-	"\necho db.adminUser=C##_DBAPI_PDB_ADMIN > pdbAdmin.properties" +
-	"\necho db.adminUser.password=\"${ORACLE_PWD}\">> pdbAdmin.properties" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu pdbAdmin.properties" +
-	"\nrm -f pdbAdmin.properties" +
-	"\necho -e \"${ORDS_PWD}\n${ORDS_PWD}\" > sqladmin.passwd" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
-	"\nrm -f sqladmin.passwd" +
-	"\numask 022"
+// InitORDSCMD installs ORDS using the CLI shipped in the ORDS 26.x image.
+// The old runOrds.sh/ords.war workflow is not present in that image.  Keep a
+// marker in the persistent configuration volume so a pod restart does not
+// reinstall ORDS unnecessarily; a missing marker causes an install/upgrade.
+const InitORDSCMD string = "set -eu" +
+	"\nORDS_CONFIG=/etc/ords/config" +
+	"\nORDS_INSTALL_MARKER=\"${ORDS_CONFIG}/.ords-installed\"" +
+	"\n: \"${ORACLE_HOST:?ORACLE_HOST is required}\"" +
+	"\n: \"${ORACLE_PORT:?ORACLE_PORT is required}\"" +
+	"\n: \"${ORACLE_SERVICE:?ORACLE_SERVICE is required}\"" +
+	"\n: \"${ORACLE_PWD:?ORACLE_PWD is required}\"" +
+	"\n: \"${ORDS_PWD:?ORDS_PWD is required}\"" +
+	"\nmkdir -p \"${ORDS_CONFIG}\"" +
+	"\numask 077" +
+	"\nORDS_PASSWORD_FILE=\"/tmp/ords-passwords.$$\"" +
+	"\ntrap 'rm -f \"${ORDS_PASSWORD_FILE}\"' 0" +
+	"\nif [ ! -f \"${ORDS_INSTALL_MARKER}\" ]; then" +
+	"\nprintf '%s\\n%s\\n' \"${ORACLE_PWD}\" \"${ORDS_PWD}\" > \"${ORDS_PASSWORD_FILE}\"" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" install" +
+	" --db-hostname \"${ORACLE_HOST}\"" +
+	" --db-port \"${ORACLE_PORT}\"" +
+	" --db-servicename \"${ORACLE_SERVICE}\"" +
+	" --admin-user \"SYS AS SYSDBA\"" +
+
+	" --proxy-user" +
+	" --feature-db-api true" +
+	" --feature-rest-enabled-sql true" +
+	" --feature-sdw true" +
+	" --password-stdin < \"${ORDS_PASSWORD_FILE}\"" +
+	"\ntouch \"${ORDS_INSTALL_MARKER}\"" +
+	"\nfi" +
+	"\n: \"${DBSERVICENAME:?DBSERVICENAME is required}\"" +
+	"\nPDB_POOL=$(printf '%s' \"${DBSERVICENAME}\" | tr '[:upper:]' '[:lower:]')" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.connectionType basic" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.hostname \"${ORACLE_HOST}\"" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.port \"${ORACLE_PORT}\"" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.servicename \"${DBSERVICENAME}\"" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.username \"${ORDS_USER}\"" +
+	"\nprintf '%s\\n%s\\n' \"${ORDS_PWD}\" \"${ORDS_PWD}\" | /usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" secret db.password"
 
 const DbConnectString string = "CONN_STRING=sys/%[1]s@%[2]s:1521/%[3]s"
 
@@ -368,11 +394,13 @@ const UninstallORDSCMD string = "\numask 177" +
 	"\nrm -rf /opt/oracle/ords/config/ords/standalone" +
 	"\nrm -rf /opt/oracle/ords/config/ords/apex"
 
-const GetORDSStatus string = "curl -sSkvf -k -X GET http://localhost:8181/ords/_/db-api/stable/metadata-catalog/"
+const ORDSDefaultHTTPPort int32 = 8080
 
-const ORDSReadinessProbe string = "curl -sSkvf -k -X GET http://localhost:8181/ords/_/landing"
+const GetORDSStatus string = "curl -sSkfL -o /dev/null -w 'HTTP %%{http_code}\\n' http://localhost:%d/ords/_/landing"
 
-const ValidateAdminPassword string = "conn sys/\\\"%s\\\"@${ORACLE_SID} as sysdba\nshow user"
+const ORDSReadinessProbe string = "curl -sSkvf -k -X GET http://localhost:%d/ords/_/landing"
+
+const ValidateAdminPassword string = "conn sys/\"%s\"@%s as sysdba\nshow user"
 
 const ReconcileError string = "ReconcileError"
 
@@ -408,16 +436,20 @@ const StatusUnknown string = "Unknown"
 
 const ValueUnavailable string = "Unavailable"
 
-const NoExternalIp string = "Node ExternalIP unavailable"
+const ValueNotEnabled string = "Not enabled"
+
+const NoExternalIP string = "Node ExternalIP unavailable"
 
 const WalletPwdCMD string = "export WALLET_PWD=\"`openssl rand -base64 8`1\""
+
+const WalletExistsCMD string = "if [ -f ${WALLET_DIR}/ewallet.p12 ]; then echo present; fi"
 
 const WalletCreateCMD string = "if [[ ! -f ${WALLET_DIR}/ewallet.p12 ]]; then mkdir -p ${WALLET_DIR}/.wallet && (umask 177\ncat > wallet.passwd <<EOF\n${WALLET_PWD}\n${WALLET_PWD}\nEOF\nmkstore -wrl ${WALLET_DIR} -create < wallet.passwd\nrm -f wallet.passwd\numask 022;) fi"
 
 const WalletDeleteCMD string = "rm -rf ${WALLET_DIR}"
 
-const WalletEntriesCMD string = "umask 177\ncat > wallet.passwd <<EOF\n${WALLET_PWD}\nEOF\n mkstore -wrl ${WALLET_DIR} -createEntry oracle.dbsecurity.sysPassword %[1]s -createEntry oracle.dbsecurity.systemPassword %[1]s " +
-	"-createEntry oracle.dbsecurity.pdbAdminPassword %[1]s -createEntry oracle.dbsecurity.dbsnmpPassword %[1]s < wallet.passwd\nrm -f wallet.passwd\numask 022;"
+const WalletEntriesCMD string = "umask 177\ncat > wallet.passwd <<EOF\n${WALLET_PWD}\nEOF\nENTRY_VALUE=\"$(cat admin.pwd)\"\n mkstore -wrl ${WALLET_DIR} -createEntry oracle.dbsecurity.sysPassword \"$ENTRY_VALUE\" -createEntry oracle.dbsecurity.systemPassword \"$ENTRY_VALUE\" " +
+	"-createEntry oracle.dbsecurity.pdbAdminPassword \"$ENTRY_VALUE\" -createEntry oracle.dbsecurity.dbsnmpPassword \"$ENTRY_VALUE\" < wallet.passwd\nunset ENTRY_VALUE\nrm -f wallet.passwd\numask 022;"
 
 const InitWalletCMD string = "if [ ! -f $ORACLE_BASE/oradata/.${ORACLE_SID}${CHECKPOINT_FILE_EXTN} ] || [ ! -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_%s ];" +
 	" then while [ ! -f ${WALLET_DIR}/ewallet.p12 ] || pgrep -f $WALLET_CLI > /dev/null; do sleep 0.5; done; fi "
@@ -512,19 +544,28 @@ const SetApexUsers string = "\numask 177" +
 	"\numask 022"
 
 // Command to enable/disable MongoDB API support in ords pods
-const ConfigMongoDb string = "ords config set mongo.enabled %[1]s"
+const ConfigMongoDb string = "ords --config /etc/ords/config config set mongo.enabled %[1]s"
 
 // Get Sid, Pdbname, Edition for prebuilt db
 const GetSidPdbEditionCMD string = "echo $ORACLE_SID,$ORACLE_PDB,$ORACLE_EDITION;"
 
+// Canonical lookup for the SIDB lock-aware health helper with legacy fallback.
+const CheckDBLockStatusCMD string = "if [ -x \"${EXTENSION_SCRIPT_DIR:-/opt/oracle/scripts/extensions/k8s}/checkDBLockStatus.sh\" ]; then \"${EXTENSION_SCRIPT_DIR:-/opt/oracle/scripts/extensions/k8s}/checkDBLockStatus.sh\"; elif [ -x \"$ORACLE_BASE/checkDBLockStatus.sh\" ]; then \"$ORACLE_BASE/checkDBLockStatus.sh\"; else \"$ORACLE_BASE/checkDBStatus.sh\"; fi"
+
 // Command to enable TCPS as a formatted string. The parameter would be the port at which TCPS is enabled.
-const EnableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE"
+const EnableTcpsCMD string = "if [ -x \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/${CONFIG_TCPS_FILE:-configTcps.sh}\" ]; then \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/${CONFIG_TCPS_FILE:-configTcps.sh}\"; else \"$ORACLE_BASE/${CONFIG_TCPS_FILE:-configTcps.sh}\"; fi"
 
 // Command for TCPS certs renewal to prevent their expiry. It is same as the EnableTcpsCMD
 const RenewCertsCMD string = EnableTcpsCMD
 
 // Command to disable TCPS
-const DisableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE disable"
+const DisableTcpsCMD string = "if [ -x \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/${CONFIG_TCPS_FILE:-configTcps.sh}\" ]; then \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/${CONFIG_TCPS_FILE:-configTcps.sh}\" disable; else \"$ORACLE_BASE/${CONFIG_TCPS_FILE:-configTcps.sh}\" disable; fi"
+
+// Command to configure Data Guard broker prerequisites from the database image helper.
+const ConfigureDataguardPrereqsCMD string = "if [ -x \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/${CONFIG_DG_PREREQS_FILE:-configDataguardPrereqs.sh}\" ]; then \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/${CONFIG_DG_PREREQS_FILE:-configDataguardPrereqs.sh}\" configure; else \"$ORACLE_BASE/${CONFIG_DG_PREREQS_FILE:-configDataguardPrereqs.sh}\" configure; fi"
+
+// Command to inspect Data Guard broker prerequisite state from the database image helper.
+const DataguardPrereqsStatusCMD string = "if [ -x \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/${CONFIG_DG_PREREQS_FILE:-configDataguardPrereqs.sh}\" ]; then \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/${CONFIG_DG_PREREQS_FILE:-configDataguardPrereqs.sh}\" status; else \"$ORACLE_BASE/${CONFIG_DG_PREREQS_FILE:-configDataguardPrereqs.sh}\" status; fi"
 
 // Location of tls certs
 const TlsCertsLocation string = "/run/secrets/tls_secret"
@@ -533,7 +574,7 @@ const TlsCertsLocation string = "/run/secrets/tls_secret"
 const PodMountsCmd string = "awk '$2 == \"%s\" {print}' /proc/mounts"
 
 // TCPS clientWallet update command
-const ClientWalletUpdate string = "sed -i -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*$/PORT=%d)/g' ${ORACLE_BASE}/oradata/clientWallet/${ORACLE_SID}/tnsnames.ora"
+const ClientWalletUpdate string = "sed -i -e 's/(PROTOCOL=TCP)/(PROTOCOL=TCPS)/g' -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*$/PORT=%d)/g' ${ORACLE_BASE}/oradata/clientWallet/${ORACLE_SID}/tnsnames.ora"
 
 // TCPS clientWallet location
 const ClientWalletLocation string = "/opt/oracle/oradata/clientWallet/%s"
@@ -556,3 +597,46 @@ const TcpsPort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"p
 
 // Payload section for TCPS node port
 const TcpsNodePort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": 2484, \"nodePort\": %d"
+
+const PfilePath string = "/opt/oracle/oradata/pfile_1"
+const CreatePfileFromSpfileCMD string = "echo -e \"create pfile='%s' from spfile='%s';\" | " + SQLPlusCLI
+
+// const PatchSgaInPfileCMD string = `sed -i "/^sga_target=/c sga_target=%dM" %s`
+
+const PatchSgaInPfileCMD = `
+if grep -Eq "^[[:space:]]*(\\*\\.)?sga_target[[:space:]]*=" %s; then
+  sed -i -E "s|^[[:space:]]*(\\*\\.)?sga_target[[:space:]]*=.*|*.sga_target=%dM|I" %s;
+else
+  echo "*.sga_target=%dM" >> %s;
+	echo "*.pga_agger=%dM" >> %s;
+fi`
+
+const PatchInitParamsInPfileCMD = `
+set -e
+PFILE="%s"
+SGA="%d"
+PGA="%d"
+CPU="%d"
+PROC="%d"
+
+# remove any SID prefixed lines like "ORCL1.<param>=..." 
+SID_ESC="${ORACLE_SID//./\\.}"
+sed -i -E "/^[[:space:]]*(${SID_ESC})\\./Id" "$PFILE"
+
+upsert() {
+  key="$1"; val="$2"; file="$3"
+  if grep -Eq "^[[:space:]]*(\\*\\.)?${key}[[:space:]]*=" "$file"; then
+    sed -i -E "s|^[[:space:]]*(\\*\\.)?${key}[[:space:]]*=.*|*.${key}=${val}|I" "$file"
+  else
+    echo "*.${key}=${val}" >> "$file"
+  fi
+}
+
+upsert "sga_target"           "${SGA}M" "$PFILE"
+upsert "sga_max_size"         "${SGA}M" "$PFILE"   # sga_max = sga_target
+upsert "pga_aggregate_target" "${PGA}M" "$PFILE"
+if [ "$CPU"  -gt 0 ]; then upsert "cpu_count"  "$CPU"  "$PFILE"; fi
+if [ "$PROC" -gt 0 ]; then upsert "processes" "$PROC" "$PFILE"; fi
+`
+
+const CreateSpfileFromPfileCMD string = "echo -e \"create spfile='%s' from pfile='%s';\" | " + SQLPlusCLI

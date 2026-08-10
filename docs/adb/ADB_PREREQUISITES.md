@@ -143,7 +143,7 @@ kubectl create configmap oci-cred \
 2. Get the OCID of the OKE Cluster where the Oracle Database Operator is running.
 3. Create the following policy in OCI IAM, supplying your compartment name and OKE Cluster OCID:
 
-```
+```text
 Allow any-user to manage all-resources in compartment <compartment-name> where all {request.principal.namespace='oracle-database-operator-system',request.principal.type='workload',request.principal.cluster_id='<cluster-ocid>',request.principal.service_account='default'}
 ```
 

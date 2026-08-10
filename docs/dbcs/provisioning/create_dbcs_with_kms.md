@@ -57,7 +57,12 @@ For the steps that follow, use this file: [dbcs_service_with_kms.yaml](./dbcs_se
 
 1. Deploy the `.yaml` file:  
 ```bash
-[root@docker-test-server OBDS]# kubectl apply -f dbcs_service_with_kms.yaml
+kubectl apply -f dbcs_service_with_kms.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-create created
 ```
 
@@ -66,7 +71,7 @@ dbcssystem.database.oracle.com/dbcssystem-create created
 NOTE: Check the DB Operator Pod name in your environment.
 
 ```bash
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

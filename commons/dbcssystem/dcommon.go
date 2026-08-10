@@ -52,7 +52,8 @@ import (
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 )
 
-func GetDbHomeDetails(kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, id string) (database.CreateDbHomeDetails, error) {
+// GetDbHomeDetails builds database home details for DB system create/clone requests.
+func GetDbHomeDetails(kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, _ string) (database.CreateDbHomeDetails, error) {
 
 	dbHomeDetails := database.CreateDbHomeDetails{}
 	dbHomeReq, err := GetDbLatestVersion(dbClient, dbcs, "")
@@ -78,17 +79,18 @@ func GetDbHomeDetails(kubeClient client.Client, dbClient database.DatabaseClient
 	return dbHomeDetails, nil
 }
 
-func GetDbLatestVersion(dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, dbSystemId string) (string, error) {
+// GetDbLatestVersion retrieves the latest database version available for the specified DBCS system. It sends a request to the Oracle Cloud Infrastructure (OCI) Database service to list the database versions based on the provided criteria, such as compartment ID, shape, and optionally the DB system ID. The function then iterates through the returned list of database versions to find a match with the version specified in the DBCS system's spec. If a match is found, it returns that version; otherwise, it returns an error indicating that no matching database version was found.
+func GetDbLatestVersion(dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, dbSystemID string) (string, error) {
 
 	//var provisionedDbcsSystemId string
 	ctx := context.TODO()
 	var version database.DbVersionSummary
-	var sFlag int = 0
+	sFlag := 0
 	var val int
 
 	dbVersionReq := database.ListDbVersionsRequest{}
-	if dbSystemId != "" {
-		dbVersionReq.DbSystemId = common.String(dbSystemId)
+	if dbSystemID != "" {
+		dbVersionReq.DbSystemId = common.String(dbSystemID)
 	}
 
 	dbVersionReq.IsDatabaseSoftwareImageSupported = common.Bool(true)
@@ -142,10 +144,12 @@ func GetDbLatestVersion(dbClient database.DatabaseClient, dbcs *databasev4.DbcsS
 	return *version.Version, fmt.Errorf("no database version matched")
 }
 
+// getStr is a helper function that extracts a substring from the input string 'str1' starting from index 0 up to the specified length 'num'. It is used in the GetDbLatestVersion function to compare the major version of the database with the version specified in the DBCS system's spec. By extracting the relevant portion of the version string, it allows for accurate comparison and matching of database versions.
 func getStr(str1 string, num int) string {
 	return str1[0:num]
 }
 
+// GetDBDetails retrieves the database details required for creating a database home in the DBCS system. It fetches the Transparent Data Encryption (TDE) wallet password and the admin password from Kubernetes secrets, and it also gathers other database configuration details such as the database name, workload type, pluggable database name, and backup configuration. The function constructs a CreateDatabaseDetails struct with the retrieved information and returns it for use in the database creation process.
 func GetDBDetails(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (database.CreateDatabaseDetails, error) {
 	dbDetails := database.CreateDatabaseDetails{}
 	var val database.CreateDatabaseDetailsDbWorkloadEnum
@@ -177,21 +181,19 @@ func GetDBDetails(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (databa
 		val, err = getDbWorkLoadType(dbcs)
 		if err != nil {
 			return dbDetails, err
-		} else {
-			dbDetails.DbWorkload = database.CreateDatabaseDetailsDbWorkloadEnum(val)
 		}
+		dbDetails.DbWorkload = database.CreateDatabaseDetailsDbWorkloadEnum(val)
 	}
 	dbDetails.DbName = common.String(dbcs.Spec.DbSystem.DbName)
 	if dbcs.Spec.DbSystem.PdbName != "" {
 		dbDetails.PdbName = &dbcs.Spec.DbSystem.PdbName
 	}
 
-	backupCfg := dbcs.Spec.DbSystem.DbBackupConfig
 	if dbcs != nil &&
 		dbcs.Spec.DbSystem != nil &&
-		backupCfg != nil &&
-		backupCfg.AutoBackupEnabled != nil &&
-		*backupCfg.AutoBackupEnabled {
+		dbcs.Spec.DbSystem.DbBackupConfig != nil &&
+		dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupEnabled != nil &&
+		*dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupEnabled {
 
 		backupConfig, err := getBackupConfig(kubeClient, dbcs)
 		if err != nil {
@@ -203,7 +205,8 @@ func GetDBDetails(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (databa
 	return dbDetails, nil
 }
 
-func getBackupConfig(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (database.DbBackupConfig, error) {
+// getBackupConfig retrieves the backup configuration for the DBCS system based on the specifications provided in the DbcsSystem resource. It checks if auto-backup is enabled and, if so, it retrieves the auto-backup window and recovery window in days from the DBCS spec. The function then constructs a DbBackupConfig struct with the retrieved values and returns it for use in configuring the database backup settings during database creation or update operations.
+func getBackupConfig(_ client.Client, dbcs *databasev4.DbcsSystem) (database.DbBackupConfig, error) {
 	backupConfig := database.DbBackupConfig{}
 
 	if dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupEnabled != nil {
@@ -212,18 +215,16 @@ func getBackupConfig(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (dat
 			val1, err := getBackupWindowEnum(dbcs)
 			if err != nil {
 				return backupConfig, err
-			} else {
-				backupConfig.AutoBackupWindow = database.DbBackupConfigAutoBackupWindowEnum(val1)
 			}
+			backupConfig.AutoBackupWindow = database.DbBackupConfigAutoBackupWindowEnum(val1)
 		}
 
 		if dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays != nil {
 			val1, err := getRecoveryWindowsInDays(dbcs)
 			if err != nil {
 				return backupConfig, err
-			} else {
-				backupConfig.RecoveryWindowInDays = common.Int(val1)
 			}
+			backupConfig.RecoveryWindowInDays = common.Int(val1)
 
 		}
 	}
@@ -231,6 +232,7 @@ func getBackupConfig(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (dat
 	return backupConfig, nil
 }
 
+// getBackupWindowEnum converts the auto-backup window specified in the DBCS system's spec into the corresponding enum value defined in the OCI SDK. It checks the value of AutoBackupWindow in the DBCS spec against known valid values (SLOT_ONE, SLOT_TWO, etc.) and returns the corresponding enum value. If the value does not match any of the expected options, it defaults to SLOT_ONE and returns it without an error. This function ensures that the auto-backup window configuration is correctly interpreted and applied when configuring database backup settings.
 func getBackupWindowEnum(dbcs *databasev4.DbcsSystem) (database.DbBackupConfigAutoBackupWindowEnum, error) {
 
 	if strings.ToUpper(*dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupWindow) == "SLOT_ONE" {
@@ -259,13 +261,13 @@ func getBackupWindowEnum(dbcs *databasev4.DbcsSystem) (database.DbBackupConfigAu
 		return database.DbBackupConfigAutoBackupWindowEleven, nil
 	} else if strings.ToUpper(*dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupWindow) == "SLOT_TWELVE" {
 		return database.DbBackupConfigAutoBackupWindowTwelve, nil
-	} else {
-		return database.DbBackupConfigAutoBackupWindowOne, nil
 	}
+	return database.DbBackupConfigAutoBackupWindowOne, nil
 
 	//return database.DbBackupConfigAutoBackupWindowEight, fmt.Errorf("AutoBackupWindow values can be SLOT_ONE|SLOT_TWO|SLOT_THREE|SLOT_FOUR|SLOT_FIVE|SLOT_SIX|SLOT_SEVEN|SLOT_EIGHT|SLOT_NINE|SLOT_TEN|SLOT_ELEVEN|SLOT_TWELEVE. The current value set to " + *dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupWindow)
 }
 
+// getRecoveryWindowsInDays validates the RecoveryWindowsInDays value specified in the DBCS system's spec and returns it if it matches one of the allowed values (7, 15, 30, 45, or 60). If the value does not match any of the expected options, it defaults to 30 days and returns that value without an error. This function ensures that the recovery window configuration is correctly interpreted and applied when configuring database backup settings.
 func getRecoveryWindowsInDays(dbcs *databasev4.DbcsSystem) (int, error) {
 
 	var days int
@@ -288,6 +290,7 @@ func getRecoveryWindowsInDays(dbcs *databasev4.DbcsSystem) (int, error) {
 	//return days, fmt.Errorf("RecoveryWindowsInDays values can be 7|15|30|45|60 Days.")
 }
 
+// GetDBSystemopts retrieves the database system options for the DBCS system based on the specifications provided in the DbcsSystem resource. It checks the storage management option specified in the DBCS spec and maps it to the corresponding enum value defined in the OCI SDK. If the storage management option is not specified or does not match any of the expected values, it defaults to ASM (Automatic Storage Management) and returns that as the storage management option for the database system.
 func GetDBSystemopts(
 	dbcs *databasev4.DbcsSystem) database.DbSystemOptions {
 
@@ -309,6 +312,7 @@ func GetDBSystemopts(
 	return dbSystemOpt
 }
 
+// getLicenceModel retrieves the license model for the DBCS system based on the specifications provided in the DbcsSystem resource. It checks the license model specified in the DBCS spec and maps it to the corresponding enum value defined in the OCI SDK. If the license model is not specified or does not match "BRING_YOUR_OWN_LICENSE", it defaults to "LICENSE_INCLUDED" and returns that as the license model for the database system.
 func getLicenceModel(dbcs *databasev4.DbcsSystem) database.DbSystemLicenseModelEnum {
 	if dbcs.Spec.DbSystem.LicenseModel == "BRING_YOUR_OWN_LICENSE" {
 		return database.DbSystemLicenseModelBringYourOwnLicense
@@ -317,6 +321,7 @@ func getLicenceModel(dbcs *databasev4.DbcsSystem) database.DbSystemLicenseModelE
 	return database.DbSystemLicenseModelLicenseIncluded
 }
 
+// getDbWorkLoadType retrieves the database workload type for the DBCS system based on the specifications provided in the DbcsSystem resource. It checks the DbWorkload value specified in the DBCS spec and maps it to the corresponding enum value defined in the OCI SDK. If the DbWorkload value is not specified or does not match "OLTP" or "DSS", it defaults to "DSS" and returns that as the database workload type for the database system.
 func getDbWorkLoadType(dbcs *databasev4.DbcsSystem) (database.CreateDatabaseDetailsDbWorkloadEnum, error) {
 
 	if strings.ToUpper(dbcs.Spec.DbSystem.DbWorkload) == "OLTP" {
@@ -328,19 +333,20 @@ func getDbWorkLoadType(dbcs *databasev4.DbcsSystem) (database.CreateDatabaseDeta
 
 	}
 
-	return database.CreateDatabaseDetailsDbWorkloadDss, fmt.Errorf("DbWorkload values can be OLTP|DSS. The current value set to " + dbcs.Spec.DbSystem.DbWorkload)
+	return database.CreateDatabaseDetailsDbWorkloadDss, fmt.Errorf("DbWorkload values can be OLTP|DSS. The current value set to %s", dbcs.Spec.DbSystem.DbWorkload)
 }
 
+// GetNodeCount retrieves the number of nodes for the DBCS system based on the specifications provided in the DbcsSystem resource. It checks if the NodeCount value is specified in the DBCS spec and returns it; otherwise, it defaults to 1 node and returns that as the node count for the database system.
 func GetNodeCount(
 	dbcs *databasev4.DbcsSystem) int {
 
 	if dbcs.Spec.DbSystem.NodeCount != nil {
 		return *dbcs.Spec.DbSystem.NodeCount
-	} else {
-		return 1
 	}
+	return 1
 }
 
+// GetInitialStorage retrieves the initial storage size in GB for the DBCS system based on the specifications provided in the DbcsSystem resource. It checks if the InitialDataStorageSizeInGB value is specified in the DBCS spec and returns it; otherwise, it defaults to 256 GB and returns that as the initial storage size for the database system.
 func GetInitialStorage(
 	dbcs *databasev4.DbcsSystem) int {
 
@@ -350,6 +356,7 @@ func GetInitialStorage(
 	return 256
 }
 
+// GetDBEdition retrieves the database edition for the DBCS system based on the specifications provided in the DbcsSystem resource. It checks if the ClusterName is specified in the DBCS spec and returns "Enterprise Edition Extreme Performance" if it is; otherwise, it checks the DbEdition value specified in the DBCS spec and maps it to the corresponding enum value defined in the OCI SDK. If the DbEdition value is not specified or does not match any of the expected values, it defaults to "Enterprise Edition" and returns that as the database edition for the database system.
 func GetDBEdition(dbcs *databasev4.DbcsSystem) database.LaunchDbSystemDetailsDatabaseEditionEnum {
 
 	if dbcs.Spec.DbSystem.ClusterName != "" {
@@ -374,6 +381,7 @@ func GetDBEdition(dbcs *databasev4.DbcsSystem) database.LaunchDbSystemDetailsDat
 	return database.LaunchDbSystemDetailsDatabaseEditionEnterpriseEdition
 }
 
+// GetDBbDiskRedundancy retrieves the disk redundancy level for the DBCS system based on the specifications provided in the DbcsSystem resource. It checks if the ClusterName is specified in the DBCS spec and returns "HIGH" redundancy if it is; otherwise, it checks the DiskRedundancy value specified in the DBCS spec and maps it to the corresponding enum value defined in the OCI SDK. If the DiskRedundancy value is not specified or does not match "HIGH" or "NORMAL", it defaults to "NORMAL" and returns that as the disk redundancy level for the database system.
 func GetDBbDiskRedundancy(
 	dbcs *databasev4.DbcsSystem) database.LaunchDbSystemDetailsDiskRedundancyEnum {
 
@@ -391,10 +399,11 @@ func GetDBbDiskRedundancy(
 	return database.LaunchDbSystemDetailsDiskRedundancyNormal
 }
 
-func getWorkRequest(compartmentId string, workId string, wrClient workrequests.WorkRequestClient, dbcs *databasev4.DbcsSystem) ([]workrequests.WorkRequestSummary, error) {
+// getWorkRequest retrieves the work request summaries for a given compartment ID, work request ID, and DBCS system. It sends a request to the Oracle Cloud Infrastructure (OCI) Work Requests service to list the work requests based on the provided criteria. The function returns a slice of WorkRequestSummary items that match the specified parameters, allowing for tracking and monitoring of asynchronous operations related to the DBCS system.
+func getWorkRequest(compartmentID string, workID string, wrClient workrequests.WorkRequestClient, dbcs *databasev4.DbcsSystem) ([]workrequests.WorkRequestSummary, error) {
 	var workReq []workrequests.WorkRequestSummary
 
-	req := workrequests.ListWorkRequestsRequest{CompartmentId: &compartmentId, OpcRequestId: &workId, ResourceId: dbcs.Spec.Id}
+	req := workrequests.ListWorkRequestsRequest{CompartmentId: &compartmentID, OpcRequestId: &workID, ResourceId: dbcs.Spec.Id}
 	resp, err := wrClient.ListWorkRequests(context.Background(), req)
 	if err != nil {
 		return workReq, err
@@ -403,6 +412,7 @@ func getWorkRequest(compartmentId string, workId string, wrClient workrequests.W
 	return resp.Items, nil
 }
 
+// GetKeyValue is a utility function that extracts the value of the "version" key from a given input string. It splits the input string into a list of key-value pairs, iterates through them to find the pair where the key is "version", and returns the corresponding value. If the "version" key is not found in the input string, it returns "noversion" as a default value. This function is useful for parsing version information from strings that contain multiple key-value pairs.
 func GetKeyValue(str1 string) string {
 	list1 := strings.Split(str1, " ")
 	for _, value := range list1 {
@@ -415,19 +425,21 @@ func GetKeyValue(str1 string) string {
 	return "noversion"
 }
 
+// GetFmtStr is a utility function that formats a given input string by enclosing it in square brackets. It takes a string as input and returns a new string with the input value wrapped in square brackets. This function can be used for consistent formatting of strings, such as when constructing log messages or displaying values in a specific format.
 func GetFmtStr(pstr string) string {
 
 	return "[" + pstr + "]"
 }
 
-func checkValue(dbcs *databasev4.DbcsSystem, workId *string) int {
+// checkValue checks if a given work request ID exists in the list of work requests associated with the DBCS system. It iterates through the work requests in the DBCS system's status and compares their operation IDs with the provided work request ID. If a match is found, it returns 1 to indicate that the work request ID exists; otherwise, it returns 0 to indicate that it does not exist. This function is useful for tracking the status of asynchronous operations related to the DBCS system by checking for specific work request IDs.
+func checkValue(dbcs *databasev4.DbcsSystem, workID *string) int {
 
-	var status int = 0
+	status := 0
 	//dbWorkRequest := databasev4.DbWorkrequests{}
 
 	if len(dbcs.Status.WorkRequests) > 0 {
 		for _, v := range dbcs.Status.WorkRequests {
-			if *v.OperationId == *workId {
+			if *v.OperationId == *workID {
 				status = 1
 			}
 		}
@@ -435,11 +447,13 @@ func checkValue(dbcs *databasev4.DbcsSystem, workId *string) int {
 
 	return status
 }
+
+// setValue updates the work request information in the status of the DBCS system based on the provided DbWorkrequests object. It iterates through the work requests in the DBCS system's status and compares their operation IDs with the operation ID of the provided DbWorkrequests object. If a match is found, it updates the corresponding fields (operation type, percent complete, time accepted, time finished, time started) in the DBCS system's status with the values from the DbWorkrequests object. This function is useful for keeping the status of the DBCS system up-to-date with the latest information about ongoing work requests.
 func setValue(dbcs *databasev4.DbcsSystem, dbWorkRequest databasev4.DbWorkrequests) {
 
 	//var status int = 1
 	//dbWorkRequest := databasev4.DbWorkrequests{}
-	var counter int = 0
+	counter := 0
 	if len(dbcs.Status.WorkRequests) > 0 {
 		for _, v := range dbcs.Status.WorkRequests {
 			if *v.OperationId == *dbWorkRequest.OperationId {
@@ -450,7 +464,7 @@ func setValue(dbcs *databasev4.DbcsSystem, dbWorkRequest databasev4.DbWorkreques
 				dbcs.Status.WorkRequests[counter].TimeFinished = dbWorkRequest.TimeFinished
 				dbcs.Status.WorkRequests[counter].TimeStarted = dbWorkRequest.TimeStarted
 			}
-			counter = counter + 1
+			counter++
 		}
 	}
 

@@ -19,7 +19,12 @@ Use the file: [clone_dbcs_system_from_backup.yaml](./clone_dbcs_system_from_back
 
 1. Deploy the `.yaml` file:  
 ```sh
-[root@docker-test-server OBDS]# kubectl apply -f clone_dbcs_system_from_backup.yaml
+kubectl apply -f clone_dbcs_system_from_backup.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-clone created
 ```
 
@@ -27,8 +32,8 @@ dbcssystem.database.oracle.com/dbcssystem-clone created
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

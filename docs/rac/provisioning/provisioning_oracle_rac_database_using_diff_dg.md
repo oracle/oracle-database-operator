@@ -47,6 +47,11 @@ Use the file: [racdb_prov_diff_dg_for_db_and_crs.yaml](./racdb_prov_diff_dg_for_
     
     # Check the logs of a particular pod. For example, to check status of pod "racnode1-0":    
     kubectl exec -it pod/racnode1-0 -n rac -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===================================
     ORACLE RAC DATABASE IS READY TO USE
     ===================================
@@ -60,7 +65,7 @@ Use the file: [racdb_prov_diff_dg_for_db_and_crs.yaml](./racdb_prov_diff_dg_for_
     su - grid
     
     # Check the details of the diskgroups:
-    [grid@racnode1-0 ~]$ asmcmd lsdg
-    [grid@racnode1-0 ~]$ asmcmd lsdsk
+    asmcmd lsdg
+    asmcmd lsdsk
     ```
 4. Samples logs in [Logs](./logs/racdb_prov_diff_dg/racdbprov-sample_details.txt) and the corresponding [DB Operator Logs](./logs/racdb_prov_diff_dg/operator_logs.txt) when the above YAML file is applied.

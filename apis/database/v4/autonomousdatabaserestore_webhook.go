@@ -43,37 +43,33 @@ import (
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var autonomousdatabaserestorelog = logf.Log.WithName("autonomousdatabaserestore-resource")
 
+// SetupWebhookWithManager registers the AutonomousDatabaseRestore webhook with the manager.
 func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
-		WithValidator(r).
+	return ctrl.NewWebhookManagedBy[*AutonomousDatabaseRestore](mgr, r).
 		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v4,name=vautonomousdatabaserestorev4.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomValidator = &AutonomousDatabaseRestore{}
+// Use the generic admission.Validator interface
+var _ admission.Validator[*AutonomousDatabaseRestore] = &AutonomousDatabaseRestore{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	var (
-		allErrs field.ErrorList
-		restore = obj.(*AutonomousDatabaseRestore)
-	)
-
+// ValidateCreate - Signatures updated to specific pointer type
+func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj *AutonomousDatabaseRestore) (admission.Warnings, error) {
+	_ = ctx
+	var allErrs field.ErrorList
+	restore := obj
 	autonomousdatabaserestorelog.Info("validate create", "name", restore.Name)
 
 	namespaces := dbcommons.GetWatchNamespaces()
@@ -130,12 +126,17 @@ func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj runt
 		restore.Name, allErrs)
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+// ValidateUpdate validates update operations for AutonomousDatabaseRestore resources.
+func (r *AutonomousDatabaseRestore) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousDatabaseRestore) (admission.Warnings, error) {
+	_ = ctx
+	_ = oldObj
+	_ = newObj
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateDelete(context.Context, runtime.Object) (admission.Warnings, error) {
+// ValidateDelete validates delete operations for AutonomousDatabaseRestore resources.
+func (r *AutonomousDatabaseRestore) ValidateDelete(ctx context.Context, obj *AutonomousDatabaseRestore) (admission.Warnings, error) {
+	_ = ctx
+	_ = obj
 	return nil, nil
 }

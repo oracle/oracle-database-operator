@@ -3,7 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.20.1
   creationTimestamp: null
   name: ordssrvs.database.oracle.com
 spec:
@@ -55,6 +55,75 @@ spec:
             type: object
           spec:
             properties:
+              accessLogForwarder:
+                properties:
+                  enabled:
+                    default: false
+                    type: boolean
+                  resources:
+                    properties:
+                      claims:
+                        items:
+                          properties:
+                            name:
+                              type: string
+                            request:
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        type: object
+                    type: object
+                type: object
+              accessLogPersistence:
+                properties:
+                  accessMode:
+                    default: ReadWriteOnce
+                    enum:
+                    - ReadWriteOnce
+                    - ReadWriteMany
+                    type: string
+                  size:
+                    default: 2Gi
+                    type: string
+                  storageClass:
+                    type: string
+                  volumeName:
+                    type: string
+                type: object
+              automountServiceAccountToken:
+                default: false
+                type: boolean
+              commonMetadata:
+                properties:
+                  additionalAnnotations:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  additionalLabels:
+                    additionalProperties:
+                      type: string
+                    type: object
+                type: object
               encPrivKey:
                 properties:
                   passwordKey:
@@ -68,23 +137,42 @@ spec:
               forceRestart:
                 type: boolean
               globalSettings:
+                default: {}
                 properties:
+                  apex.download:
+                    default: false
+                    type: boolean
+                  apex.download.url:
+                    default: https://download.oracle.com/otn_software/apex/apex-latest.zip
+                    type: string
+                  apex.installation.persistence:
+                    properties:
+                      accessMode:
+                        default: ReadWriteOnce
+                        enum:
+                        - ReadWriteOnce
+                        - ReadWriteMany
+                        type: string
+                      size:
+                        default: 2Gi
+                        type: string
+                      storageClass:
+                        type: string
+                      volumeName:
+                        type: string
+                    type: object
                   cache.metadata.enabled:
                     type: boolean
                   cache.metadata.graphql.expireAfterAccess:
-                    format: int64
-                    type: integer
+                    type: string
                   cache.metadata.graphql.expireAfterWrite:
-                    format: int64
-                    type: integer
+                    type: string
                   cache.metadata.jwks.enabled:
                     type: boolean
                   cache.metadata.jwks.expireAfterAccess:
-                    format: int64
-                    type: integer
+                    type: string
                   cache.metadata.jwks.expireAfterWrite:
-                    format: int64
-                    type: integer
+                    type: string
                   cache.metadata.jwks.initialCapacity:
                     format: int32
                     type: integer
@@ -92,8 +180,9 @@ spec:
                     format: int32
                     type: integer
                   cache.metadata.timeout:
-                    format: int64
-                    type: integer
+                    type: string
+                  central.config.url:
+                    type: string
                   certSecret:
                     properties:
                       cert:
@@ -112,8 +201,7 @@ spec:
                   database.api.management.services.disabled:
                     type: boolean
                   db.invalidPoolTimeout:
-                    format: int64
-                    type: integer
+                    type: string
                   debug.printDebugToScreen:
                     type: boolean
                   enable.mongo.access.log:
@@ -127,6 +215,9 @@ spec:
                   feature.grahpql.max.nesting.depth:
                     format: int32
                     type: integer
+                  feature.graphql.max.nesting.depth:
+                    format: int32
+                    type: integer
                   icap.port:
                     format: int32
                     type: integer
@@ -135,16 +226,30 @@ spec:
                     type: integer
                   icap.server:
                     type: string
+                  instance.api.enabled:
+                    type: boolean
+                  instanceAPIAdminSecret:
+                    properties:
+                      passwordKey:
+                        default: password
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - secretName
+                    type: object
+                  instanceAPIAdminUser:
+                    default: instance_api_admin
+                    type: string
                   log.procedure:
                     type: boolean
                   mongo.enabled:
+                    default: false
                     type: boolean
                   mongo.idle.timeout:
-                    format: int64
-                    type: integer
+                    type: string
                   mongo.op.timeout:
-                    format: int64
-                    type: integer
+                    type: string
                   mongo.port:
                     default: 27017
                     format: int32
@@ -155,8 +260,7 @@ spec:
                     format: int32
                     type: integer
                   security.credentials.lock.time:
-                    format: int64
-                    type: integer
+                    type: string
                   security.disableDefaultExclusionList:
                     type: boolean
                   security.exclusionList:
@@ -174,6 +278,9 @@ spec:
                     type: integer
                   security.verifySSL:
                     type: boolean
+                  standalone.access.log.retainDays:
+                    format: int32
+                    type: integer
                   standalone.context.path:
                     default: /ords
                     type: string
@@ -188,10 +295,12 @@ spec:
                     format: int32
                     type: integer
                   standalone.stop.timeout:
-                    format: int64
-                    type: integer
+                    type: string
+                  zipWalletsSecretName:
+                    type: string
                 type: object
               image:
+                default: container-registry.oracle.com/database/ords:latest
                 type: string
               imagePullPolicy:
                 default: IfNotPresent
@@ -202,6 +311,22 @@ spec:
                 type: string
               imagePullSecrets:
                 type: string
+              jdkJavaOptions:
+                type: string
+              podTemplate:
+                properties:
+                  metadata:
+                    properties:
+                      additionalAnnotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      additionalLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
               poolSettings:
                 items:
                   properties:
@@ -255,8 +380,7 @@ spec:
                     db.hostname:
                       type: string
                     db.poolDestroyTimeout:
-                      format: int64
-                      type: integer
+                      type: string
                     db.port:
                       format: int32
                       type: integer
@@ -277,7 +401,6 @@ spec:
                     db.tnsAliasName:
                       type: string
                     db.username:
-                      default: ORDS_PUBLIC_USER
                       type: string
                     db.wallet.zip.service:
                       type: string
@@ -314,8 +437,7 @@ spec:
                       format: int32
                       type: integer
                     jdbc.MaxConnectionReuseTime:
-                      format: int32
-                      type: integer
+                      type: string
                     jdbc.MaxLimit:
                       format: int32
                       type: integer
@@ -351,6 +473,7 @@ spec:
                       - proxied
                       type: string
                     poolName:
+                      pattern: ^[a-z0-9._-]+$
                       type: string
                     procedure.preProcess:
                       type: string
@@ -361,23 +484,18 @@ spec:
                     restEnabledSql.active:
                       type: boolean
                     security.jwks.connection.timeout:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwks.read.timeout:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwks.refresh.interval:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwks.size:
                       format: int32
                       type: integer
                     security.jwt.allowed.age:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwt.allowed.skew:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwt.profile.enabled:
                       type: boolean
                     security.requestAuthenticationFunction:
@@ -401,8 +519,9 @@ spec:
                       required:
                       - secretName
                       type: object
+                    zipWalletName:
+                      type: string
                   required:
-                  - db.secret
                   - poolName
                   type: object
                 type: array
@@ -411,6 +530,69 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              resources:
+                properties:
+                  claims:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        request:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                type: object
+              service:
+                properties:
+                  metadata:
+                    properties:
+                      additionalAnnotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      additionalLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
+              serviceAccountName:
+                type: string
+              workload:
+                properties:
+                  metadata:
+                    properties:
+                      additionalAnnotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      additionalLabels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                type: object
               workloadType:
                 default: Deployment
                 enum:
@@ -419,7 +601,6 @@ spec:
                 - DaemonSet
                 type: string
             required:
-            - globalSettings
             - image
             type: object
           status:
@@ -469,6 +650,9 @@ spec:
               mongoPort:
                 format: int32
                 type: integer
+              observedGeneration:
+                format: int64
+                type: integer
               ordsInstalled:
                 type: boolean
               ordsVersion:
@@ -479,8 +663,6 @@ spec:
                 type: string
               workloadType:
                 type: string
-            required:
-            - restartRequired
             type: object
         type: object
     served: true

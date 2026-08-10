@@ -44,6 +44,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// StatusEnum defines the observer status values.
 type StatusEnum string
 
 // DatabaseObserverSpec defines the desired state of DatabaseObserver
@@ -62,6 +63,8 @@ type DatabaseObserverSpec struct {
 	InheritLabels  []string                       `json:"inheritLabels,omitempty"`
 	Sidecar        SidecarConfig                  `json:"sidecar,omitempty"`
 	Replicas       int32                          `json:"replicas,omitempty"`
+	// +kubebuilder:default:=false
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
 }
 
 // SidecarConfig defines sidecar containers and volumes to add
@@ -193,6 +196,7 @@ type OCIConfig struct {
 	MountPath  string           `json:"mountPath,omitempty"`
 }
 
+// ConfigPrivateKey defines the private key configuration.
 type ConfigPrivateKey struct {
 	SecretName string `json:"secret,omitempty"`
 }

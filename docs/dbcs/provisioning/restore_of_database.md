@@ -17,7 +17,12 @@ Use the file: [restore_of_database.yaml](./restore_of_database.yaml) for this us
 
 1. Deploy the .yaml file:  
 ```sh
-[root@docker-test-server OBDS]# kubectl apply -f restore_of_database.yaml
+kubectl apply -f restore_of_database.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-restore configured
 ```
 
@@ -25,8 +30,8 @@ dbcssystem.database.oracle.com/dbcssystem-restore configured
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

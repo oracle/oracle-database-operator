@@ -66,7 +66,9 @@ func saveWalletZip(content io.ReadCloser) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer outZip.Close()
+	defer func() {
+		_ = outZip.Close()
+	}()
 
 	// Save the wallet in wallet*.zip
 	if _, err := io.Copy(outZip, content); err != nil {
@@ -84,7 +86,9 @@ func unzipWallet(path string) (map[string][]byte, error) {
 		return files, err
 	}
 
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 	for _, file := range reader.File {
 		reader, err := file.Open()
 		if err != nil {
@@ -102,9 +106,26 @@ func unzipWallet(path string) (map[string][]byte, error) {
 	return files, nil
 }
 
+// WalletExpiringDate extracts wallet expiration text from the wallet README content.
+// If the README file is not present or the expected text is not found, it returns an empty string.
 func WalletExpiringDate(files map[string][]byte) string {
-	data := string(files["README"])
+	readme, ok := files["README"]
+	if !ok || len(readme) == 0 {
+		return ""
+	}
 
-	line := data[strings.Index(data, "this wallet will expire on"):strings.Index(data, ".\nIn order to avoid")]
-	return strings.TrimSpace(strings.TrimPrefix(line, "this wallet will expire on"))
+	const prefix = "this wallet will expire on"
+	const suffix = ".\nIn order to avoid"
+
+	_, data, ok := strings.Cut(string(readme), prefix)
+	if !ok {
+		return ""
+	}
+
+	line, _, ok := strings.Cut(data, suffix)
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(line)
 }

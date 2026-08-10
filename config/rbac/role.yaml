@@ -21,6 +21,7 @@ rules:
   - pods/log
   - replicasets
   - secrets
+  - serviceaccounts
   - services
   verbs:
   - create
@@ -85,6 +86,12 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
 - apiGroups:
   - coordination.k8s.io
   resources:
@@ -195,6 +202,25 @@ rules:
   - update
   - watch
 - apiGroups:
+  - network.oracle.com
+  resources:
+  - trafficmanagers
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - network.oracle.com
+  resources:
+  - trafficmanagers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - observability.oracle.com
   resources:
   - databaseobservers
@@ -225,8 +251,6 @@ rules:
   resources:
   - privateais
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch

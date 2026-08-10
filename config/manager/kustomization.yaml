@@ -3,10 +3,11 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 resources:
+- namespace.yaml
 - manager.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: container-registry.oracle.com/database/operator
-  newTag: latest
+  newName: lin.ocir.io/intsanjaysingh/operator/mmalvezz_lrest_2.2
+  newTag: intmon_latest

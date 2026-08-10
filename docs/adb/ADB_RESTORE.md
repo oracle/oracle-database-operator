@@ -47,5 +47,10 @@ To restore an Autonomous Database from a backup, or by using point-in-time resto
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_restore.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabaserestore.database.oracle.com/autonomousdatabaserestore-sample created
     ```

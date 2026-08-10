@@ -1,30 +1,37 @@
 # OrdsSrvs Example: Autonomous Database using the OraOperator
 
-This example walks through using the **ORDS Controller** with a Containerised Oracle Database created by the **ADB Controller** in the same Kubernetes Cluster.
+This example walks through using the **OrdsSrvs controller** with an Autonomous Database managed through the OraOperator.
 
-When connecting to a mTLS enabled ADB while using the OraOperator to retreive the Wallet as is done in the example, it is currently not supported to have multiple, different databases supported by the single Ordssrvs resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-operator/issues/97)).
+When connecting to a mTLS enabled ADB while using the OraOperator to retrieve the Wallet as is done in the example, it is currently not supported to have multiple, different databases supported by the single OrdsSrvs resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-operator/issues/97)).
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 ### Setup Oracle Cloud Authorisation
 
-In order for the OraOperator to access the ADB, some additional pre-requisites are required, as detailed [here](https://github.com/oracle/oracle-database-operator/blob/main/docs/adb/ADB_PREREQUISITES.md).  
-Either establish Instance Principles or create the required ConfigMap/Secret.  This example uses the later, using the helper script [set_ocicredentials.sh](https://github.com/oracle/oracle-database-operator/blob/main/set_ocicredentials.sh) :
+In order for the OraOperator to access the ADB, some additional prerequisites are required, as detailed [here](https://github.com/oracle/oracle-database-operator/blob/main/docs/adb/ADB_PREREQUISITES.md).
+Either establish Instance Principles or create the required ConfigMap/Secret.  This example uses the latter, using the helper script [set_ocicredentials.sh](https://github.com/oracle/oracle-database-operator/blob/main/set_ocicredentials.sh) :
 
 ```bash
 ./set_ocicredentials.sh run -n ordsnamespace
 ```
 
-### ADB ADMIN Password Secret
+### ADB Admin Credential Secret
 
-Create a Secret for the ADB Admin password:
+Create a Secret for the ADB admin credential:
 
 ```bash
-echo -n "Enter password for encryption: " && read -s DBPWD
-kubectl create secret generic adb-oraoper-db-auth \
-  -n ordsnamespace \
-  --from-literal=password="${DBPWD}"
-unset DBPWD  
+read -rsp "Enter ADB admin credential: " DBPWD
+echo
+
+printf '%s' "${DBPWD}" | kubectl create secret generic adb-oraoper-db-auth \
+  --from-file=password=/dev/stdin \
+  -n ordsnamespace
+```
+
+Example output:
+
+```text
+unset DBPWD
 ```
 
 **NOTE**: When binding to the ADB in a later step, the OraOperator will change the ADB password to what is specified in the Secret.
@@ -57,7 +64,7 @@ unset DBPWD
         id: $ADB_OCID
     ```
 
-1. Update the ADMIN Password:
+1. Update the ADB admin credential:
 
     ```bash
     kubectl patch adb adb-oraoper --type=merge \
@@ -71,17 +78,13 @@ unset DBPWD
     kubectl get -n ordsnamespace adb/adb-oraoper -w
     ```
 
-### Create encrypted password 
+### OrdsSrvs Credential Secret
 
 ```bash
-echo -n "Enter password for encryption: " && read -s DBPWD
-openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
-openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=secret=ca.key  -n ordsnamespace
-echo -n "${DBPWD}" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
-kubectl create secret generic adb-oraoper-db-auth-enc  --from-file=password=e_db-auth -n  ordsnamespace
-rm e_db-auth ca.key public.pem
-unset DBPWD
+kubectl create secret generic ordssrvs-auth \
+  --from-literal=dbAuth='<ords-db-credential>' \
+  --from-literal=adminAuth='<adb-admin-credential>' \
+  -n ordsnamespace
 ```
 
 ### Create OrdsSrvs Resource
@@ -104,10 +107,8 @@ unset DBPWD
       name: ords-adb-oraoper
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:25.1.0
+      image: container-registry.oracle.com/database/ords:<ords-version>
       forceRestart: true
-      encPrivKey:
-        secretName: prvkey
       globalSettings:
         database.api.enabled: true
       poolSettings:
@@ -121,20 +122,20 @@ unset DBPWD
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER_OPER
           db.secret:
-            secretName:  adb-oraoper-db-auth-enc
+            secretName:  ordssrvs-auth
+            passwordKey: dbAuth
           db.adminUser: ADMIN
           db.adminUser.secret:
-            secretName:  adb-oraoper-db-auth-enc
+            secretName:  ordssrvs-auth
+            passwordKey: adminAuth
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
-
 1. Watch the ordssrvs resource until the status is **Healthy**:
     ```bash
     kubectl get ordssrvs ords-adb-oraoper -n ordsnamespace -w
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
-    is being installed for the first time by the Operator, it may remain in the **Preparing** 
+    is being installed for the first time by the Operator, it may remain in the **Preparing**
     status for an additional 5 minutes.
 
 

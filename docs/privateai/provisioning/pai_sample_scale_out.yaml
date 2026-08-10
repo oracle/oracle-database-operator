@@ -18,39 +18,40 @@ metadata:
 
 # Main specification for Private AI
 spec:
-
- # Configuration for Private AI
- paiConfigFile:
-  # Configmap having the link for the AI Model File
-  name: privateaiconfigjson
-  # Location inside the Pod to which the file containining the configmap will be mounted to
-  mountLocation: /privateai/config
-
- # Specify the Kubernetes Secret Details
- paiSecret:
-  name: paisecret
-  mountLocation: /privateai/ssl
-
- # If you want to enable Authentication for the Private AI Access
- paiEnableAuthentication: "true"
-
- # If LoadBalancer will be used
- isExternalSvc: "true"
-
- # Container Image of the Private AI Container
- paiImage: container-registry.oracle.com/database/private-ai:latest
- paiImagePullSecret: oracle-container-registry-secret
- 
- # Name and port details of the Private AI Service once deployed
- paiService:
-   name: paisvc
-   portMappings:
-   - port: 443
-     targetPort: 8443
-     protocol: TCP
-
- # Public Reserved IP of the Public LoadBalancer
- paiLBIP: <<Insert Load Balancer Public IP>>
-
- # Replica Count
- replicas: 3
+  security:
+    authEnabled: true
+    secret:
+      name: paisecret
+      mountLocation: /privateai/ssl
+    tls:
+      secretName: privateai-tls
+      mountLocation: /privateai/ssl
+      items:
+      - key: tls.crt
+        path: cert.pem
+      - key: tls.key
+        path: key.pem
+      - key: keystore.p12
+        path: keystore
+  runtime:
+    image:
+      name: container-registry.oracle.com/database/private-ai:latest
+      pullSecret: oracle-container-registry-secret
+    replicas: 3
+  configuration:
+    configFile:
+      name: privateaiconfigjson
+      mountLocation: /privateai/config
+  networking:
+    listeners:
+      https:
+        enabled: true
+        port: 8443
+    service:
+      ports:
+      - port: 443
+        targetPort: 8443
+        protocol: TCP
+      publicLoadBalancer:
+        enabled: true
+        ip: <<Insert Load Balancer Public IP>>

@@ -29,7 +29,12 @@ Use the file: [update_license.yaml](./update_license.yaml) for this use case as 
 
 1. Deploy the `.yaml` file:  
 ```sh
-[root@test-server OBDS]# kubectl apply -f update_license.yaml
+kubectl apply -f update_license.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
@@ -37,8 +42,8 @@ dbcssystem.database.oracle.com/dbcssystem-existing configured
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

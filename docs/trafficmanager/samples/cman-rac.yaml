@@ -1,0 +1,62 @@
+# Scenario: one CMAN replica serving a RAC database through dynamic service
+# registration, without next_hop.
+#
+# This is generated mode: TrafficManager creates cman.ora from spec.cman.rules.
+# RAC must register its services with CMAN. Preserve the RAC SCAN listener and
+# add the CMAN internal listener to the RAC remote_listener parameter, then run
+# ALTER SYSTEM REGISTER on every RAC instance.
+#
+# Example remote_listener value:
+#   racnode-scan:1521,cman-rac.rac.svc.cluster.local:1521
+#
+# Use cman-rac-nexthop.yaml instead when RAC will not register with CMAN and all
+# accepted traffic can be forwarded to one RAC SCAN listener.
+# Also see:
+#   Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+#   Sample index:  docs/trafficmanager/samples/README.md
+#   Canonical multi-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-peer-filemode.yaml
+#   Canonical single-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-filemode.yaml
+#
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: cman-rac
+  namespace: rac
+spec:
+  type: cman
+  runtime:
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+  cman:
+    logLevel: user
+    traceLevel: user
+    registrationInvitedNodes: "*"
+    rules:
+      - host: racnode-scan.rac.svc.cluster.local
+        src: "*"
+        dst: racnode-scan.rac.svc.cluster.local
+        srv: soepdb
+        action: accept

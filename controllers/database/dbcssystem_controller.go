@@ -36,6 +36,7 @@
 ** SOFTWARE.
  */
 
+//nolint:staticcheck,revive // controller keeps legacy OCI selector access patterns/signatures for compatibility.
 package controllers
 
 import (
@@ -43,6 +44,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	neturl "net/url"
 	"reflect"
 	"strings"
 	"time"
@@ -52,6 +55,8 @@ import (
 	"github.com/oracle/oracle-database-operator/commons/finalizer"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 
+	"errors"
+
 	"github.com/go-logr/logr"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
@@ -59,11 +64,10 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/keymanagement"
 	"github.com/oracle/oci-go-sdk/v65/workrequests"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -85,6 +89,18 @@ type DbcsSystemReconciler struct {
 	Recorder   record.EventRecorder
 }
 
+func (r *DbcsSystemReconciler) cloneForRequest(ctx context.Context) *DbcsSystemReconciler {
+	reqReconciler := *r
+	reqReconciler.Logger = log.FromContext(ctx)
+	return &reqReconciler
+}
+
+const (
+	kmsManagementEndpointRetryStartAnnotation = "database.oracle.com/kmsManagementEndpointRetryStart"
+	kmsManagementEndpointRetryWindow          = 10 * time.Minute
+	kmsManagementEndpointRetryInterval        = 60 * time.Second
+)
+
 // +kubebuilder:rbac:groups=database.oracle.com,resources=dbcssystems,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=database.oracle.com,resources=dbcssystems/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=database.oracle.com,resources=dbcssystems/finalizers,verbs=get;create;update;patch;delete
@@ -100,7 +116,9 @@ type DbcsSystemReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	r.Logger = log.FromContext(ctx)
+	// Rebind request-scoped clients and logger onto a per-reconcile copy so
+	// concurrent reconciles do not overwrite shared state on the controller.
+	r = r.cloneForRequest(ctx)
 
 	var err error
 	resultNq := ctrl.Result{Requeue: false}
@@ -109,7 +127,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	dbcsInst := &databasev4.DbcsSystem{}
 	r.Logger.Info("Reconciling DbSystemDetails", "name", req.NamespacedName)
 	if err := r.KubeClient.Get(ctx, req.NamespacedName, dbcsInst); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			// CR was deleted → stop reconciling
 			r.Logger.Info("DbcsSystem resource not found.", "name", req.NamespacedName)
 			return ctrl.Result{}, nil
@@ -118,12 +136,12 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Create oci-go-sdk client
-	authData := oci.ApiKeyAuth{
+	authData := oci.APIKeyAuth{
 		ConfigMapName: dbcsInst.Spec.OCIConfigMap,
 		SecretName:    dbcsInst.Spec.OCISecret,
 		Namespace:     dbcsInst.GetNamespace(),
 	}
-	provider, err := oci.GetOciProvider(r.KubeClient, authData)
+	provider, err := oci.GetOciProvider(ctx, r.KubeClient, authData)
 	if err != nil {
 		result := resultNq
 		return result, err
@@ -148,12 +166,12 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return result, err
 	}
 
-	var compartmentId string
+	var compartmentID string
 	if dbcsInst.Spec.DbSystem != nil && dbcsInst.Spec.DbSystem.CompartmentId != "" {
-		compartmentId = dbcsInst.Spec.DbSystem.CompartmentId
+		compartmentID = dbcsInst.Spec.DbSystem.CompartmentId
 	} else if dbcsInst.Spec.Id != nil && *dbcsInst.Spec.Id != "" {
 		var err error
-		compartmentId, err = r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		compartmentID, err = r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
 		if err != nil {
 			fmt.Printf("Failed to get compartment ID: %v\n", err)
 			dbcsInst.Status.Message = err.Error()
@@ -169,10 +187,18 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if dbcsInst.ObjectMeta.DeletionTimestamp.IsZero() {
 		// The object is not being deleted
 		if dbcsInst.Spec.HardLink && !finalizer.HasFinalizer(dbcsInst) {
-			finalizer.Register(r.KubeClient, dbcsInst)
+			if err := finalizer.Register(r.KubeClient, dbcsInst); err != nil {
+				r.Logger.Error(err, "failed to register finalizer")
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, err
+			}
 			r.Logger.Info("Finalizer registered successfully.")
 		} else if !dbcsInst.Spec.HardLink && finalizer.HasFinalizer(dbcsInst) {
-			finalizer.Unregister(r.KubeClient, dbcsInst)
+			if err := finalizer.Unregister(r.KubeClient, dbcsInst); err != nil {
+				r.Logger.Error(err, "failed to unregister finalizer")
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, err
+			}
 			r.Logger.Info("Finalizer unregistered successfully.")
 		}
 	} else {
@@ -181,8 +207,8 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err := dbcsv4.DeleteDbcsSystemSystem(r.dbClient, *dbcsInst.Spec.Id); err != nil {
 			r.Logger.Error(err, "Fail to terminate DbcsSystem Instance")
 			dbcsInst.Status.Message = err.Error()
-			// Change the status to Failed
-			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Terminate, r.nwClient, r.wrClient); statusErr != nil {
+			// surface the failure so the user can retry once the conflicting operation completes
+			if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 				result := resultNq
 				return result, err
 			}
@@ -198,8 +224,8 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				// Handle PDB deletion if PluggableDatabaseId is defined and isDelete is true
 				if pdbConfig.IsDelete != nil && pdbConfig.PluggableDatabaseId != nil && *pdbConfig.IsDelete {
 					// Call deletePluggableDatabase function
-					dbSystemId := *dbcsInst.Spec.Id
-					if err := r.deletePluggableDatabase(ctx, pdbConfig, dbSystemId); err != nil {
+					dbSystemID := *dbcsInst.Spec.Id
+					if err := r.deletePluggableDatabase(ctx, pdbConfig, dbSystemID); err != nil {
 						dbcsInst.Status.Message = err.Error()
 						result := resultNq
 						return result, err
@@ -210,7 +236,11 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 		}
 		// Remove the finalizer and update the object
-		finalizer.Unregister(r.KubeClient, dbcsInst)
+		if err := finalizer.Unregister(r.KubeClient, dbcsInst); err != nil {
+			r.Logger.Error(err, "failed to unregister finalizer during deletion")
+			dbcsInst.Status.Message = err.Error()
+			return ctrl.Result{}, err
+		}
 		r.Logger.Info("Finalizer unregistered successfully.")
 		// Stop reconciliation as the item is being deleted
 		result := resultNq
@@ -258,41 +288,58 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{}, fmt.Errorf("error listing vaults: %v", err)
 			}
 
-			var existingVaultId *string
+			var existingVaultID *string
 			var existingVaultManagementEndpoint *string
 			var kmsClient keymanagement.KmsManagementClient
+			kmsClientInitialized := false
 			// Find the first active vault with matching displayName
 			for _, vault := range listResp.Items {
 				if vault.LifecycleState == keymanagement.VaultSummaryLifecycleStateActive && *vault.DisplayName == displayName {
-					existingVaultId = vault.Id
+					existingVaultID = vault.Id
 					existingVaultManagementEndpoint = vault.ManagementEndpoint
 					// Create KMS Management client
 					kmsClient, err = keymanagement.NewKmsManagementClientWithConfigurationProvider(provider, *existingVaultManagementEndpoint)
 					if err != nil {
 						return ctrl.Result{}, err
 					}
+					kmsClientInitialized = true
 					break
 				}
 			}
 
-			// If no active vault found, create a new one
-			if existingVaultId == nil {
-
-				// Create the KMS vault
-				createResp, err := r.createKMSVault(ctx, dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
+			// If no active vault found, create a new one and rebuild the management client from the new endpoint.
+			if existingVaultID == nil {
+				vaultResp, err := r.createKMSVault(ctx, dbcsInst.Spec.KMSConfig, provider, &dbcsInst.Status.KMSDetailsStatus)
 				if err != nil {
 					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, fmt.Errorf("error creating vault: %v", err)
 				}
-				existingVaultId = createResp.Id
-				r.Logger.Info("Created vault Id", existingVaultId)
+				existingVaultID = vaultResp.Vault.Id
+				existingVaultManagementEndpoint = vaultResp.Vault.ManagementEndpoint
+				r.Logger.Info("Created vault", "VaultId", dbcsInst.Status.KMSDetailsStatus.VaultId)
 			} else {
 				// Optionally, perform additional checks or operations if needed
-				r.Logger.Info("Found existing active vault with displayName", "DisplayName", displayName, "VaultId", *existingVaultId)
-				dbcsInst.Status.KMSDetailsStatus.VaultId = *existingVaultId
+				r.Logger.Info("Found existing active vault with displayName", "DisplayName", displayName, "VaultId", *existingVaultID)
+				dbcsInst.Status.KMSDetailsStatus.VaultId = *existingVaultID
 				dbcsInst.Status.KMSDetailsStatus.ManagementEndpoint = *existingVaultManagementEndpoint
 			}
-			if existingVaultId != nil {
+
+			if existingVaultID == nil || existingVaultManagementEndpoint == nil {
+				err := fmt.Errorf("vault initialization did not produce a vault ID and management endpoint")
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, err
+			}
+
+			if !kmsClientInitialized {
+				kmsClient, err = keymanagement.NewKmsManagementClientWithConfigurationProvider(provider, *existingVaultManagementEndpoint)
+				if err != nil {
+					dbcsInst.Status.Message = err.Error()
+					return ctrl.Result{}, err
+				}
+				kmsClientInitialized = true
+			}
+
+			if existingVaultID != nil {
 
 				// Find the key ID based on compartmentID in the existing vault
 
@@ -300,21 +347,27 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					CompartmentId: &dbcsInst.Spec.KMSConfig.CompartmentId,
 				}
 
-				var keyId *string
+				var keyID *string
 				var keyName *string
 
 				// Make a single request to list keys
 				listKeysResp, err := kmsClient.ListKeys(ctx, listKeysReq)
 				if err != nil {
+					if result, retryErr, handled := r.handleKMSManagementEndpointRetry(ctx, dbcsInst, *existingVaultManagementEndpoint, err); handled {
+						return result, retryErr
+					}
 					r.Logger.Error(err, "Error listing keys in existing vault")
 					dbcsInst.Status.Message = err.Error()
+					return ctrl.Result{}, err
+				}
+				if err := r.clearKMSManagementEndpointRetry(ctx, dbcsInst); err != nil {
 					return ctrl.Result{}, err
 				}
 
 				// Iterate over the keys to find the desired key
 				for _, key := range listKeysResp.Items {
 					if key.DisplayName != nil && *key.DisplayName == dbcsInst.Spec.KMSConfig.KeyName {
-						keyId = key.Id
+						keyID = key.Id
 						keyName = key.DisplayName
 						dbcsInst.Status.KMSDetailsStatus.KeyId = *key.Id
 						dbcsInst.Status.KMSDetailsStatus.KeyName = *key.DisplayName
@@ -322,12 +375,18 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					}
 				}
 
-				if keyId == nil {
+				if keyID == nil {
 					r.Logger.Info("Master key not found in existing vault, creating new key")
 
 					// Create the KMS key in the existing vault
 					keyResponse, err := r.createKMSKey(ctx, dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
 					if err != nil {
+						if result, retryErr, handled := r.handleKMSManagementEndpointRetry(ctx, dbcsInst, *existingVaultManagementEndpoint, err); handled {
+							return result, retryErr
+						}
+						return ctrl.Result{}, err
+					}
+					if err := r.clearKMSManagementEndpointRetry(ctx, dbcsInst); err != nil {
 						return ctrl.Result{}, err
 					}
 
@@ -335,45 +394,23 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					dbcsInst.Status.KMSDetailsStatus.KeyId = *keyResponse.Key.Id
 					dbcsInst.Status.KMSDetailsStatus.KeyName = *keyResponse.Key.DisplayName
 				} else {
-					r.Logger.Info("Found existing master key in vault", "KeyName", dbcsInst.Spec.KMSConfig.KeyName, "KeyId", *keyId)
+					r.Logger.Info("Found existing master key in vault", "KeyName", dbcsInst.Spec.KMSConfig.KeyName, "KeyId", *keyID)
 
 					// Update the DbSystem with the existing encryption key ID
-					dbcsInst.Status.KMSDetailsStatus.KeyId = *keyId
+					dbcsInst.Status.KMSDetailsStatus.KeyId = *keyID
 					dbcsInst.Status.KMSDetailsStatus.KeyName = *keyName
 				}
-			} else {
-				r.Logger.Info("Creating new vault")
-
-				// Create the new vault
-				vaultResponse, err := r.createKMSVault(ctx, dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
-				if err != nil {
-					dbcsInst.Status.Message = err.Error()
-					return ctrl.Result{}, err
-				}
-				dbcsInst.Status.KMSDetailsStatus.VaultId = *vaultResponse.Id
-				dbcsInst.Status.KMSDetailsStatus.ManagementEndpoint = *vaultResponse.ManagementEndpoint
-				// Create the KMS key in the newly created vault
-				keyResponse, err := r.createKMSKey(ctx, dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
-				if err != nil {
-					dbcsInst.Status.Message = err.Error()
-					return ctrl.Result{}, err
-				}
-
-				// Update the DbSystem with the encryption key ID
-				dbcsInst.Status.KMSDetailsStatus.KeyId = *keyResponse.Key.Id
-				dbcsInst.Status.KMSDetailsStatus.KeyName = *keyResponse.Key.DisplayName
-
 			}
 		}
 	}
 	// Backup Creation
 	if dbcsInst.Spec.EnableBackup {
-		var compartmentId string
+		var compartmentID string
 		if dbcsInst.Spec.DbSystem.CompartmentId != "" {
-			compartmentId = dbcsInst.Spec.DbSystem.CompartmentId
+			compartmentID = dbcsInst.Spec.DbSystem.CompartmentId
 		} else if dbcsInst.Spec.Id != nil && *dbcsInst.Spec.Id != "" {
 			var err error
-			compartmentId, err = r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+			compartmentID, err = r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
 			if err != nil {
 				fmt.Printf("Failed to get compartment ID: %v\n", err)
 				dbcsInst.Status.Message = err.Error()
@@ -384,21 +421,21 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			dbcsInst.Status.Message = err.Error()
 			return ctrl.Result{}, err
 		}
-		backupId, err := dbcsv4.CreateDbcsBackup(compartmentId, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient)
+		backupID, err := dbcsv4.CreateDbcsBackup(compartmentID, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient)
 		if err != nil {
 			r.Logger.Error(err, "Backup creation failed")
 			dbcsInst.Status.Message = err.Error()
 			return ctrl.Result{}, nil
 		} else {
 
-			dbHomeId, err := r.getDbHomeIdByDbSystemID(ctx, compartmentId, *dbcsInst.Spec.Id)
+			dbHomeID, err := r.getDbHomeIDByDbSystemID(ctx, compartmentID, *dbcsInst.Spec.Id)
 			if err != nil {
 				fmt.Printf("Failed to get DB Home ID: %v\n", err)
 				dbcsInst.Status.Message = err.Error()
 				return ctrl.Result{}, err
 			}
 
-			databaseIds, err := r.getDatabaseIDByDbSystemID(ctx, *dbcsInst.Spec.Id, compartmentId, dbHomeId)
+			databaseIDs, err := r.getDatabaseIDByDbSystemID(ctx, *dbcsInst.Spec.Id, compartmentID, dbHomeID)
 			if err != nil {
 				fmt.Printf("Failed to get database IDs: %v\n", err)
 				dbcsInst.Status.Message = err.Error()
@@ -406,10 +443,10 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 
 			// Assume the first database is the one to back up (customize as needed)
-			databaseId := databaseIds[0]
+			databaseID := databaseIDs[0]
 			// After successful creation and backup becomes ACTIVE
 			listBackupsReq := database.ListBackupsRequest{
-				DatabaseId: &databaseId,
+				DatabaseId: &databaseID,
 			}
 
 			listBackupsResp, err := r.dbClient.ListBackups(ctx, listBackupsReq)
@@ -430,7 +467,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					})
 				}
 			}
-			r.Logger.Info("Backup Completed successfully", "BackupID", backupId)
+			r.Logger.Info("Backup Completed successfully", "BackupID", backupID)
 		}
 	}
 	restoreCount := 0
@@ -461,17 +498,17 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		} else if restoreCount == 1 { // do restore when exactly one restore is new spec and defined correctly
 			switch {
 			case restoreInfo.Latest:
-				err = dbcsv4.RestoreDbcsToPoint(compartmentId, r.Logger, r.dbClient, dbcsInst,
+				err = dbcsv4.RestoreDbcsToPoint(compartmentID, r.Logger, r.dbClient, dbcsInst,
 					databasev4.RestoreConfig{Latest: true},
 					r.KubeClient, r.nwClient, r.wrClient)
 
 			case restoreInfo.Timestamp != nil:
-				err = dbcsv4.RestoreDbcsToPoint(compartmentId, r.Logger, r.dbClient, dbcsInst,
+				err = dbcsv4.RestoreDbcsToPoint(compartmentID, r.Logger, r.dbClient, dbcsInst,
 					databasev4.RestoreConfig{Timestamp: restoreInfo.Timestamp},
 					r.KubeClient, r.nwClient, r.wrClient)
 
 			case restoreInfo.SCN != nil:
-				err = dbcsv4.RestoreDbcsToPoint(compartmentId, r.Logger, r.dbClient, dbcsInst,
+				err = dbcsv4.RestoreDbcsToPoint(compartmentID, r.Logger, r.dbClient, dbcsInst,
 					databasev4.RestoreConfig{SCN: restoreInfo.SCN},
 					r.KubeClient, r.nwClient, r.wrClient)
 			}
@@ -506,17 +543,17 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			dbcsInst.Status.Message = errMsg
 			return ctrl.Result{}, nil
 		}
-		compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
 		if err != nil {
 			fmt.Printf("Failed to get compartment ID: %v\n", err)
 			dbcsInst.Status.Message = err.Error()
 			return ctrl.Result{}, err
 		}
 
-		err = dbcsv4.PatchDBSystem(ctx, compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, dbcsInst.Spec.DbSystem.DbHomeId, dbcsInst.Spec.DbSystem.PatchOCID)
+		err = dbcsv4.PatchDBSystem(ctx, compartmentID, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, dbcsInst.Spec.DbSystem.DbHomeId, dbcsInst.Spec.DbSystem.PatchOCID)
 		if err != nil {
 			r.Logger.Error(err, "Fail to patch db system")
-			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+			if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 				dbcsInst.Status.Message = err.Error()
 				return ctrl.Result{}, statusErr
 			}
@@ -529,14 +566,14 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			dbcsInst.Status.Message = errMsg
 			return ctrl.Result{}, nil
 		}
-		compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
 		if err != nil {
 			fmt.Printf("Failed to get compartment ID: %v\n", err)
 			dbcsInst.Status.Message = err.Error()
 			return ctrl.Result{}, err
 		}
 
-		err = dbcsv4.UpgradeDatabaseVersion(ctx, compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, *dbcsInst.Spec.DatabaseId, dbcsInst.Spec.DbSystem.UpgradeVersion)
+		err = dbcsv4.UpgradeDatabaseVersion(ctx, compartmentID, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, *dbcsInst.Spec.DatabaseId, dbcsInst.Spec.DbSystem.UpgradeVersion)
 		if err != nil {
 			r.Logger.Error(err, "Failed to upgrade DB Home.")
 			dbcsInst.Status.Message = fmt.Sprintf("Upgrade failed: %v", err)
@@ -583,7 +620,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// If SetupDBCloning is false, continue as usual without cloning
 		setupCloning = false
 	}
-	var dbSystemId string
+	var dbSystemID string
 	// Executing DB Cloning Process, if defined. Do not repeat cloning again when Status has Id present.
 	if setupCloning && dbcsInst.Status.DbCloneStatus.Id == nil {
 		// if setupCloning {
@@ -591,10 +628,10 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		switch {
 
 		case dbcsInst.Spec.SetupDBCloning && dbcsInst.Spec.DbBackupId != nil:
-			dbSystemId, err = dbcsv4.CloneFromBackupAndGetDbcsId(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
+			dbSystemID, err = dbcsv4.CloneFromBackupAndGetDbcsID(compartmentID, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
 			if err != nil {
 				r.Logger.Error(err, "Fail to clone db system from backup and get DbcsSystem System ID")
-				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, statusErr
 				}
@@ -604,24 +641,24 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			r.Logger.Info("DB Cloning completed successfully from provided backup DB system")
 
 		case dbcsInst.Spec.SetupDBCloning && dbcsInst.Spec.DatabaseId != nil:
-			dbSystemId, err = dbcsv4.CloneFromDatabaseAndGetDbcsId(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
+			dbSystemID, err = dbcsv4.CloneFromDatabaseAndGetDbcsID(compartmentID, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
 			if err != nil {
 				r.Logger.Error(err, "Fail to clone db system from DatabaseID provided")
 				dbcsInst.Status.Message = err.Error()
-				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 
 					return ctrl.Result{}, statusErr
 				}
 
 				return ctrl.Result{}, nil
 			}
-			r.Logger.Info("DB Cloning completed successfully from provided databaseId")
+			r.Logger.Info("DB Cloning completed successfully from provided databaseID")
 
 		case dbcsInst.Spec.SetupDBCloning && dbcsInst.Spec.DbBackupId == nil && dbcsInst.Spec.DatabaseId == nil:
-			dbSystemId, err = dbcsv4.CloneAndGetDbcsId(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
+			dbSystemID, err = dbcsv4.CloneAndGetDbcsID(compartmentID, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
 			if err != nil {
 				r.Logger.Error(err, "Fail to clone db system and get DbcsSystem System ID")
-				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, statusErr
 				}
@@ -633,23 +670,19 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if dbcsInst.Spec.Id == nil && lastSuccessfullSpec == nil {
 			// If no DbcsSystem ID specified, create a new DB System
 			// ======================== Validate Specs ==============
-			if dbcsInst == nil {
-				// Safety guard
-				return ctrl.Result{}, nil
-			}
 			err = dbcsv4.ValidateSpex(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.Recorder)
 			if err != nil {
 				dbcsInst.Status.Message = err.Error()
 				return ctrl.Result{}, err
 			}
 			r.Logger.Info("DbcsSystem DBSystem provisioning")
-			dbcsID, err := dbcsv4.CreateAndGetDbcsId(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, &dbcsInst.Status.KMSDetailsStatus)
+			dbcsID, err := dbcsv4.CreateAndGetDbcsID(compartmentID, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, &dbcsInst.Status.KMSDetailsStatus)
 			if err != nil {
 				dbcsInst.Status.Message = err.Error()
 				r.Logger.Error(err, "Fail to provision and get DbcsSystem System ID")
 
 				// Change the status to Failed
-				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -666,10 +699,10 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					dbcsInst.Spec.DbSystem.KMSConfig = dbcsInst.Spec.KMSConfig
 				}
 			}
-			if err := dbcsv4.UpdateDbcsSystemId(r.KubeClient, dbcsInst); err != nil {
+			if err := dbcsv4.UpdateDbcsSystemID(r.KubeClient, dbcsInst); err != nil {
 				// Change the status to Failed
 				assignDBCSID(dbcsInst, dbcsID)
-				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				return ctrl.Result{}, err
@@ -684,24 +717,24 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			assignDBCSID(dbcsInst, dbcsID)
 		} else {
 			if lastSuccessfullSpec == nil { // first time update after creation of DB
-				if err := dbcsv4.GetDbSystemId(r.Logger, r.dbClient, dbcsInst); err != nil {
+				if err := dbcsv4.GetDbSystemID(r.Logger, r.dbClient, dbcsInst); err != nil {
 					// Change the status to Failed
-					if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+					if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 					return ctrl.Result{}, err
 				}
-				if err := dbcsv4.SetDBCSDatabaseLifecycleState(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient); err != nil {
+				if err := dbcsv4.SetDBCSDatabaseLifecycleState(compartmentID, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient); err != nil {
 					// Change the status to required state
 					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 
-				dbSystemId := *dbcsInst.Spec.Id
-				if err := dbcsv4.UpdateDbcsSystemId(r.KubeClient, dbcsInst); err != nil {
+				dbSystemID := *dbcsInst.Spec.Id
+				if err := dbcsv4.UpdateDbcsSystemID(r.KubeClient, dbcsInst); err != nil {
 					// Change the status to Failed
-					assignDBCSID(dbcsInst, dbSystemId)
-					if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+					assignDBCSID(dbcsInst, dbSystemID)
+					if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 					return ctrl.Result{}, err
@@ -709,42 +742,42 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 				r.Logger.Info("Sync information from remote DbcsSystem System successfully")
 
-				dbSystemId = *dbcsInst.Spec.Id
+				dbSystemID = *dbcsInst.Spec.Id
 				if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
 					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
-				assignDBCSID(dbcsInst, dbSystemId)
+				assignDBCSID(dbcsInst, dbSystemID)
 			} else {
-				dbSystemId := ""
+				dbSystemID := ""
 				if dbcsInst.Spec.Id == nil {
 					dbcsInst.Spec.Id = lastSuccessfullSpec.Id
-					dbSystemId = *dbcsInst.Spec.Id
+					dbSystemID = *dbcsInst.Spec.Id
 				} else {
-					dbSystemId = *dbcsInst.Spec.Id
+					dbSystemID = *dbcsInst.Spec.Id
 				}
 				//debugging
 
-				compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+				compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
 				if err != nil {
 					fmt.Printf("Failed to get compartment ID: %v\n", err)
 					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
-				dbHomeId, err := r.getDbHomeIdByDbSystemID(ctx, compartmentId, *dbcsInst.Spec.Id)
+				dbHomeID, err := r.getDbHomeIDByDbSystemID(ctx, compartmentID, *dbcsInst.Spec.Id)
 				if err != nil {
 					fmt.Printf("Failed to get DB Home ID: %v\n", err)
 					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 
-				databaseIds, err := r.getDatabaseIDByDbSystemID(ctx, *dbcsInst.Spec.Id, compartmentId, dbHomeId)
+				databaseIDs, err := r.getDatabaseIDByDbSystemID(ctx, *dbcsInst.Spec.Id, compartmentID, dbHomeID)
 				if err != nil {
 					fmt.Printf("Failed to get database IDs: %v\n", err)
 					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
-				err = r.getPluggableDatabaseDetails(ctx, dbcsInst, *dbcsInst.Spec.Id, databaseIds)
+				err = r.getPluggableDatabaseDetails(ctx, dbcsInst, *dbcsInst.Spec.Id, databaseIDs)
 				if err != nil {
 					fmt.Printf("Failed to get pluggable database details: %v\n", err)
 					dbcsInst.Status.Message = err.Error()
@@ -752,20 +785,18 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				}
 				// Example: assume you have dataGuardRetryCount as an int
 
-				if len(databaseIds) > 0 && dbcsInst.Spec.Id != nil {
+				if len(databaseIDs) > 0 && dbcsInst.Spec.Id != nil {
 					dataGuardRetryCount := 0
 					if dataGuardRetryCount < 5 {
-						err = r.getDataGuardStatusAndUpdate(ctx, dbcsInst, databaseIds[0], *dbcsInst.Spec.Id)
+						err = r.getDataGuardStatusAndUpdate(ctx, dbcsInst, databaseIDs[0], *dbcsInst.Spec.Id)
 						if err != nil {
 							dataGuardRetryCount++
 							// persist the updated retry count
 
 							fmt.Printf("Failed to get dataguard details (attempt %d/5): %v\n",
 								dataGuardRetryCount, err)
-							return ctrl.Result{Requeue: true}, err
+							return ctrl.Result{}, err
 						}
-						// reset retry count on success
-						dataGuardRetryCount = 0
 					} else {
 						fmt.Println("Max retries (5) reached. Failing DataGuard status update.")
 						return ctrl.Result{}, fmt.Errorf("max retries reached for DataGuard status update")
@@ -774,23 +805,23 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					fmt.Println("Skipping DataGuard status update as DatabaseIds or DbcsSystem ID is nil")
 				}
 
-				if err := dbcsv4.UpdateDbcsSystemIdInst(compartmentId, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient, databaseIds[0]); err != nil {
+				if err := dbcsv4.UpdateDbcsSystemIDInst(compartmentID, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient, databaseIDs[0]); err != nil {
 					r.Logger.Error(err, "Fail to update DbcsSystem Id")
 					dbcsInst.Status.Message = err.Error()
 
 					// Change the status to Failed
-					if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+					if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 					// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
 					return ctrl.Result{}, nil
 				}
-				if err := dbcsv4.SetDBCSDatabaseLifecycleState(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient); err != nil {
+				if err := dbcsv4.SetDBCSDatabaseLifecycleState(compartmentID, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient); err != nil {
 					// Change the status to required state
 					return ctrl.Result{}, err
 				}
 				// Update Spec and Status
-				result, err := r.updateSpecsAndStatus(ctx, dbcsInst, dbSystemId)
+				result, err := r.updateSpecsAndStatus(ctx, dbcsInst, dbSystemID)
 				if err != nil {
 					dbcsInst.Status.Message = err.Error()
 					return result, err
@@ -805,17 +836,17 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	switch {
 	case setupDataguard:
 		// Data Guard Creation Flow
-		compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
 		if err != nil {
 			fmt.Printf("Failed to get compartment ID: %v\n", err)
 			dbcsInst.Status.Message = err.Error()
 			return ctrl.Result{}, err
 		}
-		if err := r.EnableDataGuard(ctx, compartmentId, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient, *dbcsInst.Spec.DataGuard.PrimaryDatabaseId, &dbcsInst.Spec.DataGuard); err != nil {
+		if err := r.EnableDataGuard(ctx, compartmentID, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient, *dbcsInst.Spec.DataGuard.PrimaryDatabaseId, &dbcsInst.Spec.DataGuard); err != nil {
 			r.Logger.Error(err, "Failed to enable Data Guard and update DbcsSystem ID")
 
 			// Update status to Failed
-			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+			if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
@@ -827,8 +858,8 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 
 		if dbcsInst.Status.DataGuardStatus != nil && dbcsInst.Status.DataGuardStatus.PeerDbSystemId != nil {
-			dbSystemId = *dbcsInst.Status.DataGuardStatus.PeerDbSystemId
-			assignDBCSID(dbcsInst, dbSystemId)
+			dbSystemID = *dbcsInst.Status.DataGuardStatus.PeerDbSystemId
+			assignDBCSID(dbcsInst, dbSystemID)
 		}
 		if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
 			return ctrl.Result{}, err
@@ -836,17 +867,17 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	case isDeleteDataguard:
 		// Data Guard Deletion Flow
-		compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
 		if err != nil {
 			fmt.Printf("Failed to get compartment ID: %v\n", err)
 			dbcsInst.Status.Message = err.Error()
 			return ctrl.Result{}, err
 		}
-		if err := r.DeleteDataGuard(ctx, compartmentId, r.Logger, r.dbClient, dbcsInst); err != nil {
+		if err := r.DeleteDataGuard(ctx, compartmentID, r.Logger, r.dbClient, dbcsInst); err != nil {
 			r.Logger.Error(err, "Failed to delete Data Guard")
 
 			// Update status to Failed
-			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+			if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
@@ -856,23 +887,23 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Update the last succesful spec
 	if dbcsInst.Spec.Id != nil {
-		dbSystemId = *dbcsInst.Spec.Id
+		dbSystemID = *dbcsInst.Spec.Id
 
 		if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
 			dbcsInst.Status.Message = err.Error()
 			return ctrl.Result{}, err
 		}
 	} else if dbcsInst.Status.DbCloneStatus.Id != nil {
-		dbSystemId = *dbcsInst.Status.DbCloneStatus.Id
+		dbSystemID = *dbcsInst.Status.DbCloneStatus.Id
 	} else if setupDataguard {
-		dbSystemId = *dbcsInst.Status.DataGuardStatus.PeerDbSystemId
+		dbSystemID = *dbcsInst.Status.DataGuardStatus.PeerDbSystemId
 	}
 
 	// Change the phase to "Available"
-	assignDBCSID(dbcsInst, dbSystemId)
-	if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
-		return ctrl.Result{}, statusErr
-	}
+	assignDBCSID(dbcsInst, dbSystemID)
+	// if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
+	// 	return ctrl.Result{}, statusErr
+	// }
 
 	// r.Logger.Info("DBInst after assignment", "dbcsInst:->", dbcsInst)
 
@@ -890,19 +921,19 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					// Get database details
 					// Get DB Home ID by DB System ID
 					// Get Compartment ID by DB System ID
-					compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemId)
+					compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemID)
 					if err != nil {
 						dbcsInst.Status.Message = err.Error()
 						fmt.Printf("Failed to get compartment ID: %v\n", err)
 						return ctrl.Result{}, err
 					}
-					dbHomeId, err := r.getDbHomeIdByDbSystemID(ctx, compartmentId, dbSystemId)
+					dbHomeID, err := r.getDbHomeIDByDbSystemID(ctx, compartmentID, dbSystemID)
 					if err != nil {
 						fmt.Printf("Failed to get DB Home ID: %v\n", err)
 						dbcsInst.Status.Message = err.Error()
 						return ctrl.Result{}, err
 					}
-					databaseIds, err := r.getDatabaseIDByDbSystemID(ctx, dbSystemId, compartmentId, dbHomeId)
+					databaseIDs, err := r.getDatabaseIDByDbSystemID(ctx, dbSystemID, compartmentID, dbHomeID)
 					if err != nil {
 						fmt.Printf("Failed to get database IDs: %v\n", err)
 						dbcsInst.Status.Message = err.Error()
@@ -910,66 +941,64 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					}
 
 					// Now you can use dbDetails to access database attributes
-					r.Logger.Info("Database details fetched successfully", "DatabaseId", databaseIds)
+					r.Logger.Info("Database details fetched successfully", "DatabaseId", databaseIDs)
 
 					// Check if deletion is requested
 					if pdbConfig.IsDelete != nil && *pdbConfig.IsDelete {
 						// Call deletePluggableDatabase function
-						if err := r.deletePluggableDatabase(ctx, pdbConfig, dbSystemId); err != nil {
+						if err := r.deletePluggableDatabase(ctx, pdbConfig, dbSystemID); err != nil {
 							dbcsInst.Status.Message = err.Error()
 							return ctrl.Result{}, err
 						}
 						// Continue to the next pdbConfig
 						continue
-					} else {
-						// Call the method to create the pluggable database
-						r.Logger.Info("Calling createPluggableDatabase", "ctx:->", ctx, "dbcsInst:->", dbcsInst, "databaseIds:->", databaseIds[0], "compartmentId:->", compartmentId)
-						pdbId, err := r.createPluggableDatabase(ctx, dbcsInst, pdbConfig, databaseIds[0], compartmentId, dbSystemId)
-						if err != nil {
-							// Handle error if required
-							dbcsInst.Status.Message = err.Error()
-							return ctrl.Result{}, err
+					}
+					// Call the method to create the pluggable database
+					r.Logger.Info("Calling createPluggableDatabase", "ctx:->", ctx, "dbcsInst:->", dbcsInst, "databaseIDs:->", databaseIDs[0], "compartmentID:->", compartmentID)
+					pdbID, err := r.createPluggableDatabase(ctx, dbcsInst, pdbConfig, databaseIDs[0], compartmentID, dbSystemID)
+					if err != nil {
+						// Handle error if required
+						dbcsInst.Status.Message = err.Error()
+						return ctrl.Result{}, err
+					}
+
+					// Create or update the PDBConfigStatus in DbcsSystemStatus
+					pdbConfigStatus := databasev4.PDBConfigStatus{
+						PdbName:                       pdbConfig.PdbName,
+						ShouldPdbAdminAccountBeLocked: pdbConfig.ShouldPdbAdminAccountBeLocked,
+						PdbLifecycleState:             databasev4.Available,
+						FreeformTags:                  pdbConfig.FreeformTags,
+						PluggableDatabaseId:           &pdbID,
+					}
+
+					// Create a map to track existing PDBConfigStatus by PdbName
+					pdbDetailsMap := make(map[string]databasev4.PDBConfigStatus)
+
+					// Populate the map with existing PDBConfigStatus from dbcsInst.Status.PdbDetailsStatus
+					for _, pdbDetails := range dbcsInst.Status.PdbDetailsStatus {
+						for _, existingPdbConfig := range pdbDetails.PDBConfigStatus {
+							pdbDetailsMap[*existingPdbConfig.PdbName] = existingPdbConfig
 						}
+					}
 
-						// Create or update the PDBConfigStatus in DbcsSystemStatus
-						pdbConfigStatus := databasev4.PDBConfigStatus{
-							PdbName:                       pdbConfig.PdbName,
-							ShouldPdbAdminAccountBeLocked: pdbConfig.ShouldPdbAdminAccountBeLocked,
-							PdbLifecycleState:             databasev4.Available,
-							FreeformTags:                  pdbConfig.FreeformTags,
-							PluggableDatabaseId:           &pdbId,
-						}
+					// Update the map with the new or updated PDBConfigStatus
+					pdbDetailsMap[*pdbConfig.PdbName] = pdbConfigStatus
 
-						// Create a map to track existing PDBConfigStatus by PdbName
-						pdbDetailsMap := make(map[string]databasev4.PDBConfigStatus)
+					// Convert the map back to a slice of PDBDetailsStatus
+					var updatedPdbDetailsStatus []databasev4.PDBDetailsStatus
+					for _, pdbConfigStatus := range pdbDetailsMap {
+						updatedPdbDetailsStatus = append(updatedPdbDetailsStatus, databasev4.PDBDetailsStatus{
+							PDBConfigStatus: []databasev4.PDBConfigStatus{pdbConfigStatus},
+						})
+					}
 
-						// Populate the map with existing PDBConfigStatus from dbcsInst.Status.PdbDetailsStatus
-						for _, pdbDetails := range dbcsInst.Status.PdbDetailsStatus {
-							for _, existingPdbConfig := range pdbDetails.PDBConfigStatus {
-								pdbDetailsMap[*existingPdbConfig.PdbName] = existingPdbConfig
-							}
-						}
-
-						// Update the map with the new or updated PDBConfigStatus
-						pdbDetailsMap[*pdbConfig.PdbName] = pdbConfigStatus
-
-						// Convert the map back to a slice of PDBDetailsStatus
-						var updatedPdbDetailsStatus []databasev4.PDBDetailsStatus
-						for _, pdbConfigStatus := range pdbDetailsMap {
-							updatedPdbDetailsStatus = append(updatedPdbDetailsStatus, databasev4.PDBDetailsStatus{
-								PDBConfigStatus: []databasev4.PDBConfigStatus{pdbConfigStatus},
-							})
-						}
-
-						// Assign the updated slice to dbcsInst.Status.PdbDetailsStatus
-						dbcsInst.Status.PdbDetailsStatus = updatedPdbDetailsStatus
-						err = r.KubeClient.Status().Update(ctx, dbcsInst)
-						if err != nil {
-							dbcsInst.Status.Message = err.Error()
-							r.Logger.Error(err, "Failed to update DB status")
-							return reconcile.Result{}, err
-						}
-
+					// Assign the updated slice to dbcsInst.Status.PdbDetailsStatus
+					dbcsInst.Status.PdbDetailsStatus = updatedPdbDetailsStatus
+					err = r.KubeClient.Status().Update(ctx, dbcsInst)
+					if err != nil {
+						dbcsInst.Status.Message = err.Error()
+						r.Logger.Error(err, "Failed to update DB status")
+						return reconcile.Result{}, err
 					}
 				}
 			}
@@ -985,19 +1014,19 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				// Get database details
 				// Get DB Home ID by DB System ID
 				// Get Compartment ID by DB System ID
-				compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemId)
+				compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemID)
 				if err != nil {
 					dbcsInst.Status.Message = err.Error()
 					fmt.Printf("Failed to get compartment ID: %v\n", err)
 					return ctrl.Result{}, err
 				}
-				dbHomeId, err := r.getDbHomeIdByDbSystemID(ctx, compartmentId, dbSystemId)
+				dbHomeID, err := r.getDbHomeIDByDbSystemID(ctx, compartmentID, dbSystemID)
 				if err != nil {
 					dbcsInst.Status.Message = err.Error()
 					fmt.Printf("Failed to get DB Home ID: %v\n", err)
 					return ctrl.Result{}, err
 				}
-				databaseIds, err := r.getDatabaseIDByDbSystemID(ctx, dbSystemId, compartmentId, dbHomeId)
+				databaseIDs, err := r.getDatabaseIDByDbSystemID(ctx, dbSystemID, compartmentID, dbHomeID)
 				if err != nil {
 					dbcsInst.Status.Message = err.Error()
 					fmt.Printf("Failed to get database IDs: %v\n", err)
@@ -1005,26 +1034,25 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				}
 
 				// Now you can use dbDetails to access database attributes
-				r.Logger.Info("Database details fetched successfully", "DatabaseId", databaseIds)
+				r.Logger.Info("Database details fetched successfully", "DatabaseId", databaseIDs)
 
 				// Check if deletion is requested
 				if pdbConfig.IsDelete != nil && *pdbConfig.IsDelete {
 					// Call deletePluggableDatabase function
-					if err := r.deletePluggableDatabase(ctx, pdbConfig, dbSystemId); err != nil {
+					if err := r.deletePluggableDatabase(ctx, pdbConfig, dbSystemID); err != nil {
 						dbcsInst.Status.Message = err.Error()
 						return ctrl.Result{}, err
 					}
 					// Continue to the next pdbConfig
 					continue
-				} else {
-					// Call the method to create the pluggable database
-					r.Logger.Info("Calling createPluggableDatabase", "ctx:->", ctx, "dbcsInst:->", dbcsInst, "databaseIds:->", databaseIds[0], "compartmentId:->", compartmentId)
-					_, err := r.createPluggableDatabase(ctx, dbcsInst, pdbConfig, databaseIds[0], compartmentId, dbSystemId)
-					if err != nil {
-						// Handle error if required
-						dbcsInst.Status.Message = err.Error()
-						return ctrl.Result{}, err
-					}
+				}
+				// Call the method to create the pluggable database
+				r.Logger.Info("Calling createPluggableDatabase", "ctx:->", ctx, "dbcsInst:->", dbcsInst, "databaseIDs:->", databaseIDs[0], "compartmentID:->", compartmentID)
+				_, err = r.createPluggableDatabase(ctx, dbcsInst, pdbConfig, databaseIDs[0], compartmentID, dbSystemID)
+				if err != nil {
+					// Handle error if required
+					dbcsInst.Status.Message = err.Error()
+					return ctrl.Result{}, err
 				}
 			}
 		}
@@ -1034,25 +1062,26 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 }
 
+// DeleteDataGuard deletes the configured Data Guard association and updates status.
 func (r *DbcsSystemReconciler) DeleteDataGuard(
 	ctx context.Context,
-	compartmentId string,
+	compartmentID string,
 	log logr.Logger,
 	dbClient database.DatabaseClient,
 	dbcsInst *databasev4.DbcsSystem,
 ) error {
 	dataGuardStatus := dbcsInst.Status.DataGuardStatus
-	var peerDbSystemId *string
+	var peerDbSystemID *string
 
 	// Prefer runtime status, fallback to spec if available
 	if dataGuardStatus != nil && dataGuardStatus.PeerDbSystemId != nil {
-		peerDbSystemId = dataGuardStatus.PeerDbSystemId
+		peerDbSystemID = dataGuardStatus.PeerDbSystemId
 	}
 	if dbcsInst.Spec.DataGuard.PeerDbSystemId != nil {
-		peerDbSystemId = dbcsInst.Spec.DataGuard.PeerDbSystemId
+		peerDbSystemID = dbcsInst.Spec.DataGuard.PeerDbSystemId
 	}
 
-	if peerDbSystemId == nil {
+	if peerDbSystemID == nil {
 		msg := "Skipping Data Guard deletion — peer DB System ID is nil"
 		log.Info(msg)
 		dbcsInst.Status.Message = msg
@@ -1079,7 +1108,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 	status.SubnetId = spec.SubnetId
 
 	getDbSystemResp, err := dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
-		DbSystemId: peerDbSystemId,
+		DbSystemId: peerDbSystemID,
 	})
 	if err != nil {
 		if svcErr, ok := err.(common.ServiceError); ok && svcErr.GetHTTPStatusCode() == 404 {
@@ -1089,7 +1118,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 						return "<nil>"
 					}
 					return *s
-				}(peerDbSystemId),
+				}(peerDbSystemID),
 			)
 			log.Info(msg)
 			dbcsInst.Status.Message = msg
@@ -1104,11 +1133,11 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 		return err
 	}
 
-	var primaryDatabaseId *string
+	var primaryDatabaseID *string
 
 	// List DB Homes
 	dbHomesResp, err := dbClient.ListDbHomes(ctx, database.ListDbHomesRequest{
-		CompartmentId: &compartmentId,
+		CompartmentId: &compartmentID,
 		DbSystemId:    dbcsInst.Spec.Id,
 	})
 	if err != nil {
@@ -1118,7 +1147,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 	// Iterate DB Homes
 	for _, home := range dbHomesResp.Items {
 		dbsResp, err := dbClient.ListDatabases(ctx, database.ListDatabasesRequest{
-			CompartmentId: &compartmentId,
+			CompartmentId: &compartmentID,
 			DbHomeId:      home.Id,
 		})
 		if err != nil {
@@ -1136,31 +1165,31 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 			for _, assoc := range dgResp.Items {
 				if assoc.Role == database.DataGuardAssociationSummaryRolePrimary {
-					primaryDatabaseId = db.Id
+					primaryDatabaseID = db.Id
 					if dbcsInst.Status.DataGuardStatus == nil {
 						dbcsInst.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
 					}
-					dbcsInst.Status.DataGuardStatus.PrimaryDatabaseId = primaryDatabaseId
+					dbcsInst.Status.DataGuardStatus.PrimaryDatabaseId = primaryDatabaseID
 					dbcsInst.Status.DataGuardStatus.PeerDbSystemId = assoc.PeerDbSystemId
 					break
 				}
 			}
 
-			if primaryDatabaseId != nil {
+			if primaryDatabaseID != nil {
 				break
 			}
 		}
 
-		if primaryDatabaseId != nil {
+		if primaryDatabaseID != nil {
 			break
 		}
 	}
 
-	if primaryDatabaseId == nil {
+	if primaryDatabaseID == nil {
 		msg := fmt.Sprintf(
 			"Skipping Data Guard deletion — peer DB %s is not associated with primary DB %s",
-			strVal(peerDbSystemId),
-			strVal(primaryDatabaseId),
+			strVal(peerDbSystemID),
+			strVal(primaryDatabaseID),
 		)
 		log.Info(msg)
 
@@ -1173,7 +1202,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 	// Verify Data Guard association exists
 	listAssocResp, err := dbClient.ListDataGuardAssociations(ctx, database.ListDataGuardAssociationsRequest{
-		DatabaseId: primaryDatabaseId,
+		DatabaseId: primaryDatabaseID,
 	})
 	if err != nil {
 		log.Error(err, "Failed to list Data Guard associations for primary DB")
@@ -1184,7 +1213,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 	var association *database.DataGuardAssociationSummary
 	for _, assoc := range listAssocResp.Items {
-		if assoc.PeerDbSystemId != nil && *assoc.PeerDbSystemId == *peerDbSystemId {
+		if assoc.PeerDbSystemId != nil && *assoc.PeerDbSystemId == *peerDbSystemID {
 			association = &assoc
 			break
 		}
@@ -1193,7 +1222,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 	if association == nil {
 		msg := fmt.Sprintf(
 			"Skipping Data Guard deletion — peer DB %s is not associated with primary DB %s",
-			*peerDbSystemId, primaryDatabaseId,
+			strVal(peerDbSystemID), strVal(primaryDatabaseID),
 		)
 		log.Info(msg)
 		dbcsInst.Status.Message = msg
@@ -1204,18 +1233,18 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
 
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 	}
 
 	// At this point, we know the primary and peer DB are actually in Data Guard
 	log.Info("Confirmed Data Guard association, proceeding with deletion",
-		"primary", primaryDatabaseId,
-		"peer", *peerDbSystemId)
+		"primary", primaryDatabaseID,
+		"peer", *peerDbSystemID)
 
 	switch getDbSystemResp.DbSystem.LifecycleState {
 
 	case database.DbSystemLifecycleStateTerminated:
-		log.Info("Peer DB system is already terminated.", "peerDbSystemId", *peerDbSystemId)
+		log.Info("Peer DB system is already terminated.", "peerDbSystemID", *peerDbSystemID)
 
 		terminated := string(database.DbSystemLifecycleStateTerminated)
 		dbcsInst.Status.DataGuardStatus.LifecycleState = &terminated
@@ -1225,7 +1254,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 		dbcsInst.Status.Message = "Data Guard peer already terminated"
 
 		if statusErr := dbcsv4.SetLifecycleState(
-			compartmentId, r.KubeClient, r.dbClient, dbcsInst,
+			compartmentID, r.KubeClient, r.dbClient, dbcsInst,
 			databasev4.Available, r.nwClient, r.wrClient,
 		); statusErr != nil {
 			return statusErr
@@ -1236,7 +1265,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 	case database.DbSystemLifecycleStateTerminating:
 		// Wait until it becomes TERMINATED (with timeout)
 		log.Info("Peer DB system is in TERMINATING state, waiting for it to reach TERMINATED...",
-			"peerDbSystemId", *peerDbSystemId)
+			"peerDbSystemID", *peerDbSystemID)
 		status := dbcsInst.Status.DataGuardStatus
 
 		// Use Spec to fill necessary details
@@ -1269,11 +1298,11 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 			case <-timeout:
 				dbcsInst.Status.Message = "Timeout while waiting for peer DB system termination"
 				_ = r.KubeClient.Status().Update(ctx, dbcsInst)
-				return fmt.Errorf("timed out waiting for peer DB system %s to terminate", *peerDbSystemId)
+				return fmt.Errorf("timed out waiting for peer DB system %s to terminate", *peerDbSystemID)
 
 			case <-time.After(pollInterval):
 				latest, err := dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
-					DbSystemId: peerDbSystemId,
+					DbSystemId: peerDbSystemID,
 				})
 				if err != nil {
 					log.Error(err, "Failed to poll DB system lifecycle state")
@@ -1282,16 +1311,16 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 				switch latest.DbSystem.LifecycleState {
 				case database.DbSystemLifecycleStateTerminated:
-					log.Info("Peer DB system successfully terminated", "peerDbSystemId", *peerDbSystemId)
+					log.Info("Peer DB system successfully terminated", "peerDbSystemID", *peerDbSystemID)
 					goto Cleanup
 				case database.DbSystemLifecycleStateFailed:
 					dbcsInst.Status.Message = "Peer DB system termination failed"
 					dbcsInst.Status.State = databasev4.Available
 					_ = r.KubeClient.Status().Update(ctx, dbcsInst)
-					return fmt.Errorf("DB system termination failed for peer %s", *peerDbSystemId)
+					return fmt.Errorf("DB system termination failed for peer %s", *peerDbSystemID)
 				default:
 					log.Info("Peer DB system still terminating...",
-						"peerDbSystemId", *peerDbSystemId,
+						"peerDbSystemID", *peerDbSystemID,
 						"lifecycleState", latest.DbSystem.LifecycleState)
 				}
 			}
@@ -1299,12 +1328,12 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 	default:
 		// Active or other state → initiate termination
-		if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient,
+		if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient,
 			dbcsInst, databasev4.Update, r.nwClient, r.wrClient); statusErr != nil {
 			return statusErr
 		}
 
-		log.Info("Terminating peer DB system", "peerDbSystemId", *peerDbSystemId)
+		log.Info("Terminating peer DB system", "peerDbSystemID", *peerDbSystemID)
 		status := dbcsInst.Status.DataGuardStatus
 
 		// Use Spec to fill necessary details
@@ -1329,7 +1358,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
 
 		termSysResp, err := dbClient.TerminateDbSystem(ctx, database.TerminateDbSystemRequest{
-			DbSystemId: peerDbSystemId,
+			DbSystemId: peerDbSystemID,
 		})
 		if err != nil {
 			log.Error(err, "Failed to initiate termination of peer DB System")
@@ -1344,7 +1373,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 			_ = r.KubeClient.Status().Update(ctx, dbcsInst)
 			return err
 		}
-		if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient,
+		if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient,
 			dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
 			return statusErr
 		}
@@ -1353,7 +1382,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 Cleanup:
 	// Final cleanup — clear DataGuardStatus
 	dbcsInst.Status.Message = "Data Guard peer deleted successfully"
-	if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient,
+	if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient,
 		dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
 		return statusErr
 	}
@@ -1413,64 +1442,59 @@ func (r *DbcsSystemReconciler) waitForWorkRequest(
 	}
 }
 
-func (r *DbcsSystemReconciler) updateSpecsAndStatus(ctx context.Context, dbcsInst *databasev4.DbcsSystem, dbSystemId string) (reconcile.Result, error) {
+func (r *DbcsSystemReconciler) updateSpecsAndStatus(
+	ctx context.Context,
+	dbcsInst *databasev4.DbcsSystem,
+	dbSystemID string,
+) (reconcile.Result, error) {
 
-	// Retry mechanism for handling resource version conflicts
-	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Fetch the latest version of the resource
-		latestDbcsInst := &databasev4.DbcsSystem{}
-		err := r.KubeClient.Get(ctx, types.NamespacedName{
+	const retryDelay = 15 * time.Second
+	latest := &databasev4.DbcsSystem{}
+	if err := r.KubeClient.Get(ctx,
+		types.NamespacedName{
 			Name:      dbcsInst.Name,
 			Namespace: dbcsInst.Namespace,
-		}, latestDbcsInst)
-		if err != nil {
-			r.Logger.Error(err, "Failed to fetch the latest DB resource")
-			return err
-		}
-
-		// Update the Spec subresource
-		latestDbcsInst.Spec.Id = &dbSystemId
-		err = r.KubeClient.Update(ctx, latestDbcsInst)
-		if err != nil {
-			r.Logger.Error(err, "Failed to update DB Spec")
-			return err
-		}
-
-		// Update the Status subresource
-
-		// Update the Status subresource
-		originalStatus := reflect.ValueOf(&dbcsInst.Status).Elem()
-		latestStatus := reflect.ValueOf(&latestDbcsInst.Status).Elem()
-
-		// Iterate over all fields in the Status struct and update them
-		for i := 0; i < originalStatus.NumField(); i++ {
-			fieldName := originalStatus.Type().Field(i).Name
-			latestStatus.FieldByName(fieldName).Set(originalStatus.Field(i))
-		}
-
-		err = r.KubeClient.Status().Update(ctx, latestDbcsInst)
-		if err != nil {
-			r.Logger.Error(err, "Failed to update DB status")
-			return err
-		}
-
-		return nil
-	})
-
-	if retryErr != nil {
-		r.Logger.Error(retryErr, "Failed to update DB Spec and Status after retries")
-		return reconcile.Result{}, retryErr
+		},
+		latest,
+	); err != nil {
+		return reconcile.Result{}, err
 	}
 
-	r.Logger.Info("Successfully updated Spec and Status")
+	// Fetch OCI state
+	ociResp, err := r.dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
+		DbSystemId: common.String(dbSystemID),
+	})
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	ociState := string(ociResp.DbSystem.LifecycleState)
+
+	// If already synced -> exit cleanly.
+	if string(latest.Status.State) == ociState &&
+		latest.Status.Id != nil &&
+		*latest.Status.Id == dbSystemID {
+		r.Logger.Info("Status already in sync", "state", ociState)
+		return reconcile.Result{}, nil
+	}
+
+	updated := latest.DeepCopy()
+	updated.Status.Id = &dbSystemID
+	updated.Status.State = databasev4.LifecycleState(ociState)
+
+	if err := r.KubeClient.Status().Update(ctx, updated); err != nil {
+		return reconcile.Result{RequeueAfter: retryDelay}, nil
+	}
+
+	r.Logger.Info("Successfully updated status", "state", ociState)
 	return reconcile.Result{}, nil
 }
 
-// getDbHomeIdByDbSystemID retrieves the DB Home ID associated with the given DB System ID
-func (r *DbcsSystemReconciler) getDbHomeIdByDbSystemID(ctx context.Context, compartmentId, dbSystemId string) (string, error) {
+// getDbHomeIDByDbSystemID retrieves the DB Home ID associated with the given DB System ID
+func (r *DbcsSystemReconciler) getDbHomeIDByDbSystemID(ctx context.Context, compartmentID, dbSystemID string) (string, error) {
 	listRequest := database.ListDbHomesRequest{
-		CompartmentId: &compartmentId,
-		DbSystemId:    &dbSystemId,
+		CompartmentId: &compartmentID,
+		DbSystemId:    &dbSystemID,
 	}
 
 	listResponse, err := r.dbClient.ListDbHomes(ctx, listRequest)
@@ -1479,15 +1503,15 @@ func (r *DbcsSystemReconciler) getDbHomeIdByDbSystemID(ctx context.Context, comp
 	}
 
 	if len(listResponse.Items) == 0 {
-		return "", fmt.Errorf("no DB homes found for DB system ID: %s", dbSystemId)
+		return "", fmt.Errorf("no DB homes found for DB system ID: %s", dbSystemID)
 	}
 
 	return *listResponse.Items[0].Id, nil
 }
-func (r *DbcsSystemReconciler) getCompartmentIDByDbSystemID(ctx context.Context, dbSystemId string) (string, error) {
+func (r *DbcsSystemReconciler) getCompartmentIDByDbSystemID(ctx context.Context, dbSystemID string) (string, error) {
 	// Construct the GetDbSystem request
 	getRequest := database.GetDbSystemRequest{
-		DbSystemId: &dbSystemId,
+		DbSystemId: &dbSystemID,
 	}
 
 	// Call GetDbSystem API using the existing dbClient
@@ -1497,16 +1521,16 @@ func (r *DbcsSystemReconciler) getCompartmentIDByDbSystemID(ctx context.Context,
 	}
 
 	// Extract the compartment ID from the DB system details
-	compartmentId := *getResponse.DbSystem.CompartmentId
+	compartmentID := *getResponse.DbSystem.CompartmentId
 
-	return compartmentId, nil
+	return compartmentID, nil
 }
-func (r *DbcsSystemReconciler) getDatabaseIDByDbSystemID(ctx context.Context, dbSystemId, compartmentId, dbHomeId string) ([]string, error) {
+func (r *DbcsSystemReconciler) getDatabaseIDByDbSystemID(ctx context.Context, dbSystemID, compartmentID, dbHomeID string) ([]string, error) {
 	// Construct the ListDatabases request
 	request := database.ListDatabasesRequest{
-		SystemId:      &dbSystemId,
-		CompartmentId: &compartmentId,
-		DbHomeId:      &dbHomeId,
+		SystemId:      &dbSystemID,
+		CompartmentId: &compartmentID,
+		DbHomeId:      &dbHomeID,
 	}
 
 	// Call ListDatabases API using the existing dbClient
@@ -1516,12 +1540,12 @@ func (r *DbcsSystemReconciler) getDatabaseIDByDbSystemID(ctx context.Context, db
 	}
 
 	// Extract database IDs from the response
-	var databaseIds []string
+	var databaseIDs []string
 	for _, dbSummary := range response.Items {
-		databaseIds = append(databaseIds, *dbSummary.Id)
+		databaseIDs = append(databaseIDs, *dbSummary.Id)
 	}
 
-	return databaseIds, nil
+	return databaseIDs, nil
 }
 func (r *DbcsSystemReconciler) validatePDBExistence(dbcs *databasev4.DbcsSystem) (bool, error) {
 	r.Logger.Info("Validating PDB existence for all provided PDBs")
@@ -1556,20 +1580,20 @@ func (r *DbcsSystemReconciler) validatePDBExistence(dbcs *databasev4.DbcsSystem)
 	r.Logger.Info("All specified PDBs are available")
 	return true, nil
 }
-func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs *databasev4.DbcsSystem, pdbConfig databasev4.PDBConfig, databaseId, compartmentId, dbSystemId string) (string, error) {
+func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs *databasev4.DbcsSystem, pdbConfig databasev4.PDBConfig, databaseID, compartmentID, dbSystemID string) (string, error) {
 	r.Logger.Info("Checking if the pluggable database exists", "PDBName", pdbConfig.PdbName)
 
 	// Check if the pluggable database already exists
-	exists, pdbId, err := r.doesPluggableDatabaseExist(ctx, compartmentId, pdbConfig.PdbName, databaseId)
+	exists, pdbID, err := r.doesPluggableDatabaseExist(ctx, compartmentID, pdbConfig.PdbName, databaseID)
 	if err != nil {
 		r.Logger.Error(err, "Failed to check if pluggable database exists", "PDBName", pdbConfig.PdbName)
 		return "", err
 	}
 	if exists {
 		// Set the PluggableDatabaseId in PDBConfig
-		pdbConfig.PluggableDatabaseId = pdbId
+		pdbConfig.PluggableDatabaseId = pdbID
 		r.Logger.Info("Pluggable database already exists", "PDBName", pdbConfig.PdbName, "PluggableDatabaseId", *pdbConfig.PluggableDatabaseId)
-		return *pdbId, nil
+		return *pdbID, nil
 	}
 
 	// Define the DatabaseExists method locally
@@ -1587,16 +1611,16 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 		return true, nil
 	}
 
-	exists, err = databaseExists(dbSystemId)
+	exists, err = databaseExists(dbSystemID)
 	if err != nil {
 		r.Logger.Error(err, "Failed to check database existence")
 		return "", err
 	}
 
 	if !exists {
-		errMsg := fmt.Sprintf("Database does not exist: %s", dbSystemId)
-		r.Logger.Error(fmt.Errorf(errMsg), "Database not found")
-		return "", fmt.Errorf(errMsg)
+		errMsg := fmt.Sprintf("Database does not exist: %s", dbSystemID)
+		r.Logger.Error(errors.New(errMsg), "Database not found")
+		return "", errors.New(errMsg)
 	}
 
 	// Fetch secrets for TdeWalletPassword and PdbAdminPassword
@@ -1618,7 +1642,7 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 		return "", err
 	}
 	// Change the status to Provisioning
-	if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcs, databasev4.Provision, r.nwClient, r.wrClient); statusErr != nil {
+	if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcs, databasev4.Provision, r.nwClient, r.wrClient); statusErr != nil {
 		r.Logger.Error(err, "Failed to set DBCS LifeCycle State to Provisioning")
 		return "", statusErr
 	}
@@ -1628,7 +1652,7 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 	createPdbReq := database.CreatePluggableDatabaseRequest{
 		CreatePluggableDatabaseDetails: database.CreatePluggableDatabaseDetails{
 			PdbName:                       pdbConfig.PdbName,
-			ContainerDatabaseId:           &databaseId,
+			ContainerDatabaseId:           &databaseID,
 			ShouldPdbAdminAccountBeLocked: pdbConfig.ShouldPdbAdminAccountBeLocked,
 			PdbAdminPassword:              common.String(pdbAdminPassword),
 			TdeWalletPassword:             common.String(tdeWalletPassword),
@@ -1666,7 +1690,7 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 		if pdbStatus == database.PluggableDatabaseLifecycleStateAvailable {
 			r.Logger.Info("Pluggable database successfully created", "PDBName", pdbConfig.PdbName, "PDBID", *pdbConfig.PluggableDatabaseId)
 			// Change the status to Available
-			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcs, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
+			if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcs, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
 				return "", statusErr
 			}
 			return *response.PluggableDatabase.Id, nil
@@ -1675,7 +1699,7 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 		if pdbStatus == database.PluggableDatabaseLifecycleStateFailed {
 			r.Logger.Error(fmt.Errorf("pluggable database creation failed"), "PDBName", pdbConfig.PdbName, "PDBID", *pdbConfig.PluggableDatabaseId)
 			// Change the status to Failed
-			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcs, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+			if statusErr := dbcsv4.SetLifecycleState(compartmentID, r.KubeClient, r.dbClient, dbcs, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 				return "", statusErr
 			}
 			return "", fmt.Errorf("pluggable database creation failed")
@@ -1688,55 +1712,23 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 	return "", fmt.Errorf("timed out waiting for pluggable database to become available")
 }
 
-func (r *DbcsSystemReconciler) pluggableDatabaseExists(ctx context.Context, pluggableDatabaseId string) (bool, error) {
-	req := database.GetPluggableDatabaseRequest{
-		PluggableDatabaseId: &pluggableDatabaseId,
-	}
-	_, err := r.dbClient.GetPluggableDatabase(ctx, req)
-	if err != nil {
-		if ociErr, ok := err.(common.ServiceError); ok && ociErr.GetHTTPStatusCode() == 404 {
-			// PDB does not exist
-			return false, nil
-		}
-		// Other error occurred
-		return false, err
-	}
-	// PDB exists
-	return true, nil
-}
-
-func (r *DbcsSystemReconciler) deletePluggableDatabase(ctx context.Context, pdbConfig databasev4.PDBConfig, dbSystemId string) error {
+func (r *DbcsSystemReconciler) deletePluggableDatabase(ctx context.Context, pdbConfig databasev4.PDBConfig, dbSystemID string) error {
 	if pdbConfig.PdbName == nil {
 		return fmt.Errorf("PDB name is not specified")
 	}
 
 	r.Logger.Info("Deleting pluggable database", "PDBName", *pdbConfig.PdbName)
 
-	if pdbConfig.PluggableDatabaseId == nil {
-		r.Logger.Info("PluggableDatabaseId is not specified, getting pluggable databaseID")
-		// Call a function to retrieve PluggableDatabaseId
-		pdbID, err := r.getPluggableDatabaseID(ctx, pdbConfig, dbSystemId)
-		if err != nil {
-			return fmt.Errorf("failed to get PluggableDatabaseId: %v", err)
-		}
-		pdbConfig.PluggableDatabaseId = &pdbID
-	}
-
-	// Now pdbConfig.PluggableDatabaseId should not be nil
-	if pdbConfig.PluggableDatabaseId == nil {
-		return fmt.Errorf("PluggableDatabaseId is still nil after retrieval attempt. Nothing to delete")
-	}
-
-	// Check if PluggableDatabaseId exists in the live system
-	exists, err := r.pluggableDatabaseExists(ctx, *pdbConfig.PluggableDatabaseId)
+	pdbID, err := r.resolvePluggableDatabaseIDForDelete(ctx, pdbConfig, dbSystemID)
 	if err != nil {
-		r.Logger.Error(err, "Failed to check if pluggable database exists", "PluggableDatabaseId", *pdbConfig.PluggableDatabaseId)
+		r.Logger.Error(err, "Failed to resolve pluggable database for deletion", "PDBName", *pdbConfig.PdbName)
 		return err
 	}
-	if !exists {
-		r.Logger.Info("PluggableDatabaseId does not exist in the live system, nothing to delete", "PluggableDatabaseId", *pdbConfig.PluggableDatabaseId)
+	if pdbID == nil {
+		r.Logger.Info("Pluggable database does not exist in the current DbSystem, nothing to delete", "PDBName", *pdbConfig.PdbName)
 		return nil
 	}
+	pdbConfig.PluggableDatabaseId = pdbID
 
 	// Define the delete request
 	deleteReq := database.DeletePluggableDatabaseRequest{
@@ -1754,52 +1746,117 @@ func (r *DbcsSystemReconciler) deletePluggableDatabase(ctx context.Context, pdbC
 	return nil
 }
 
-func (r *DbcsSystemReconciler) getPluggableDatabaseID(ctx context.Context, pdbConfig databasev4.PDBConfig, dbSystemId string) (string, error) {
-	compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemId)
+func (r *DbcsSystemReconciler) getDatabaseIDsForDbSystem(ctx context.Context, dbSystemID string) (string, map[string]struct{}, error) {
+	compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemID)
 	if err != nil {
 		fmt.Printf("Failed to get compartment ID: %v\n", err)
-		return "", err
+		return "", nil, err
 	}
+
+	dbHomeID, err := r.getDbHomeIDByDbSystemID(ctx, compartmentID, dbSystemID)
+	if err != nil {
+		return "", nil, err
+	}
+
+	databaseIDs, err := r.getDatabaseIDByDbSystemID(ctx, dbSystemID, compartmentID, dbHomeID)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(databaseIDs) == 0 {
+		return "", nil, fmt.Errorf("no databases found for DB system ID: %s", dbSystemID)
+	}
+
+	databaseIDsSet := make(map[string]struct{}, len(databaseIDs))
+	for _, databaseID := range databaseIDs {
+		databaseIDsSet[databaseID] = struct{}{}
+	}
+
+	return compartmentID, databaseIDsSet, nil
+}
+
+func (r *DbcsSystemReconciler) resolvePluggableDatabaseIDForDelete(ctx context.Context, pdbConfig databasev4.PDBConfig, dbSystemID string) (*string, error) {
+	compartmentID, databaseIDsSet, err := r.getDatabaseIDsForDbSystem(ctx, dbSystemID)
+	if err != nil {
+		return nil, err
+	}
+
+	if pdbConfig.PluggableDatabaseId != nil {
+		req := database.GetPluggableDatabaseRequest{
+			PluggableDatabaseId: pdbConfig.PluggableDatabaseId,
+		}
+
+		resp, err := r.dbClient.GetPluggableDatabase(ctx, req)
+		if err != nil {
+			if ociErr, ok := err.(common.ServiceError); ok && ociErr.GetHTTPStatusCode() == 404 {
+				return nil, nil
+			}
+			return nil, err
+		}
+
+		if resp.PluggableDatabase.PdbName == nil || *resp.PluggableDatabase.PdbName != *pdbConfig.PdbName {
+			return nil, fmt.Errorf("pluggable database ID %s does not match requested PDB name %s", *pdbConfig.PluggableDatabaseId, *pdbConfig.PdbName)
+		}
+		if resp.PluggableDatabase.ContainerDatabaseId == nil {
+			return nil, fmt.Errorf("pluggable database ID %s is missing container database information", *pdbConfig.PluggableDatabaseId)
+		}
+		if _, ok := databaseIDsSet[*resp.PluggableDatabase.ContainerDatabaseId]; !ok {
+			return nil, fmt.Errorf("pluggable database ID %s does not belong to DbSystem %s", *pdbConfig.PluggableDatabaseId, dbSystemID)
+		}
+
+		return resp.PluggableDatabase.Id, nil
+	}
+
 	request := database.ListPluggableDatabasesRequest{
-		CompartmentId: &compartmentId,
+		CompartmentId: &compartmentID,
 	}
 
 	response, err := r.dbClient.ListPluggableDatabases(ctx, request)
 	if err != nil {
-		return "", fmt.Errorf("failed to list Pluggable Databases: %v", err)
+		return nil, fmt.Errorf("failed to list Pluggable Databases: %v", err)
 	}
 
-	var pdbID string
-
+	var matchedPdbIDs []*string
 	for _, pdb := range response.Items {
-		if *pdb.PdbName == *pdbConfig.PdbName {
-			pdbID = *pdb.Id
-			break
+		if pdb.PdbName == nil || pdb.Id == nil || pdb.ContainerDatabaseId == nil {
+			continue
+		}
+		if *pdb.PdbName != *pdbConfig.PdbName {
+			continue
+		}
+		if pdb.LifecycleState == database.PluggableDatabaseSummaryLifecycleStateTerminated {
+			continue
+		}
+		if _, ok := databaseIDsSet[*pdb.ContainerDatabaseId]; ok {
+			matchedPdbIDs = append(matchedPdbIDs, pdb.Id)
 		}
 	}
 
-	if pdbID == "" {
-		return "", fmt.Errorf("pluggable database '%s' not found", *pdbConfig.PdbName)
+	switch len(matchedPdbIDs) {
+	case 0:
+		return nil, fmt.Errorf("pluggable database %q not found in DbSystem %s", *pdbConfig.PdbName, dbSystemID)
+	case 1:
+		return matchedPdbIDs[0], nil
+	default:
+		return nil, fmt.Errorf("multiple pluggable databases named %q found in DbSystem %s; specify pluggableDatabaseId", *pdbConfig.PdbName, dbSystemID)
 	}
-	return pdbID, nil
 }
 
 func (r *DbcsSystemReconciler) getDataGuardStatusAndUpdate(
 	ctx context.Context,
 	dbcsInst *databasev4.DbcsSystem,
-	primaryDatabaseId string,
-	dbSystemId string,
+	primaryDatabaseID string,
+	_ string,
 ) error {
 	log := r.Logger.WithValues("func", "getDataGuardStatusAndUpdate")
 
-	// compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemId)
+	// compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemID)
 	// if err != nil {
 	// 	log.Error(err, "Failed to get compartment ID for DB System")
 	// 	return err
 	// }
 
 	listRequest := database.ListDataGuardAssociationsRequest{
-		DatabaseId: common.String(primaryDatabaseId),
+		DatabaseId: common.String(primaryDatabaseID),
 	}
 
 	listResp, err := r.dbClient.ListDataGuardAssociations(ctx, listRequest)
@@ -1837,14 +1894,14 @@ func (r *DbcsSystemReconciler) getDataGuardStatusAndUpdate(
 	return nil
 }
 
-func (r *DbcsSystemReconciler) getPluggableDatabaseDetails(ctx context.Context, dbcsInst *databasev4.DbcsSystem, dbSystemId string, databaseIds []string) error {
-	compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemId)
+func (r *DbcsSystemReconciler) getPluggableDatabaseDetails(ctx context.Context, dbcsInst *databasev4.DbcsSystem, dbSystemID string, databaseIDs []string) error {
+	compartmentID, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemID)
 	if err != nil {
 		fmt.Printf("Failed to get compartment ID: %v\n", err)
 		return err
 	}
 	request := database.ListPluggableDatabasesRequest{
-		CompartmentId: &compartmentId,
+		CompartmentId: &compartmentID,
 	}
 
 	response, err := r.dbClient.ListPluggableDatabases(ctx, request)
@@ -1855,16 +1912,16 @@ func (r *DbcsSystemReconciler) getPluggableDatabaseDetails(ctx context.Context, 
 	// Create a map to track existing PDBDetailsStatus by PdbName
 	pdbDetailsMap := make(map[string]databasev4.PDBConfigStatus)
 
-	// Convert databaseIds array to a set for quick lookup
-	databaseIdsSet := make(map[string]struct{})
-	for _, id := range databaseIds {
-		databaseIdsSet[id] = struct{}{}
+	// Convert databaseIDs array to a set for quick lookup
+	databaseIDsSet := make(map[string]struct{})
+	for _, id := range databaseIDs {
+		databaseIDsSet[id] = struct{}{}
 	}
 	// Update the map with new PDB details from the response
 	for _, pdb := range response.Items {
 		if pdb.ContainerDatabaseId != nil {
-			// Check if the ContainerDatabaseId is in the set of databaseIds
-			if _, exists := databaseIdsSet[*pdb.ContainerDatabaseId]; exists {
+			// Check if the ContainerDatabaseId is in the set of databaseIDs
+			if _, exists := databaseIDsSet[*pdb.ContainerDatabaseId]; exists {
 				pdbConfigStatus := databasev4.PDBConfigStatus{
 					PdbName:                       pdb.PdbName,
 					ShouldPdbAdminAccountBeLocked: pdb.IsRestricted,
@@ -1913,13 +1970,13 @@ func convertLifecycleState(state database.PluggableDatabaseSummaryLifecycleState
 }
 
 // doesPluggableDatabaseExist checks if a pluggable database with the given name exists
-func (r *DbcsSystemReconciler) doesPluggableDatabaseExist(ctx context.Context, compartmentId string, pdbName *string, databaseId string) (bool, *string, error) {
+func (r *DbcsSystemReconciler) doesPluggableDatabaseExist(ctx context.Context, compartmentID string, pdbName *string, databaseID string) (bool, *string, error) {
 	if pdbName == nil {
 		return false, nil, fmt.Errorf("pdbName is nil")
 	}
 
 	listPdbsReq := database.ListPluggableDatabasesRequest{
-		CompartmentId: &compartmentId,
+		CompartmentId: &compartmentID,
 	}
 
 	resp, err := r.dbClient.ListPluggableDatabases(ctx, listPdbsReq)
@@ -1929,7 +1986,7 @@ func (r *DbcsSystemReconciler) doesPluggableDatabaseExist(ctx context.Context, c
 
 	for _, pdb := range resp.Items {
 		if pdb.ContainerDatabaseId != nil {
-			if pdb.PdbName != nil && *pdb.PdbName == *pdbName && pdb.LifecycleState != "TERMINATED" && *pdb.ContainerDatabaseId == databaseId {
+			if pdb.PdbName != nil && *pdb.PdbName == *pdbName && pdb.LifecycleState != "TERMINATED" && *pdb.ContainerDatabaseId == databaseID {
 				return true, pdb.Id, nil
 			}
 		}
@@ -1938,10 +1995,10 @@ func (r *DbcsSystemReconciler) doesPluggableDatabaseExist(ctx context.Context, c
 	return false, nil, nil
 }
 
-// Enable Dataguard
+// EnableDataGuard creates and validates a Data Guard association for the DB system.
 func (r *DbcsSystemReconciler) EnableDataGuard(
 	ctx context.Context,
-	compartmentId string,
+	compartmentID string,
 	log logr.Logger,
 	dbClient database.DatabaseClient,
 	dbcsSystem *databasev4.DbcsSystem,
@@ -1989,7 +2046,7 @@ func (r *DbcsSystemReconciler) EnableDataGuard(
 			return nil
 		}
 		// Change the phase to "Provisioning"
-		if statusErr := dbcsv4.SetLifecycleState(compartmentId, kubeClient, dbClient, dbcsSystem, databasev4.Update, nwClient, wrClient); statusErr != nil {
+		if statusErr := dbcsv4.SetLifecycleState(compartmentID, kubeClient, dbClient, dbcsSystem, databasev4.Update, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
 
@@ -2067,18 +2124,18 @@ func (r *DbcsSystemReconciler) EnableDataGuard(
 		_ = r.KubeClient.Status().Update(ctx, dbcsSystem)
 
 		// Extract the DataGuardAssociation ID from the response
-		associationId := *response.DataGuardAssociation.Id
+		associationID := *response.DataGuardAssociation.Id
 
 		// Wait for the update to be applied and resource state to become "AVAILABLE"
 		// _, err = dbcsv4.CheckResourceState(log, dbClient, *dbcsSystem.Spec.Id, "UPDATING", "AVAILABLE")
-		_, err = dbcsv4.CheckDataGuardAssociationState(log, dbClient, associationId, "UPDATING", "AVAILABLE", databaseID)
+		_, err = dbcsv4.CheckDataGuardAssociationState(log, dbClient, associationID, "UPDATING", "AVAILABLE", databaseID)
 		if err != nil {
 			r.Logger.Error(err, "Error checking Data Guard Association state")
 		}
 
 		r.Logger.Info("Data Guard Association is now in the 'AVAILABLE' state.")
 
-		r.Logger.Info("DataGuard update successful", "dbSystemId", *dbcsSystem.Spec.Id)
+		r.Logger.Info("DataGuard update successful", "dbSystemID", *dbcsSystem.Spec.Id)
 	} else {
 		r.Logger.Info("No DataGuard update required; configurations match")
 	}
@@ -2097,9 +2154,9 @@ func (r *DbcsSystemReconciler) checkExistingDataGuardAssociation(
 	dbClient database.DatabaseClient,
 	dbcsSystem *databasev4.DbcsSystem,
 	databaseID string,
-	kubeClient client.Client,
-	nwClient core.VirtualNetworkClient,
-	wrClient workrequests.WorkRequestClient,
+	_ client.Client,
+	_ core.VirtualNetworkClient,
+	_ workrequests.WorkRequestClient,
 ) (bool, error) {
 
 	request := database.ListDataGuardAssociationsRequest{
@@ -2216,11 +2273,8 @@ func (r *DbcsSystemReconciler) checkExistingDataGuardAssociation(
 }
 
 // Function to create KMS vault
-func (r *DbcsSystemReconciler) createKMSVault(ctx context.Context, kmsConfig *databasev4.KMSConfig, kmsClient keymanagement.KmsManagementClient, kmsInst *databasev4.KMSDetailsStatus) (*keymanagement.CreateVaultResponse, error) {
-	// Dereference the ConfigurationProvider pointer
-	configProvider := *kmsClient.ConfigurationProvider()
-
-	kmsVaultClient, err := keymanagement.NewKmsVaultClientWithConfigurationProvider(configProvider)
+func (r *DbcsSystemReconciler) createKMSVault(ctx context.Context, kmsConfig *databasev4.KMSConfig, provider common.ConfigurationProvider, kmsInst *databasev4.KMSDetailsStatus) (*keymanagement.GetVaultResponse, error) {
+	kmsVaultClient, err := keymanagement.NewKmsVaultClientWithConfigurationProvider(provider)
 	if err != nil {
 		r.Logger.Error(err, "Error creating KMS vault client")
 		return nil, err
@@ -2266,7 +2320,9 @@ func (r *DbcsSystemReconciler) createKMSVault(ctx context.Context, kmsConfig *da
 	for {
 		select {
 		case <-timeout:
-			r.Logger.Error(err, "timed out waiting for vault to become active")
+			err := fmt.Errorf("timed out waiting for vault %q to become active", kmsConfig.VaultName)
+			r.Logger.Error(err, "Timed out waiting for vault to become active")
+			return nil, err
 		case <-ticker.C:
 			getVaultReq := keymanagement.GetVaultRequest{
 				VaultId: resp.Id,
@@ -2286,12 +2342,137 @@ func (r *DbcsSystemReconciler) createKMSVault(ctx context.Context, kmsConfig *da
 				kmsInst.VaultName = *getResp.DisplayName
 				kmsInst.CompartmentId = *getResp.CompartmentId
 				kmsInst.VaultType = kmsConfig.VaultType
-				return &keymanagement.CreateVaultResponse{}, err
+				return &getResp, nil
 			}
 
 			r.Logger.Info(fmt.Sprintf("Vault state: %s, waiting for active state...", string(getResp.LifecycleState)))
 		}
 	}
+}
+
+func (r *DbcsSystemReconciler) handleKMSManagementEndpointRetry(ctx context.Context, dbcsInst *databasev4.DbcsSystem, endpoint string, err error) (ctrl.Result, error, bool) {
+	if !isRetryableKMSManagementEndpointError(err) {
+		return ctrl.Result{}, nil, false
+	}
+
+	now := time.Now().UTC()
+	start, ok := getKMSManagementEndpointRetryStart(dbcsInst)
+	if !ok {
+		start = now
+		if patchErr := r.setKMSManagementEndpointRetryStart(ctx, dbcsInst, start); patchErr != nil {
+			return ctrl.Result{}, patchErr, true
+		}
+	}
+
+	if now.Sub(start) < kmsManagementEndpointRetryWindow {
+		r.Logger.Info(
+			"KMS management endpoint not ready yet; requeueing",
+			"Endpoint", endpoint,
+			"RetryAfter", kmsManagementEndpointRetryInterval.String(),
+			"RetryWindow", kmsManagementEndpointRetryWindow.String(),
+			"Elapsed", now.Sub(start).String(),
+		)
+		return ctrl.Result{Requeue: true, RequeueAfter: kmsManagementEndpointRetryInterval}, nil, true
+	}
+
+	if clearErr := r.clearKMSManagementEndpointRetry(ctx, dbcsInst); clearErr != nil {
+		return ctrl.Result{}, clearErr, true
+	}
+
+	return ctrl.Result{}, fmt.Errorf(
+		"KMS management endpoint %s did not become ready within %s: %w",
+		endpoint,
+		kmsManagementEndpointRetryWindow,
+		err,
+	), true
+}
+
+func isRetryableKMSManagementEndpointError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+
+	var urlErr *neturl.Error
+	if errors.As(err, &urlErr) {
+		var netErr net.Error
+		if errors.As(urlErr.Err, &netErr) && netErr.Timeout() {
+			return true
+		}
+	}
+
+	errText := strings.ToLower(err.Error())
+	return strings.Contains(errText, "no such host") ||
+		strings.Contains(errText, "temporary failure in name resolution") ||
+		strings.Contains(errText, "server misbehaving") ||
+		strings.Contains(errText, "dial tcp") ||
+		strings.Contains(errText, "i/o timeout")
+}
+
+func getKMSManagementEndpointRetryStart(dbcsInst *databasev4.DbcsSystem) (time.Time, bool) {
+	annotations := dbcsInst.GetAnnotations()
+	if annotations == nil {
+		return time.Time{}, false
+	}
+
+	raw, ok := annotations[kmsManagementEndpointRetryStartAnnotation]
+	if !ok || raw == "" {
+		return time.Time{}, false
+	}
+
+	start, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	return start, true
+}
+
+func (r *DbcsSystemReconciler) setKMSManagementEndpointRetryStart(ctx context.Context, dbcsInst *databasev4.DbcsSystem, start time.Time) error {
+	return r.patchDbcsAnnotations(ctx, dbcsInst, func(annotations map[string]string) {
+		annotations[kmsManagementEndpointRetryStartAnnotation] = start.Format(time.RFC3339)
+	})
+}
+
+func (r *DbcsSystemReconciler) clearKMSManagementEndpointRetry(ctx context.Context, dbcsInst *databasev4.DbcsSystem) error {
+	annotations := dbcsInst.GetAnnotations()
+	if annotations == nil {
+		return nil
+	}
+	if _, ok := annotations[kmsManagementEndpointRetryStartAnnotation]; !ok {
+		return nil
+	}
+
+	return r.patchDbcsAnnotations(ctx, dbcsInst, func(annotations map[string]string) {
+		delete(annotations, kmsManagementEndpointRetryStartAnnotation)
+	})
+}
+
+func (r *DbcsSystemReconciler) patchDbcsAnnotations(ctx context.Context, dbcsInst *databasev4.DbcsSystem, mutate func(map[string]string)) error {
+	latest := &databasev4.DbcsSystem{}
+	if err := r.KubeClient.Get(ctx, client.ObjectKeyFromObject(dbcsInst), latest); err != nil {
+		return err
+	}
+
+	patched := latest.DeepCopy()
+	annotations := patched.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+
+	mutate(annotations)
+	patched.SetAnnotations(annotations)
+
+	if err := r.KubeClient.Patch(ctx, patched, client.MergeFrom(latest)); err != nil {
+		return err
+	}
+
+	dbcsInst.SetAnnotations(annotations)
+	return nil
 }
 
 // Function to create KMS key
@@ -2335,7 +2516,15 @@ func (r *DbcsSystemReconciler) createKMSKey(ctx context.Context, kmsConfig *data
 		return nil, err
 	}
 
-	r.Logger.Info("KMS key created successfully:", resp)
+	keyID := ""
+	if resp.Key.Id != nil {
+		keyID = *resp.Key.Id
+	}
+	keyName := ""
+	if resp.Key.DisplayName != nil {
+		keyName = *resp.Key.DisplayName
+	}
+	r.Logger.Info("KMS key created successfully", "KeyId", keyID, "KeyName", keyName)
 	kmsInst.KeyId = *resp.Key.Id
 	kmsInst.EncryptionAlgo = string(algorithm)
 	return &resp, nil
@@ -2357,6 +2546,8 @@ func (r *DbcsSystemReconciler) getSecret(ctx context.Context, namespace, secretN
 }
 
 // Convert DbBackupConfigAutoBackupWindowEnum to *string
+//
+//nolint:unused // retained for compatibility helpers used by ongoing API transitions
 func autoBackupWindowEnumToStringPtr(enum *database.DbBackupConfigAutoBackupWindowEnum) *string {
 	if enum == nil {
 		return nil
@@ -2364,6 +2555,8 @@ func autoBackupWindowEnumToStringPtr(enum *database.DbBackupConfigAutoBackupWind
 	value := string(*enum)
 	return &value
 }
+
+//nolint:unused // retained for compatibility helpers used by ongoing API transitions
 func (r *DbcsSystemReconciler) stringToDbBackupConfigAutoBackupWindowEnum(value *string) (database.DbBackupConfigAutoBackupWindowEnum, error) {
 	// Define a default value
 	// Define a default value
@@ -2387,7 +2580,7 @@ func assignDBCSID(dbcsInst *databasev4.DbcsSystem, dbcsID string) {
 
 func (r *DbcsSystemReconciler) eventFilterPredicate() predicate.Predicate {
 	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
+		CreateFunc: func(_ event.CreateEvent) bool {
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -2404,7 +2597,7 @@ func (r *DbcsSystemReconciler) eventFilterPredicate() predicate.Predicate {
 
 			return false
 		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
+		DeleteFunc: func(_ event.DeleteEvent) bool {
 			return false
 		},
 	}

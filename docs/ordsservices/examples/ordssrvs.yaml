@@ -4,10 +4,8 @@ metadata:
   name: ordssrvs
   namespace: ordsnamespace
 spec:
-  image: container-registry.oracle.com/database/ords:latest
+  image: container-registry.oracle.com/database/ords:<ords-version>
   forceRestart: true
-  encPrivKey:
-    secretName: prvkey
   globalSettings:
     database.api.enabled: true
     mongo.enabled: true
@@ -24,8 +22,10 @@ spec:
       db.customURL: jdbc:oracle:thin:@//<db_ip>:1521/FREEPDB1
       db.username: ORDS_PUBLIC_USER
       db.secret:
-        secretName:  db-auth-enc
+        secretName:  ordssrvs-auth
+        passwordKey: dbAuth
       db.adminUser: SYS
       db.adminUser.secret:
-        secretName:  db-auth-enc
+        secretName:  ordssrvs-auth
+        passwordKey: adminAuth
   serviceAccountName: ordssrvs-sa

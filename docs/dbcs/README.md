@@ -37,7 +37,14 @@ To deploy Oracle Database Operator (`OraOperator`), use the [Oracle Database Ope
 
 After the Oracle Database Operator is deployed, you can see the DB operator pods running in the Kubernetes Cluster. As part of the `OraOperator` deployment, the OBDS Controller is deployed as a CRD (Custom Resource Definition). The following screen output is an example of such a deployment:
 ```bash
-[root@test-server oracle-database-operator]# kubectl get ns
+kubectl get ns
+kubectl get all -n  oracle-database-operator-system
+kubectl get crd
+```
+
+Example output:
+
+```text
 NAME                              STATUS   AGE
 cert-manager                      Active   33d
 default                           Active   118d
@@ -46,9 +53,6 @@ kube-public                       Active   118d
 kube-system                       Active   118d
 oracle-database-operator-system   Active   10m   # <<<< NAMESPACE TO DEPLOY ORACLE DB OPERATOR 
 
- 
- 
-[root@test-server oracle-database-operator]# kubectl get all -n  oracle-database-operator-system
 NAME                                                               READY   STATUS    RESTARTS   AGE
 pod/oracle-database-operator-controller-manager-678f96f5f4-f4rhq   1/1     Running   0          10m
 pod/oracle-database-operator-controller-manager-678f96f5f4-plxcp   1/1     Running   0          10m
@@ -65,7 +69,6 @@ NAME                                                                     DESIRED
 replicaset.apps/oracle-database-operator-controller-manager-6657bfc664   0         0         0       11m
 replicaset.apps/oracle-database-operator-controller-manager-678f96f5f4   3         3         3       10m 
  
-[root@test-server oracle-database-operator]# kubectl get crd
 NAME                                             CREATED AT
 autonomousdatabasebackups.database.oracle.com    2022-02-08T18:28:55Z
 autonomousdatabaserestores.database.oracle.com   2022-02-08T18:28:55Z
@@ -131,7 +134,13 @@ kubectl create secret generic tde-password --from-file=./tde-password -n default
 ## 5. Create an SSH key pair, and use its public key to create a Kubernetes secret named `oci-publickey`; the private key for this public key can be used later to access the OBDS system's host machine using SSH:
 
 ```bash
-[root@test-server OBDS]# ssh-keygen -N "" -C "DBCS_System"-`date +%Y%m` -P ""
+ssh-keygen -N "" -C "DBCS_System"-`date +%Y%m` -P ""
+kubectl create secret generic oci-publickey --from-file=publickey=/root/DBCS/id_rsa.pub
+```
+
+Example output:
+
+```text
 Generating public/private rsa key pair.
 Enter file in which to save the key (/root/.ssh/id_rsa):
 Your identification has been saved in /root/.ssh/id_rsa.
@@ -150,9 +159,6 @@ The key's randomart image is:
 |     *.*...o.    |
 |    ..+o==o..    |
 +----[SHA256]-----+
- 
-
-[root@test-server OBDS]# kubectl create secret generic oci-publickey --from-file=publickey=/root/DBCS/id_rsa.pub
 ```
 
 # Use Cases to manage the lifecycle of an OCI OBDS System with Oracle DB Operator OBDS Controller

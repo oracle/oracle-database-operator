@@ -1,26 +1,8 @@
 # API Reference
 
-Packages:
-
-- [database.oracle.com/v1](#databaseoraclecomv1)
-
-# database.oracle.com/v1
-
-Resource Types:
-
-- [OrdsSrvs](#ordssrvs)
-
-
 
 
 ## OrdsSrvs
-<sup><sup>[↩ Parent](#databaseoraclecomv1 )</sup></sup>
-
-
-
-
-
-
 OrdsSrvs is the Schema for the ordssrvs API
 
 <table>
@@ -35,7 +17,7 @@ OrdsSrvs is the Schema for the ordssrvs API
     <tbody><tr>
       <td><b>apiVersion</b></td>
       <td>string</td>
-      <td>database.oracle.com/v1</td>
+      <td>database.oracle.com/v4</td>
       <td>true</td>
       </tr>
       <tr>
@@ -92,6 +74,18 @@ ORDS instance.<br>
 <td>true</td>
 </tr>
 <tr>
+<td><b><a href="#ordssrvsspecaccesslogpersistence">accessLogPersistence</a></b></td>
+<td>object</td>
+<td>Specifies the storage attributes for the HTTP access log PersistentVolumeClaim. These settings are applied when the PVC is created; later changes do not resize, replace, or rebind the existing PVC.</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b><a href="#ordssrvsspecaccesslogforwarder">accessLogForwarder</a></b></td>
+<td>object</td>
+<td>Specifies the sidecar that forwards HTTP access logs to container stdout.</td>
+<td>false</td>
+</tr>
+<tr>
 <td><b>image</b></td>
 <td>string</td>
 <td> Specifies the ORDS container image<br>
@@ -112,21 +106,25 @@ configurations change<br>
 <td> Specifies the ORDS container image pull policy<br>
 <br>
 <i>Enum</i>: IfNotPresent, Always, Never<br>
-<i>Default</i>: IfNotPresent<br>
-</td>
+<i>Default</i>: IfNotPresent</td>
 <td>false</td>
 </tr>
 <tr>
-<td><b>imagePullSecrets</b></td>
+<td><b>DEPRECATED</b><br>imagePullSecrets</td>
 <td>string</td>
-<td> Specifies the Secret Name for pulling the ORDS container
-image<br>
+<td>Deprecated: this field is not used by the OrdsSrvs controller and will be removed in a future API version.<br>
+Specifies the Secret Name for pulling the ORDS container image
 </td>
 <td>false</td>
 </tr>
 <tr>
-<td><b><a href="#ordssrvsspecpoolsettingsindex">poolSettings&lt;
-a&gt;</a></b></td>
+<td><b>jdkJavaOptions</b></td>
+<td>string</td>
+<td>Specifies JVM options passed to ORDS through the JDK_JAVA_OPTIONS environment variable</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b><a href="#ordssrvsspecpoolsettingsindex">poolSettings</a></b></td>
 <td>[]object</td>
 <td> Contains settings for individual pools/databases<br>
 </td>
@@ -142,6 +140,18 @@ Deployment or StatefulSet<br>
 <i>Default</i>: 1<br>
 <i>Minimum</i>: 1<br>
 </td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>resources</b></td>
+<td>corev1.ResourceRequirements</td>
+<td>Specifies Kubernetes compute resource requests and limits, such as CPU and memory, for the ORDS init and main containers.</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>serviceAccountName</b></td>
+<td>string</td>
+<td>Specifies the name of the Kubernetes ServiceAccount assigned to the OrdsSrvs pods.</td>
 <td>false</td>
 </tr>
 <tr>
@@ -165,17 +175,102 @@ Deployment or StatefulSet<br>
 <td valign="top">false<br>
 </td>
 </tr>
-<tr>
-<td valign="top"><b>central.config.url</b><b><br>
-</b></td>
-<td valign="top">string<br>
-</td>
-<td valign="top">Central Configuration Server url (e.g. https://central-config.example.com:8585/central/v1/config)
-</td>
-<td valign="top">false<br>
-</td>
-</tr>
 </tbody>
+</table>
+
+### OrdsSrvs.spec.accessLogPersistence
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
+
+
+
+Specifies storage attributes for the HTTP access log PersistentVolumeClaim. These settings are applied when the PVC is created. Updating these fields after PVC creation does not resize, replace, or rebind the existing PVC.
+
+At least one attribute (`size`, `accessMode`, `storageClass`, or `volumeName`) must be set to request a PVC; an empty `accessLogPersistence: {}` block does not create one.
+
+When a Pod object is deleted or replaced, its previous access-log directory remains on the PersistentVolume. The operator does not delete these stale directories automatically because it cannot know whether the logs have already been archived, audited, or are still required for retention or compliance.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>size</b></td>
+        <td>string</td>
+        <td>
+          Specifies the requested storage size for the HTTP access log PVC.<br/>
+          <br/>
+            <i>Default</i>: 2Gi<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>accessMode</b></td>
+        <td>enum</td>
+        <td>
+          Specifies the access mode for the HTTP access log PVC.<br/>
+          <br/>
+            <i>Enum</i>: ReadWriteOnce, ReadWriteMany<br/>
+            <i>Default</i>: ReadWriteOnce<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>storageClass</b></td>
+        <td>string</td>
+        <td>
+          Specifies the StorageClass to use. If omitted or empty, the PVC is created with <code>storageClassName: ""</code> and will not use the cluster default StorageClass.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>volumeName</b></td>
+        <td>string</td>
+        <td>
+          Specifies the name of a pre-existing PersistentVolume to bind to the HTTP access log PVC.<br/>
+        </td>
+        <td>false</td>
+      </tr>
+    </tbody>
+</table>
+
+### OrdsSrvs.spec.accessLogForwarder
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
+
+
+
+Specifies the sidecar that forwards HTTP access logs to container stdout. The sidecar uses the same ORDS image and image pull policy as the main ORDS container.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>enabled</b></td>
+        <td>boolean</td>
+        <td>
+          Specifies whether HTTP access logs should be forwarded to sidecar stdout.<br/>
+          <br/>
+            <i>Default</i>: false<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>resources</b></td>
+        <td>corev1.ResourceRequirements</td>
+        <td>
+          Specifies Kubernetes compute resource requests and limits, such as CPU and memory, for the HTTP access log forwarder sidecar.<br/>
+        </td>
+        <td>false</td>
+      </tr>
+    </tbody>
 </table>
 
 ### OrdsSrvs.spec.globalSettings
@@ -194,7 +289,14 @@ Contains settings that are configured across the entire ORDS instance.
             <th>Required</th>
         </tr>
     </thead>
-    <tbody><tr>
+    <tbody>
+    <tr>
+    <td valign="top"><b>central.config.url</b><b><br></b></td>
+    <td valign="top">string<br></td>
+    <td valign="top">Central Configuration Server url (e.g. https://central-config.example.com:8585/central/v1/config)</td>
+    <td valign="top">false<br></td>
+    </tr>
+    <tr>
         <td><b>cache.metadata.enabled</b></td>
         <td>boolean</td>
         <td>
@@ -203,16 +305,14 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.graphql.expireAfterAccess</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the duration after a GraphQL schema is not accessed from the cache that it expires.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.graphql.expireAfterWrite</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the duration after a GraphQL schema is cached that it expires and has to be loaded again.<br/>
           <br/>
@@ -228,20 +328,16 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.jwks.expireAfterAccess</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the duration after a JWK is not accessed from the cache that it expires. By default this is disabled.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.jwks.expireAfterWrite</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the duration after a JWK is cached, that is, it expires and has to be loaded again.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -264,11 +360,9 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>cache.metadata.timeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the setting to determine for how long a metadata record remains in the cache. Longer duration means, it takes longer to view the applied changes. The formats accepted are based on the ISO-8601 duration format.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -294,11 +388,9 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>db.invalidPoolTimeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies how long to wait before retrying an invalid pool.<br/>
-          <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr>
@@ -311,26 +403,38 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr>
       <tr>
-        <td><b>downloadAPEX</b></td>
+        <td><b>DEPRECATED</b><br/>apex.download</td>
         <td>boolean</td>
         <td>
-          Specifies whether to downloan APEX installation files.<br/>
+          Specifies whether to download APEX installation files.<br/>
+          Deprecated: use <code>apex.installation.persistence</code> with pre-staged APEX installation files instead.<br/>
         </td>
         <td>false</td>
       </tr>
       <tr>
-        <td><b>downloadUrlAPEX</b></td>
+        <td><b>DEPRECATED</b><br/>apex.download.url</td>
         <td>string</td>
         <td>
-          Specifies the URL to downloan APEX installation files.<br/>
+          Specifies the URL to download APEX installation files.<br/>
+          Deprecated: stage APEX installation files with <code>apex.installation.persistence</code> instead.<br/>
+          <br/>
+            <i>Default</i>: https://download.oracle.com/otn_software/apex/apex-latest.zip<br/>
         </td>
-        <td>https://download.oracle.com/otn_software/apex/apex-latest.zip</td>
+        <td>false</td>
+      </tr>
+      <tr>
+        <td><b><a href="#ordssrvsspecglobalsettingsapexinstallationpersistence">apex.installation.persistence</a></b></td>
+        <td>object</td>
+        <td>
+          Specifies the storage attributes for the APEX installation PersistentVolumeClaim. These settings are applied when the PVC is created; later changes do not resize, replace, or rebind the existing PVC.<br/>
+        </td>
+        <td>false</td>
       </tr>
       <tr>
         <td><b>enable.mongo.access.log</b></td>
         <td>boolean</td>
         <td>
-          Specifies if HTTP request access logs should be enabled If enabled, logs will be written to /opt/oracle/sa/log/global<br/>
+          Specifies if HTTP access logs should be enabled. If enabled, logs will be written to /opt/oracle/sa/log/global<br/>
           <br/>
             <i>Default</i>: false<br/>
         </td>
@@ -339,9 +443,18 @@ Contains settings that are configured across the entire ORDS instance.
         <td><b>enable.standalone.access.log</b></td>
         <td>boolean</td>
         <td>
-          Specifies if HTTP request access logs should be enabled If enabled, logs will be written to /opt/oracle/sa/log/global<br/>
+          Specifies if HTTP access logs should be enabled. If enabled, logs will be written to /opt/oracle/sa/log/global<br/>
           <br/>
             <i>Default</i>: false<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>standalone.access.log.retainDays</b></td>
+        <td>integer</td>
+        <td>
+          Specifies the number of days before rotated HTTP access log files are deleted.<br/>
+          <br/>
+            <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -351,21 +464,31 @@ Contains settings that are configured across the entire ORDS instance.
           Specifies how the HTTP error responses must be formatted. html - Force all responses to be in HTML format json - Force all responses to be in JSON format auto - Automatically determines most appropriate format for the request (default).<br/>
         </td>
         <td>false</td>
-      </tr><tr>
-        <td><b>feature.grahpql.max.nesting.depth</b></td>
+      </tr>
+      <tr>
+        <td><b>DEPRECATED</b><BR>feature.grahpql.max.nesting.depth</td>
         <td>integer</td>
         <td>
-          Specifies the maximum join nesting depth limit for GraphQL queries.<br/>
-          <br/>
+          Specifies the maximum join nesting depth limit for GraphQL queries.<BR>
+          Deprecated: use <code>feature.graphql.max.nesting.depth</code> instead.<br/>
             <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
-      </tr><tr>
+      </tr>
+      <tr>
+        <td><b>feature.graphql.max.nesting.depth</b></td>
+        <td>integer</td>
+        <td>
+          Specifies the maximum join nesting depth limit for GraphQL queries.<br/>
+            <i>Format</i>: int32<br/>
+        </td>
+        <td>false</td>
+      </tr>
+      <tr>
         <td><b>icap.port</b></td>
         <td>integer</td>
         <td>
           Specifies the Internet Content Adaptation Protocol (ICAP) port to virus scan files. Either icap.port or icap.secure.port are required to have a value.<br/>
-          <br/>
             <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
@@ -404,7 +527,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the maximum idle time for a Mongo connection in milliseconds.<br/>
-          <br/>
             <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
@@ -413,7 +535,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the maximum time for a Mongo database operation in milliseconds.<br/>
-          <br/>
             <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
@@ -422,7 +543,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the API for MongoDB listen port.<br/>
-          <br/>
             <i>Format</i>: int32<br/>
             <i>Default</i>: 27017<br/>
         </td>
@@ -448,7 +568,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the period to lock the account that has exceeded maximum attempts.<br/>
-          <br/>
             <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
@@ -477,7 +596,7 @@ Contains settings that are configured across the entire ORDS instance.
         <td><b>security.forceHTTPS</b></td>
         <td>boolean</td>
         <td>
-          Specifies to force HTTPS; this is set to default to false as in real-world TLS should terminiate at the LoadBalancer<br/>
+          Specifies whether to force HTTPS. By default this is false because TLS is commonly terminated at the load balancer or ingress layer.<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -499,7 +618,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the maximum number of cached procedure validations. Set this value to 0 to force the validation procedure to be invoked on each request.<br/>
-          <br/>
             <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
@@ -515,7 +633,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>string</td>
         <td>
           Specifies the context path where ords is located.<br/>
-          <br/>
             <i>Default</i>: /ords<br/>
         </td>
         <td>false</td>
@@ -524,7 +641,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the HTTP listen port.<br/>
-          <br/>
             <i>Format</i>: int32<br/>
             <i>Default</i>: 8080<br/>
         </td>
@@ -541,7 +657,7 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the HTTPS listen port.<br/>
-          <br/>
+          Set to <code>0</code> for HTTP-only OrdsSrvs deployments, for example when TLS is terminated by an ingress controller or OpenShift edge route.<br/>
             <i>Format</i>: int32<br/>
             <i>Default</i>: 8443<br/>
         </td>
@@ -551,11 +667,65 @@ Contains settings that are configured across the entire ORDS instance.
         <td>integer</td>
         <td>
           Specifies the period for Standalone Mode to wait until it is gracefully shutdown.<br/>
-          <br/>
             <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr></tbody>
+	</table>
+
+
+### OrdsSrvs.spec.globalSettings.apex.installation.persistence
+<sup><sup>[↩ Parent](#ordssrvsspecglobalsettings)</sup></sup>
+
+
+
+Specifies storage attributes for the APEX installation PersistentVolumeClaim. These settings are applied when the PVC is created. Updating these fields after PVC creation does not resize, replace, or rebind the existing PVC.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>size</b></td>
+        <td>string</td>
+        <td>
+          Specifies the requested storage size for the APEX installation PVC.<br/>
+          <br/>
+            <i>Default</i>: 2Gi<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>accessMode</b></td>
+        <td>enum</td>
+        <td>
+          Specifies the access mode for the APEX installation PVC.<br/>
+          <br/>
+            <i>Enum</i>: ReadWriteOnce, ReadWriteMany<br/>
+            <i>Default</i>: ReadWriteOnce<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>storageClass</b></td>
+        <td>string</td>
+        <td>
+          Specifies the StorageClass to use. If omitted or empty, the PVC is created with <code>storageClassName: ""</code> and will not use the cluster default StorageClass.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>volumeName</b></td>
+        <td>string</td>
+        <td>
+          Specifies the name of a pre-existing PersistentVolume to bind to the APEX installation PVC.<br/>
+        </td>
+        <td>false</td>
+      </tr>
+    </tbody>
 </table>
 
 
@@ -1320,14 +1490,16 @@ OrdsSrvsStatus defines the observed state of OrdsSrvs
             <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
-      </tr><tr>
+      </tr>
+      <tr>
         <td><b>ordsVersion</b></td>
         <td>string</td>
         <td>
           Indicates the ORDS version<br/>
         </td>
         <td>false</td>
-      </tr><tr>
+      </tr>
+      <tr>
         <td><b>status</b></td>
         <td>string</td>
         <td>
@@ -1350,8 +1522,8 @@ OrdsSrvsStatus defines the observed state of OrdsSrvs
 
 
 
-Condition contains details for one aspect of the current state of this API Resource. --- This struct is intended for direct use as an array at the field path .status.conditions.  For example, 
- type FooStatus struct{ // Represents the observations of a foo's current state. // Known .status.conditions.type are: "Available", "Progressing", and "Degraded" // +patchMergeKey=type // +patchStrategy=merge // +listType=map // +listMapKey=type Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` 
+Condition contains details for one aspect of the current state of this API Resource. --- This struct is intended for direct use as an array at the field path .status.conditions.  For example,
+ type FooStatus struct{ // Represents the observations of a foo's current state. // Known .status.conditions.type are: "Available", "Progressing", and "Degraded" // +patchMergeKey=type // +patchStrategy=merge // +listType=map // +listMapKey=type Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
  // other fields }
 
 <table>

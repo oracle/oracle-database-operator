@@ -16,7 +16,12 @@ Use the file: [disable_dataguard_in_database.yaml](./disable_dataguard_in_databa
 
 1. Deploy the .yaml file:  
 ```sh
-[root@docker-test-server DBCS]# kubectl apply -f disable_dataguard_in_database.yaml
+kubectl apply -f disable_dataguard_in_database.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
@@ -24,8 +29,8 @@ dbcssystem.database.oracle.com/dbcssystem-existing configured
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 3. Describe the Kubernetes object to see more details
 ```bash
@@ -34,7 +39,10 @@ kubectl describe dbcssystems.database.oracle.com dbcssystem-existing
 More precisely
 ```bash
 kubectl get dbcssystems.database.oracle.com dbcssystem-existing  -o jsonpath='{.status.dataGuardStatus.lifecycleState}'
-TERMINATED
 ```
 
+Example output:
 
+```text
+TERMINATED
+```

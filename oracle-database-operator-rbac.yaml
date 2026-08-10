@@ -1,0 +1,484 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: oracle-database-operator-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: oracle-database-operator-controller-manager
+  namespace: oracle-database-operator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: oracle-database-operator-leader-election-role
+  namespace: oracle-database-operator-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - configmaps/status
+  verbs:
+  - get
+  - update
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oracle-database-operator-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - containers
+  - deployments
+  - endpoints
+  - events
+  - namespaces
+  - persistentvolumeclaim
+  - persistentvolumeclaims
+  - persistentvolumes
+  - pods
+  - pods/exec
+  - pods/log
+  - replicasets
+  - secrets
+  - serviceaccounts
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps/status
+  - daemonsets/status
+  - deployments/status
+  - persistentvolumeclaim/status
+  - services/status
+  - statefulsets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - secrets/status
+  verbs:
+  - get
+- apiGroups:
+  - ''''''
+  resources:
+  - statefulsets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  - pods
+  - replicasets
+  - services
+  - statefulsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomouscontainerdatabases
+  - autonomousdatabases
+  - dataguardbrokers
+  - dbcssystems
+  - events
+  - lrests
+  - lrpdbs
+  - oraclerestarts
+  - oraclerestdataservices
+  - ordssrvs
+  - racdatabases
+  - shardingdatabases
+  - singleinstancedatabases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomouscontainerdatabases/status
+  - autonomousdatabasebackups/status
+  - autonomousdatabaserestores/status
+  - dataguardbrokers/status
+  - dbcssystems/status
+  - lrests/status
+  - lrpdbs/status
+  - oraclerestarts/status
+  - oraclerestdataservices/status
+  - ordssrvs/status
+  - racdatabases/status
+  - shardingdatabases/status
+  - singleinstancedatabases/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabasebackups
+  - autonomousdatabaserestores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabases/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dataguardbrokers/finalizers
+  - lrests/finalizers
+  - oraclerestdataservices/finalizers
+  - ordssrvs/finalizers
+  - singleinstancedatabases/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dbcssystems/finalizers
+  - lrpdbs/configmaps
+  - lrpdbs/finalizers
+  - oraclerestarts/finalizers
+  - racdatabases/finalizers
+  - shardingdatabases/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - servicemonitors
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - network.oracle.com
+  resources:
+  - trafficmanagers
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - network.oracle.com
+  resources:
+  - trafficmanagers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - observability.oracle.com
+  resources:
+  - databaseobservers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - observability.oracle.com
+  resources:
+  - databaseobservers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - observability.oracle.com
+  resources:
+  - databaseobservers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oracle-database-operator-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oracle-database-operator-oracle-database-operator-proxy-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: oracle-database-operator
+  name: oracle-database-operator-privateai-privateai-admin-role
+rules:
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: oracle-database-operator
+  name: oracle-database-operator-privateai-privateai-editor-role
+rules:
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: oracle-database-operator
+  name: oracle-database-operator-privateai-privateai-viewer-role
+rules:
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: oracle-database-operator-oracle-database-operator-leader-election-rolebinding
+  namespace: oracle-database-operator-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: oracle-database-operator-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: oracle-database-operator-controller-manager
+  namespace: oracle-database-operator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: oracle-database-operator-oracle-database-operator-manager-rolebinding
+  namespace: oracle-database-operator-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: oracle-database-operator-manager-role
+subjects:
+- kind: ServiceAccount
+  name: oracle-database-operator-controller-manager
+  namespace: oracle-database-operator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oracle-database-operator-proxy-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: oracle-database-operator-oracle-database-operator-proxy-role
+subjects:
+- kind: ServiceAccount
+  name: oracle-database-operator-controller-manager
+  namespace: oracle-database-operator-system

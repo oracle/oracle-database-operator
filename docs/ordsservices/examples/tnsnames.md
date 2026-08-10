@@ -35,7 +35,7 @@ Below is a snippet (not a complete manifest) showing how to reference the extern
   tnsAdminSecret:
     secretName: myresources-tns-admin
   db.username: ORDS_PUBLIC_USER
-...  
+...
 ```
 
 ## Notes

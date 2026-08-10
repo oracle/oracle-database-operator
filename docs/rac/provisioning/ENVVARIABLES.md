@@ -24,6 +24,13 @@
 | spec:asmDiskGroupDetails:type             | Type of disk group. Possible types include 'CRSDG', 'DBDATAFILESDG', 'DBRECOVERY', 'DBREDO' and 'OTHERS'|                                 |
 | spec:asmDiskGroupDetails:disks            | Shared Disks from the Worker Nodes to be used for the Disk Group                           |                                   |
 | spec:asmDiskGroupDetails:autoUpdate       | If set to true, during disk addition, the disks are not only available inside the Pods, they are also added to the ASM Diskgroup| true                                |
+| spec:asmDiskGroupDetails:storageClass     | StorageClass used to dynamically provision ASM PVCs for this disk group                    |                                   |
+| spec:asmDiskGroupDetails:accessMode       | Requested access mode for ASM PVCs. Supported values are `ReadWriteOnce` and `ReadWriteMany` |                                   |
+| spec:asmDiskGroupDetails:asmStorageSizeInGb | Size in GiB requested for each storage-class-backed ASM disk in this disk group         |                                   |
+| spec:asmDiskGroupDetails:isKeep           | If true, retain the storage-class-backed ASM PVCs for this disk group when the RacDatabase is deleted | false                        |
+| spec:swStorageClass                       | Filesystem StorageClass used to dynamically provision the `/u01` software PVC             |                                   |
+| spec:swLocStorageSizeInGb                 | Size in GiB requested for the storage-class-backed `/u01` software PVC                    |                                   |
+| spec:isKeep                               | If true, retain the storage-class-backed `/u01` software PVC during RacDatabase delete and node scale-down | false                  |
 | spec:sshKeySecret:name                    | Name of the kubernetes secret containing SSH keys                                          |                                   |
 | spec:sshKeySecret:privKeySecretName       | Private key inside secret                                                                  |                                   |
 | spec:sshKeySecret:pubKeySecretName        | Public key inside secret                                                                   |                                   |

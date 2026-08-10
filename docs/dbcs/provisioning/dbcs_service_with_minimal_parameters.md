@@ -27,7 +27,12 @@ Use the file: [dbcs_service_with_minimal_parameters.yaml](./dbcs_service_with_mi
 
 1. Deploy the .yaml file:  
 ```sh
-[root@docker-test-server DBCS]# kubectl apply -f create_required.yaml
+kubectl apply -f create_required.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-create created
 ```
 
@@ -35,8 +40,8 @@ dbcssystem.database.oracle.com/dbcssystem-create created
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+```bash
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

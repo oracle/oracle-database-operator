@@ -1,0 +1,35 @@
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: shdb-inv-sys-space
+  namespace: shns
+spec:
+  storageClass: oci
+  dbImage: dbocir/oracle/database:19.32.0.0
+  gsmImage: dbocir/oracle/database:19.32.0.0-gsm
+  shardingType: SYSTEM
+  replicationType: DG
+  isExternalSvc: false
+  isDeleteOraPvc: true
+  dbSecret:
+    name: db-user-pass-rsa
+    pwdFileName: pwdfile.enc
+    tdePwdFileName: tdepwdfile.enc
+    keyFileName: key.pem
+  catalog:
+    - name: catalog
+      storageSizeInGb: 50
+      imagePullPolicy: Always
+      sharding: SYSTEM
+      repl: DG
+      autoVncr: OFF
+      agentPort: 8080
+  gsm:
+    - name: gsm1
+      storageSizeInGb: 50
+      imagePullPolicy: Always
+      region: primary
+  shard:
+    - name: bad2
+      shardGroup: sg1
+      shardSpace: ss1

@@ -1,16 +1,16 @@
 # OrdsSrvs Controller: Multipool, Multidatabase using a TNS Names file
 
-This example walks through using the **ORDSSRVS Operator** with multiple databases using a TNS Names file.  
+This example walks through using the **OrdsSrvs controller** with multiple databases using a TNS Names file.
 Keep in mind that all pools are running in the same Pod, therefore, changing the configuration of one pool will require
 a recycle of all pools.
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 
 ### TNS_ADMIN Secret
 
 Create a Secret with the contents of the TNS_ADMIN directory.  This can be a single `tnsnames.ora` file or additional files such as `sqlnet.ora` or `ldap.ora`.
-The example shows using a `$TNS_ADMIN` enviroment variable which points to a directory with valid TNS_ADMIN files.
+The example shows using a `$TNS_ADMIN` environment variable which points to a directory with valid TNS_ADMIN files.
 
 To create a secret with all files in the TNS_ADMIN directory:
 ```bash
@@ -35,64 +35,15 @@ PDB3=(DESCRIPTION=(ADDRESS_LIST=(LOAD_BALANCE=on)(ADDRESS=(PROTOCOL=TCP)(HOST=10
 PDB4=(DESCRIPTION=(ADDRESS_LIST=(LOAD_BALANCE=on)(ADDRESS=(PROTOCOL=TCP)(HOST=10.10.0.4)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=PDB4)))
 ```
 
-### PRIVATE KEY SECRET
+### Credential Secret
 
-Secrets are encrypted using openssl rsa algorithm. Create public and private key. 
-Use private key to create a secret.
-
-```bash
-openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
-openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=password=ca.key  -n ordsnamespace 
-```
-
-### ORDS_PUBLIC_USER Secret
-
-Create a Secret for each of the databases `ORDS_PUBLIC_USER` user.  
-If multiple databases use the same password, the same secret can be re-used.
-
-The following secret will be used for PDB1:
+Create a Secret for the `ORDS_PUBLIC_USER` and admin user credentials:
 
 ```bash
-echo -n "Enter password for PDB1: " && read -s PDB1_PWD
-echo -n "$PDB1_PWD" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
-kubectl create secret generic pdb1-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
-rm e_ordspwdfile
-unset PDB1_PWD
-```
-
-The following secret will be used for PDB2:
-
-```bash
-echo -n "Enter password for PDB1: " && read -s PDB2_PWD
-echo -n "$PDB2_PWD" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
-kubectl create secret generic pdb2-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
-rm e_ordspwdfile
-unset PDB2_PWD
-```
-
-The following secret will be used for PDB3 and PDB4:
-
-```bash
-echo -n "Enter password for PDB1: " && read -s MULTI_PWD
-echo -n "$MULTI_PWD" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
-kubectl create secret generic multi-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
-rm e_ordspwdfile
-unset MULTI_PWD
-```
-
-### Privileged Secret (*Optional)
-
-If taking advantage of the [AutoUpgrade](../autoupgrade.md) functionality, create a secret for a user with the privileges to modify the ORDS and/or APEX schemas.
-
-In this example, only PDB1 will be set for [AutoUpgrade](../autoupgrade.md), the other PDBs already have APEX and ORDS installed.
-
-```bash
-echo -n "Enter Admin (SYS) password: " && read -s SYS_PWD
-echo -n "$SYS_PWD" |openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_syspwdfile
-kubectl create secret generic pdb1-priv-auth-enc --from-file=password=e_syspwdfile -n  ordsnamespace
-rm e_syspwdfile
-unset SYS_PWD
+kubectl create secret generic ordssrvs-auth \
+  --from-literal=dbAuth='<ords-db-credential>' \
+  --from-literal=adminAuth='<database-admin-credential>' \
+  -n ordsnamespace
 ```
 
 ### Create OrdsSrvs Resource
@@ -106,10 +57,8 @@ unset SYS_PWD
       name: ords-multi-pool
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:25.1.0
+      image: container-registry.oracle.com/database/ords:<ords-version>
       forceRestart: true
-      encPrivKey:
-        secretName: prvkey
       globalSettings:
         database.api.enabled: true
       poolSettings:
@@ -124,10 +73,12 @@ unset SYS_PWD
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName: pdb1-ords-auth-enc
+            secretName: ordssrvs-auth
+            passwordKey: dbAuth
           db.adminUser: SYS
           db.adminUser.secret:
-            secretName: pdb1-priv-auth-enc
+            secretName: ordssrvs-auth
+            passwordKey: adminAuth
         - poolName: pdb2
           db.connectionType: tns
           db.tnsAliasName: PDB2
@@ -138,7 +89,8 @@ unset SYS_PWD
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName: pdb2-ords-auth-enc
+            secretName: ordssrvs-auth
+            passwordKey: dbAuth
         - poolName: pdb3
           db.connectionType: tns
           db.tnsAliasName: PDB3
@@ -149,7 +101,8 @@ unset SYS_PWD
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName: multi-ords-auth-enc
+            secretName: ordssrvs-auth
+            passwordKey: dbAuth
         - poolName: pdb4
           db.connectionType: tns
           db.tnsAliasName: PDB4
@@ -160,11 +113,9 @@ unset SYS_PWD
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName: multi-ords-auth-enc
+            secretName: ordssrvs-auth
+            passwordKey: dbAuth
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
-
-
 1. Apply the yaml file:
     ```bash
     kubectl apply -f ords-multi-pool.yaml
@@ -176,7 +127,7 @@ unset SYS_PWD
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  As APEX
-    is being installed for the first time by the Operator into PDB1, it will remain in the **Preparing** 
+    is being installed for the first time by the Operator into PDB1, it will remain in the **Preparing**
     status for an additional 5-10 minutes.
 
 ### Test
@@ -196,7 +147,7 @@ kubectl port-forward service/ords-multi-pool -n ordsnamespace 8443:8443
 
 This example has multiple pools, named `pdb1`, `pdb2`, `pdb3`, and `pdb4`.
 
-* They all share the same `tnsAdminSecret` to connect using thier individual `db.tnsAliasName`
+* They all share the same `tnsAdminSecret` to connect using their individual `db.tnsAliasName`
 * They will all automatically restart when the configuration changes: `forceRestart: true`
 * Only the `pdb1` pool will automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
-* The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
+* The `passwordKey` fields identify the credential keys used by `db.secret` and `db.adminUser.secret`

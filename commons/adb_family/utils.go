@@ -39,8 +39,10 @@
 package adbfamily
 
 import (
+	"context"
+
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
+	"github.com/oracle/oracle-database-operator/commons/k8sutil"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -48,7 +50,7 @@ import (
 // The function returns two values in the following order:
 // ocid: the OCID of the target ADB. An empty string is returned if the ocid is nil.
 // ownerADB: the resource of the targetADB if it's found in the cluster
-func VerifyTargetAdb(kubeClient client.Client, target dbv4.TargetSpec, namespace string) (*dbv4.AutonomousDatabase, error) {
+func VerifyTargetAdb(ctx context.Context, kubeClient client.Client, target dbv4.TargetSpec, namespace string) (*dbv4.AutonomousDatabase, error) {
 	var err error
 	var ownerAdb *dbv4.AutonomousDatabase
 
@@ -56,13 +58,13 @@ func VerifyTargetAdb(kubeClient client.Client, target dbv4.TargetSpec, namespace
 	if target.K8sAdb.Name != nil {
 		// Find the target ADB using the name of the k8s ADB
 		ownerAdb = &dbv4.AutonomousDatabase{}
-		if err := k8s.FetchResource(kubeClient, namespace, *target.K8sAdb.Name, ownerAdb); err != nil {
+		if err := k8s.FetchResource(ctx, kubeClient, namespace, *target.K8sAdb.Name, ownerAdb); err != nil {
 			return nil, err
 		}
 
 	} else {
 		// Find the target ADB using the ADB OCID
-		ownerAdb, err = k8s.FetchAutonomousDatabaseWithOCID(kubeClient, namespace, *target.OciAdb.Id)
+		ownerAdb, err = k8s.FetchAutonomousDatabaseWithOCID(ctx, kubeClient, namespace, *target.OciAdb.Id)
 		if err != nil {
 			return nil, err
 		}

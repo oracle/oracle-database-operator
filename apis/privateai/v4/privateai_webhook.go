@@ -1,212 +1,430 @@
-/*
-** Copyright (c) 2022 Oracle and/or its affiliates.
-**
-** The Universal Permissive License (UPL), Version 1.0
-**
-** Subject to the condition set forth below, permission is hereby granted to any
-** person obtaining a copy of this software, associated documentation and/or data
-** (collectively the "Software"), free of charge and under any and all copyright
-** rights in the Software, and any and all patent rights owned or freely
-** licensable by each licensor hereunder covering either (i) the unmodified
-** Software as contributed to or provided by such licensor, or (ii) the Larger
-** Works (as defined below), to deal in both
-**
-** (a) the Software, and
-** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
-** one is included with the Software (each a "Larger Work" to which the Software
-** is contributed by such licensors),
-**
-** without restriction, including without limitation the rights to copy, create
-** derivative works of, display, perform, and distribute the Software and make,
-** use, sell, offer for sale, import, export, have made, and have sold the
-** Software and the Larger Work(s), and to sublicense the foregoing rights on
-** either these or other terms.
-**
-** This license is subject to the following condition:
-** The above copyright notice and either this complete permission notice or at
-** a minimum a reference to the UPL must be included in all copies or
-** substantial portions of the Software.
-**
-** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-** SOFTWARE.
- */
-
 package v4
 
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"path/filepath"
+	"strings"
 
-	"k8s.io/apimachinery/pkg/runtime"
+	networkv4 "github.com/oracle/oracle-database-operator/apis/network/v4"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-// nolint:unused
-// log is for logging in this package.
 var privateailog = logf.Log.WithName("privateai-resource")
 
-// SetupPrivateAiWebhookWithManager registers the webhook for PrivateAi in the manager.
 func (r *PrivateAi) SetupPrivateAiWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&PrivateAi{}).
-		WithValidator(&PrivateAiCustomValidator{}).
-		WithDefaulter(&PrivateAiCustomDefaulter{}).
+	return ctrl.NewWebhookManagedBy[*PrivateAi](mgr, r).
+		WithValidator(&privateAiValidator{Client: mgr.GetClient()}).
+		WithDefaulter(&PrivateAi{}).
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+var _ admission.Defaulter[*PrivateAi] = &PrivateAi{}
+var _ admission.Validator[*PrivateAi] = &privateAiValidator{}
 
-// +kubebuilder:webhook:path=/mutate-privateai-oracle-com-v4-privateai,mutating=true,failurePolicy=fail,sideEffects=None,groups=privateai.oracle.com,resources=privateais,verbs=create;update,versions=v4,name=mprivateai-v4.kb.io,admissionReviewVersions=v1
-
-// PrivateAiCustomDefaulter struct is responsible for setting default values on the custom resource of the
-// Kind PrivateAi when those are created or updated.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as it is used only for temporary operations and does not need to be deeply copied.
-type PrivateAiCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
+type privateAiValidator struct {
+	Client client.Client
 }
 
-var _ webhook.CustomDefaulter = &PrivateAiCustomDefaulter{}
-
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind PrivateAi.
-func (d *PrivateAiCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
-	privateai, ok := obj.(*PrivateAi)
-
-	if !ok {
-		return fmt.Errorf("expected an PrivateAi object but got %T", obj)
-	}
+// +kubebuilder:webhook:path=/mutate-privateai-oracle-com-v4-privateai,mutating=true,failurePolicy=fail,sideEffects=None,groups=privateai.oracle.com,resources=privateais,verbs=create;update,versions=v4,name=mprivateai-v4.kb.io,admissionReviewVersions=v1
+func (r *PrivateAi) Default(_ context.Context, obj *PrivateAi) error {
+	privateai := obj
 	privateailog.Info("Defaulting for PrivateAi", "name", privateai.GetName())
 
-	// TODO(user): fill in your defaulting logic.
-
-	pHtpStatus, _ := strconv.ParseBool(privateai.Spec.PaiHTTPEnabled)
-	pHtpsStatus, _ := strconv.ParseBool(privateai.Spec.PaiHTTPSEnabled)
-	if pHtpStatus && !pHtpsStatus {
-		privateai.Spec.PaiHTTPSEnabled = "true"
+	listeners := EffectiveListeners(&privateai.Spec)
+	httpEnabled := listeners.HTTP.Enabled
+	httpsEnabled := listeners.HTTPS.Enabled
+	if httpEnabled && httpsEnabled {
+		return fmt.Errorf("spec.networking.listeners.http.enabled and spec.networking.listeners.https.enabled cannot both be true (deprecated paiHTTPEnabled/paiHTTPSEnabled are also supported)")
 	}
-	if pHtpStatus && pHtpsStatus {
-		return fmt.Errorf("paiHTTPEnabled and PaiHTTPSEnabled both cannot be true")
-	}
-	if pHtpStatus {
-		if privateai.Spec.PaiHTTPPort == 0 {
-			privateai.Spec.PaiHTTPPort = 8080
-		}
-		privateai.Spec.PaiHTTPSEnabled = "false"
-		privateai.Spec.PaiHTTPSPort = 0
-
-	} else {
-		privateai.Spec.PaiHTTPSEnabled = "true"
-		if privateai.Spec.PaiHTTPSPort == 0 {
-			privateai.Spec.PaiHTTPSPort = 8443
+	if !httpEnabled {
+		httpsPort := listeners.HTTPS.Port
+		if httpsPort == 0 {
+			httpsPort = 8443
 		}
 		privateai.Spec.PaiHTTPEnabled = "false"
 		privateai.Spec.PaiHTTPPort = 0
+		privateai.Spec.PaiHTTPSEnabled = "true"
+		privateai.Spec.PaiHTTPSPort = httpsPort
+		setDefaultPrivateAIHTTPListener(privateai, false, 0)
+		setDefaultPrivateAIHTTPSListener(privateai, true, httpsPort)
+	} else {
+		httpPort := listeners.HTTP.Port
+		if httpPort == 0 {
+			httpPort = 8080
+		}
+		privateai.Spec.PaiHTTPEnabled = "true"
+		privateai.Spec.PaiHTTPPort = httpPort
+		privateai.Spec.PaiHTTPSEnabled = "false"
+		privateai.Spec.PaiHTTPSPort = 0
+		setDefaultPrivateAIHTTPListener(privateai, true, httpPort)
+		setDefaultPrivateAIHTTPSListener(privateai, false, 0)
 	}
 
-	if len(privateai.Spec.PaiService.PortMappings) == 0 {
-		portInfo := PaiPortMapping{}
-
-		portInfo.Port = 443
-
-		if pHtpStatus {
-			portInfo.TargetPort = privateai.Spec.PaiHTTPPort
+	service := EffectiveService(&privateai.Spec)
+	if service == nil || len(service.Ports) == 0 {
+		targetPort := privateai.Spec.PaiHTTPSPort
+		if httpEnabled {
+			targetPort = privateai.Spec.PaiHTTPPort
+		}
+		defaultPorts := []PaiServicePortSpec{{
+			Name:       "https",
+			Port:       443,
+			TargetPort: targetPort,
+			Protocol:   "TCP",
+		}}
+		if privateai.Spec.Networking != nil && privateai.Spec.Networking.Service != nil {
+			privateai.Spec.Networking.Service.Ports = defaultPorts
 		} else {
-			portInfo.TargetPort = privateai.Spec.PaiHTTPSPort
-		}
-		portInfo.Protocol = "TCP"
-
-		privateai.Spec.PaiService.PortMappings = append(privateai.Spec.PaiService.PortMappings, portInfo)
-	}
-	// set default MountLocation for PaiConfigFile
-	if privateai.Spec.PaiConfigFile != nil {
-		if privateai.Spec.PaiConfigFile.MountLocation == "" {
-			privateai.Spec.PaiConfigFile.MountLocation = "/privateai/config"
+			privateai.Spec.PaiService.Ports = defaultPorts
 		}
 	}
-
-	// set default MountLocation for PaiSecret
-	if privateai.Spec.PaiSecret != nil {
-		if privateai.Spec.PaiSecret.MountLocation == "" {
-			privateai.Spec.PaiSecret.MountLocation = "/privateai/ssl"
+	if cfg := EffectiveConfigFile(&privateai.Spec); cfg != nil && cfg.MountLocation == "" {
+		cfg.MountLocation = "/privateai/config"
+		if privateai.Spec.Configuration != nil && privateai.Spec.Configuration.ConfigFile != nil {
+			privateai.Spec.Configuration.ConfigFile.MountLocation = cfg.MountLocation
+		}
+		if privateai.Spec.PaiConfigFile != nil {
+			privateai.Spec.PaiConfigFile.MountLocation = cfg.MountLocation
 		}
 	}
-
+	if privateai.Spec.PaiConfigFile != nil && privateai.Spec.PaiConfigFile.MountLocation == "" {
+		privateai.Spec.PaiConfigFile.MountLocation = "/privateai/config"
+	}
+	if privateai.Spec.Security != nil && privateai.Spec.Security.Secret != nil && privateai.Spec.Security.Secret.MountLocation == "" {
+		privateai.Spec.Security.Secret.MountLocation = "/privateai/ssl"
+	}
+	if privateai.Spec.Security != nil && privateai.Spec.Security.TLS != nil && privateai.Spec.Security.TLS.MountLocation == "" {
+		privateai.Spec.Security.TLS.MountLocation = "/privateai/ssl"
+	}
+	if privateai.Spec.PaiSecret != nil && privateai.Spec.PaiSecret.MountLocation == "" {
+		privateai.Spec.PaiSecret.MountLocation = "/privateai/ssl"
+	}
+	defaultLoadBalancerPolicies(privateai.Spec.Networking)
+	defaultLoadBalancerPolicies(&PrivateAiNetworkingSpec{Service: &privateai.Spec.PaiService})
+	if tm := EffectiveTrafficManager(&privateai.Spec); tm != nil &&
+		strings.TrimSpace(tm.Ref) != "" &&
+		strings.TrimSpace(tm.RoutePath) == "" {
+		defaultRoute := fmt.Sprintf("/%s/v1/", strings.ToLower(strings.TrimSpace(privateai.Name)))
+		if privateai.Spec.Networking != nil && privateai.Spec.Networking.TrafficManager != nil {
+			privateai.Spec.Networking.TrafficManager.RoutePath = defaultRoute
+		} else if privateai.Spec.TrafficManager != nil {
+			privateai.Spec.TrafficManager.RoutePath = defaultRoute
+		}
+	}
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
 // +kubebuilder:webhook:path=/validate-privateai-oracle-com-v4-privateai,mutating=false,failurePolicy=fail,sideEffects=None,groups=privateai.oracle.com,resources=privateais,verbs=create;update,versions=v4,name=vprivateai-v4.kb.io,admissionReviewVersions=v1
-
-// PrivateAiCustomValidator struct is responsible for validating the PrivateAi resource
-// when it is created, updated, or deleted.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as this struct is used only for temporary operations and does not need to be deeply copied.
-type PrivateAiCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
+func (v *privateAiValidator) ValidateCreate(ctx context.Context, obj *PrivateAi) (admission.Warnings, error) {
+	return v.validate(ctx, obj)
 }
 
-var _ webhook.CustomValidator = &PrivateAiCustomValidator{}
+func (v *privateAiValidator) ValidateUpdate(ctx context.Context, _ *PrivateAi, newObj *PrivateAi) (admission.Warnings, error) {
+	return v.validate(ctx, newObj)
+}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (v *PrivateAiCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	privateai, ok := obj.(*PrivateAi)
-	if !ok {
-		return nil, fmt.Errorf("expected a PrivateAi object but got %T", obj)
+func (v *privateAiValidator) ValidateDelete(_ context.Context, obj *PrivateAi) (admission.Warnings, error) {
+	privateailog.Info("Validation for PrivateAi upon deletion", "name", obj.GetName())
+	return nil, nil
+}
+
+func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi) (admission.Warnings, error) {
+	privateailog.Info("Validation for PrivateAi", "name", privateai.GetName())
+	warnings := deprecatedPrivateAIFieldWarnings(&privateai.Spec)
+	authSecret := EffectiveAuthSecret(&privateai.Spec)
+	tls := EffectiveTLS(&privateai.Spec)
+	configFile := EffectiveConfigFile(&privateai.Spec)
+	service := EffectiveService(&privateai.Spec)
+	trafficManager := EffectiveTrafficManager(&privateai.Spec)
+	authSecretItemsField := effectiveAuthSecretItemsField(&privateai.Spec)
+
+	authEnabled := EffectiveAuthEnabled(&privateai.Spec)
+	if authEnabled && (authSecret == nil || strings.TrimSpace(authSecret.Name) == "") {
+		return warnings, fmt.Errorf("spec.security.authEnabled=true requires spec.security.secret.name or deprecated paiSecret.name to be set")
 	}
-	privateailog.Info("Validation for PrivateAi upon creation", "name", privateai.GetName())
-
-	pstatus, _ := strconv.ParseBool(privateai.Spec.PaiEnableAuthentication)
-	if pstatus {
-		if privateai.Spec.PaiSecret == nil || privateai.Spec.PaiSecret.Name == "" {
-			return nil, fmt.Errorf("paiEnableAuthentication is true but paiSecret.name is empty")
+	if privateai.Spec.Security != nil && privateai.Spec.Security.Secret != nil &&
+		strings.TrimSpace(privateai.Spec.Security.Secret.MountLocation) != "" &&
+		!filepath.IsAbs(strings.TrimSpace(privateai.Spec.Security.Secret.MountLocation)) {
+		return warnings, fmt.Errorf("spec.security.secret.mountLocation must be an absolute path")
+	}
+	if authSecret != nil {
+		if err := validateSecretMountItems(authSecret.Items, authSecretItemsField); err != nil {
+			return warnings, err
 		}
 	}
-
-	// TODO(user): fill in your validation logic upon object creation.
-
-	return nil, nil
-}
-
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (v *PrivateAiCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	privateai, ok := newObj.(*PrivateAi)
-	if !ok {
-		return nil, fmt.Errorf("expected a PrivateAi object for the newObj but got %T", newObj)
-	}
-	privateailog.Info("Validation for PrivateAi upon update", "name", privateai.GetName())
-	pstatus, _ := strconv.ParseBool(privateai.Spec.PaiEnableAuthentication)
-	if pstatus {
-		if privateai.Spec.PaiSecret == nil || privateai.Spec.PaiSecret.Name == "" {
-			return nil, fmt.Errorf("paiEnableAuthentication=true requires paiSecret.name to be set")
+	if privateai.Spec.Security == nil || privateai.Spec.Security.Secret == nil {
+		if privateai.Spec.PaiSecret != nil && strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation) != "" &&
+			!filepath.IsAbs(strings.TrimSpace(privateai.Spec.PaiSecret.MountLocation)) {
+			return warnings, fmt.Errorf("paiSecret.mountLocation must be an absolute path")
+		}
+		if privateai.Spec.PaiSecret != nil {
+			if err := validateSecretMountItems(privateai.Spec.PaiSecret.Items, "paiSecret.items"); err != nil {
+				return warnings, err
+			}
 		}
 	}
-
-	// TODO(user): fill in your validation logic upon object update.
-
-	return nil, nil
+	if tls != nil {
+		if strings.TrimSpace(tls.SecretName) == "" {
+			return warnings, fmt.Errorf("spec.security.tls.secretName must be set when spec.security.tls is provided")
+		}
+		if strings.TrimSpace(tls.MountLocation) != "" && !filepath.IsAbs(strings.TrimSpace(tls.MountLocation)) {
+			return warnings, fmt.Errorf("spec.security.tls.mountLocation must be an absolute path")
+		}
+		if err := validateSecretMountItems(tls.Items, "spec.security.tls.items"); err != nil {
+			return warnings, err
+		}
+	}
+	if authSecret != nil && tls != nil &&
+		strings.TrimSpace(authSecret.MountLocation) != "" &&
+		strings.TrimSpace(authSecret.MountLocation) == strings.TrimSpace(tls.MountLocation) {
+		if err := validateSharedSecretMountItems(authSecret.Items, tls.Items); err != nil {
+			return warnings, err
+		}
+	}
+	if configFile != nil && strings.TrimSpace(configFile.MountLocation) != "" &&
+		!filepath.IsAbs(strings.TrimSpace(configFile.MountLocation)) {
+		return warnings, fmt.Errorf("spec.configuration.configFile.mountLocation or paiConfigFile.mountLocation must be an absolute path")
+	}
+	if service != nil {
+		if err := validateLoadBalancerPolicy(service.PublicLoadBalancer); err != nil {
+			return warnings, fmt.Errorf("spec.networking.service.publicLoadBalancer.externalTrafficPolicy or spec.paiService.publicLoadBalancer.externalTrafficPolicy must be Local or Cluster")
+		}
+		if err := validateLoadBalancerPolicy(service.PrivateLoadBalancer); err != nil {
+			return warnings, fmt.Errorf("spec.networking.service.privateLoadBalancer.externalTrafficPolicy or spec.paiService.privateLoadBalancer.externalTrafficPolicy must be Local or Cluster")
+		}
+	}
+	if trafficManager != nil {
+		if strings.TrimSpace(trafficManager.Ref) == "" {
+			return warnings, fmt.Errorf("spec.networking.trafficManager.ref or spec.trafficManager.ref must be set when traffic manager is provided")
+		}
+	}
+	if trafficManager != nil && strings.TrimSpace(trafficManager.Ref) != "" {
+		if v.Client == nil {
+			return warnings, fmt.Errorf("traffic manager reference validation is not configured")
+		}
+		trafficManagerObj := &networkv4.TrafficManager{}
+		ref := strings.TrimSpace(trafficManager.Ref)
+		if err := v.Client.Get(ctx, types.NamespacedName{Name: ref, Namespace: privateai.Namespace}, trafficManagerObj); err != nil {
+			if apierrors.IsNotFound(err) {
+				return warnings, fmt.Errorf("spec.networking.trafficManager.ref or deprecated spec.trafficManager.ref %q not found", ref)
+			}
+			return warnings, err
+		}
+		if trafficManagerObj.Spec.Type != networkv4.TrafficManagerTypeNginx {
+			return warnings, fmt.Errorf("spec.networking.trafficManager.ref or deprecated spec.trafficManager.ref %q points to unsupported TrafficManager type %q", ref, trafficManagerObj.Spec.Type)
+		}
+		if err := ValidateTrafficManagerRoutePath(trafficManager.RoutePath); err != nil {
+			return warnings, err
+		}
+	}
+	return warnings, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type PrivateAi.
-func (v *PrivateAiCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	privateai, ok := obj.(*PrivateAi)
-	if !ok {
-		return nil, fmt.Errorf("expected a PrivateAi object but got %T", obj)
+func deprecatedPrivateAIFieldWarnings(spec *PrivateAiSpec) admission.Warnings {
+	warnings := make(admission.Warnings, 0)
+	appendWarn := func(msg string) {
+		warnings = append(warnings, msg)
 	}
-	privateailog.Info("Validation for PrivateAi upon deletion", "name", privateai.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
+	if strings.TrimSpace(spec.IsExternalSvc) != "" {
+		appendWarn("spec.isExternalSvc is deprecated; use spec.networking.service.publicLoadBalancer.enabled or spec.networking.service.privateLoadBalancer.enabled")
+	}
+	if spec.PaiLBPort != 0 {
+		appendWarn("spec.paiLBPort is deprecated; use spec.networking.service.ports")
+	}
+	if strings.TrimSpace(spec.PaiLBIP) != "" {
+		appendWarn("spec.paiLBIP is deprecated; use spec.networking.service.publicLoadBalancer.ip or spec.networking.service.privateLoadBalancer.ip")
+	}
+	if strings.TrimSpace(spec.PaiLBExternalTrafficPolicy) != "" {
+		appendWarn("spec.paiLBExternalTrafficPolicy is deprecated; use spec.networking.service.publicLoadBalancer.externalTrafficPolicy or spec.networking.service.privateLoadBalancer.externalTrafficPolicy")
+	}
+	if strings.TrimSpace(spec.PaiInternalLB) != "" {
+		appendWarn("spec.paiInternalLB is deprecated; use spec.networking.service.privateLoadBalancer")
+	}
+	if len(spec.PailbAnnotation) > 0 {
+		appendWarn("spec.pailbAnnotation is deprecated; use spec.networking.service.publicLoadBalancer.annotations or spec.networking.service.privateLoadBalancer.annotations")
+	}
+	if spec.PaiSecret != nil {
+		appendWarn("spec.paiSecret is deprecated; use spec.security.secret")
+	}
+	if strings.TrimSpace(spec.PaiEnableAuthentication) != "" {
+		appendWarn("spec.paiEnableAuthentication is deprecated; use spec.security.authEnabled")
+	}
+	if spec.PaiConfigFile != nil {
+		appendWarn("spec.paiConfigFile is deprecated; use spec.configuration.configFile")
+	}
+	if strings.TrimSpace(spec.PaiImage) != "" {
+		appendWarn("spec.paiImage is deprecated; use spec.runtime.image.name")
+	}
+	if strings.TrimSpace(spec.PaiImagePullSecret) != "" {
+		appendWarn("spec.paiImagePullSecret is deprecated; use spec.runtime.image.pullSecret")
+	}
+	if spec.IsDebug {
+		appendWarn("spec.isDebug is deprecated; use spec.runtime.debug")
+	}
+	if spec.ReadinessCheckPeriod != 0 {
+		appendWarn("spec.readinessCheckPeriod is deprecated; use spec.runtime.readinessCheckPeriod")
+	}
+	if spec.LivenessCheckPeriod != 0 {
+		appendWarn("spec.livenessCheckPeriod is deprecated; use spec.runtime.livenessCheckPeriod")
+	}
+	if spec.IsDownloadScripts {
+		appendWarn("spec.isDownloadScripts is deprecated; use spec.runtime.downloadScripts")
+	}
+	if spec.StorageClass != "" {
+		appendWarn("spec.storageClass is deprecated; use spec.storage.storageClass")
+	}
+	if len(spec.PvcList) > 0 {
+		appendWarn("spec.pvcList is deprecated; use spec.storage.pvcList")
+	}
+	if spec.StorageSizeInGb != 0 {
+		appendWarn("spec.storageSizeInGb is deprecated; use spec.storage.sizeInGb")
+	}
+	if spec.IsDeleteOraPvc {
+		appendWarn("spec.isDeleteOraPvc is deprecated; use spec.storage.deletePvcOnDelete")
+	}
+	if strings.TrimSpace(spec.PaiLogLocation) != "" {
+		appendWarn("spec.paiLogLocation is deprecated; use spec.storage.logLocation")
+	}
+	if len(spec.EnvVars) > 0 {
+		appendWarn("spec.envVars is deprecated; use spec.runtime.env")
+	}
+	if spec.Replicas != 0 {
+		appendWarn("spec.replicas is deprecated; use spec.runtime.replicas")
+	}
+	if spec.Resources != nil {
+		appendWarn("spec.resources is deprecated; use spec.runtime.resources")
+	}
+	if len(spec.NodePortSvc) > 0 {
+		appendWarn("spec.nodePortSvc is deprecated; use spec.networking.nodePortServices")
+	}
+	if len(spec.PortMappings) > 0 {
+		appendWarn("spec.portMappings is deprecated; use spec.networking.service.ports")
+	}
+	if len(spec.WorkerNodes) > 0 {
+		appendWarn("spec.workerNodes is deprecated; use spec.runtime.workerNodes")
+	}
+	if spec.TrafficManager != nil {
+		appendWarn("spec.trafficManager is deprecated; use spec.networking.trafficManager")
+	}
 
-	return nil, nil
+	return warnings
+}
+
+func setDefaultPrivateAIHTTPListener(privateai *PrivateAi, enabled bool, port int32) {
+	if privateai.Spec.Networking == nil || privateai.Spec.Networking.Listeners == nil {
+		return
+	}
+	if privateai.Spec.Networking.Listeners.HTTP == nil {
+		privateai.Spec.Networking.Listeners.HTTP = &PrivateAiListenerSpec{}
+	}
+	privateai.Spec.Networking.Listeners.HTTP.Enabled = boolPtr(enabled)
+	privateai.Spec.Networking.Listeners.HTTP.Port = int32Ptr(port)
+}
+
+func setDefaultPrivateAIHTTPSListener(privateai *PrivateAi, enabled bool, port int32) {
+	if privateai.Spec.Networking == nil || privateai.Spec.Networking.Listeners == nil {
+		return
+	}
+	if privateai.Spec.Networking.Listeners.HTTPS == nil {
+		privateai.Spec.Networking.Listeners.HTTPS = &PrivateAiListenerSpec{}
+	}
+	privateai.Spec.Networking.Listeners.HTTPS.Enabled = boolPtr(enabled)
+	privateai.Spec.Networking.Listeners.HTTPS.Port = int32Ptr(port)
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func int32Ptr(v int32) *int32 {
+	return &v
+}
+
+func defaultLoadBalancerPolicies(networking *PrivateAiNetworkingSpec) {
+	if networking == nil || networking.Service == nil {
+		return
+	}
+	defaultLoadBalancerPolicy(networking.Service.PublicLoadBalancer)
+	defaultLoadBalancerPolicy(networking.Service.PrivateLoadBalancer)
+}
+
+func defaultLoadBalancerPolicy(lb *PaiLoadBalancerSpec) {
+	if lb == nil || lb.ExternalTrafficPolicy != "" {
+		return
+	}
+	lb.ExternalTrafficPolicy = "Cluster"
+}
+
+func validateLoadBalancerPolicy(lb *PaiLoadBalancerSpec) error {
+	if lb == nil {
+		return nil
+	}
+	policy := strings.TrimSpace(lb.ExternalTrafficPolicy)
+	if policy == "" || strings.EqualFold(policy, "Local") || strings.EqualFold(policy, "Cluster") {
+		return nil
+	}
+	return fmt.Errorf("invalid externalTrafficPolicy")
+}
+
+func effectiveAuthSecretItemsField(spec *PrivateAiSpec) string {
+	if spec != nil && spec.Security != nil && spec.Security.Secret != nil {
+		return "spec.security.secret.items"
+	}
+	return "paiSecret.items"
+}
+
+func validateSecretMountItems(items []SecretMountItem, field string) error {
+	seen := make(map[string]struct{}, len(items))
+	for i, item := range items {
+		key := strings.TrimSpace(item.Key)
+		if key == "" {
+			return fmt.Errorf("%s[%d].key must be set", field, i)
+		}
+		resolvedPath := strings.TrimSpace(item.Path)
+		if resolvedPath == "" {
+			resolvedPath = key
+		}
+		if filepath.IsAbs(resolvedPath) {
+			return fmt.Errorf("%s[%d].path must be a relative path", field, i)
+		}
+		if resolvedPath == "." || resolvedPath == ".." || strings.HasPrefix(resolvedPath, "../") || strings.Contains(resolvedPath, "/../") {
+			return fmt.Errorf("%s[%d].path must not contain parent directory segments", field, i)
+		}
+		if _, exists := seen[resolvedPath]; exists {
+			return fmt.Errorf("%s contains duplicate mounted path %q", field, resolvedPath)
+		}
+		seen[resolvedPath] = struct{}{}
+	}
+	return nil
+}
+
+func validateSharedSecretMountItems(authItems, tlsItems []SecretMountItem) error {
+	if len(authItems) == 0 || len(tlsItems) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(authItems))
+	for _, item := range authItems {
+		seen[resolvedSecretMountItemPath(item)] = struct{}{}
+	}
+	for i, item := range tlsItems {
+		resolvedPath := resolvedSecretMountItemPath(item)
+		if _, exists := seen[resolvedPath]; exists {
+			return fmt.Errorf("spec.security.secret.items and spec.security.tls.items cannot resolve to the same mounted path %q when mountLocation is shared (conflict at spec.security.tls.items[%d])", resolvedPath, i)
+		}
+	}
+	return nil
+}
+
+func resolvedSecretMountItemPath(item SecretMountItem) string {
+	if path := strings.TrimSpace(item.Path); path != "" {
+		return path
+	}
+	return strings.TrimSpace(item.Key)
 }

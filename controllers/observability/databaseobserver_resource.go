@@ -2,6 +2,7 @@ package controllers
 
 import (
 	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
+	k8sutil "github.com/oracle/oracle-database-operator/commons/k8sutil"
 	constants "github.com/oracle/oracle-database-operator/commons/observability"
 	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -19,13 +20,71 @@ retrieve/find and create all related resources
 on Kubernetes.
 */
 
+// ObservabilityDeploymentResource manages the exporter Deployment desired state.
 type ObservabilityDeploymentResource struct{}
+
+// ObservabilityServiceResource manages the exporter Service desired state.
 type ObservabilityServiceResource struct{}
+
+// ObservabilityServiceMonitorResource manages the exporter ServiceMonitor desired state.
 type ObservabilityServiceMonitorResource struct{}
 
+// ObserverResource describes a reconcilable child resource in DatabaseObserver flows.
 type ObserverResource interface {
 	generate(*api.DatabaseObserver, *runtime.Scheme) (*unstructured.Unstructured, error)
 	identify() (string, string, schema.GroupVersionKind)
+}
+
+// getServiceMonitorEndpoints builds generated ServiceMonitor endpoints from
+// the DatabaseObserver ServiceMonitor policy allowlist.
+func getServiceMonitorEndpoints(a *api.DatabaseObserver) []monitorv1.Endpoint {
+	if len(a.Spec.ServiceMonitor.Endpoints) == 0 {
+		return []monitorv1.Endpoint{{
+			Port:     constants.DefaultPrometheusPort,
+			Interval: "20s",
+		}}
+	}
+
+	endpoints := make([]monitorv1.Endpoint, 0, len(a.Spec.ServiceMonitor.Endpoints))
+	for _, endpoint := range a.Spec.ServiceMonitor.Endpoints {
+		allowedEndpoint := monitorv1.Endpoint{
+			Port:          endpoint.Port,
+			Path:          endpoint.Path,
+			Interval:      endpoint.Interval,
+			ScrapeTimeout: endpoint.ScrapeTimeout,
+		}
+
+		if endpoint.Scheme != nil {
+			scheme := *endpoint.Scheme
+			allowedEndpoint.Scheme = &scheme
+		}
+
+		if endpoint.Params != nil {
+			// Copy map and slice values so the generated object has independent state.
+			allowedEndpoint.Params = make(map[string][]string, len(endpoint.Params))
+			for key, values := range endpoint.Params {
+				allowedEndpoint.Params[key] = append([]string(nil), values...)
+			}
+		}
+
+		if endpoint.RelabelConfigs != nil {
+			allowedEndpoint.RelabelConfigs = make([]monitorv1.RelabelConfig, len(endpoint.RelabelConfigs))
+			for i := range endpoint.RelabelConfigs {
+				endpoint.RelabelConfigs[i].DeepCopyInto(&allowedEndpoint.RelabelConfigs[i])
+			}
+		}
+
+		if endpoint.MetricRelabelConfigs != nil {
+			allowedEndpoint.MetricRelabelConfigs = make([]monitorv1.RelabelConfig, len(endpoint.MetricRelabelConfigs))
+			for i := range endpoint.MetricRelabelConfigs {
+				endpoint.MetricRelabelConfigs[i].DeepCopyInto(&allowedEndpoint.MetricRelabelConfigs[i])
+			}
+		}
+
+		endpoints = append(endpoints, allowedEndpoint)
+	}
+
+	return endpoints
 }
 
 func (resource *ObservabilityDeploymentResource) generate(a *api.DatabaseObserver, scheme *runtime.Scheme) (*unstructured.Unstructured, error) {
@@ -86,10 +145,11 @@ func (resource *ObservabilityDeploymentResource) generate(a *api.DatabaseObserve
 					Labels: rPodLabels,
 				},
 				Spec: corev1.PodSpec{
-					Containers:      rContainers,
-					RestartPolicy:   corev1.RestartPolicyAlways,
-					Volumes:         rVolumes,
-					SecurityContext: rPodSecurityContext,
+					Containers:                   rContainers,
+					RestartPolicy:                corev1.RestartPolicyAlways,
+					Volumes:                      rVolumes,
+					SecurityContext:              rPodSecurityContext,
+					AutomountServiceAccountToken: k8sutil.BoolOrDefault(a.Spec.AutomountServiceAccountToken, false),
 				},
 			},
 		},
@@ -138,7 +198,7 @@ func (resource *ObservabilityServiceResource) generate(a *api.DatabaseObserver, 
 
 func (resource *ObservabilityServiceMonitorResource) generate(a *api.DatabaseObserver, scheme *runtime.Scheme) (*unstructured.Unstructured, error) {
 	rName := a.Name
-	rEndpoints := constants.GetEndpoints(a)
+	rEndpoints := getServiceMonitorEndpoints(a)
 
 	rSelector := constants.GetSelectorLabel(a)
 	rLabels := constants.GetLabels(a, a.Spec.ServiceMonitor.Labels)
@@ -149,7 +209,6 @@ func (resource *ObservabilityServiceMonitorResource) generate(a *api.DatabaseObs
 			MatchLabels: rSelector,
 		},
 	}
-	constants.AddNamespaceSelector(a, &smSpec)
 
 	obj := &monitorv1.ServiceMonitor{
 		ObjectMeta: metav1.ObjectMeta{

@@ -51,38 +51,56 @@ import (
 
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+
+	//"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	authenticationv1 "k8s.io/api/authentication/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	authorizationclient "k8s.io/client-go/kubernetes/typed/authorization/v1"
 )
 
 // log is for logging in this package.
 var lrpdblog = logf.Log.WithName("lrpdb-webhook")
+var lrpdbAuthzClient authorizationclient.AuthorizationV1Interface
 
+// SetupWebhookWithManager set the webhook
 func (r *LRPDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		WithValidator(&LRPDB{}).
-		WithDefaulter(&LRPDB{}).
-		For(r).
+	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		return err
+	}
+	lrpdbAuthzClient = clientset.AuthorizationV1()
+	return ctrl.NewWebhookManagedBy[*LRPDB](mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrpdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=mlrpdb.kb.io,admissionReviewVersions={v4,v1beta1}
+//
 
-var _ webhook.CustomDefaulter = &LRPDB{}
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrpdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=mlrpdb.kb.io,admissionReviewVersions=v1
+
+// Use the generic admission interfaces
+var _ admission.Defaulter[*LRPDB] = &LRPDB{}
+var _ admission.Validator[*LRPDB] = &LRPDB{}
+
+//+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrpdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=vlrpdb.kb.io,admissionReviewVersions=v1
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *LRPDB) Default(ctx context.Context, obj runtime.Object) error {
-	pdb, ok := obj.(*LRPDB)
-	if !ok {
-		return fmt.Errorf("expected an LRPDB object but got %T", obj)
-	}
+func (r *LRPDB) Default(ctx context.Context, obj *LRPDB) error {
+	pdb := obj
+
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
-		lrpdblog.Info("Setting default values in LRPDB spec for : " + pdb.Name)
+		// lrpdblog.Info("Setting default values in LRPDB spec for : " + pdb.Name)
+		lrpdblog.Info("Setting default values in LRPDB spec for : " + r.Name)
 	}
 
 	action := strings.ToUpper(pdb.Spec.Action)
@@ -140,23 +158,22 @@ func (r *LRPDB) Default(ctx context.Context, obj runtime.Object) error {
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrpdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=vlrpdb.kb.io,admissionReviewVersions={v4,v1beta1}
 
-var _ webhook.CustomValidator = &LRPDB{}
-
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *LRPDB) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	pdb := obj.(*LRPDB)
+func (r *LRPDB) ValidateCreate(ctx context.Context, obj *LRPDB) (admission.Warnings, error) {
+	pdb := obj
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("ValidateCreate-Validating LRPDB spec for : " + r.Name)
 	}
 
 	var allErrs field.ErrorList
 
-	r.validateCommon(&allErrs, ctx, *pdb)
+	r.validateCommon(ctx, &allErrs, *pdb)
 
-	r.validateAction(&allErrs, ctx, *pdb)
+	r.validateAction(ctx, &allErrs, *pdb)
+
+	r.validatePdbAppUserSecretAccess(ctx, &allErrs, pdb)
 
 	action := strings.ToUpper(pdb.Spec.Action)
 
@@ -172,7 +189,7 @@ func (r *LRPDB) ValidateCreate(ctx context.Context, obj runtime.Object) (admissi
 }
 
 // Validate Action for required parameters
-func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pdb LRPDB) {
+func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pdb LRPDB) {
 
 	pdbstate := strings.ToUpper(pdb.Spec.LRPDBState)
 	scrdatabase := strings.ToUpper(pdb.Spec.SrcLRPDBName)
@@ -182,7 +199,10 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 		lrpdblog.Info("Valdiating LRPDB Resource ")
 	}
 	/* Parameters required by the creation */
-	if Bit(pdb.Status.PDBBitMask, PDBCRT) == false {
+	if Bit(pdb.Status.PDBBitMask, PDBCRT) == false && pdb.Spec.PDBBitMask == 00 {
+		/* the condition pdbitmask == 00 is required by the aut0-discovery feature
+		if the pdb already exists then administrative user is already available */
+
 		if reflect.ValueOf(pdb.Spec.AdminpdbUser).IsZero() {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("adminpdbUser"), "Please specify LRPDB System Administrator user"))
@@ -209,6 +229,11 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 			}
 		*/
 
+		if strings.Contains(pdb.Spec.LRPDBName, "-") {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("pdbName"), "cannot contains dash "))
+
+		}
 	}
 
 	/* We cannot open|close|delete|unplug a non existing pdb */
@@ -218,12 +243,14 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 	}
 
 	if pdbstate == "CLOSE" || pdbstate == "OPEN" || pdbstate == "DELETE" || Bit(pdb.Status.PDBBitMask, PDBCRT) == true {
-		var Impdel *bool
-		Impdel = &pdb.Spec.ImperativeLrpdbDeletion
-		if Impdel == nil {
-			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("ImperativeLrpdbDeletion"), "Imperative Deletetion must be set"))
+		//var Impdel *bool
+
+		if pdb.Spec.ImperativeLrpdbDeletion != true {
+			//*allErrs = append(*allErrs,
+			//	field.Required(field.NewPath("spec").Child("ImperativeLrpdbDeletion"), "Imperative Deletetion must be set"))
+			lrpdblog.Info("pdb.Spec.ImperativeLrpdbDeletion:true ")
 		}
+
 	}
 
 	/* Database already exists
@@ -251,7 +278,7 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 				field.Required(field.NewPath("spec").Child("copyAction"), "Please specify a value for copyAction. Values can be COPY, NOCOPY or MOVE"))
 		}
 		if *(pdb.Spec.LTDEImport) {
-			r.validateTDEInfo(allErrs, ctx, pdb)
+			r.validateTDEInfo(ctx, allErrs, pdb)
 		}
 
 	}
@@ -262,7 +289,7 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 				field.Required(field.NewPath("spec").Child("xmlFileName"), "Please specify XML metadata filename"))
 		}
 		if *(pdb.Spec.LTDEExport) {
-			r.validateTDEInfo(allErrs, ctx, pdb)
+			r.validateTDEInfo(ctx, allErrs, pdb)
 		}
 		if pdb.Status.OpenMode == "READ WRITE" {
 			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
@@ -270,23 +297,26 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 			}
 			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
 		}
-		r.CheckObjExistence("UNPLUG", allErrs, ctx, pdb)
+		r.CheckObjExistence(ctx, "UNPLUG", allErrs, pdb)
 	}
 
-	if reflect.ValueOf(pdb.Spec.LRPDBTlsKey).IsZero() {
-		*allErrs = append(*allErrs,
-			field.Required(field.NewPath("spec").Child("lrpdbTlsKey"), "Please specify LRPDB Tls Key(secret)"))
-	}
+	/*
+		if reflect.ValueOf(pdb.Spec.LRPDBTlsKey).IsZero() {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("lrpdbTlsKey"), "Please specify LRPDB Tls Key(secret)"))
+		}
 
-	if reflect.ValueOf(pdb.Spec.LRPDBTlsCrt).IsZero() {
-		*allErrs = append(*allErrs,
-			field.Required(field.NewPath("spec").Child("lrpdbTlsCrt"), "Please specify LRPDB Tls Certificate(secret)"))
-	}
+		if reflect.ValueOf(pdb.Spec.LRPDBTlsCrt).IsZero() {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("lrpdbTlsCrt"), "Please specify LRPDB Tls Certificate(secret)"))
+		}
 
-	if reflect.ValueOf(pdb.Spec.LRPDBTlsCat).IsZero() {
-		*allErrs = append(*allErrs,
-			field.Required(field.NewPath("spec").Child("lrpdbTlsCat"), "Please specify LRPDB Tls Certificate Authority(secret)"))
-	}
+
+			if reflect.ValueOf(pdb.Spec.LRPDBTlsCat).IsZero() {
+				*allErrs = append(*allErrs,
+					field.Required(field.NewPath("spec").Child("lrpdbTlsCat"), "Please specify LRPDB Tls Certificate Authority(secret)"))
+			}
+	*/
 
 	/* Check clone parameters */
 	if scrdatabase != "" && Bit(pdb.Status.PDBBitMask, PDBCRT|FNALAZ|PDBCRE) == false {
@@ -313,7 +343,7 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 				field.Required(field.NewPath("spec").Child("xmlFileName"), "Please specify XML metadata filename"))
 		}
 		if *(pdb.Spec.LTDEExport) {
-			r.validateTDEInfo(allErrs, ctx, pdb)
+			r.validateTDEInfo(ctx, allErrs, pdb)
 		}
 		if pdb.Status.OpenMode == "READ WRITE" {
 			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
@@ -321,13 +351,14 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 			}
 			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
 		}
-		r.CheckObjExistence("UNPLUG", allErrs, ctx, pdb)
+		r.CheckObjExistence(ctx, "UNPLUG", allErrs, pdb)
 	}
 }
 
-func (r *LRPDB) CheckObjExistence(action string, allErrs *field.ErrorList, ctx context.Context, pdb LRPDB) {
-	/* BUG 36752465 - lrest operator - open non-existent pdb creates a lrpdb with status failed */
+// CheckObjExistence - BUG 36752465 - lrest operator - open non-existent pdb creates a lrpdb with status failed
+func (r *LRPDB) CheckObjExistence(ctx context.Context, action string, allErrs *field.ErrorList, pdb LRPDB) {
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+		lrpdblog.Info("obj:" + r.Name)
 		lrpdblog.Info("Action [" + action + "] checkin " + pdb.Spec.LRPDBName + " existence")
 	}
 	if pdb.Status.OpenMode == "" {
@@ -337,13 +368,13 @@ func (r *LRPDB) CheckObjExistence(action string, allErrs *field.ErrorList, ctx c
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *LRPDB) ValidateUpdate(ctx context.Context, obj runtime.Object, old runtime.Object) (admission.Warnings, error) {
-	pdbold := old.(*LRPDB)
+func (r *LRPDB) ValidateUpdate(ctx context.Context, old, obj *LRPDB) (admission.Warnings, error) {
+	pdbold := old
 	if Bit(pdbold.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("ValidateUpdate-Validating LRPDB spec for : " + r.Name)
 	}
 
-	pdb := obj.(*LRPDB)
+	pdb := obj
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("ValidateUpdate-Validating LRPDB spec for : " + r.Name)
 	}
@@ -356,6 +387,10 @@ func (r *LRPDB) ValidateUpdate(ctx context.Context, obj runtime.Object, old runt
 	var allErrs field.ErrorList
 	action := strings.ToUpper(pdb.Spec.Action)
 
+	if pdb.Spec.Pdbappuser != "" && pdb.Spec.Pdbappuser != pdbold.Spec.Pdbappuser {
+		r.validatePdbAppUserSecretAccess(ctx, &allErrs, pdb)
+	}
+
 	// If LRPDB CR has been created and in Ready state, only allow updates if the "action" value has changed as well
 	if (pdb.Status.Phase == "Ready") && (pdb.Status.Action != "MODIFY") && (pdb.Status.Action != "STATUS") && (pdb.Status.Action != "NOACTION") && (pdb.Status.Action == action) {
 		allErrs = append(allErrs,
@@ -363,15 +398,21 @@ func (r *LRPDB) ValidateUpdate(ctx context.Context, obj runtime.Object, old runt
 	} else {
 
 		// Check Common Validations
-		r.validateCommon(&allErrs, ctx, *pdb)
+		r.validateCommon(ctx, &allErrs, *pdb)
 
 		// Validate required parameters for Action specified
-		r.validateAction(&allErrs, ctx, *pdb)
+		r.validateAction(ctx, &allErrs, *pdb)
 
 		// Check TDE requirements
 		if (action != "DELETE") && (action != "MODIFY") && (action != "STATUS") && (*(pdb.Spec.LTDEImport) || *(pdb.Spec.LTDEExport)) {
-			r.validateTDEInfo(&allErrs, ctx, *pdb)
+			r.validateTDEInfo(ctx, &allErrs, *pdb)
 		}
+	}
+
+	//* Make sure that only one method is used to reset status *//
+	if pdb.Spec.PDBBitMaskStr != "" && pdb.Spec.PDBBitMask != 0 && pdb.Spec.LRPDBState == "RESET" {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("state"), "you cannot reset state using string format and number values at the same time"))
 	}
 
 	if len(allErrs) == 0 {
@@ -383,8 +424,8 @@ func (r *LRPDB) ValidateUpdate(ctx context.Context, obj runtime.Object, old runt
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *LRPDB) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	pdb := obj.(*LRPDB)
+func (r *LRPDB) ValidateDelete(ctx context.Context, obj *LRPDB) (admission.Warnings, error) {
+	pdb := obj
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("ValidateDelete-Validating LRPDB spec for : " + r.Name)
 	}
@@ -394,8 +435,9 @@ func (r *LRPDB) ValidateDelete(ctx context.Context, obj runtime.Object) (admissi
 }
 
 // Validate common specs needed for all LRPDB Actions
-func (r *LRPDB) validateCommon(allErrs *field.ErrorList, ctx context.Context, pdb LRPDB) {
+func (r *LRPDB) validateCommon(ctx context.Context, allErrs *field.ErrorList, pdb LRPDB) {
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+		lrpdblog.Info("obj:" + r.Name)
 		lrpdblog.Info("validateCommon", "name", pdb.Name)
 	}
 
@@ -418,7 +460,7 @@ func (r *LRPDB) validateCommon(allErrs *field.ErrorList, ctx context.Context, pd
 }
 
 // Validate TDE information for Create, Plug and Unplug Actions
-func (r *LRPDB) validateTDEInfo(allErrs *field.ErrorList, ctx context.Context, pdb LRPDB) {
+func (r *LRPDB) validateTDEInfo(ctx context.Context, allErrs *field.ErrorList, pdb LRPDB) {
 	lrpdblog.Info("validateTDEInfo", "name", r.Name)
 
 	if reflect.ValueOf(pdb.Spec.LTDEPassword).IsZero() {
@@ -434,4 +476,103 @@ func (r *LRPDB) validateTDEInfo(allErrs *field.ErrorList, ctx context.Context, p
 			field.Required(field.NewPath("spec").Child("tdeSecret"), "Please specify a value for tdeSecret."))
 	}
 
+}
+
+//+kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
+
+func (r *LRPDB) validatePdbAppUserSecretAccess(ctx context.Context, allErrs *field.ErrorList, pdb *LRPDB) {
+	if pdb.Spec.Pdbappuser == "" {
+		return
+	}
+
+	path := field.NewPath("spec").Child("pdbappuser")
+	if lrpdbAuthzClient == nil {
+		*allErrs = append(*allErrs,
+			field.InternalError(path, fmt.Errorf("authorization client is not initialized")))
+		return
+	}
+
+	req, err := admission.RequestFromContext(ctx)
+	if err != nil {
+		*allErrs = append(*allErrs,
+			field.InternalError(path, fmt.Errorf("cannot read admission request user info: %w", err)))
+		return
+	}
+	resources := []struct {
+		resource string
+		name     string
+	}{
+		{
+			resource: "secrets",
+			name:     pdb.Spec.Pdbappuser,
+		},
+		{
+			resource: "configmaps",
+			name:     pdb.Spec.PDBConfigMap,
+		},
+		{
+			resource: "configmaps",
+			name:     pdb.Spec.PLSQLBlock,
+		},
+	}
+
+	/*
+		sar := &authorizationv1.SubjectAccessReview{
+			Spec: authorizationv1.SubjectAccessReviewSpec{
+				User:   req.UserInfo.Username,
+				Groups: req.UserInfo.Groups,
+				Extra:  convertAdmissionExtra(req.UserInfo.Extra),
+				ResourceAttributes: &authorizationv1.ResourceAttributes{
+					Namespace: pdb.Namespace, Verb: "get", Group: "", Resource: "secrets", Name: pdb.Spec.Pdbappuser,
+				},
+			},
+		}
+	*/
+
+	sar := &authorizationv1.SubjectAccessReview{}
+	for _, r := range resources {
+		sar = &authorizationv1.SubjectAccessReview{
+			Spec: authorizationv1.SubjectAccessReviewSpec{
+				User:   req.UserInfo.Username,
+				Groups: req.UserInfo.Groups,
+				Extra:  convertAdmissionExtra(req.UserInfo.Extra),
+				ResourceAttributes: &authorizationv1.ResourceAttributes{
+					Namespace: pdb.Namespace,
+					Verb:      "get",
+					Group:     "",
+					Resource:  r.resource,
+					Name:      r.name,
+				},
+			},
+		}
+	}
+
+	result, err := lrpdbAuthzClient.SubjectAccessReviews().Create(ctx, sar, metav1.CreateOptions{})
+	if err != nil {
+		*allErrs = append(*allErrs,
+			field.InternalError(path, fmt.Errorf("subject access review failed: %w", err)))
+		return
+	}
+
+	if !result.Status.Allowed {
+		reason := result.Status.Reason
+		if reason == "" {
+			reason = "requesting user is not allowed to get this Secret"
+		}
+		*allErrs = append(*allErrs,
+			field.Forbidden(path, fmt.Sprintf("cannot reference Secret %q in namespace %q: %s",
+				pdb.Spec.Pdbappuser, pdb.Namespace, reason)))
+	}
+}
+
+func convertAdmissionExtra(extra map[string]authenticationv1.ExtraValue) map[string]authorizationv1.ExtraValue {
+	if len(extra) == 0 {
+		return nil
+	}
+
+	converted := make(map[string]authorizationv1.ExtraValue, len(extra))
+	for key, values := range extra {
+		converted[key] = authorizationv1.ExtraValue(values)
+	}
+	return converted
 }

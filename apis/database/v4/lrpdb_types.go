@@ -45,12 +45,12 @@ import (
 // LRPDBSpec defines the desired state of LRPDB
 type LRPDBSpec struct {
 	// Secret: tls.key
-	LRPDBTlsKey LRPDBTLSKEY `json:"lrpdbTlsKey,omitempty"`
+	// LRPDBTlsKey LRPDBTLSKEY `json:"lrpdbTlsKey,omitempty"`
 	// Secret: tls.crt
-	LRPDBTlsCrt LRPDBTLSCRT `json:"lrpdbTlsCrt,omitempty"`
+	// LRPDBTlsCrt LRPDBTLSCRT `json:"lrpdbTlsCrt,omitempty"`
 	//	Secret: ca.crt
-	LRPDBTlsCat LRPDBTLSCAT `json:"lrpdbTlsCat,omitempty"`
-	// Secret for private key
+	// LRPDBTlsCat LRPDBTLSCAT `json:"lrpdbTlsCat,omitempty"`
+	//Secret for private key
 	LRPDBPriKey LRPDBPRVKEY `json:"cdbPrvKey,omitempty"`
 	// Namespace of the rest server
 	CDBNamespace string `json:"cdbNamespace,omitempty"`
@@ -70,11 +70,17 @@ type LRPDBSpec struct {
 	AdminpdbUser AdminpdbUser `json:"adminpdbUser,omitempty"`
 	// PDB Admin user password
 	AdminpdbPass AdminpdbPass `json:"adminpdbPass,omitempty"`
+	// secrets with the list of users that need to be created on pdb
+	//Pdbappuser LRPDBAppuser `json:"pdbappuser,omitempty"`
+	Pdbappuser string `json:"pdbappuser,omitempty"`
 	// Use this parameter on non ASM storage '....path....','pdbname' e.g. '/u01/oradata','dborcl'
+	// +kubebuilder:validation:MaxLength=513
 	FileNameConversions string `json:"fileNameConversions,omitempty"`
 	// This property is required when the Action property is Plug. As defined in the Oracle Multitenant Database documentation. Values can be a source filename convert pattern or NONE.
+	// +kubebuilder:validation:MaxLength=513
 	SourceFileNameConversions string `json:"sourceFileNameConversions,omitempty"`
 	// XML metadata filename to be used for Plug or Unplug operations
+	// +kubebuilder:validation:MaxLength=513
 	XMLFileName string `json:"xmlFileName,omitempty"`
 	// To copy files or not while cloning a LRPDB
 	// +kubebuilder:validation:Enum=COPY;NOCOPY;MOVE
@@ -97,9 +103,9 @@ type LRPDBSpec struct {
 	// Relevant for Create and Clone operations. Total size for temporary tablespace as defined in the Oracle Multitenant Database documentation. See size_clause description in Database SQL Language Reference documentation.
 	TempSize string `json:"tempSize,omitempty"`
 	// Web Server User with SQL Administrator role to allow us to authenticate to the PDB Lifecycle Management REST endpoints
-	WebLrpdbServerUser WebLrpdbServerUser `json:"webServerUser,omitempty"`
+	// WebLrpdbServerUser WebLrpdbServerUser `json:"webServerUser,omitempty"`
 	// Password for the Web Server User
-	WebLrpdbServerPwd WebLrpdbServerPassword `json:"webServerPwd,omitempty"`
+	// WebLrpdbServerPwd WebLrpdbServerPassword `json:"webServerPwd,omitempty"`
 	// TDE import for plug operations
 	// +hidefromdoc
 	LTDEImport *bool `json:"tdeImport,omitempty"`
@@ -130,8 +136,10 @@ type LRPDBSpec struct {
 	// to be used with ALTER option - obsolete do not use
 	AlterSystem string `json:"alterSystem,omitempty"`
 	// To be used with ALTER option - the name of the parameter
+	//  +kubebuilder:validation:MaxLength=20
 	AlterSystemParameter string `json:"alterSystemParameter,omitempty"`
 	// To be used with ALTER option - the  value of the parameter
+	//  +kubebuilder:validation:MaxLength=4000
 	AlterSystemValue string `json:"alterSystemValue,omitempty"`
 	// Init parameter scope
 	ParameterScope string `json:"parameterScope,omitempty"`
@@ -142,20 +150,24 @@ type LRPDBSpec struct {
 	// kubectl delete pdb command automatically triggers the pluggable database
 	// deletion
 	// ++kubebuilder:default=false
-	ImperativeLrpdbDeletion bool `json:"imperativeLrpdbDeletion"`
+	ImperativeLrpdbDeletion bool `json:"imperativeLrpdbDeletion,omitempty"`
 	// Config map containing the pdb parameters
 	PDBConfigMap string `json:"pdbconfigmap,omitempty"`
 	// Config map containing sql(ddl)/plsql code
 	PLSQLBlock string `json:"codeconfigmap,omitempty"`
 	// Spare filed not used
 	PLSQLExecMode int `json:"plsqlexemode,omitempty"`
-	// For future use - rest bitmask status
+	// rest bitmask status
 	// ++kubebuilder:default=0
-	PDBBitMask int `json:"reststate,omitempty"`
+	PDBBitMask int `json:"resetstate,omitempty"`
+	// reset status using symbol
+	PDBBitMaskStr string `json:"resetstrstate,omitempty"`
 	// Password protection , it can be a thirdparty software or openssl encryption
 	// +kubebuilder:validation:Enum=NATIVE;OPENSSL3
 	// +kubebuilder:default=NATIVE
 	PwdProtection string `json:"passwordProtection"`
+	// Monito parameter config map
+	MonitorInitParameter bool `json:"monitorinitparameter,omitempty"`
 	// Trclvl option , not yet implemented
 	Trclvl int `json:"tracelevel,omitempty"`
 }
@@ -180,13 +192,17 @@ type LTDESecret struct {
 	Secret LRPDBSecret `json:"secret"`
 }
 
-type WebLrpdbServerUser struct {
+type LRPDBAppuser struct {
 	Secret LRPDBSecret `json:"secret"`
 }
 
-type WebLrpdbServerPassword struct {
-	Secret LRPDBSecret `json:"secret"`
-}
+//type WebLrpdbServerUser struct {
+//Secret LRPDBSecret `json:"secret"`
+//}
+
+//type WebLrpdbServerPassword struct {
+//	Secret LRPDBSecret `json:"secret"`
+//}
 
 type AdminpdbUser struct {
 	Secret LRPDBSecret `json:"secret"`

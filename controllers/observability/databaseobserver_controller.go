@@ -41,6 +41,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -112,7 +113,7 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	defer r.validateCustomResourceReadiness(ctx, req)
 
 	// initialize databaseObserver custom resource
-	if e := r.initialize(ctx, a, req); e != nil {
+	if e := r.initialize(ctx, a); e != nil {
 		return ctrl.Result{}, e
 	}
 
@@ -133,12 +134,12 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// create resource if they do not exist
 	exporterDeployment := &ObservabilityDeploymentResource{}
-	if res, e := r.createResourceIfNotExists(exporterDeployment, a, ctx, req); e != nil {
+	if res, e := r.createResourceIfNotExists(ctx, exporterDeployment, a, req); e != nil {
 		return res, e
 	}
 
 	// otherwise, check for updates on resource for any changes
-	if res, e := r.checkResourceForUpdates(exporterDeployment, a, ctx, req); e != nil {
+	if res, e := r.checkResourceForUpdates(ctx, exporterDeployment, a, req); e != nil {
 		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsExporterDeploymentReady,
 			Status:  metav1.ConditionFalse,
@@ -149,12 +150,12 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	exporterService := &ObservabilityServiceResource{}
-	if res, e := r.createResourceIfNotExists(exporterService, a, ctx, req); e != nil {
+	if res, e := r.createResourceIfNotExists(ctx, exporterService, a, req); e != nil {
 		return res, e
 	}
 
 	// otherwise, check for updates on resource for any changes
-	if res, e := r.checkResourceForUpdates(exporterService, a, ctx, req); e != nil {
+	if res, e := r.checkResourceForUpdates(ctx, exporterService, a, req); e != nil {
 		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsExporterServiceReady,
 			Status:  metav1.ConditionFalse,
@@ -165,12 +166,12 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	exporterServiceMonitor := &ObservabilityServiceMonitorResource{}
-	if res, e := r.createResourceIfNotExists(exporterServiceMonitor, a, ctx, req); e != nil {
+	if res, e := r.createResourceIfNotExists(ctx, exporterServiceMonitor, a, req); e != nil {
 		return res, e
 	}
 
 	// otherwise, check for updates on resource for any changes
-	if res, e := r.checkResourceForUpdates(exporterServiceMonitor, a, ctx, req); e != nil {
+	if res, e := r.checkResourceForUpdates(ctx, exporterServiceMonitor, a, req); e != nil {
 		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsExporterServiceMonitorReady,
 			Status:  metav1.ConditionFalse,
@@ -181,13 +182,13 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	// check if deployment pods are ready
-	return r.validateDeploymentReadiness(a, ctx, req)
+	return r.validateDeploymentReadiness(ctx, a)
 }
 
 // initialize method sets the initial status to PENDING, exporterConfig and sets the base condition
-func (r *DatabaseObserverReconciler) initialize(ctx context.Context, a *api.DatabaseObserver, req ctrl.Request) error {
+func (r *DatabaseObserverReconciler) initialize(ctx context.Context, a *api.DatabaseObserver) error {
 
-	if a.Status.Conditions == nil || len(a.Status.Conditions) == 0 {
+	if len(a.Status.Conditions) == 0 {
 
 		// set condition
 		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
@@ -290,12 +291,16 @@ func (r *DatabaseObserverReconciler) validateSpecs(a *api.DatabaseObserver) erro
 }
 
 // createResourceIfNotExists method creates an ObserverResource if they have not yet been created
-func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResource, a *api.DatabaseObserver, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *DatabaseObserverReconciler) createResourceIfNotExists(ctx context.Context, or ObserverResource, a *api.DatabaseObserver, req ctrl.Request) (ctrl.Result, error) {
 
 	conditionType, logger, groupVersionKind := or.identify()
 
-	// update after
-	defer r.Status().Update(ctx, a)
+	base := a.DeepCopy()
+	defer func() {
+		if err := r.Status().Patch(ctx, a, client.MergeFrom(base)); err != nil {
+			r.Log.WithName(logger).Error(err, constants.ErrorStatusUpdate)
+		}
+	}()
 
 	// generate desired object based on a.Spec
 	desiredObj, genErr := or.generate(a, r.Scheme)
@@ -347,7 +352,17 @@ func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResour
 		r.Log.WithName(logger).Error(getErr, constants.ErrorResourceRetrievalFailureDueToAnError, "ResourceName", desiredObj.GetName(), "Kind", groupVersionKind, "Namespace", req.Namespace)
 		return ctrl.Result{}, getErr
 
-	} else if getErr == nil && conditionType != constants.IsExporterDeploymentReady { // exclude deployment
+	} else if ownershipErr := validateChildResourceOwnership(foundObj, a, groupVersionKind.Kind); ownershipErr != nil {
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
+			Type:    conditionType,
+			Status:  metav1.ConditionFalse,
+			Reason:  constants.ReasonGeneralResourceValidationFailureDueToError,
+			Message: ownershipErr.Error(),
+		})
+		r.Log.WithName(logger).Error(ownershipErr, constants.ErrorResourceRetrievalFailureDueToAnError, "ResourceName", desiredObj.GetName(), "Kind", groupVersionKind, "Namespace", req.Namespace)
+		return ctrl.Result{}, ownershipErr
+
+	} else if conditionType != constants.IsExporterDeploymentReady { // exclude deployment
 		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    conditionType,
 			Status:  metav1.ConditionTrue,
@@ -362,212 +377,143 @@ func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResour
 	return ctrl.Result{}, nil
 }
 
-// checkResourceForUpdates checks if the child resource needs changes and applies them declaratively.
-// It uses Server-Side Apply (SSA) and handles ownership conflicts gracefully by
-// attempting a one-time ForceOwnership takeover when appropriate.
-func (r *DatabaseObserverReconciler) checkResourceForUpdates(
-    or ObserverResource,
-    a *api.DatabaseObserver,
-    ctx context.Context,
-    req ctrl.Request,
-) (ctrl.Result, error) {
-    conditionType, logName, gvk := or.identify()
+func validateChildResourceOwnership(obj *unstructured.Unstructured, a *api.DatabaseObserver, kind string) error {
+	if metav1.IsControlledBy(obj, a) {
+		return nil
+	}
 
-    // Build the desired typed object
-    desiredTyped, err := or.generate(a, r.Scheme)
-    if err != nil {
-        r.Log.WithName(logName).Error(err, "failed to generate desired object")
-        return ctrl.Result{}, err
-    }
-
-    // Convert desired typed object -> unstructured for SSA
-    desired := &unstructured.Unstructured{}
-    desired.SetGroupVersionKind(gvk)
-    if err := r.Scheme.Convert(desiredTyped, desired, nil); err != nil {
-        r.Log.WithName(logName).Error(err, "failed to convert desired object to unstructured")
-        return ctrl.Result{}, err
-    }
-
-    // Ensure name/namespace
-    if desired.GetName() == "" {
-        desired.SetName(a.GetName())
-    }
-    if desired.GetNamespace() == "" {
-        desired.SetNamespace(req.Namespace)
-    }
-
-    // Clear server-managed fields before SSA
-    desired.SetManagedFields(nil)
-    desired.SetResourceVersion("")
-
-    // Read current object to compare and capture previous RV
-    prev := &unstructured.Unstructured{}
-    prev.SetGroupVersionKind(gvk)
-    var prevRV string
-    if getErr := r.Get(ctx, types.NamespacedName{
-        Name:      desired.GetName(),
-        Namespace: desired.GetNamespace(),
-    }, prev); getErr == nil {
-        prevRV = prev.GetResourceVersion()
-    } else if !apiError.IsNotFound(getErr) {
-        return ctrl.Result{}, getErr
-    }
-
-    // Apply desired state with a stable field owner
-    fieldOwner := "observability.oracle.com/databaseobserver-controller"
-    apply := func(force bool) error {
-        opts := []client.PatchOption{client.FieldOwner(fieldOwner)}
-        if force {
-            opts = append(opts, client.ForceOwnership)
-        }
-        return r.Patch(ctx, desired, client.Apply, opts...)
-    }
-
-    err = apply(false)
-    if apiError.IsConflict(err) {
-        // One-time migration: take ownership if another manager (e.g., "manager") holds fields like labels
-        r.Log.WithName(logName).Info("SSA conflict detected; retrying with ForceOwnership",
-            "ResourceName", desired.GetName(), "Kind", gvk.Kind, "Namespace", req.Namespace)
-        err = apply(true)
-    }
-    if err != nil {
-        r.Log.WithName(logName).Error(err, constants.LogErrorWithResourceUpdate,
-            "ResourceName", desired.GetName(), "Kind", gvk.Kind, "Namespace", req.Namespace)
-        return ctrl.Result{}, err
-    }
-
-    // Fetch after to check if a real change happened
-    after := &unstructured.Unstructured{}
-    after.SetGroupVersionKind(gvk)
-    if err := r.Get(ctx, types.NamespacedName{
-        Name:      desired.GetName(),
-        Namespace: desired.GetNamespace(),
-    }, after); err != nil {
-        return ctrl.Result{}, err
-    }
-    changed := prevRV == "" || after.GetResourceVersion() != prevRV
-
-    if changed {
-        beforeConds := append([]metav1.Condition(nil), a.Status.Conditions...)
-        meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
-            Type:    conditionType,
-            Status:  metav1.ConditionFalse,
-            Reason:  constants.ReasonResourceUpdated,
-            Message: constants.MessageExporterResourceUpdated,
-        })
-
-        if !reflect.DeepEqual(beforeConds, a.Status.Conditions) {
-            if err := r.Status().Update(ctx, a); err != nil {
-                r.Log.WithName(logName).Error(err, "failed to update DatabaseObserver status",
-                    "ResourceName", a.GetName(), "Namespace", req.Namespace)
-                return ctrl.Result{}, err
-            }
-        }
-
-        r.Log.WithName(logName).Info(constants.LogSuccessWithResourceUpdate,
-            "ResourceName", desired.GetName(), "Kind", gvk.Kind, "Namespace", req.Namespace)
-        r.Recorder.Event(a, corev1.EventTypeNormal, constants.EventReasonUpdateSucceeded, gvk.Kind+" is updated.")
-    }
-
-    return ctrl.Result{}, nil
+	return fmt.Errorf("%s %s/%s is not controlled by DatabaseObserver %s/%s",
+		kind, obj.GetNamespace(), obj.GetName(), a.Namespace, a.Name)
 }
 
 // checkResourceForUpdates checks if the child resource needs changes and applies them declaratively.
-// It uses Server-Side Apply (SSA) to avoid no-op updates and infinite loops.
-func (r *DatabaseObserverReconciler) checkResourceForUpdatesOld(
-    or ObserverResource,
-    a *api.DatabaseObserver,
-    ctx context.Context,
-    req ctrl.Request,
+// It validates that an existing child is controlled by the current DatabaseObserver before
+// using Server-Side Apply (SSA), with a one-time ForceOwnership retry for SSA conflicts.
+func (r *DatabaseObserverReconciler) checkResourceForUpdates(
+	ctx context.Context,
+	or ObserverResource,
+	a *api.DatabaseObserver,
+	req ctrl.Request,
 ) (ctrl.Result, error) {
+	conditionType, logName, gvk := or.identify()
 
-    conditionType, logName, gvk := or.identify()
+	// Build the desired typed object
+	desiredTyped, err := or.generate(a, r.Scheme)
+	if err != nil {
+		r.Log.WithName(logName).Error(err, "failed to generate desired object")
+		return ctrl.Result{}, err
+	}
 
-    // Build the desired object (typed)
-    dO, err := or.generate(a, r.Scheme)
-    if err != nil {
-        return ctrl.Result{}, err
-    }
+	// Convert desired typed object -> unstructured for SSA
+	desired := &unstructured.Unstructured{}
+	desired.SetGroupVersionKind(gvk)
+	if err := r.Scheme.Convert(desiredTyped, desired, nil); err != nil {
+		r.Log.WithName(logName).Error(err, "failed to convert desired object to unstructured")
+		return ctrl.Result{}, err
+	}
 
-    // Convert desired typed object -> unstructured
-    d := &unstructured.Unstructured{}
-    d.SetGroupVersionKind(gvk)
-    if err := r.Scheme.Convert(dO, d, nil); err != nil {
-        return ctrl.Result{}, err
-    }
+	// Ensure name/namespace
+	if desired.GetName() == "" {
+		desired.SetName(a.GetName())
+	}
+	if desired.GetNamespace() == "" {
+		desired.SetNamespace(req.Namespace)
+	}
 
-    // Ensure name/namespace are set
-    d.SetNamespace(req.Namespace)
+	// Clear server-managed fields before SSA
+	desired.SetManagedFields(nil)
+	desired.SetResourceVersion("")
 
-    // Clear server-managed, volatile fields prior to SSA
-    d.SetManagedFields(nil)
-    d.SetResourceVersion("")
+	// Read current object to compare and capture previous RV
+	prev := &unstructured.Unstructured{}
+	prev.SetGroupVersionKind(gvk)
+	var prevRV string
+	if getErr := r.Get(ctx, types.NamespacedName{
+		Name:      desired.GetName(),
+		Namespace: desired.GetNamespace(),
+	}, prev); getErr == nil {
+		if ownershipErr := validateChildResourceOwnership(prev, a, gvk.Kind); ownershipErr != nil {
+			return ctrl.Result{}, ownershipErr
+		}
+		prevRV = prev.GetResourceVersion()
+	} else if !apiError.IsNotFound(getErr) {
+		return ctrl.Result{}, getErr
+	}
 
-    // Try to read current for change detection (optional but helps decide event/status)
-    prev := &unstructured.Unstructured{}
-    prev.SetGroupVersionKind(gvk)
-    var prevRV string
-    if getErr := r.Get(ctx, types.NamespacedName{Name: d.GetName(), Namespace: d.GetNamespace()}, prev); getErr == nil {
-        prevRV = prev.GetResourceVersion()
-    } else if !apiError.IsNotFound(getErr) {
-        // Real error
-        return ctrl.Result{}, getErr
-    }
+	// Apply desired state with a stable field owner
+	fieldOwner := "observability.oracle.com/databaseobserver-controller"
+	apply := func(force bool) error {
+		applyCfg := client.ApplyConfigurationFromUnstructured(desired)
 
-    // Apply the desired state declaratively
-    // Use a stable field owner; do NOT ForceOwnership unless migrating ownership
-    fieldOwner := "observability.oracle.com/databaseobserver-controller"
-    if err := r.Patch(ctx, d, client.Apply, client.FieldOwner(fieldOwner)); err != nil {
-        r.Log.WithName(logName).Error(err, constants.LogErrorWithResourceUpdate,
-            "ResourceName", d.GetName(), "Kind", gvk.Kind, "Namespace", req.Namespace)
-        return ctrl.Result{}, err
-    }
+		opts := []client.ApplyOption{client.FieldOwner(fieldOwner)}
+		if force {
+			opts = append(opts, client.ForceOwnership)
+		}
 
-    // Fetch again to see if the resourceVersion changed (indicates a real modification)
-    after := &unstructured.Unstructured{}
-    after.SetGroupVersionKind(gvk)
-    if err := r.Get(ctx, types.NamespacedName{Name: d.GetName(), Namespace: d.GetNamespace()}, after); err != nil {
-        // Should not happen; treat as transient error
-        return ctrl.Result{}, err
-    }
-    changed := prevRV == "" || after.GetResourceVersion() != prevRV
+		return r.Apply(ctx, applyCfg, opts...)
+	}
 
-    if changed {
-        // Only update status and emit events when something actually changed
-        beforeConds := append([]metav1.Condition(nil), a.Status.Conditions...)
+	err = apply(false)
+	if apiError.IsConflict(err) {
+		// One-time migration: take ownership if another manager (e.g., "manager") holds fields like labels
+		r.Log.WithName(logName).Info("SSA conflict detected; retrying with ForceOwnership",
+			"ResourceName", desired.GetName(), "Kind", gvk.Kind, "Namespace", req.Namespace)
+		err = apply(true)
+	}
+	if err != nil {
+		r.Log.WithName(logName).Error(err, constants.LogErrorWithResourceUpdate,
+			"ResourceName", desired.GetName(), "Kind", gvk.Kind, "Namespace", req.Namespace)
+		return ctrl.Result{}, err
+	}
 
-        meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
-            Type:    conditionType,
-            Status:  metav1.ConditionFalse,
-            Reason:  constants.ReasonResourceUpdated,
-            Message: constants.MessageExporterResourceUpdated,
-        })
+	// Fetch after to check if a real change happened
+	after := &unstructured.Unstructured{}
+	after.SetGroupVersionKind(gvk)
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      desired.GetName(),
+		Namespace: desired.GetNamespace(),
+	}, after); err != nil {
+		return ctrl.Result{}, err
+	}
+	changed := prevRV == "" || after.GetResourceVersion() != prevRV
 
-        // Update status only if it actually changed
-        if !reflect.DeepEqual(beforeConds, a.Status.Conditions) {
-            if err := r.Status().Update(ctx, a); err != nil {
-                r.Log.WithName(logName).Error(err, "failed to update DatabaseObserver status",
-                    "ResourceName", a.GetName(), "Namespace", req.Namespace)
-                return ctrl.Result{}, err
-            }
-        }
+	if changed {
+		beforeConds := append([]metav1.Condition(nil), a.Status.Conditions...)
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
+			Type:    conditionType,
+			Status:  metav1.ConditionFalse,
+			Reason:  constants.ReasonResourceUpdated,
+			Message: constants.MessageExporterResourceUpdated,
+		})
 
-        r.Log.WithName(logName).Info(constants.LogSuccessWithResourceUpdate,
-            "ResourceName", d.GetName(), "Kind", gvk.Kind, "Namespace", req.Namespace)
-        r.Recorder.Event(a, corev1.EventTypeNormal, constants.EventReasonUpdateSucceeded, gvk.Kind+" is updated.")
-    }
+		if !reflect.DeepEqual(beforeConds, a.Status.Conditions) {
+			if err := r.Status().Update(ctx, a); err != nil {
+				r.Log.WithName(logName).Error(err, "failed to update DatabaseObserver status",
+					"ResourceName", a.GetName(), "Namespace", req.Namespace)
+				return ctrl.Result{}, err
+			}
+		}
 
-    return ctrl.Result{}, nil
+		r.Log.WithName(logName).Info(constants.LogSuccessWithResourceUpdate,
+			"ResourceName", desired.GetName(), "Kind", gvk.Kind, "Namespace", req.Namespace)
+		r.Recorder.Event(a, corev1.EventTypeNormal, constants.EventReasonUpdateSucceeded, gvk.Kind+" is updated.")
+	}
+
+	return ctrl.Result{}, nil
 }
 
 // validateDeploymentReadiness method evaluates deployment readiness by checking the status of all deployment pods
-func (r *DatabaseObserverReconciler) validateDeploymentReadiness(a *api.DatabaseObserver, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *DatabaseObserverReconciler) validateDeploymentReadiness(ctx context.Context, a *api.DatabaseObserver) (ctrl.Result, error) {
 
 	d := &appsv1.Deployment{}
 	rName := a.Name
 
 	// update after
-	defer r.Status().Update(ctx, a)
+	defer func() {
+		if err := r.Status().Update(ctx, a); err != nil {
+			r.Log.WithName(constants.LogReconcile).Error(err, "failed to update status")
+		}
+	}()
 
 	// get latest deployment
 	if e := r.Get(context.TODO(), types.NamespacedName{Name: rName, Namespace: a.Namespace}, d); e != nil {
@@ -642,7 +588,15 @@ func (r *DatabaseObserverReconciler) validateCustomResourceReadiness(ctx context
 	}
 
 	// make update
-	defer r.Status().Update(ctx, a)
+	defer func() {
+		if err := r.Status().Update(ctx, a); err != nil {
+			if apiError.IsConflict(err) {
+				r.Log.WithName(constants.LogReconcile).Info("status update conflict; skipping")
+				return
+			}
+			r.Log.WithName(constants.LogReconcile).Error(err, "failed to update status")
+		}
+	}()
 
 	if meta.IsStatusConditionPresentAndEqual(a.Status.Conditions, constants.IsExporterDeploymentReady, metav1.ConditionUnknown) {
 		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{

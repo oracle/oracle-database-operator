@@ -1,39 +1,175 @@
 # Managing Oracle Autonomous Databases with Oracle Database Operator for Kubernetes
 
-Before you use the Oracle Database Operator for Kubernetes (the operator), ensure that your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
+Oracle Database Operator for Kubernetes includes the `AutonomousDatabase` controller for provisioning and operating Oracle Autonomous Database resources in OCI. This guide is organized around the current `database.oracle.com/v4` API and the sample manifests under [`config/samples/adb`](./../../config/samples/adb/).
 
-To allow your Kubernetes cluster to interact with OCI services, your cluster must be authorized with one of the following:
+Use this document when you want to:
 
-- Instance Principal authentication
-- API Key Authentication (specify the required configMap and Secret under `ociConfig`).
+- provision a new Autonomous Database
+- bind a Kubernetes resource to an existing Autonomous Database
+- start with a minimal serverless Autonomous Database configuration
+- configure network access, dedicated infrastructure, or Autonomous JSON Database workloads
+- scale, rename, clone, stop, start, terminate, or fail over an Autonomous Database
+- manage ADMIN passwords and download instance wallets
 
-## Required Permissions
+For operator installation, see the [main operator README](../../README.md). Before using the examples in this guide, review the [ADB prerequisites](./ADB_PREREQUISITES.md).
 
-The operator requires appropriate OCI policies, written by an administrator, to manage Autonomous Databases. For examples of Autonomous Database policies, see: [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb)
+## Contents
 
-Permissions to view the work requests are also required, so that the operator can update the resources when the work is done. For example work request policies, see: [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) 
+- [Before You Begin](#before-you-begin)
+- [Quick Start](#quick-start)
+- [Scenario Guide](#scenario-guide)
+- [Status and Verification](#status-and-verification)
+- [Provision an Autonomous Database](#provision-an-autonomous-database)
+- [Bind to an existing Autonomous Database](#bind-to-an-existing-autonomous-database)
+- [Scale the OCPU core count or storage](#scale-the-ocpu-core-count-or-storage)
+- [Rename](#rename)
+- [Manage Admin Password](#manage-admin-password)
+- [Download Wallets](#download-wallets)
+- [Stop/Start/Terminate](#stopstartterminate)
+- [Delete the resource](#delete-the-resource)
+- [Clone an existing Autonomous Database](#clone-an-existing-autonomous-database)
+- [Switchover an existing Autonomous Database](#switchover-an-existing-autonomous-database)
+- [Manually failover an existing Autonomous Database](#manually-failover-an-existing-autonomous-database)
+- [Debugging and troubleshooting](#debugging-and-troubleshooting)
 
-## Supported Features
+## Before You Begin
 
-After the operator is deployed, choose one of the following operations to create an `AutonomousDatabase` custom resource for Oracle Autonomous Database in your cluster.
+Complete these steps before using the examples in this directory. Other ADB how-to guides assume this section is already complete.
 
-- [Provision](#provision-an-autonomous-database) an Autonomous Database
-  - Example: [Creating an Autonomous JSON Database (AJD)](#example-creating-an-autonomous-json-database-ajd)
-- [Bind](#bind-to-an-existing-autonomous-database) to an existing Autonomous Database
+### Basic prerequisites
 
-After you create the resource, you can use the operator to perform the following tasks:
+Make sure the following are already in place:
 
-- [Scale the OCPU core count or storage](#scale-the-ocpu-core-count-or-storage) an Autonomous Database
-- [Rename](#rename) an Autonomous Database
-- [Manage ADMIN database user password](#manage-admin-password) of an Autonomous Database
-- [Download instance credentials (wallets)](#download-wallets) of an Autonomous Database
-- [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
-- [Delete the resource](#delete-the-resource) from the cluster
-- [Clone](#clone-an-existing-autonomous-database) an existing Autonomous Database
-- [Switchover](#switchover-an-existing-autonomous-database) an existing Autonomous Database
-- [Perform Manual Failover](#manually-failover-an-existing-autonomous-database) to an existing Autonomous Database
+1. Oracle Database Operator is installed in the cluster and watches the namespace where you create `AutonomousDatabase` resources.
+2. Your environment meets the [ADB prerequisites](./ADB_PREREQUISITES.md).
+3. The operator is authorized to call OCI services by using one of these approaches:
+   - [API key authentication](./ADB_PREREQUISITES.md#authorized-with-api-key-authentication)
+   - [Instance principal](./ADB_PREREQUISITES.md#authorized-with-instance-principal)
+   - [OKE Workload Identity](./ADB_PREREQUISITES.md#authorized-with-oke-workload-identity)
+4. An administrator has granted OCI policies for managing Autonomous Databases. For example policies, see [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb).
+5. The operator has permission to view OCI work requests so it can update Kubernetes resource status when OCI operations finish. For example work request policies, see [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests).
 
-To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
+### Prepare OCI credentials when using API key authentication
+
+If the operator uses API key authentication, create the OCI credential ConfigMap and Secret before applying an `AutonomousDatabase` resource. The default names used by the samples are `oci-cred` and `oci-privatekey`.
+
+```sh
+./set_ocicredentials.sh run
+```
+
+If the operator uses instance principal authorization, remove the `spec.ociConfig` block from the manifest. If the operator uses OKE Workload Identity, keep only the region ConfigMap reference and omit `spec.ociConfig.secretName`.
+
+### Get the target compartment OCID
+
+The quick start provisions a new Autonomous Database and requires the OCID of the compartment where the database will be created. For console steps, see [Provision an Autonomous Database](#provision-an-autonomous-database).
+
+### Create the ADMIN password secret
+
+The quick start stores the Autonomous Database ADMIN password in a Kubernetes Secret named `admin-password`.
+
+```sh
+kubectl create secret generic admin-password --from-literal=password='<password>'
+```
+
+The ADMIN password must be between 12 and 30 characters long, contain at least one uppercase letter, one lowercase letter, and one number, and cannot contain the double quote symbol (`"`) or the username `admin` in any casing.
+
+If you prefer to store the ADMIN password in OCI Vault, update the manifest to use `spec.details.adminPassword.ociSecret.id`.
+
+## Quick Start
+
+This example demonstrates the simplest working `AutonomousDatabase` provision flow. The database is configured with:
+
+- A serverless Autonomous Database on shared Exadata infrastructure
+- ECPU compute model with one ECPU
+- 1 TB of data storage
+- Default public network access
+- ADMIN password read from a Kubernetes Secret
+
+Create a file named `adb-quickstart.yaml`:
+
+```yaml
+apiVersion: database.oracle.com/v4
+kind: AutonomousDatabase
+metadata:
+  name: adb-quickstart
+spec:
+  action: Create
+  details:
+    compartmentId: <compartment-ocid>
+    dbName: QuickADB
+    displayName: QuickADB
+    computeModel: ECPU
+    computeCount: 1
+    adminPassword:
+      k8sSecret:
+        name: admin-password
+    dataStorageSizeInTBs: 1
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey
+```
+
+For instance principal authorization, remove the `ociConfig` block. For OKE Workload Identity, keep `ociConfig.configMapName` and remove `ociConfig.secretName`.
+
+Apply and verify:
+
+```sh
+kubectl apply -f adb-quickstart.yaml
+kubectl get adb adb-quickstart
+kubectl get adb adb-quickstart -o jsonpath='{.status.lifecycleState}{"\n"}'
+```
+
+When provisioning is complete, the lifecycle state becomes `AVAILABLE`.
+
+To inspect events and detailed status, run:
+
+```sh
+kubectl describe adb/adb-quickstart
+```
+
+For more provisioning options, see [Provision an Autonomous Database](#provision-an-autonomous-database).
+
+## Scenario Guide
+
+Use this section as a quick entry point for the most common Autonomous Database scenarios.
+
+| Scenario | Where to start |
+| --- | --- |
+| Minimal serverless database | [Quick Start](#quick-start) |
+| Full provisioning field reference | [Provision an Autonomous Database](#provision-an-autonomous-database) |
+| Autonomous JSON Database | [Creating an Autonomous JSON Database](#example-creating-an-autonomous-json-database-ajd) |
+| Bind to an existing database | [Bind to an existing Autonomous Database](#bind-to-an-existing-autonomous-database) |
+| Network access options | [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) |
+| Dedicated Autonomous Database | [Provision an Autonomous Database](#provision-an-autonomous-database) and [Autonomous Container Database](./ACD.md) |
+| Scale compute or storage | [Scale the OCPU core count or storage](#scale-the-ocpu-core-count-or-storage) |
+| Rename a database | [Rename](#rename) |
+| Manage ADMIN password | [Manage Admin Password](#manage-admin-password) |
+| Download wallet credentials | [Download Wallets](#download-wallets) |
+| Stop, start, or terminate | [Stop/Start/Terminate](#stopstartterminate) |
+| Delete only the Kubernetes resource | [Delete the resource](#delete-the-resource) |
+| Clone a database | [Clone an existing Autonomous Database](#clone-an-existing-autonomous-database) |
+| Switchover | [Switchover an existing Autonomous Database](#switchover-an-existing-autonomous-database) |
+| Manual failover | [Manually failover an existing Autonomous Database](#manually-failover-an-existing-autonomous-database) |
+| Restore and backup | [Restore](./ADB_RESTORE.md) and [Long-term backup](./ADB_LONG_TERM_BACKUP.md) |
+| Debugging | [Debugging and troubleshooting](#debugging-and-troubleshooting) |
+
+## Status and Verification
+
+Use these commands to check Autonomous Database status and review reconciliation details:
+
+```sh
+kubectl get adb
+kubectl describe adb <name>
+kubectl get adb <name> -o jsonpath='{.status.lifecycleState}{"\n"}{.status.timeCreated}{"\n"}'
+```
+
+Typical status fields include:
+
+- `status.lifecycleState`
+- `status.timeCreated`
+- `status.walletExpiringDate`
+- `status.allConnectionStrings`
+- `status.conditions`
 
 ## Provision an Autonomous Database
 
@@ -65,12 +201,12 @@ To provision an Autonomous Database that will map objects in your cluster, compl
 
     ![acd-id-3](/images/adb/acd-id-2.png)
 
-3. Create a Kubernetes Secret to hold the password of the ADMIN user. **The key and the name of the secret must be the same.**
+3. Create a Kubernetes Secret to hold the password of the ADMIN user.
 
     You can create this secret by using a command similar to the following example:
 
     ```sh
-    kubectl create secret generic admin-password --from-literal=admin-password='password_here'
+    kubectl create secret generic admin-password --from-literal=password='password_here'
     ```
 
 4. Add the following fields to the Autonomous Database resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
@@ -138,6 +274,11 @@ To provision an Autonomous Database that will map objects in your cluster, compl
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_create.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample created
     ```
 
@@ -175,12 +316,17 @@ spec:
   ociConfig:
     configMapName: oci-cred
     secretName: oci-privatekey
-```
-
+```bash
 > Note: If dbWorkload is not specified, the database will be created using the default workload type (typically OLTP). Always set AJD explicitly when you intend to provision an Autonomous JSON Database.
 
 ## Bind to an existing Autonomous Database
 
+    kubectl delete adb/autonomousdatabase-sample
+```
+
+Example output:
+
+```text
 Other than provisioning a database, you can create the custom resource using an existing Autonomous Database.
 
 The operator also generates the `AutonomousBackup` custom resources if a database already has backups. The operator syncs the `AutonomousBackups` in every reconciliation loop by getting the list of OCIDs of the AutonomousBackups from OCI, and then creates the `AutonomousDatabaseBackup` object automatically if it cannot find a resource that has the same `AutonomousBackupOCID` in the cluster.
@@ -188,9 +334,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 1. Clean up the resource you created in the earlier provision operation:
 
     ```sh
-    kubectl delete adb/autonomousdatabase-sample
-    autonomousdatabase.database.oracle.com/autonomousdatabase-sample deleted
-    ```
+```
 
 2. Copy the `Autonomous Database OCID` from Cloud Console.
 
@@ -225,6 +369,11 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_bind.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample created
     ```
 
@@ -258,6 +407,11 @@ You can scale up or scale down the Oracle Autonomous Database OCPU core count or
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_scale.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -293,6 +447,11 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_rename.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -305,7 +464,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
     As an example, you can create this secret with the following command: *
 
     ```sh
-    kubectl create secret generic new-adb-admin-password --from-literal=new-adb-admin-password='password_here'
+    kubectl create secret generic new-adb-admin-password --from-literal=password='password_here'
     ```
 
     \* The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.
@@ -336,6 +495,11 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_update_admin_password.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -350,7 +514,7 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
     As an example, you can create this secret with the following command: *
 
     ```sh
-    kubectl create secret generic instance-wallet-password --from-literal=instance-wallet-password='password_here'
+    kubectl create secret generic instance-wallet-password --from-literal=password='password_here'
     ```
 
     \* The password must be at least 8 characters long and must include at least 1 letter and either 1 numeric character or 1 special character.
@@ -384,13 +548,23 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_wallet.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
-   ```
+    ```
 
 You should see a new Secret `instance-wallet` in your cluster:
 
 ```sh
-$ kubectl get secrets
+kubectl get secrets
+```
+
+Example output:
+
+```text
 NAME                         TYPE                                  DATA   AGE
 oci-privatekey               Opaque                                1      2d12h
 instance-wallet-password     Opaque                                1      2d12h
@@ -431,6 +605,11 @@ Here's a list of the values you can set for `action`:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_stop_start_terminate.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -464,6 +643,11 @@ To delete the resource and terminate the Autonomous Database, complete these ste
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_delete_resource.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -471,6 +655,11 @@ To delete the resource and terminate the Autonomous Database, complete these ste
 
     ```sh
     kubectl delete adb/autonomousdatabase-sample
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample deleted
     ```
 
@@ -549,6 +738,11 @@ To clone an existing Autonomous Database, complete these steps:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_clone.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -587,6 +781,11 @@ To switchover an existing Autonomous Database, complete these steps:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_switchover.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -623,6 +822,11 @@ To manually failover an existing Autonomous Database, complete these steps:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_failover.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 

@@ -48,7 +48,12 @@ To specify that Autonomous Database can be connected from any location with a va
 2. Apply the yaml:
 
     ```sh
-    $ kubectl apply -f config/samples/adb/autonomousdatabase_update_network_access.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_update_network_access.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -79,7 +84,12 @@ To specify that Autonomous Database can be connected from any location with a va
 2. Apply the yaml:
 
     ```sh
-    $ kubectl apply -f config/samples/adb/autonomousdatabase_update_network_access.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_update_network_access.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -119,11 +129,16 @@ To configure Network Access with ACLs, complete this procedure.
 2. Apply the yaml:
 
     ```sh
-    $ kubectl apply -f config/samples/adb/autonomousdatabase_update_network_access.yaml
-    autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
+    kubectl apply -f config/samples/adb/autonomousdatabase_update_network_access.yaml
 
 ## Configure Network Access with Private Endpoint Access Only
 
+    kind: AutonomousDatabase
+    ```
+
+    Example output:
+
+    ```text
 To change the Network Access to Private Endpoint Access Only, complete this procedure
 
 1. Visit [Overview of VCNs and Subnets](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/managingVCNs_topic-Overview_of_VCNs_and_Subnets.htm#console) and [Network Security Groups](https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/networksecuritygroups.htm#working) to see how to create VCNs, subnets, and network security groups (NSGs) if you haven't already created them. The subnet and the NSG must be in the same VCN.
@@ -139,7 +154,6 @@ To change the Network Access to Private Endpoint Access Only, complete this proc
     ```yaml
     ---
     apiVersion: database.oracle.com/v1alpha1
-    kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
     spec:
@@ -186,7 +200,12 @@ To configure your Autonomous Database instance to require mTLS connections and d
 2. Apply the yaml:
 
     ```sh
-    $ kubectl apply -f config/samples/adb/autonomousdatabase_update_mtls.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_update_mtls.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -226,7 +245,12 @@ Complete this procedure to allow both TLS and mTLS authentication.
 2. Apply the yaml:
 
     ```sh
-    $ kubectl apply -f config/samples/adb/autonomousdatabase_update_mtls.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_update_mtls.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -263,5 +287,11 @@ To configure the network access of Autonomous Database with access control list 
 2. Apply the yaml:
 
     ```sh
-    $ kubectl apply -f config/samples/adb/autonomousdatabase_update_network_access.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_update_network_access.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
+    ```

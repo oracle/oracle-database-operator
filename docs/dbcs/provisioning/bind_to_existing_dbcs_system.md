@@ -16,6 +16,11 @@ Use the file: [bind_to_existing_dbcs_system.yaml](./bind_to_existing_dbcs_system
 1. Deploy the `.yaml` file:  
 ```bash
 kubectl apply -f bind_to_existing_dbcs_system.yaml
+```
+
+Example output:
+
+```text
 dbcssystem.database.oracle.com/dbcssystem-existing created
 ```
 
@@ -24,7 +29,7 @@ dbcssystem.database.oracle.com/dbcssystem-existing created
 NOTE: Check the DB Operator Pod name in your environment.
 
 ```bash
-[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output

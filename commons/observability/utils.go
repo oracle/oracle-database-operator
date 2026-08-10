@@ -1,29 +1,27 @@
 package observability
 
 import (
-	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
-	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"path/filepath"
 	"strings"
+
+	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// AddSidecarContainers adds sidecar containers to the list.
 func AddSidecarContainers(a *api.DatabaseObserver, listing *[]corev1.Container) {
 
 	if containers := a.Spec.Sidecar.Containers; len(containers) > 0 {
-		for _, container := range containers {
-			*listing = append(*listing, container)
-		}
+		*listing = append(*listing, containers...)
 	}
 }
 
+// AddSidecarVolumes adds sidecar volumes to the list.
 func AddSidecarVolumes(a *api.DatabaseObserver, listing *[]corev1.Volume) {
 
 	if volumes := a.Spec.Sidecar.Volumes; len(volumes) > 0 {
-		for _, v := range volumes {
-			*listing = append(*listing, v)
-		}
+		*listing = append(*listing, volumes...)
 	}
 }
 
@@ -41,11 +39,9 @@ func GetLabels(a *api.DatabaseObserver, customResourceLabels map[string]string) 
 		}
 	}
 
-	if customResourceLabels != nil {
-		for k, v := range customResourceLabels {
-			if k != DefaultSelectorLabelKey {
-				l[k] = v
-			}
+	for k, v := range customResourceLabels {
+		if k != DefaultSelectorLabelKey {
+			l[k] = v
 		}
 	}
 
@@ -115,9 +111,7 @@ func GetExporterServicePort(a *api.DatabaseObserver) []corev1.ServicePort {
 
 	// get service ports
 	if ports := a.Spec.Service.Ports; len(ports) > 0 {
-		for _, port := range ports {
-			servicePorts = append(servicePorts, port)
-		}
+		servicePorts = append(servicePorts, ports...)
 
 	} else {
 		// if not, provide default service port
@@ -129,35 +123,6 @@ func GetExporterServicePort(a *api.DatabaseObserver) []corev1.ServicePort {
 	}
 
 	return servicePorts
-
-}
-
-// GetEndpoints function
-func GetEndpoints(a *api.DatabaseObserver) []monitorv1.Endpoint {
-
-	endpoints := make([]monitorv1.Endpoint, 0)
-
-	// get endpoints
-	if es := a.Spec.ServiceMonitor.Endpoints; len(es) > 0 {
-		for _, e := range es {
-			endpoints = append(endpoints, e)
-		}
-	}
-
-	// if not, provide default endpoint
-	endpoints = append(endpoints, monitorv1.Endpoint{
-		Port:     DefaultPrometheusPort,
-		Interval: "20s",
-	})
-
-	return endpoints
-}
-
-func AddNamespaceSelector(a *api.DatabaseObserver, spec *monitorv1.ServiceMonitorSpec) {
-
-	if ns := a.Spec.ServiceMonitor.NamespaceSelector; ns != nil {
-		a.Spec.ServiceMonitor.NamespaceSelector.DeepCopyInto(&spec.NamespaceSelector)
-	}
 
 }
 
@@ -190,7 +155,7 @@ func GetExporterDeploymentVolumeMounts(a *api.DatabaseObserver) []corev1.VolumeM
 	}
 
 	// a.Spec.Wallet.AdditionalWallets
-	if add := a.Spec.Wallet.AdditionalWallets; add != nil && len(add) > 0 {
+	if add := a.Spec.Wallet.AdditionalWallets; len(add) > 0 {
 		for _, w := range add {
 			// Determine where to mount
 			volM = append(volM, corev1.VolumeMount{
@@ -310,7 +275,7 @@ func GetExporterDeploymentVolumes(a *api.DatabaseObserver) []corev1.Volume {
 	}
 
 	// a.Spec.Wallet.AdditionalWallets
-	if add := a.Spec.Wallet.AdditionalWallets; add != nil && len(add) > 0 {
+	if add := a.Spec.Wallet.AdditionalWallets; len(add) > 0 {
 		for _, w := range add {
 
 			vol = append(vol, corev1.Volume{
@@ -410,11 +375,11 @@ func GetLogVolumeSource(a *api.DatabaseObserver) corev1.VolumeSource {
 			ClaimName: rLogVolumeClaimName,
 		}
 		return vs
-
-	} else {
-		vs.EmptyDir = &corev1.EmptyDirVolumeSource{}
-		return vs
 	}
+
+	vs.EmptyDir = &corev1.EmptyDirVolumeSource{}
+	return vs
+
 }
 
 // AddEnv is a helper method that appends an Env Var value
@@ -428,6 +393,7 @@ func AddEnv(env []corev1.EnvVar, existing map[string]string, name string, v stri
 	return env
 }
 
+// AddEnvFromConfigMap adds environment variables from a ConfigMap.
 func AddEnvFromConfigMap(env []corev1.EnvVar, existing map[string]string, environmentName string, key string, configMap string) []corev1.EnvVar {
 	// Evaluate if env already exists
 	if _, f := existing[environmentName]; !f {
@@ -445,6 +411,7 @@ func AddEnvFromConfigMap(env []corev1.EnvVar, existing map[string]string, enviro
 	return env
 }
 
+// AddEnvFromSecret adds environment variables from a Secret.
 func AddEnvFromSecret(env []corev1.EnvVar, existing map[string]string, environmentName string, key string, secretName string) []corev1.EnvVar {
 	// Evaluate if env already exists
 	if _, f := existing[environmentName]; !f {
@@ -462,6 +429,7 @@ func AddEnvFromSecret(env []corev1.EnvVar, existing map[string]string, environme
 	return env
 }
 
+// AddSingleDatabaseEnvs adds environment variables for a single database configuration.
 func AddSingleDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source []corev1.EnvVar) []corev1.EnvVar {
 
 	u := a.Spec.Database.DBUser
@@ -495,7 +463,7 @@ func AddSingleDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source 
 	// DB_PASSWORD environment variable
 	if IsUsingOCIVault(o) {
 		source = AddEnv(source, e, EnvVarDataSourcePwdVaultSecretName, o.VaultPasswordSecret)
-		source = AddEnv(source, e, EnvVarDataSourcePwdVaultId, o.VaultID)
+		source = AddEnv(source, e, EnvVarDataSourcePwdVaultID, o.VaultID)
 
 	} else if IsUsingAzureVault(z, VaultPasswordInUse) {
 		source = AddEnv(source, e, EnvVarAzureVaultPasswordSecret, z.VaultPasswordSecret)
@@ -526,14 +494,15 @@ func AddSingleDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source 
 	// Add Azure Vault Required Values
 	if a.Spec.AzureConfig.ConfigMap.Name != "" {
 		azureConfig := a.Spec.AzureConfig.ConfigMap.Name
-		source = AddEnvFromConfigMap(source, e, EnvVarAzureTenantID, DefaultAzureConfigTenantId, azureConfig)
-		source = AddEnvFromConfigMap(source, e, EnvVarAzureClientID, DefaultAzureConfigClientId, azureConfig)
+		source = AddEnvFromConfigMap(source, e, EnvVarAzureTenantID, DefaultAzureConfigTenantID, azureConfig)
+		source = AddEnvFromConfigMap(source, e, EnvVarAzureClientID, DefaultAzureConfigClientID, azureConfig)
 		source = AddEnvFromConfigMap(source, e, EnvVarAzureClientSecret, DefaultAzureConfigClientSecret, azureConfig)
 	}
 
 	return source
 }
 
+// AddMultiDatabaseEnvs adds environment variables for a multi-database configuration.
 func AddMultiDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source []corev1.EnvVar) []corev1.EnvVar {
 
 	for key, db := range a.Spec.Databases {
@@ -584,10 +553,12 @@ func AddMultiDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source [
 	return source
 }
 
+// IsUsingOCIVault reports whether OCI Vault is configured.
 func IsUsingOCIVault(f api.DBOCIVault) bool {
 	return f.VaultPasswordSecret != "" && f.VaultID != ""
 }
 
+// IsUsingAzureVault reports whether Azure Vault is configured.
 func IsUsingAzureVault(f api.DBAzureVault, v string) bool {
 
 	if v == VaultPasswordInUse {
@@ -604,8 +575,9 @@ func IsUsingAzureVault(f api.DBAzureVault, v string) bool {
 
 }
 
+// IsMultipleDatabasesDefined reports whether multiple databases are defined.
 func IsMultipleDatabasesDefined(a *api.DatabaseObserver) bool {
-	return a.Spec.Databases != nil && len(a.Spec.Databases) > 0
+	return len(a.Spec.Databases) > 0
 }
 
 // GetExporterEnvs function retrieves env from a or provides default
@@ -632,7 +604,7 @@ func GetExporterEnvs(a *api.DatabaseObserver) []corev1.EnvVar {
 	}
 
 	// CUSTOM_METRICS environment variable
-	if cms := a.Spec.Metrics.Configmap; cms != nil && len(cms) > 0 {
+	if cms := a.Spec.Metrics.Configmap; len(cms) > 0 {
 		metricsConfigList := make([]string, 0)
 		for _, cm := range cms {
 			metricsConfigList = append(metricsConfigList, DefaultExporterConfigMountRootPath+"/"+cm.Key)

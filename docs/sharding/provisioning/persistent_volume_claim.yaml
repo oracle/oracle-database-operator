@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+
+metadata:
+  # Name of the PersistentVolumeClaim (PVC)
+  name: pvc-gdd-deployment
+
+  # Namespace in which the PVC will be created
+  namespace: shns
+
+spec:
+  # Name of the StorageClass used for dynamic provisioning.
+  # This must match the StorageClass metadata.name.
+  storageClassName: fss-dyn-storage
+
+  # Access mode requested for the volume.
+  # ReadWriteMany (RWX) allows multiple Pods on multiple nodes
+  # to mount the same OCI File Storage volume simultaneously.
+  accessModes:
+    - ReadWriteMany
+
+  # Requested storage capacity.
+  # For OCI File Storage, this value is primarily used by Kubernetes
+  # for scheduling and resource management. OCI File Storage is elastic,
+  # so the file system is not limited to the requested size.
+  resources:
+    requests:
+      storage: 100Gi

@@ -84,6 +84,11 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_create.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample created
     ```
 
@@ -95,6 +100,11 @@ Instead of provisioning a new container database, you can bind to an existing Au
 
     ```sh
     kubectl delete adb/autonomouscontainerdatabase-sample
+    ```
+
+    Example output:
+
+    ```text
     autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample deleted
     ```
 
@@ -131,6 +141,11 @@ Instead of provisioning a new container database, you can bind to an existing Au
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_bind.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample created
     ```
 
@@ -162,6 +177,11 @@ You can change the display name of the database by modifying the value of the `d
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_change_displayname.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample configured
     ```
 
@@ -197,6 +217,11 @@ The following is a list of the values that you can set for `action`:
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample configured
     ```
 
@@ -228,6 +253,11 @@ Follow the steps to delete the resource and terminate the Autonomous Container D
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_delete_resource.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample configured
     ```
 
@@ -235,6 +265,11 @@ Follow the steps to delete the resource and terminate the Autonomous Container D
 
     ```sh
     kubectl delete acd/autonomouscontainerdatabase-sample
+    ```
+
+    Example output:
+
+    ```text
     autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample deleted
     ```
 

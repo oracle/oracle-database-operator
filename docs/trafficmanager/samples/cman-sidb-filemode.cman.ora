@@ -1,0 +1,29 @@
+######################################################################
+# Also see: docs/trafficmanager/samples/README.md
+# Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+# Canonical templates: config/samples/trafficmanager/
+######################################################################
+
+######################################################################
+# CMAN file-mode example. File mode copies this file as-is.
+######################################################################
+
+CMAN_cman-sidb.default.svc.cluster.local =
+(configuration=
+  (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
+  (parameter_list =
+    (connection_statistics=yes)
+    (log_directory=/u01/app/oracle/product/23ai/client_1/network/log)
+    (log_level=user)
+    (trace_directory=/u01/app/oracle/product/23ai/client_1/network/trace)
+    (trace_level=user)
+    (valid_node_checking_registration=on)
+    (registration_invited_nodes=*)
+  )
+  (rule_list=
+    (rule=
+       (src=*)(dst=*)(srv=*)(act=accept)
+       (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+    )
+  )
+)

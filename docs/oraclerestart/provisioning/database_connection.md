@@ -7,7 +7,12 @@ If you deployed the Oracle Restart Database with a NodePort service using the Or
 
 1. Get the Details of the deployment:
 ```sh
-$ kubectl get all -n orestart -o wide
+kubectl get all -n orestart -o wide
+```
+
+Example output:
+
+```text
 NAME          READY   STATUS    RESTARTS   AGE     IP            NODE         NOMINATED NODE   READINESS GATES
 pod/dbmc1-0   1/1     Running   0          5h46m   10.244.0.52   10.0.10.58   <none>           <none>
  
@@ -24,7 +29,11 @@ In this case, the port 1521 from the pod is mapped to port 30007 on the worker n
  
 ```sh
 bash-4.4$ sqlplus system/<Database Password>@//<Worker Node Public IP>:30007/PORCLCDB
- 
+```
+
+Example output:
+
+```text
 SQL*Plus: Release 23.0.0.0.0 - for Oracle Cloud and Engineered Systems on Sat Jul 19 04:02:48 2025
 Version 23.9.0.25.09
  
@@ -54,7 +63,12 @@ After the deployment is completed, you can make a database connection:
 
 1. Get the Details of the deployment:
 ```sh
-$ kubectl get all -n orestart -o wide
+kubectl get all -n orestart -o wide
+```
+
+Example output:
+
+```text
 NAME          READY   STATUS    RESTARTS   AGE   IP            NODE         NOMINATED NODE   READINESS GATES
 pod/dbmc1-0   1/1     Running   0          14m   10.244.0.41   10.0.10.58   <none>           <none>
 
@@ -71,7 +85,11 @@ In this case, you can make a remote database connection using the Load Balancer 
  
 ```sh
 bash-4.4$ sqlplus system/<Database Password>@//<Load Balancer Public IP XXX.XX.XX.XX >:1521/PORCLCDB
- 
+```
+
+Example output:
+
+```text
 SQL*Plus: Release 21.0.0.0.0 - Production on Tue Sep 2 04:57:56 2025
 Version 21.19.0.0.0
 

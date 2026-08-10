@@ -50,16 +50,69 @@ type DataguardBrokerSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	PrimaryDatabaseRef   string            `json:"primaryDatabaseRef"`
-	StandbyDatabaseRefs  []string          `json:"standbyDatabaseRefs"`
+	PrimaryDatabaseRef   string            `json:"primaryDatabaseRef,omitempty"`
+	StandbyDatabaseRefs  []string          `json:"standbyDatabaseRefs,omitempty"`
 	SetAsPrimaryDatabase string            `json:"setAsPrimaryDatabase,omitempty"`
 	LoadBalancer         bool              `json:"loadBalancer,omitempty"`
 	ServiceAnnotations   map[string]string `json:"serviceAnnotations,omitempty"`
 	// +kubebuilder:validation:Enum=MaxPerformance;MaxAvailability
-	ProtectionMode string            `json:"protectionMode"`
+	ProtectionMode string            `json:"protectionMode,omitempty"`
 	NodeSelector   map[string]string `json:"nodeSelector,omitempty"`
 
-	FastStartFailover bool `json:"fastStartFailover,omitempty"`
+	FastStartFailover bool                       `json:"fastStartFailover,omitempty"`
+	Execution         *DataguardExecutionSpec    `json:"execution,omitempty"`
+	Topology          *DataguardTopologySpec     `json:"topology,omitempty"`
+	Operations        *DataguardBrokerOperations `json:"operations,omitempty"`
+}
+
+// DataguardBrokerOperations contains tokenized one-time broker operations.
+type DataguardBrokerOperations struct {
+	Switchover     *DataguardBrokerSwitchoverOperation     `json:"switchover,omitempty"`
+	Failover       *DataguardBrokerFailoverOperation       `json:"failover,omitempty"`
+	ProtectionMode *DataguardBrokerProtectionModeOperation `json:"protectionMode,omitempty"`
+	RoleConversion *DataguardBrokerRoleConversionOperation `json:"roleConversion,omitempty"`
+}
+
+// DataguardBrokerRoleConversionOperation requests a one-shot standby role conversion.
+type DataguardBrokerRoleConversionOperation struct {
+	Target    string `json:"target,omitempty"`
+	Role      string `json:"role,omitempty"`
+	RequestID string `json:"requestId,omitempty"`
+}
+
+// DataguardBrokerSwitchoverOperation requests a one-time switchover.
+type DataguardBrokerSwitchoverOperation struct {
+	Target    string `json:"target,omitempty"`
+	RequestID string `json:"requestId,omitempty"`
+}
+
+// DataguardBrokerFailoverOperation requests a one-time failover.
+type DataguardBrokerFailoverOperation struct {
+	Target    string `json:"target,omitempty"`
+	RequestID string `json:"requestId,omitempty"`
+	Force     bool   `json:"force,omitempty"`
+}
+
+// DataguardBrokerProtectionModeOperation requests a one-time protection mode change.
+type DataguardBrokerProtectionModeOperation struct {
+	// +kubebuilder:validation:Enum=MaxPerformance;MaxAvailability
+	Mode      string `json:"mode,omitempty"`
+	RequestID string `json:"requestId,omitempty"`
+}
+
+// DataguardExecutionSpec defines broker-side runtime settings used when the
+// controller needs a dedicated execution pod for topology-native DG actions.
+type DataguardExecutionSpec struct {
+	// Image is the Oracle client/database image used for DG broker execution.
+	Image string `json:"image,omitempty"`
+	// ImagePullSecrets lists image pull secret names for the execution runtime.
+	ImagePullSecrets []string `json:"imagePullSecrets,omitempty"`
+	// WalletMountPath is where TCPS client wallet secrets are mounted in the runner pod.
+	WalletMountPath string `json:"walletMountPath,omitempty"`
+	// TNSAdminPath is the generated Oracle Net admin path used by the runner pod.
+	TNSAdminPath string `json:"tnsAdminPath,omitempty"`
+	// AuthWallet optionally enables explicit broker auth wallet bootstrap/rebuild workflow.
+	AuthWallet *DataguardAuthWalletSpec `json:"authWallet,omitempty"`
 }
 
 // DataguardBrokerStatus defines the observed state of DataguardBroker
@@ -75,8 +128,31 @@ type DataguardBrokerStatus struct {
 	ClusterConnectString  string `json:"clusterConnectString,omitempty"`
 	Status                string `json:"status,omitempty"`
 
-	FastStartFailover          string            `json:"fastStartFailover,omitempty"`
-	DatabasesInDataguardConfig map[string]string `json:"databasesInDataguardConfig,omitempty"`
+	FastStartFailover          string                           `json:"fastStartFailover,omitempty"`
+	DatabasesInDataguardConfig map[string]string                `json:"databasesInDataguardConfig,omitempty"`
+	ObservedTopologyHash       string                           `json:"observedTopologyHash,omitempty"`
+	ResolvedMembers            []DataguardResolvedMemberStatus  `json:"resolvedMembers,omitempty"`
+	AuthWallet                 *DataguardAuthWalletStatus       `json:"authWallet,omitempty"`
+	Operations                 *DataguardBrokerOperationsStatus `json:"operations,omitempty"`
+	Conditions                 []metav1.Condition               `json:"conditions,omitempty"`
+}
+
+// DataguardBrokerOperationsStatus records tokenized operation progress.
+type DataguardBrokerOperationsStatus struct {
+	Switchover     *DataguardBrokerOperationStatus `json:"switchover,omitempty"`
+	Failover       *DataguardBrokerOperationStatus `json:"failover,omitempty"`
+	ProtectionMode *DataguardBrokerOperationStatus `json:"protectionMode,omitempty"`
+	RoleConversion *DataguardBrokerOperationStatus `json:"roleConversion,omitempty"`
+}
+
+// DataguardBrokerOperationStatus records the last observed operation request.
+type DataguardBrokerOperationStatus struct {
+	ObservedRequestID string       `json:"observedRequestId,omitempty"`
+	Target            string       `json:"target,omitempty"`
+	Phase             string       `json:"phase,omitempty"`
+	Message           string       `json:"message,omitempty"`
+	StartedAt         *metav1.Time `json:"startedAt,omitempty"`
+	CompletedAt       *metav1.Time `json:"completedAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -84,10 +160,8 @@ type DataguardBrokerStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".status.primaryDatabase",name="Primary",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.standbyDatabases",name="Standbys",type="string"
-// +kubebuilder:printcolumn:JSONPath=".spec.protectionMode",name="Protection Mode",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.clusterConnectString",name="Cluster Connect Str",type="string",priority=1
-// +kubebuilder:printcolumn:JSONPath=".status.externalConnectString",name="Connect Str",type="string"
-// +kubebuilder:printcolumn:JSONPath=".spec.primaryDatabaseRef",name="Primary Database",type="string", priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.protectionMode",name="Protection Mode",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.primaryDatabaseRef",name="Primary Database",type="string", priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.fastStartFailover",name="FSFO", type="string"
 
@@ -105,8 +179,10 @@ type DataguardBroker struct {
 // Returns the current primary database in the dataguard configuration from the resource status/spec
 // //////////////////////////////////////////////////////////////////////////////////////////////////
 func (broker *DataguardBroker) GetCurrentPrimaryDatabase() string {
-	if broker.Status.PrimaryDatabase != "" {
-		return broker.Status.DatabasesInDataguardConfig[broker.Status.PrimaryDatabase]
+	if broker.Status.PrimaryDatabase != "" && len(broker.Status.DatabasesInDataguardConfig) > 0 {
+		if dbRef := broker.Status.DatabasesInDataguardConfig[broker.Status.PrimaryDatabase]; dbRef != "" {
+			return dbRef
+		}
 	}
 	return broker.Spec.PrimaryDatabaseRef
 }
@@ -137,12 +213,11 @@ func (broker *DataguardBroker) GetDatabasesInDataGuardConfiguration() []string {
 func (broker *DataguardBroker) GetStandbyDatabasesInDgConfig() []string {
 	var databases []string
 	if len(broker.Status.DatabasesInDataguardConfig) > 0 {
-		for _, value := range broker.Status.DatabasesInDataguardConfig {
-			if value != "" && value != broker.Status.PrimaryDatabase {
-				databases = append(databases, value)
+		for dbUniqueName, resourceName := range broker.Status.DatabasesInDataguardConfig {
+			if resourceName != "" && dbUniqueName != broker.Status.PrimaryDatabase {
+				databases = append(databases, resourceName)
 			}
 		}
-
 		return databases
 	}
 

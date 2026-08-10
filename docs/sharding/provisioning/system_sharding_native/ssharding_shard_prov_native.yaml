@@ -1,0 +1,335 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+---
+## API version of the ShardingDatabase Custom Resource
+apiVersion: database.oracle.com/v4
+
+## Resource type being created
+kind: ShardingDatabase
+
+## Metadata section to define the resource's name and namespace
+metadata:
+  ## Name of the ShardingDatabase instance
+  name: sdb-system
+
+  ## Kubernetes namespace to deploy into
+  namespace: shns
+
+## Specification of the ShardingDatabase resource.
+spec:
+
+  ## Optional database edition.
+  ## Defaults to Enterprise Edition if not specified.
+  ## Set to "free" to deploy Oracle AI Database 26ai Free.
+  #dbEdition: "free"
+  
+  ## Database container image used for Catalog and Shard database pods.
+  dbImage: container-registry.oracle.com/database/enterprise_ru:latest-26
+
+  ## Database container image pull secret
+  dbImagePullSecret: ocr-reg-cred
+
+  ## GSM container image used for Global Service Manager (GSM) pods.
+  gsmImage: container-registry.oracle.com/database/gsm_ru:latest-26
+
+  ## GSM container image pull secret
+  gsmImagePullSecret: ocr-reg-cred
+
+  ## StorageClass used to provision Persistent Volumes.
+  ## "oci-bv" is for OCI Block Volumes. Update this value for your Kubernetes environment.
+  storageClass: oci-bv
+
+  ## Sharding type.
+  ## Default: SYSTEM (System-Managed Sharding).
+  ## Valid values: SYSTEM (System-Managed Sharding), USER (User-Defined Sharding) and COMPOSITE (Composite Sharding).
+  shardingType: SYSTEM
+
+  ## Replication Type.
+  ## Default: DG (Data Guard).
+  ## Valid values: DG (Data Guard) and NATIVE (Raft Replication)
+  replicationType: NATIVE
+
+  ##### NOTE ######
+  ## Valid sharding type and replication type combinations:
+  ## SYSTEM + DG
+  ## USER + DG
+  ## COMPOSITE + DG
+  ## SYSTEM + NATIVE
+  ## COMPOSITE + NATIVE
+
+  ## Set to true to expose Catalog, Shard, and GSM services through external LoadBalancer services.
+  isExternalSvc: false
+
+  ## If true, delete Persistent Volume Claims (PVCs) when the ShardingDatabase resource is deleted.
+  isDeleteOraPvc: true
+
+  ## Set to true to create the Catalog and Shard databases from a Gold Image instead of creating new databases.
+  #isClone: true
+
+  ## Secret containing the encrypted database administrator password and RSA private key.
+  ## The password must be encrypted using the matching RSA public key (OAEP with SHA-256).
+  ## The controller decrypts the password during database provisioning.
+  dbSecret:
+    name: db-user-pass-pkutl
+    dbAdmin:
+      ## Secret key containing the encrypted database administrator password.
+      passwordKey: pwdfile.enc
+      ## Secret key containing the RSA private key used to decrypt the encrypted password.
+      privateKeyKey: key.pem
+
+    ## Optional notification configuration.
+    ## Configure these parameters to send notifications (for example, through OCI Notifications)
+    ## when a database operation completes.
+    ## nsConfigMap specifies the ConfigMap containing the OCI user credentials.
+    #nsConfigMap: onsconfigmap
+    ## nsSecret specifies the Secret containing the OCI user's private key.
+    #nsSecret: my-secret
+
+  ## Catalog Configuration.
+  catalog:
+  ## Name of the Catalog database
+  - name: catalog
+    ## Size of the disk storage allocated to the Catalog database pod.
+    storageSizeInGb: 50
+
+    ## Optional additional Persistent Volume Claims to mount into this pod.
+    ## mountPath specifies the mount location inside the container.
+    ## pvcName specifies the existing PersistentVolumeClaim to mount.
+    ## Useful for mounting shared storage into all pods.
+    ## For example, create an OCI File Storage Service (FSS)-based PVC
+    ## and mount it into all pods.    
+#    additionalPVCs:
+#      - mountPath: /data
+#        pvcName: oke-fsspvc    
+
+    ## Image pull policy for the database container image.
+    imagePullPolicy: Always
+
+    ## Catalog pod resource requests and limits.
+    ## CPU may be specified as whole or fractional cores.
+    ## Memory supports Kubernetes quantity suffixes (Gi, Mi, Ti, etc.).
+    resources:
+     requests:
+       cpu: "2"
+       memory: "16Gi"
+     limits:
+       cpu: "2"
+       memory: "16Gi"
+
+    ## Additional environment variables for the Catalog database.
+    ## Note: Oracle AI Database 26ai Free does not support
+    ## INIT_SGA_SIZE or INIT_PGA_SIZE.
+    envVars:
+      ## Initial SGA size (MB).
+      - name: "INIT_SGA_SIZE"
+        value: "8192"
+      ## Initial PGA size (MB).
+      - name: "INIT_PGA_SIZE"
+        value: "4096"
+      ## Number of catalog chunks.
+      ## Default: 120.
+      ## For Oracle AI Database 26ai Free, the default is 12 if not specified.      
+#      - name:  "CATALOG_CHUNKS"
+#        value: "120"
+
+    ## Optional node selector to schedule the Catalog pod on worker nodes
+    ## matching the specified node labels.
+#    nodeSelector:
+#      "name": "catalog_pool"
+
+    ## Example: Provision the Catalog database by cloning from a Database Gold Image.
+    ## Schedule the Catalog pod on worker nodes in the same availability domain
+    ## as the source OCI Block Volume. Specify the source volume OCID to clone from.
+    ## To clone across availability domains, specify the OCID of the source Block Volume Backup instead.
+#    nodeSelector:
+#      "failure-domain.beta.kubernetes.io/zone": "PHX-AD-3"
+#    pvMatchLabels:
+#      "failure-domain.beta.kubernetes.io/zone": "PHX-AD-3"
+#    pvAnnotations:
+#      volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1.phx.a......msuwn57ula
+
+  ## Global Service Manager (GSM) configuration.
+  gsmInfo:
+
+    ## Size of the disk storage allocated to the GSM pods.
+    storageSizeInGb: 50
+
+    ## Image pull policy for the GSM container image.
+    imagePullPolicy: IfNotPresent
+
+    ## GSM pod resource requests and limits.
+    resources:
+     requests:
+       cpu: "2"
+       memory: "4Gi"
+     limits:
+       cpu: "2"
+       memory: "4Gi"
+
+    ## GSM instances.  
+    gsm:
+
+     ## Primary GSM Instance.
+     - name: gsm1
+       region: primary
+
+       ## Optional additional Persistent Volume Claims to mount into this pod.
+       ## Use this for shared storage, for example an OCI File Storage Service (FSS)-based PVC.
+#       additionalPVCs:
+#         - mountPath: /data
+#           pvcName: oke-fsspvc
+
+       ## Optional node selector to schedule this pod only on worker nodes
+       ## matching the specified node label
+#       nodeSelector:
+#         "name": "gsm_pool"
+
+     ## Standby GSM Instance.
+     - name: gsm2
+       region: standby
+
+       ## Optional additional Persistent Volume Claims to mount into this pod.
+       ## Use this for shared storage, for example an OCI File Storage Service (FSS)-based PVC.
+#       additionalPVCs:
+#         - mountPath: /data
+#           pvcName: oke-fsspvc
+
+       ## Optional node selector to schedule this pod only on worker nodes
+       ## matching the specified node label
+#       nodeSelector:
+#         "name": "gsm_pool"
+  
+  ## Shard database configuration.
+  ## The shardInfo block applies only to System-Managed and Composite Sharding
+  ## The shard block applies only to User-Defined Sharding.
+  shardInfo:
+  - shardPreFixName: pshard
+
+    ## Number of shard databases to deploy.
+    ## For Oracle AI Database 26ai Free, the maximum supported value is 3.
+    shardNum: 3
+    storageSizeInGb: 50
+
+    ## Optional additional Persistent Volume Claims to mount into all the shard database pods.
+    ## Use this for shared storage, for example an OCI File Storage Service (FSS)-based PVC.
+#    additionalPVCs:
+#      - mountPath: /data
+#        pvcName: oke-fsspvc
+
+    ## Shard pod resource requests and limits.
+    ## CPU may be specified as whole or fractional cores
+    ## Memory supports Kubernetes quantity suffixes (Gi, Mi, Ti, etc.)
+    resources:
+     requests:
+       cpu: "2"
+       memory: "16Gi"
+     limits:
+       cpu: "2"
+       memory: "16Gi"
+
+    ## Additional environment variables for the Shard database.
+    ## Note: Oracle AI Database 26ai Free does not support
+    ## INIT_SGA_SIZE or INIT_PGA_SIZE.
+    envVars:
+      ## Initial SGA size (MB).
+      - name: "INIT_SGA_SIZE"
+        value: "8192"
+      ## Initial PGA size (MB).
+      - name: "INIT_PGA_SIZE"
+        value: "4096"        
+
+    ## Shard space configuration
+    ## Use this parameter along with shardGroupDetails in case of Composite Sharding
+#    shardSpaceDetails:
+#      name: css1
+
+    ## Shard group configuration.
+    shardGroupDetails:
+      name: pshg1
+      region: primary
+      ## "deployAs" is applicable only for Data Guard replication and is not supported for Native (Raft) replication.
+#      deployAs: primary
+      ## Composite sharding with NATIVE replication requires ru_mode
+#      ru_mode: READWRITE
+
+    ## Kubernetes worker nodes on which shard pods may be scheduled.
+    nodes:
+      - worker node 1
+      - worker node 2
+      - worker node 3
+    ## Optional node selector to schedule this pod only on worker nodes
+    ## matching the specified node label
+#    nodeSelector:
+#      "name": "shard_pool"
+
+  ## Shard database configuration for User-Defined Sharding.
+  ## The shard block applies only to User-Defined Sharding.
+  #shard:
+    ## Block for the pshard1.
+#    - name: pshard1
+#      storageSizeInGb: 50
+
+      ## Set to enable to delete this shard from the Oracle GDD topology.
+#      isDelete: disable
+
+      ## Shard pod resource requests and limits for pshard1
+#      resources:
+#        requests:
+#          cpu: "2"
+#          memory: "16Gi"
+#        limits:
+#          cpu: "2"
+#          memory: "16Gi"
+
+     ## Additional environment variables for the Shard database.
+     ## Note: Oracle AI Database 26ai Free does not support
+     ## INIT_SGA_SIZE or INIT_PGA_SIZE.          
+#      envVars:
+#        - name: "INIT_SGA_SIZE"
+#          value: "8192"
+#        - name: "INIT_PGA_SIZE"
+#          value: "4096"
+
+      ## Shardspace configuration for pshard1
+#      shardSpace: uss1
+#      shardRegion: primary
+#      deployAs: PRIMARY
+
+    ## Block for the pshard2
+#    - name: pshard2
+#      storageSizeInGb: 50
+
+      ## Set to enable to delete this shard from the Oracle GDD topology.
+#      isDelete: disable
+
+      ## Shard pod resource requests and limits for pshard2
+#      resources:
+#        requests:
+#          cpu: "2"
+#          memory: "16Gi"
+#        limits:
+#          cpu: "2"
+#          memory: "16Gi"
+
+     ## Additional environment variables for the Shard database.
+     ## Note: Oracle AI Database 26ai Free does not support
+     ## INIT_SGA_SIZE or INIT_PGA_SIZE.               
+#      envVars:
+#        - name: "INIT_SGA_SIZE"
+#          value: "8192"
+#        - name: "INIT_PGA_SIZE"
+#          value: "4096"
+
+      ## Shardspace configuration for pshard2          
+#      shardSpace: uss2
+#      shardRegion: primary
+#      deployAs: PRIMARY
+
+  ## Global database services to create.
+  gsmService:
+  - name: oltp_rw_svc
+    role: primary
+  - name: oltp_ro_svc
+    role: primary

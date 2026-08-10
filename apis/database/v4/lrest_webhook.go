@@ -45,33 +45,39 @@ import (
 
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var lrestlog = logf.Log.WithName("lrest-webhook")
 
+// SetupWebhookWithManager setup webhook
 func (r *LREST) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy[*LREST](mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrest,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=mlrest.kb.io,admissionReviewVersions={v4,v1beta1}
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrest,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=mlrest.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomDefaulter = &LREST{}
+// Update interface guards to use generics
+var _ admission.Validator[*LREST] = &LREST{}
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *LREST) Default(ctx context.Context, obj runtime.Object) error {
-	lrest := obj.(*LREST)
+// Update the interface guard to the specific type
+var _ admission.Defaulter[*LREST] = &LREST{}
+
+// Update the method signature
+// Change runtime.Object -> *LREST
+
+// Default set def values
+func (r *LREST) Default(ctx context.Context, obj *LREST) error {
+
+	lrest := obj
 	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
 		lrestlog.Info("Setting default values in LREST spec for : " + r.Name)
 	}
@@ -87,18 +93,14 @@ func (r *LREST) Default(ctx context.Context, obj runtime.Object) error {
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrest,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=vlrest.kb.io,admissionReviewVersions={v4,v1beta1}
+//+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrest,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=vlrest.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomValidator = &LREST{}
-
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	lrest := obj.(*LREST)
+// ValidateCreate implements admission.Validator[*LREST]
+func (r *LREST) ValidateCreate(ctx context.Context, obj *LREST) (admission.Warnings, error) {
+	lrest := obj
 	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
 		lrestlog.Info("ValidateCreate", "name", r.Name)
 	}
-
 	var allErrs field.ErrorList
 
 	if lrest.Spec.ServiceName == "" && lrest.Spec.DBServer != "" {
@@ -106,29 +108,38 @@ func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admissi
 			field.Required(field.NewPath("spec").Child("serviceName"), "Please specify LREST Service name"))
 	}
 
-	if reflect.ValueOf(lrest.Spec.LRESTTlsKey).IsZero() {
-		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("lrestTlsKey"), "Please specify LREST Tls key(secret)"))
-	}
+	/*
+		if reflect.ValueOf(lrest.Spec.LRESTTlsKey).IsZero() {
+			allErrs = append(allErrs,
+				field.Required(field.NewPath("spec").Child("lrestTlsKey"), "Please specify LREST Tls key(secret)"))
+		}
 
-	if reflect.ValueOf(lrest.Spec.LRESTTlsCrt).IsZero() {
-		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("lrestTlsCrt"), "Please specify LREST Tls Certificate(secret)"))
-	}
+		if reflect.ValueOf(lrest.Spec.LRESTTlsCrt).IsZero() {
+			allErrs = append(allErrs,
+				field.Required(field.NewPath("spec").Child("lrestTlsCrt"), "Please specify LREST Tls Certificate(secret)"))
+		}
+	*/
 
 	/*if r.Spec.SCANName == "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("scanName"), "Please specify SCAN Name for LREST"))
 	}*/
 
-	if (lrest.Spec.DBServer == "" && lrest.Spec.DBTnsurl == "") || (lrest.Spec.DBServer != "" && lrest.Spec.DBTnsurl != "") {
-		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("dbServer"), "Please specify Database Server Name/IP Address or tnsalias string"))
-	}
+	/*
+		if (lrest.Spec.DBServer == "" && lrest.Spec.DBTnsurl == "") || (lrest.Spec.DBServer != "" && lrest.Spec.DBTnsurl != "") {
+			allErrs = append(allErrs,
+				field.Required(field.NewPath("spec").Child("dbServer"), "Please specify Database Server Name/IP Address or tnsalias string"))
+		}
 
-	if lrest.Spec.DBTnsurl != "" && (lrest.Spec.DBServer != "" || lrest.Spec.DBPort != 0 || lrest.Spec.ServiceName != "") {
+		if lrest.Spec.DBTnsurl != "" && (lrest.Spec.DBServer != "" || lrest.Spec.DBPort != 0 || lrest.Spec.ServiceName != "") {
+			allErrs = append(allErrs,
+				field.Required(field.NewPath("spec").Child("dbServer"), "DBtnsurl is orthogonal to (DBServer,DBport,Services)"))
+		}
+	*/
+
+	if lrest.Spec.DBTnsurl == "" && (lrest.Spec.TNSalias == "" || lrest.Spec.TNSnames == "") {
 		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("dbServer"), "DBtnsurl is orthogonal to (DBServer,DBport,Services)"))
+			field.Required(field.NewPath("spec").Child("DBTnsurl"), "Use dbtnsurl or tnsnames.ora+ tnsalias"))
 	}
 
 	if lrest.Spec.DBPort == 0 && lrest.Spec.DBServer != "" {
@@ -159,29 +170,37 @@ func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admissi
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("lrestAdminPwd"), "Please specify password for the LREST Administrator to manage PDB lifecycle"))
 	}
+	if lrest.Spec.PwdProtection == "OPENSSL3" &&
+		(lrest.Spec.LRESTPubKey.Secret.SecretName == "" || lrest.Spec.LRESTPubKey.Secret.Key == "" ||
+			lrest.Spec.LRESTPriKey.Secret.SecretName == "" || lrest.Spec.LRESTPriKey.Secret.Key == "") {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("cdbPubKey/cdbPrvKey"), "Private/Public keys required"))
+	}
 	/*	if reflect.ValueOf(r.Spec.LRESTPwd).IsZero() {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("ordsPwd"), "Please specify password for user LREST_PUBLIC_USER"))
 	} */
-	if reflect.ValueOf(lrest.Spec.WebLrestServerUser).IsZero() {
-		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("webServerUser"), "Please specify the Web Server User having SQL Administrator role"))
-	}
-	if reflect.ValueOf(lrest.Spec.WebLrestServerPwd).IsZero() {
-		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("webServerPwd"), "Please specify password for the Web Server User having SQL Administrator role"))
-	}
+	/*
+		if reflect.ValueOf(lrest.Spec.WebLrestServerUser).IsZero() {
+			allErrs = append(allErrs,
+				field.Required(field.NewPath("spec").Child("webServerUser"), "Please specify the Web Server User having SQL Administrator role"))
+		}
+		if reflect.ValueOf(lrest.Spec.WebLrestServerPwd).IsZero() {
+			allErrs = append(allErrs,
+				field.Required(field.NewPath("spec").Child("webServerPwd"), "Please specify password for the Web Server User having SQL Administrator role"))
+		}
+	*/
+
 	if len(allErrs) == 0 {
 		return nil, nil
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "LREST"},
-		r.Name, allErrs)
+		obj.Name, allErrs)
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
-
+// ValidateUpdate implements admission.Validator[*LREST]
+func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj *LREST) (admission.Warnings, error) {
 	isLRESTMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
 	if isLRESTMarkedToBeDeleted {
 		return nil, nil
@@ -190,10 +209,8 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) 
 	var allErrs field.ErrorList
 
 	// Check for updation errors
-	oldLREST, ok := old.(*LREST)
-	if !ok {
-		return nil, nil
-	}
+	oldLREST := old
+
 	if Bit(oldLREST.Spec.Trclvl, TRCWEB) == true {
 		lrestlog.Info("validate update", "name", r.Name)
 	}
@@ -224,13 +241,12 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) 
 		r.Name, allErrs)
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *LREST) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	lrest := obj.(*LREST)
-	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
-		lrestlog.Info("validate delete", "name", r.Name)
+// ValidateDelete implements admission.Validator[*LREST]
+func (r *LREST) ValidateDelete(ctx context.Context, obj *LREST) (admission.Warnings, error) {
+	lrest := obj
+	if Bit(lrest.Spec.Trclvl, TRCWEB) {
+		//lrestlog.Info("validate delete", "name", obj.Name)
+		lrestlog.Info("validate update", "name", r.Name)
 	}
-
-	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil
 }

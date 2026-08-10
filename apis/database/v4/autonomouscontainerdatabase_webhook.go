@@ -38,16 +38,17 @@
 
 package v4
 
+// revive:disable:unused-parameter,exported,var-declaration
+// Legacy webhook signatures are preserved for interface and backward compatibility.
+
 import (
 	"context"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -55,27 +56,27 @@ import (
 var autonomouscontainerdatabaselog = logf.Log.WithName("autonomouscontainerdatabase-resource")
 
 func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy[*AutonomousContainerDatabase](mgr, r).
 		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomouscontainerdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomouscontainerdatabases,versions=v4,name=vautonomouscontainerdatabasev4.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomValidator = &AutonomousContainerDatabase{}
+// Update the interface guard to admission.CustomValidator with the generic type
+var _ admission.Validator[*AutonomousContainerDatabase] = &AutonomousContainerDatabase{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+// Ensure your Validate methods use the concrete pointer type
+func (r *AutonomousContainerDatabase) ValidateCreate(ctx context.Context, obj *AutonomousContainerDatabase) (admission.Warnings, error) {
 	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *AutonomousContainerDatabase) (admission.Warnings, error) {
 	var (
 		allErrs field.ErrorList
-		oldAcd  *AutonomousContainerDatabase = oldObj.(*AutonomousContainerDatabase)
-		newAcd  *AutonomousContainerDatabase = newObj.(*AutonomousContainerDatabase)
+		oldAcd  = oldObj
+		newAcd  = newObj
 	)
 
 	autonomouscontainerdatabaselog.Info("validate update", "name", newAcd.Name)
@@ -86,7 +87,7 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj
 	}
 
 	// cannot update when the old state is in intermediate state, except for the terminate operatrion
-	var copiedSpec *AutonomousContainerDatabaseSpec = newAcd.Spec.DeepCopy()
+	copiedSpec := newAcd.Spec.DeepCopy()
 	changed, err := RemoveUnchangedFields(oldAcd.Spec, copiedSpec)
 	if err != nil {
 		allErrs = append(allErrs,
@@ -107,6 +108,6 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateDelete(context.Context, runtime.Object) (admission.Warnings, error) {
+func (r *AutonomousContainerDatabase) ValidateDelete(context.Context, *AutonomousContainerDatabase) (admission.Warnings, error) {
 	return nil, nil
 }

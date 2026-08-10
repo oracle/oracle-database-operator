@@ -41,6 +41,11 @@ Use the file: [racdb_prov_rupatch_and_oneoff.yaml](./racdb_prov_rupatch_and_oneo
 
     # Check the logs of a particular pod. For example, to check status of pod "racnode1-0":    
     kubectl exec -it pod/racnode1-0 -n rac -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===================================
     ORACLE RAC DATABASE IS READY TO USE
     ===================================

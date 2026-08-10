@@ -19,7 +19,7 @@
   * Specify Comma-separated one-off patch IDs to be applied to the GI HOME using `gridOneOffIds`. For Example: `gridOneOffIds: "38336965,34436514"`
   * Specify Comma-separated one-off patch IDs to be applied to the RDBMS HOME using `dbOneOffIds`. For Example: `dbOneOffIds: "38336965,34436514"` 
 
-### In this example, 
+### In this example: 
   * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name you want. You can also push the image to your container repository.
   * When you are building the image yourself, update the image value in the `oraclerestart_prov_rupatch_oneoff_storageclass.yaml` file to point to the container image you have built. 
 The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
@@ -39,6 +39,11 @@ For example:
 * Deploy the `oraclerestart_prov_rupatch_oneoff_storageclass.yaml` file:
     ```sh
     kubectl apply -f oraclerestart_prov_rupatch_oneoff_storageclass.yaml
+    ```
+
+    Example output:
+
+    ```text
     oraclerestart.database.oracle.com/oraclerestart-sample created
     ```
 * Check the status of the deployment:
@@ -48,6 +53,11 @@ For example:
 
     # Check the logs of a particular pod. For example, to check status of pod "dbmc1-0":    
     kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===============================
     ORACLE DATABASE IS READY TO USE
     ===============================

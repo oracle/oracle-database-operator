@@ -35,6 +35,8 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
+
+//nolint:revive // v1alpha1 legacy API fields and names are preserved for backward compatibility.
 package v1alpha1
 
 import (
@@ -147,8 +149,8 @@ type DbStatus struct {
 }
 
 type DbWorkrequests struct {
-	OperationType   *string `json:"operationType,omitmpty"`
-	OperationId     *string `json:"operationId,omitemty"`
+	OperationType   *string `json:"operationType,omitempty"`
+	OperationId     *string `json:"operationId,omitempty"`
 	PercentComplete string  `json:"percentComplete,omitempty"`
 	TimeAccepted    string  `json:"timeAccepted,omitempty"`
 	TimeStarted     string  `json:"timeStarted,omitempty"`

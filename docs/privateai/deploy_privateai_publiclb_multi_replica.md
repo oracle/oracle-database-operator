@@ -2,7 +2,7 @@
 
 Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In this example, the deployment uses the YAML file based on `OCI OKE` cluster and there are multiple replica created during the provisioning using the parameter `replicas`.
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle PrivartAI Controller](./README.md#prerequisites-for-running-oracle-privartai-controller) before using Oracle PrivateAI Controller.
+**IMPORTANT:** Complete [Before You Begin](./README.md#before-you-begin) before using Oracle PrivateAI Controller.
 
 **NOTE:** Modify the file `pai_sample_publiclb_multi_replica.yaml` with the actual Reserved Public IP before deployment.
 
