@@ -50,7 +50,7 @@ BUILD_MANIFEST ?= false
 # Debug image support:
 #   DEBUG=false -> builds Dockerfile target "prod"
 #   DEBUG=true  -> builds Dockerfile target "debug" (expected to include dlv, debug flags, etc.)
-DEBUG ?= true
+DEBUG ?= false
 
 # Explicit Dockerfile target override (optional):
 #   TARGET=prod|debug
@@ -142,7 +142,7 @@ endif
 # Multi-arch manifest build toggle
 PUSH_ARGS =
 ifeq ($(BUILD_MANIFEST),true)
-BUILD_ARGS_PLATFORM := --platform=linux/arm64,linux/amd64 --jobs=2 --manifest
+BUILD_ARGS_PLATFORM := --platform=linux/arm64,linux/amd64 --manifest
 PUSH_ARGS := manifest
 else
 BUILD_ARGS_PLATFORM := --platform=linux/amd64 --tag
