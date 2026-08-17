@@ -59,11 +59,11 @@ export NS=my-namespace
 export PRIMARY_CERT_NAME=sidb-primary-tcps
 export PRIMARY_SECRET_NAME=sidb-primary-tcps-tls
 export PRIMARY_DNS=sidb-primary
-export PRIMARY_DNS_NAMES=sidb-primary,sidb-primary.shns,sidb-primary.shns.svc,sidb-primary.shns.svc.cluster.local
+export PRIMARY_DNS_NAMES=sidb-primary,sidb-primary.sidb,sidb-primary.sidb.svc,sidb-primary.sidb.svc.cluster.local
 export STANDBY_CERT_NAME=sidb-standby-tcps
 export STANDBY_SECRET_NAME=sidb-standby-tcps-tls
 export STANDBY_DNS=sidb-standby
-export STANDBY_DNS_NAMES=sidb-standby,sidb-standby.shns,sidb-standby.shns.svc,sidb-standby.shns.svc.cluster.local
+export STANDBY_DNS_NAMES=sidb-standby,sidb-standby.sidb,sidb-standby.sidb.svc,sidb-standby.sidb.svc.cluster.local
 ```
 
 The leaf issuance steps use the first hostname in `PRIMARY_DNS_NAMES` or `STANDBY_DNS_NAMES` as the certificate Common Name (CN) and add every hostname in the list as a Subject Alternative Name (SAN).
