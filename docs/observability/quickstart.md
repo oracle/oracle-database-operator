@@ -101,7 +101,34 @@ kubectl create secret -n testcase generic obsdb-secret \
   --from-literal=connection='dbhost:1521/FREE'
 ```
 
-## 4. Create the DatabaseObserver
+## 4. Create the Exporter Configuration
+
+Create a ConfigMap containing an
+exporter configuration that expands the credentials injected from the Kubernetes
+Secret:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obs-configmap
+  namespace: testcase
+data:
+  exporter-config.yaml: |
+    databases:
+      default:
+        username: ${DB_USERNAME}
+        password: ${DB_PASSWORD}
+        url: ${DB_CONNECT_STRING}
+```
+
+Save it as `obs-configmap.yaml`, then apply it:
+
+```bash
+kubectl apply -f obs-configmap.yaml
+```
+
+## 5. Create the DatabaseObserver
 
 Apply the following manifest. Update the namespace, secret name, or exporter
 image if your environment uses different values:
@@ -121,7 +148,14 @@ spec:
     dbConnectionString:
       secret: obsdb-secret
   deployment:
-    image: "container-registry.oracle.com/database/observability-exporter:2.2.2"
+    args:
+      - "--config.file=/config/exporter-config.yaml"
+    image: "container-registry.oracle.com/database/observability-exporter:2.4.2"
+  exporterConfig:
+    mountPath: "/config"
+    configMap:
+      key: exporter-config.yaml
+      name: obs-configmap
   serviceMonitor:
     labels:
       release: prometheus
@@ -142,7 +176,7 @@ kubectl get pods -n testcase -l app=obs-quick
 kubectl describe databaseobserver -n testcase obs-quick
 ```
 
-## 5. Connect to Grafana
+## 6. Connect to Grafana
 
 Start a local port-forward to Grafana:
 
@@ -247,6 +281,7 @@ Remove the observer resources:
 
 ```bash
 kubectl delete databaseobserver -n testcase obs-quick --ignore-not-found=true
+kubectl delete configmap -n testcase obs-configmap --ignore-not-found=true
 kubectl delete secret -n testcase obsdb-secret --ignore-not-found=true
 ```
 
