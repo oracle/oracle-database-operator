@@ -37,7 +37,6 @@ spec:
     env:
       TNS_ADMIN: /some/custom/path
       ORACLE_HOME: /some/custom/path
-      DB_ROLE: SYSDBA
     image: "container-registry.oracle.com/database/observability-exporter:2.0.2"
     args: [ "--log.level=info" ]
     commands: [ "/oracledb_exporter" ]
