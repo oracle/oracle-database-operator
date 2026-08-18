@@ -211,6 +211,47 @@ func (r *DatabaseObserverReconciler) initialize(ctx context.Context, a *api.Data
 	return nil
 }
 
+// validateDatabaseSecret verifies that a referenced Secret contains the effective key.
+func (r *DatabaseObserverReconciler) validateDatabaseSecret(a *api.DatabaseObserver, dbSecret api.DBSecret, defaultKey, missingSecretMessage string, secrets map[string]*corev1.Secret) error {
+	if dbSecret.SecretName == "" {
+		return nil
+	}
+
+	secret := secrets[dbSecret.SecretName]
+	if secret == nil {
+		secret = &corev1.Secret{}
+		resource := types.NamespacedName{Name: dbSecret.SecretName, Namespace: a.Namespace}
+		if e := r.Get(context.TODO(), resource, secret); e != nil {
+			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, missingSecretMessage)
+			return e
+		}
+		secrets[dbSecret.SecretName] = secret
+	}
+
+	key := dbSecret.Key
+	if key == "" {
+		key = defaultKey
+	}
+	if _, found := secret.Data[key]; !found {
+		message := fmt.Sprintf("Secret %q does not contain required key %q", dbSecret.SecretName, key)
+		r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, message)
+		return errors.New(message)
+	}
+
+	return nil
+}
+
+// validateDatabaseConfig validates the Secret references used by one database configuration.
+func (r *DatabaseObserverReconciler) validateDatabaseConfig(a *api.DatabaseObserver, dbUser, dbPassword, dbConnectionString api.DBSecret, connectionStringDefaultKey string, secrets map[string]*corev1.Secret) error {
+	if e := r.validateDatabaseSecret(a, dbConnectionString, connectionStringDefaultKey, constants.EventMessageSpecErrorDBConnectionStringSecretMissing, secrets); e != nil {
+		return e
+	}
+	if e := r.validateDatabaseSecret(a, dbUser, constants.DefaultDbUserKey, constants.EventMessageSpecErrorDBPUserSecretMissing, secrets); e != nil {
+		return e
+	}
+	return r.validateDatabaseSecret(a, dbPassword, constants.DefaultDBPasswordKey, constants.EventMessageSpecErrorDBPwdSecretMissing, secrets)
+}
+
 // validateSpecs method checks the values and secrets passed in the spec
 func (r *DatabaseObserverReconciler) validateSpecs(a *api.DatabaseObserver) error {
 
@@ -240,41 +281,15 @@ func (r *DatabaseObserverReconciler) validateSpecs(a *api.DatabaseObserver) erro
 		}
 	}
 
-	checked := map[string]bool{}
-	// Does DB Connection String Secret Name actually exist
-	if connectionString := a.Spec.Database.DBConnectionString.SecretName; connectionString != "" {
-		secret := &corev1.Secret{}
-		resource := types.NamespacedName{Name: connectionString, Namespace: a.Namespace}
-
-		if e := r.Get(context.TODO(), resource, secret); e != nil {
-			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBConnectionStringSecretMissing)
-			return e
+	secrets := map[string]*corev1.Secret{}
+	if constants.IsMultipleDatabasesDefined(a) {
+		for databaseName, database := range a.Spec.Databases {
+			if e := r.validateDatabaseConfig(a, database.DBUser, database.DBPassword, database.DBConnectionString, databaseName+constants.DefaultEnvConnectionStringSuffix, secrets); e != nil {
+				return e
+			}
 		}
-		checked[connectionString] = true
-	}
-
-	// Does DB User String Secret Name actually exist
-	if usernameString := a.Spec.Database.DBUser.SecretName; usernameString != "" && !checked[usernameString] {
-		secret := &corev1.Secret{}
-		resource := types.NamespacedName{Name: usernameString, Namespace: a.Namespace}
-
-		if e := r.Get(context.TODO(), resource, secret); e != nil {
-			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPUserSecretMissing)
-			return e
-		}
-		checked[usernameString] = true
-	}
-
-	// Does DB Password String Secret Name actually exist
-	if passwordString := a.Spec.Database.DBPassword.SecretName; passwordString != "" && !checked[passwordString] {
-		secret := &corev1.Secret{}
-		resource := types.NamespacedName{Name: passwordString, Namespace: a.Namespace}
-
-		if e := r.Get(context.TODO(), resource, secret); e != nil {
-			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPwdSecretMissing)
-			return e
-		}
-		checked[passwordString] = true
+	} else if e := r.validateDatabaseConfig(a, a.Spec.Database.DBUser, a.Spec.Database.DBPassword, a.Spec.Database.DBConnectionString, constants.DefaultDBConnectionStringKey, secrets); e != nil {
+		return e
 	}
 
 	// Does DBWallet actually exist, if provided
