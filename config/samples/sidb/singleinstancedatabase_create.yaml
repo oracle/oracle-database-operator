@@ -28,6 +28,10 @@ spec:
       tde:
         secretName: tde-wallet-secret
         secretKey: tde_wallet_pwd
+    ## Optional TCPS settings.
+    #  tcps:
+    #    enabled: true
+    #    tlsSecret: sidb-primary-tcps-tls
 
   ## DB character set
   charset: AL32UTF8
@@ -37,11 +41,6 @@ spec:
 
   ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
   archiveLog: true
-
-  ## Optional TCPS settings.
-  #  tcps:
-  #    enabled: true
-  #    tlsSecret: sidb-primary-tcps-tls
 
   ## Optional True Cache blob preparation for a primary database.
   ## generateBlob ensures the in-pod blob file exists.

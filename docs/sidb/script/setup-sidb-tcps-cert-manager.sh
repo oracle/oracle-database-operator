@@ -90,7 +90,7 @@ CURRENT_CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
 
 export PRIMARY_CTX="${PRIMARY_CTX:-${CURRENT_CONTEXT}}"
 export STANDBY_CTX="${STANDBY_CTX:-${PRIMARY_CTX}}"
-export NS="${NS:-shns}"
+export NS="${NS:-sidb}"
 
 export ROOT_CERT_NAME="${ROOT_CERT_NAME:-tcps-root-ca}"
 export ROOT_SECRET_NAME="${ROOT_SECRET_NAME:-tcps-root-ca-secret}"
