@@ -1,40 +1,110 @@
-# Example of provisioning Oracle Sharded Database along with DB Events set at Database Level
+# Example of provisioning Oracle Sharded Database with DB Events set at the Database Level
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
+**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-This example sets a Database Event at the Database Level for Catalog and Shard Databases. 
+This example provisions an Oracle Sharded Database topology and sets database events at the database level for the catalog and shard databases.
 
-The sharded database in this example is deployed with System-Managed Sharding type. In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database when the Oracle Sharding topology with System-Managed Sharding is deployed using Oracle Sharding controller. 
+The Oracle GDD in this example is deployed using System-Managed Sharding. In this use case, DBCA automatically creates the shard and catalog databases during provisioning.
 
-**NOTE:** In this use case, because DBCA creates the database automatically during the deployment, the time required to create the database is greater than the time it takes when the database is created by cloning from a Database Gold Image.
+**NOTE:** Because DBCA creates the databases during deployment, provisioning takes longer than when the databases are cloned from a Database Gold Image.
 
-This example uses `sharding_provisioning_with_db_events.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
+This example uses `sharding_provisioning_with_db_events.yaml` to provision an Oracle Database sharding topology using Oracle Sharding Controller with:
 
-* Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
-* One Catalog Pod: `catalog`
+* Primary GSM pod: `gsm1`
+* Standby GSM pod: `gsm2`
+* Two shard database pods (`shardNum: 2`)
+* One catalog database pod: `catalog`
+* `shardingType: SYSTEM` (System-Managed Sharding)
+* Replication type: Data Guard (replicationType: DG)
 * Namespace: `shns`
-* Database Event: `10798 trace name context forever, level 7` set along with `GWM_TRACE level 263`
+* Database Event: `10798 trace name context forever, level 7`, along with `GWM_TRACE level 263`
 
+This example uses pre-built Oracle Database and Global Data Services container images available from [Oracle Container Registry](https://container-registry.oracle.com/).
 
-In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
-  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the namespace `shns`. Please refer to [this page](./../container_reg_secret.md) for the details. 
-  * If you plan to build and use the images, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `sharding_provisioning_with_db_events.yaml`.
-  * To understand the Pre-requisite of Database and Global Data Services Container images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
+* To pull the images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the `shns` namespace. For details, see [Creating an image pull secret](../container_reg_secret.md).
+* If you plan to build and use the images, update the `dbImage` and `gsmImage` values to reference the images built in your environment.
+* For prerequisites for Oracle Database and Global Data Services container images, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images).
+* If you want to use the [Oracle AI Database 26ai Free](https://www.oracle.com/database/free/get-started/) image for the database and GSM, add the additional parameter `dbEdition: "free"` to the YAML manifest.
   
+Use the manifest: [sharding_provisioning_with_db_events.yaml](./sharding_provisioning_with_db_events.yaml) for this use case.
 
-Use the file: [sharding_provisioning_with_db_events.yaml](./sharding_provisioning_with_db_events.yaml) for this use case as below:
+1. Deploy the `sharding_provisioning_with_db_events.yaml` manifest:
 
-1. Deploy the `sharding_provisioning_with_db_events.yaml` file:
     ```sh
     kubectl apply -f sharding_provisioning_with_db_events.yaml
     ```
-2. Check the status of the deployment:
-    ```sh
-    # Check the status of the Kubernetes Pods:
-    kubectl get all -n shns
 
-    # Check the logs of a particular pod. For example, to check status of pod "shard1-0":
-    kubectl logs -f pod/shard1-0 -n shns
+2. Check the status of the deployment:
+
+    ```sh
+    kubectl get all -n shns
     ```
-3. You can confirm the Database event and the tracing enabled in the RDBMS alert log file of the Database.
+
+3. Monitor the database creation logs for the catalog and shard database pods. For example:
+
+    ```sh
+    # Catalog database pod
+    kubectl logs -f pod/catalog-0 -n shns
+
+    # Shard database pod
+    kubectl logs -f pod/pshard1-0 -n shns
+    ```
+
+    Database creation can take approximately 20 minutes. For the catalog database pod and each shard database pod, wait for the following message, which indicates that the database is ready to use:
+
+    ```text
+    #########################
+    DATABASE IS READY TO USE!
+    #########################
+    ```
+
+    Repeat this check for each shard database pod in the deployment.
+
+4. After the databases are ready, monitor the sharding setup log for the catalog database pod:
+
+    ```sh
+    kubectl exec pod/catalog-0 -n shns -- \
+      /bin/bash -c "tail -f /var/tmp/gdd/oracle_sharding_setup.log"
+    ```
+
+    Wait for the following message, which indicates that the catalog setup is complete:
+
+    ```text
+    ==============================================
+         GSM Catalog Setup Completed
+    ==============================================
+    ```
+
+    Monitor the sharding setup log for each shard database pod. For example, for `pshard1-0`:
+
+    ```sh
+    kubectl exec pod/pshard1-0 -n shns -- \
+      /bin/bash -c "tail -f /var/tmp/gdd/oracle_sharding_setup.log"
+    ```
+
+    Wait for the following message, which indicates that the shard setup is complete:
+
+    ```text
+    ==============================================
+         GSM Shard Setup Completed
+    ==============================================
+    ```
+
+    Repeat this check for each shard database pod in the deployment.
+
+5. Monitor the sharding setup log for each GSM pod. For example, for the primary GSM pod `gsm1-0`:
+
+    ```sh
+    kubectl exec pod/gsm1-0 -n shns -- \
+      /bin/bash -c "tail -f /var/tmp/gdd/oracle_sharding_setup.log"
+    ```
+
+    For each GSM pod, wait for the following message, which indicates that the GSM setup is complete:
+
+    ```text
+    ==============================================
+         GSM Setup Completed
+    ==============================================
+    ```
+
+6. You can confirm that the database event is set and tracing is enabled by checking the RDBMS alert log file for the database.

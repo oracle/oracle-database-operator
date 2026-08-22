@@ -687,7 +687,22 @@ DGB=standbydatabase-sample-dg
 
 If your environment uses different names, update the variables and manifest values before applying resources.
 
-For the standby SIDB, enable Data Guard prerequisites:
+For the primary SIDB, enable Data Guard prerequisites. When the standby is reached through `spec.primarySource.connectString`, also include `standbySources` in the primary YAML so the operator has the standby endpoint needed for generated Data Guard aliases. `standbySources` is not required when the relationship uses an in-cluster `spec.primarySource.databaseRef` CRD reference.
+
+```yaml
+dataguard:
+  prereqs:
+    enabled: true
+  standbySources:
+    - dbUniqueName: STBYDB1
+      host: standby-1.example.com
+      tcpPort: 1521
+      tcpsEnabled: false
+```
+
+Each `standbySources` entry identifies one standby `DB_UNIQUE_NAME`, a host or reachable service address, and the listener port. Multiple entries may be added when the primary serves more than one standby. Use the TCP listener port (normally `1521`) or the TCPS listener port (normally `2484`) and set `tcpsEnabled` consistently with the endpoint. The current `standbySources` API does not have separate SID or service-name fields; those details remain part of the listener/Data Guard Broker topology configuration. These entries are supported on the primary SIDB (`spec.createAs: primary`) and are not configured on the standby SIDB.
+
+For the standby SIDB, enable Data Guard prerequisites as well when the standby workflow requires local prerequisite configuration:
 
 ```yaml
 dataguard:
@@ -2061,10 +2076,24 @@ Key fields:
 
 ### Static Persistence
 
-When binding to a pre-existing volume, use fields such as:
+Use `spec.persistence.oradata.pvcName` when the datafiles PVC already exists, including a PVC pre-created by an administrator or materialized by a backup/restore workflow. The operator mounts the referenced claim and does not create, adopt, resize, delete, or add an owner reference to that PVC. The claim must exist in the SIDB namespace before the SIDB is reconciled.
 
-- `spec.persistence.datafilesVolumeName`
-- storage-class or volume choices appropriate for your environment
+Example:
+
+```yaml
+spec:
+  persistence:
+    oradata:
+      pvcName: sidb-demo
+```
+
+When `pvcName` is set, do not set `size` or `storageClass` in `spec.persistence.oradata`. These fields describe an operator-managed PVC and are mutually exclusive with a user-managed claim. The webhook rejects mixed configurations.
+
+For backup and restore workflows, create or materialize the datafiles PVC before creating the SIDB, then set `spec.persistence.oradata.pvcName` to that claim name in the generated SIDB spec. This tells the operator that the data volume is pre-provisioned and must be mounted as-is. Do not generate `size` and `storageClass` instead, because that selects the managed-PVC path; if a same-name PVC already exists without the SIDB owner reference, reconciliation reports a `Managed PVC conflict` rather than adopting it.
+
+The referenced PVC should have the required capacity, storage class, access mode, and binding state for the restore or database workload. The SIDB and PVC must be in the same namespace.
+
+`spec.persistence.datafilesVolumeName` is deprecated for this purpose; use `spec.persistence.oradata.pvcName` for a pre-provisioned datafiles claim.
 
 ### Storage Expansion
 

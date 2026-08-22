@@ -113,22 +113,15 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 
 ### Choose Deployment Scope
 
-The operator supports two deployment models. In both models, apply the base RBAC manifest first so the operator namespace, service account, and packaged manager roles exist before the controller starts. Choose how much namespace access the operator should have:
+The default installation is namespace-scoped. The operator runs in `oracle-database-operator-system` and watches that namespace by default. It does not watch other namespaces unless they are added to `WATCH_NAMESPACE` and the service account is granted access there.
 
-- `Cluster-scoped`: the operator watches all namespaces in the cluster. Use this when the operator should manage database resources across the cluster.
-- `Namespace-scoped`: the operator watches only selected namespaces. Use this when you want tighter access boundaries.
+The operator also supports an optional cluster-scoped mode. Apply the base RBAC manifest first so the operator namespace, service account, and packaged manager roles exist before the controller starts.
 
-#### Cluster-scoped deployment
+If you are planning to install the operator through an OKE add-on, OperatorHub.io, or Red Hat OpenShift, use the corresponding instructions under [Install The Operator](#install-the-operator): [Install as an OKE Add-on](#install-as-an-oke-add-on), [Install from OperatorHub.io](#install-from-operatorhubio), or [Install on Red Hat OpenShift](#install-on-red-hat-openshift). Those installation channels manage the deployment manifests and lifecycle, so do not apply the repository YAML scope procedures in addition to the selected platform installation. If you are deploying with repository YAML files, skip to [Default namespace-scoped deployment](#default-namespace-scoped-deployment).
 
-Grant cluster-wide access by binding the operator service account to the packaged manager `ClusterRole`:
+#### Default namespace-scoped deployment
 
-```sh
-kubectl apply -f rbac/cluster-role-binding.yaml
-```
-
-#### Namespace-scoped deployment
-
-For namespace-scoped deployment, generate the operator manifests from a single namespace list. The generated system manifest sets `WATCH_NAMESPACE`, and the generated RBAC manifest adds one manager `RoleBinding` for each watched namespace.
+For a namespace-scoped deployment, generate the operator manifests from a comma-separated namespace list. The generated system manifest sets `WATCH_NAMESPACE`, and the generated RBAC manifest adds one manager `RoleBinding` for each watched namespace.
 
 Example:
 
@@ -152,17 +145,130 @@ The generated deployment contains the same namespace list:
   value: "oracle-database-operator-system,shns"
 ```
 
-Before applying the operator system manifest, verify that the service account can list resources in each watched namespace. For example:
+Verify authorization one namespace at a time. The `-n`/`--namespace` option accepts only one namespace; do not pass the comma-separated `WATCH_NAMESPACE` value to it:
+
+```sh
+for namespace in oracle-database-operator-system shns; do
+  echo "Checking ${namespace}"
+  kubectl auth can-i list lrpdbs.database.oracle.com \
+    --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
+    -n "${namespace}"
+done
+```
+
+#### Updating an existing namespace-scoped installation
+
+Do not update only `WATCH_NAMESPACE`. Each namespace in the watch list must also have a manager `RoleBinding` for the existing operator ServiceAccount. The ServiceAccount itself does not change.
+
+For the standard installation, use these values:
+
+```sh
+OPERATOR_NS=oracle-database-operator-system
+SERVICE_ACCOUNT=oracle-database-operator-controller-manager
+MANAGER_ROLE=oracle-database-operator-manager-role
+```
+
+To add namespaces, first create or update the RoleBinding in every new namespace:
+
+```sh
+for namespace in shns db-workloads; do
+  kubectl create rolebinding oracle-database-operator-manager-rolebinding \
+    --clusterrole="${MANAGER_ROLE}" \
+    --serviceaccount="${OPERATOR_NS}:${SERVICE_ACCOUNT}" \
+    --namespace="${namespace}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
+```
+
+Verify access before changing the Deployment. Check each namespace separately; `kubectl auth can-i -n` does not accept a comma-separated namespace list:
+
+```sh
+for namespace in shns db-workloads; do
+  kubectl auth can-i list singleinstancedatabases.database.oracle.com \
+    --as="system:serviceaccount:${OPERATOR_NS}:${SERVICE_ACCOUNT}" \
+    --namespace="${namespace}"
+done
+```
+
+Then set the complete watch list. This replaces the previous value and triggers a rollout:
+
+```sh
+kubectl set env deployment/oracle-database-operator-controller-manager \
+  -n "${OPERATOR_NS}" \
+  WATCH_NAMESPACE="${OPERATOR_NS},shns,db-workloads"
+
+kubectl rollout status deployment/oracle-database-operator-controller-manager \
+  -n "${OPERATOR_NS}" --timeout=300s
+```
+
+To remove a namespace, first update `WATCH_NAMESPACE` without it and wait for the rollout. Then remove its obsolete RoleBinding:
+
+```sh
+kubectl set env deployment/oracle-database-operator-controller-manager \
+  -n "${OPERATOR_NS}" \
+  WATCH_NAMESPACE="${OPERATOR_NS},shns"
+
+kubectl rollout status deployment/oracle-database-operator-controller-manager \
+  -n "${OPERATOR_NS}" --timeout=300s
+
+kubectl delete rolebinding oracle-database-operator-manager-rolebinding \
+  -n db-workloads --ignore-not-found=true
+```
+
+For a fresh installation, continue using `scripts/generate-namespace-install.sh`; it generates the Deployment value and namespace RoleBindings together. For an existing installation, use the in-place procedure above instead of applying a full generated system manifest from a different operator version.
+
+Before applying or changing the operator configuration, verify that the ServiceAccount can list resources in each watched namespace. For example:
 
 ```sh
 kubectl auth can-i list lrpdbs.database.oracle.com \
   --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
-  -n pdbnamespace
+  -n <watched-namespace>
+```
+
+#### Cluster-scoped deployment
+
+To switch an existing operator from namespace scope to cluster scope, first complete the [Default namespace-scoped deployment](#default-namespace-scoped-deployment) section, including its RBAC, Deployment, and permission checks. After the namespace-scoped installation is healthy, follow the steps below to add the cluster binding and unset `WATCH_NAMESPACE`.
+
+
+Namespace-scoped deployment is preferred because it follows least-privilege practice and limits the operator's access to selected Kubernetes namespaces. Cluster-scoped deployment grants the operator wider access across the cluster and should be used only when your operational requirements require it. If cluster scope is required for your environment, follow the steps below.
+
+The base installation already creates the manager `ClusterRole`, the operator ServiceAccount, and a namespace-scoped manager `RoleBinding`. For an existing installation, do not recreate the ServiceAccount or replace the manager `ClusterRole`. Add a `ClusterRoleBinding` for the existing ServiceAccount, then remove `WATCH_NAMESPACE`. Keep the leader-election `RoleBinding` in `oracle-database-operator-system`.
+
+Apply the cluster binding before changing the Deployment:
+
+```sh
+kubectl apply -f rbac/cluster-role-binding.yaml
+
+kubectl set env deployment/oracle-database-operator-controller-manager \
+  -n oracle-database-operator-system \
+  WATCH_NAMESPACE-
+
+kubectl rollout status deployment/oracle-database-operator-controller-manager \
+  -n oracle-database-operator-system \
+  --timeout=300s
+```
+
+The existing namespace-scoped manager `RoleBinding` may remain, but it is redundant after the `ClusterRoleBinding` is active. For a fresh installation or a full version upgrade, use the matching cluster-scoped manifest generated from that exact operator version; do not apply a cluster overlay from a different version to an existing Deployment.
+
+Verify that it can manage resources outside its installation namespace:
+
+```sh
+kubectl auth can-i list singleinstancedatabases.database.oracle.com \
+  --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
+  -n default
+
+kubectl get pods -n oracle-database-operator-system
+
+kubectl logs -n oracle-database-operator-system \
+  deployment/oracle-database-operator-controller-manager -c manager \
+  | grep 'CLUSTER SCOPED'
 ```
 
 ### Optional Cluster-Scoped RBAC
 
-Namespace-scoped deployment controls which namespaces the operator watches and where namespace `RoleBinding` objects are created. It does not grant access to cluster-scoped Kubernetes resources such as `PersistentVolume`, `StorageClass`, or `Node`.
+Namespace-scoped deployment controls which namespaces the operator watches and where namespace `RoleBinding` objects are created. A namespace `RoleBinding` does not grant access to cluster-scoped Kubernetes resources such as `PersistentVolume`, `StorageClass`, or `Node`. Cluster scope grants the permissions already present in the manager `ClusterRole` across the cluster.
+
+In the packaged manager role, `namespaces`, `persistentvolumes`, and `storageclasses` are already included. `nodes` is not included by default and requires the optional NodePort RBAC when a selected feature needs node access.
 
 Apply the following optional RBAC manifests only when the selected controller feature requires them:
 
@@ -183,31 +289,33 @@ These optional manifests are cluster-scoped. Review them before applying, and av
 
 ## Quick Start
 
-Before using this quick start, complete the [prerequisites](#prerequisites): install [cert-manager](#install-cert-manager), choose a [deployment scope](#choose-deployment-scope), and apply the required RBAC. For namespace-scoped deployment, use `scripts/generate-namespace-install.sh` so RBAC and `WATCH_NAMESPACE` are generated from the same namespace list.
+Before using this quick start, complete the [prerequisites](#prerequisites):
 
-1. Verify the operator service account permissions in each watched namespace:
+- Install [cert-manager](#install-cert-manager), which provides the webhook TLS certificates.
+- Use the default namespace-scoped deployment, or explicitly choose [cluster scope](#cluster-scoped-deployment).
+- Apply the required RBAC before starting the operator.
+- For namespace-scoped deployment, use `scripts/generate-namespace-install.sh` so the RBAC and `WATCH_NAMESPACE` values are generated from the same namespace list.
+- Apply `oracle-database-operator-system.yaml` after RBAC to create the CRDs, webhooks, services, certificates, network policy, and operator Deployment.
 
-   ```sh
-   kubectl auth can-i list lrpdbs.database.oracle.com \
-     --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
-     -n <watched-namespace>
-   ```
-
-2. Apply the operator system manifest:
+1. Verify the operator ServiceAccount permissions in each watched namespace. The `-n`/`--namespace` option accepts one namespace only, so run the check separately for every namespace:
 
    ```sh
-   kubectl apply -f oracle-database-operator-system.yaml
+   for namespace in oracle-database-operator-system <additional-watched-namespace>; do
+     echo "Checking ${namespace}"
+     kubectl auth can-i list lrpdbs.database.oracle.com \
+       --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
+       -n "${namespace}"
+   done
    ```
 
-3. Verify the operator pods are healthy:
+2. Verify the operator pods are healthy:
 
    ```sh
    kubectl get pods -n oracle-database-operator-system
    ```
 
-4. Apply the custom resource for the controller you want to use.
+3. [Apply a Controller Resource](#apply-a-controller-resource) in a namespace watched by the operator.
 
-If you want a more detailed installation walkthrough, see [docs/installation/OPERATOR_INSTALLATION_README.md](./docs/installation/OPERATOR_INSTALLATION_README.md).
 
 ### Apply a Controller Resource
 
@@ -231,24 +339,9 @@ The Oracle Database Operator can be installed in several ways, depending on your
 
 ### Install from YAML Manifests
 
-Use the YAML manifests when you want a direct Kubernetes installation from this repository or from the pre-built manifests published in the Oracle Database Operator GitHub repository.
+If you want to deploy the operator with YAML manifests from this repository, first review the [Choose Deployment Scope](#choose-deployment-scope) section. Namespace scope is the default and recommended option: it limits the operator to the namespaces listed in <code>WATCH_NAMESPACE</code>, and generated RBAC grants access only in those namespaces. Cluster scope grants the manager <code>ClusterRole</code> across the cluster and should be used only when that broader access is required.
 
-For new installations from this checkout, apply RBAC first and then apply the operator system manifest:
-
-```sh
-kubectl apply -f oracle-database-operator-rbac.yaml
-kubectl apply -f oracle-database-operator-system.yaml
-```
-
-For namespace-scoped deployment, generate the install manifests first so `WATCH_NAMESPACE` and namespace RoleBindings stay aligned:
-
-```sh
-scripts/generate-namespace-install.sh oracle-database-operator-system,shns
-kubectl apply -f dist/install/oracle-database-operator-rbac.yaml
-kubectl apply -f dist/install/oracle-database-operator-system.yaml
-```
-
-The combined [`oracle-database-operator.yaml`](./oracle-database-operator.yaml) is still generated for compatibility. For new installations, prefer applying `oracle-database-operator-rbac.yaml` first and `oracle-database-operator-system.yaml` second.
+The combined [`oracle-database-operator.yaml`](./oracle-database-operator.yaml) remains available for compatibility. For new installations, follow the [Choose Deployment Scope](#choose-deployment-scope) instructions and use manifests generated for the same operator version.
 
 #### Optional UID pinning for non-OpenShift clusters
 
@@ -303,6 +396,13 @@ For the partner-validated listing, see [Oracle Database Operator on Red Hat Ecos
 
 After installation, continue to [Verify Installation](#verify-installation). For OKE add-on, OperatorHub, or OpenShift catalog installations, also review any status and lifecycle checks recommended by that installation channel.
 
+### Build and Deploy DB Operator (Optional)
+
+We highly recommend using the prebuilt Oracle Database Operator container images published in Oracle Container Registry (OCR). These images are versioned, validated, and ready for deployment.
+
+If your organization requires building the operator image manually in your own environment, follow the detailed [Oracle Database Operator Manual Build and Deployment Guide](./docs/installation/OPERATOR_INSTALLATION_README.md), which covers the build prerequisites, image build and tagging steps, registry handling, and deployment configuration.
+
+
 ## Verify Installation
 
 Check that the operator pods are running:
@@ -320,7 +420,41 @@ oracle-database-operator-controller-manager-78666fdddb-5k6n4         1/1     Run
 oracle-database-operator-controller-manager-78666fdddb-t6bzb         1/1     Running   0          11d
 ```
 
-For more details, see [docs/installation/OPERATOR_INSTALLATION_README.md](./docs/installation/OPERATOR_INSTALLATION_README.md).
+
+For a complete installation check, run the following commands:
+
+```sh
+# Confirm the Deployment rollout
+kubectl rollout status deployment/oracle-database-operator-controller-manager \
+  -n oracle-database-operator-system --timeout=300s
+
+# Check replica readiness and pod placement
+kubectl get deployment oracle-database-operator-controller-manager \
+  -n oracle-database-operator-system
+kubectl get pods -n oracle-database-operator-system -o wide
+
+# Verify permissions separately in every watched namespace
+kubectl auth can-i list lrpdbs.database.oracle.com \
+  --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
+  -n <watched-namespace>
+
+# Confirm a representative CRD is installed
+kubectl get crd lrpdbs.database.oracle.com
+
+# Confirm the admission webhooks exist
+kubectl get mutatingwebhookconfiguration mutating-webhook-configuration
+kubectl get validatingwebhookconfiguration validating-webhook-configuration
+
+# Review recent controller logs
+kubectl logs deployment/oracle-database-operator-controller-manager \
+  -n oracle-database-operator-system -c manager --tail=100
+
+# Review recent installation-namespace events when troubleshooting
+kubectl get events -n oracle-database-operator-system --sort-by=.lastTimestamp
+```
+
+For cluster-scoped installations, repeat the permission check in a namespace outside `oracle-database-operator-system`, such as `default`. These checks validate the operator installation itself; verify workload-specific custom resources separately after you deploy them.
+
 
 ## Choose Your Guide
 

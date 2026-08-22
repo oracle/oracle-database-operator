@@ -40,3 +40,16 @@ Use the updated manifest: [ssharding_shard_prov_extshard.yaml](./ssharding_shard
     # View the logs for a specific pod (for example, "pshard-0"):
     kubectl logs -f pod/pshard3-0 -n shns
     ```
+
+3. Verify using the following commands:
+
+    ```sh
+    # Switch to the primary GSM container:
+    kubectl exec -i -t gsm1-0 -n shns /bin/bash
+
+    # Check the status of the shards:
+    gdsctl config shard
+
+    # Check the status of the chunks:
+    gdsctl config chunks
+    ```
