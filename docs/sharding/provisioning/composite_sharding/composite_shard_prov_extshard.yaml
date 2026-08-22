@@ -254,13 +254,21 @@ spec:
       ## Composite sharding with NATIVE replication requires ru_mode
 #      ru_mode: READWRITE      
 
-    ## Kubernetes worker nodes on which shard pods may be scheduled.
-    nodes:
-      - worker node 1
-      - worker node 2
-      - worker node 3
-    ## Optional node selector to schedule this pod only on worker nodes
-    ## matching the specified node label
+    #######
+    ## Pod placement for Shards
+    ##
+    ## Use either "nodes" or "nodeSelector" to control pod placement.
+    ##
+    ## Optional: Specify one or more worker nodes on which shard pods may be
+    ## scheduled. The number of nodes is not limited to the examples below.
+#    nodes:
+#      - << worker node 1 >>
+#      - << worker node 2 >>
+#      - << worker node 3 >>
+    ## OR
+    ##
+    ## Optional: Use "nodeSelector" to schedule shard pods only on worker nodes
+    ## that match the specified node label.
 #    nodeSelector:
 #      "name": "shard_pool"
 

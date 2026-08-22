@@ -34,9 +34,73 @@ Use this manifest: [`ssharding_shard_prov_native.yaml`](./ssharding_shard_prov_n
 2. Check the status of the deployment:
 
     ```sh
-    # Check the status of the Kubernetes pods:
     kubectl get all -n shns
+    ```
 
-    # View the logs for a specific pod (for example, "pshard1-0"):
+3. Monitor the database creation logs for the catalog and shard database pods. For example:
+
+    ```sh
+    # Catalog database pod
+    kubectl logs -f pod/catalog-0 -n shns
+
+    # Shard database pod
     kubectl logs -f pod/pshard1-0 -n shns
     ```
+
+    Database creation can take approximately 20 minutes. For the catalog database pod and each shard database pod, wait for the following message, which indicates that the database is ready to use:
+
+    ```text
+    #########################
+    DATABASE IS READY TO USE!
+    #########################
+    ```
+
+    Repeat this check for each shard database pod in the deployment.
+
+4. After the databases are ready, monitor the sharding setup log for the catalog database pod:
+
+    ```sh
+    kubectl exec pod/catalog-0 -n shns -- \
+      /bin/bash -c "tail -f /var/tmp/gdd/oracle_sharding_setup.log"
+    ```
+
+    Wait for the following message, which indicates that the catalog setup is complete:
+
+    ```text
+    ==============================================
+         GSM Catalog Setup Completed
+    ==============================================
+    ```
+
+    Monitor the sharding setup log for each shard database pod. For example, for `pshard1-0`:
+
+    ```sh
+    kubectl exec pod/pshard1-0 -n shns -- \
+      /bin/bash -c "tail -f /var/tmp/gdd/oracle_sharding_setup.log"
+    ```
+
+    Wait for the following message, which indicates that the shard setup is complete:
+
+    ```text
+    ==============================================
+         GSM Shard Setup Completed
+    ==============================================
+    ```
+
+    Repeat this check for each shard database pod in the deployment.
+
+5. Monitor the sharding setup log for each GSM pod. For example, for the primary GSM pod `gsm1-0`:
+
+    ```sh
+    kubectl exec pod/gsm1-0 -n shns -- \
+      /bin/bash -c "tail -f /var/tmp/gdd/oracle_sharding_setup.log"
+    ```
+
+    For each GSM pod, wait for the following message, which indicates that the GSM setup is complete:
+
+    ```text
+    ==============================================
+         GSM Setup Completed
+    ==============================================
+    ```
+
