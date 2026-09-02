@@ -1,7 +1,5 @@
 # Oracle REST Data Services (OrdsSrvs) Controller for Kubernetes -  ORDS Lifecycle management
 
-## Description
-
 The OrdsSrvs controller extends the Kubernetes API with a Custom Resource (CR) and controller for automating Oracle REST Data Services (ORDS) lifecycle management.
 
 Using the OrdsSrvs controller, you can deploy and manage ORDS in Kubernetes for any reachable Oracle Database, whether the database runs inside Kubernetes or outside the cluster, on-premises or in the cloud.
@@ -14,19 +12,26 @@ See also the [Quick Start](./quickstart.md) for the shortest end-to-end setup us
   <img src="./ordssrvs_overview.png" alt="OrdsSrvs Overview" width="700">
 </p>
 
+## Contents
+
+* [Features Summary](#features-summary)
+* [Prerequisites](#prerequisites)
+* [Database Credentials Management](#database-credentials-management)
+* [Core documentation](#core-documentation)
+* [Configuration examples](#configuration-examples)
+* [Change Log](#change-log)
+* [Troubleshooting](./TROUBLESHOOTING.md)
+
 ## Features Summary
 
 The custom OrdsSrvs resource supports the following configurations as a Deployment, StatefulSet, or DaemonSet:
 
-* Single OrdsSrvs resource with one database pool
-* Single OrdsSrvs resource with multiple database pools<sup>*</sup>
-* Multiple OrdsSrvs resources, each with one database pool
-* Multiple OrdsSrvs resources, each with multiple database pools<sup>*</sup>
-* ORDS and APEX database schemas [automatic installation/upgrade](./autoupgrade.md)
+* OrdsSrvs resource with one or multiple database pools
+* ORDS and APEX database schemas automatic installation/upgrade
 * Deploying ORDS with Central Configuration Server
 * HTTP access logs with stdout forwarding and configurable persistence
-
-<sup>*See [Limitations](#limitations)</sup>
+* Kubernetes liveness, readiness, and startup probes
+* Pool probing
 
 ORDS Version supported : 25.1.0+
 OrdsSrvs controller supports the majority of ORDS configuration settings as per the [API Documentation](./api.md).
@@ -40,8 +45,31 @@ OrdsSrvs controller supports the majority of ORDS configuration settings as per 
 
 Before installing the OrdsSrvs controller, ensure that the Oracle Database Operator (OraOperator) is installed in your Kubernetes environment. Please follow the detailed installation steps provided in the [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) to complete this process. The OraOperator must be properly configured and running, as OrdsSrvs depends on its services for functionality.
 
+### Namespace Scoped Deployment
+
+For a dedicated namespace deployment of the OrdsSrvs controller, refer to the "Namespace Scoped Deployment" section in the OraOperator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md#2-namespace-scoped-deployment).
+The following steps configure the controller to watch the `ordsnamespace` namespace.
+
+Create the namespace:
+
+```bash
+kubectl create namespace ordsnamespace
+```
+
+Apply namespace role binding [ordsnamespace-role-binding.yaml](./examples/ordsnamespace-role-binding.yaml):
+
+```bash
+kubectl apply -f examples/ordsnamespace-role-binding.yaml
+```
+
+Edit OraOperator to add the namespace under WATCH_NAMESPACE:
+```yaml
+  - name: WATCH_NAMESPACE
+    value: "default,<your namespaces>,ordsnamespace"
+```
+
 There are different ways to provide database credentials and connect string for OrdsSrvs.
-For step-by-step instructions and field descriptions, refer to the [API](./api.md) reference and the Examples section for details on each configuration.
+For step-by-step instructions and field descriptions, refer to the [API](./api.md) reference and the Configuration examples section.
 
 <p align="center">
   <img src="./ordssrvs_readme.png" alt="OrdsSrvs readme" width="700">
@@ -81,94 +109,44 @@ Depending on your security and networking requirements, connectivity can be esta
 |Shared Zip Wallets|`spec.globalSettings.zipWalletsSecretName`<br>`spec.poolSettings.zipWalletName`<br>`spec.poolSettings."db.wallet.zip.service"`|mTLS Wallet (Zip)|[Wallets Example](examples/cc_zip_wallets.md)|
 
 
-## Common configuration examples
+## Core documentation
 
-A few common configuration examples can be used to quickly familiarise yourself with the OrdsSrvs Custom Resource Definition.
-The "Conclusion" section of each example highlights specific settings to enable functionality that may be of interest.
+These pages describe the main OrdsSrvs behavior and operational procedures.
 
 * [Quick Start](./quickstart.md)
+* [API Reference](./api.md)
+* [OpenShift Deployment](./openshift.md)
+* [ORDS and APEX schema automatic installation/upgrade](./autoupgrade.md)
+* [HTTP Access Logs](./access_log.md)
+* [Kubernetes Liveness, Readiness, and Startup Probes](./lifecycle_probes.md)
+* [Pool Probing](./pool_probing.md)
+* [Troubleshooting](./TROUBLESHOOTING.md)
+
+## Configuration examples
+
+These pages provide scenario-specific OrdsSrvs manifests and configuration.
+
 * [Pre-existing Database](./examples/existing_db.md)
 * [Containerized Single Instance Database (SIDB)](./examples/sidb_container.md)
 * [Multidatabase using a TNS Names file](./examples/multi_pool.md)
-* [Autonomous Database using the OraOperator](./examples/adb_oraoper.md) <sup>*See [Limitations](#limitations)</sup>
+* [Autonomous Database using the OraOperator](./examples/adb_oraoper.md)
 * [Autonomous Database without the OraOperator](./examples/adb.md)
 * [Oracle API for MongoDB Support](./examples/mongo_api.md)
-* [ORDS and APEX database schemas automatic installation/upgrade](./autoupgrade.md)
-* [HTTP Access Logs](./access_log.md)
 * [Custom tnsnames.ora](./examples/tnsnames.md)
 * [Deploying ORDS with Central Configuration Server](./examples/central_configuration.md)
 * [Central Configuration Server with shared zip Wallets](./examples/cc_zip_wallets.md)
 * [Instance API](./examples/instance_api.md)
 * [Metadata and Resources Example](./examples/metadata_resources.md)
 
-Running through all examples in the same Kubernetes cluster illustrates the ability to run multiple ORDS instances with a variety of different configurations.
-
-### Namespace Scoped Deployment
-
-For a dedicated namespace deployment of the OrdsSrvs controller, refer to the "Namespace Scoped Deployment" section in the OraOperator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md#2-namespace-scoped-deployment).
-The following examples demonstrate deploying the controller to the ordsnamespace namespace.
-
-Create the namespace:
-
-```bash
-kubectl create namespace ordsnamespace
-```
-
-Apply namespace role binding [ordsnamespace-role-binding.yaml](./examples/ordsnamespace-role-binding.yaml):
-
-```bash
-kubectl apply -f examples/ordsnamespace-role-binding.yaml
-```
-
-Edit OraOperator to add the namespace under WATCH_NAMESPACE:
-```yaml
-  - name: WATCH_NAMESPACE
-    value: "default,<your namespaces>,ordsnamespace"
-```
-
-## OpenShift Security Context Constraints
-
-If you are deploying the OrdsSrvs controller on OpenShift, ensure that the appropriate Security Context Constraints (SCCs) are configured. This involves assigning custom SCCs to the service accounts used by OrdsSrvs to permit required operations.
-
-### Create a Service Account
-
-This account will be used to assign the necessary Security Context Constraints (SCCs) for the controller’s operation.
-Below is an example [YAML](./examples/ordssrvs-sa.yaml) manifest to create a service account named "ordssrvs-sa" in the "ordsnamespace" namespace:
-
-```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: ordssrvs-sa
-  namespace: ordsnamespace
-```
-
-### Create a Custom Security Context Constraint (SCC)
-
-To configure the required security permissions, use the attached [YAML](./examples/ordssrvs-sa-scc.yaml) file to create a custom Security Context Constraint (SCC) and bind it to the "ordssrvs-sa" service account.
-This will ensure the service account has the necessary permissions for the OrdsSrvs controller to operate on OpenShift.
-
-### Set serviceAccountName in OrdsSrvs
-
-Ensure that the OrdsSrvs controller uses the dedicated service account you created. In the deployment manifest for OrdsSrvs, specify the serviceAccountName field with the name of your service account (e.g., ordssrvs-sa) as in this [example](./examples/ordssrvs.yaml).
-
-```yaml
-apiVersion: database.oracle.com/v4
-kind: OrdsSrvs
-metadata:
-  name: ordssrvs
-  namespace: ordsnamespace
-spec:
-  ...
-  globalSettings:
-    ...
-  poolSettings:
-    ...
-  serviceAccountName: ordssrvs-sa
-```
-
-
 ## Change Log
+
+### Version 2.3
+
+* **Kubernetes Liveness, Readiness, and Startup Probes**  
+Added configurable startup, readiness, and liveness probes for the ORDS container. See [Kubernetes Liveness, Readiness, and Startup Probes](./lifecycle_probes.md).
+
+* **Pool Probing**  
+Added opt-in probing of directly configured ORDS pools. Pool health is reported separately from Kubernetes workload availability. See [Pool Probing](./pool_probing.md).
 
 ### Version 2.2
 
@@ -242,10 +220,3 @@ New attributes `spec.globalSettings.zipWalletsSecretName` and `spec.poolSettings
 ### Upgrading from 1.2 to 2.0
 Password secrets must be recreated when upgrading the operator from version 1.2 to 2.0.
 Secrets can be recreated either before or after the operator upgrade. Restarting the OrdsSrvs deployment is not required for this procedure; however, if the deployment does need to be restarted for any reason, ensure secrets are recreated first.
-
-## Limitations
-
-When connecting to a mTLS enabled ADB and using the controller to retrieve the Wallet, it is currently not supported to have multiple, different databases supported by the single OrdsSrvs resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-controller/issues/97)).
-
-## Troubleshooting
-See [Troubleshooting](./TROUBLESHOOTING.md) for log commands and OrdsSrvs pod container names.

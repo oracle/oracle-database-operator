@@ -34,7 +34,7 @@ Create the namespace used in this example:
 kubectl create namespace ordsnamespace
 ```
 
-If the operator is running in namespace-scoped mode, also grant it access to this namespace as described in the main [README](../../README.md#choose-deployment-scope).
+If the operator is running in namespace-scoped mode, also grant it access to this namespace as described in the main [README](../../README.md).
 
 ## 2. Create the Database Credential Secret
 

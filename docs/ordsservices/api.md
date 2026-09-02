@@ -131,6 +131,31 @@ Specifies the Secret Name for pulling the ORDS container image
 <td>false</td>
 </tr>
 <tr>
+<td><b>poolProbeIntervalSeconds</b></td>
+<td>integer</td>
+<td>Specifies the interval, in seconds, between pool-reachability probe cycles. A value of 0 disables pool probing. Pool probing applies to pools defined directly in <code>poolSettings</code>.<br>
+<br>
+<i>Default</i>: 0<br/>
+<i>Minimum</i>: 0<br/>
+</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>probePath</b></td>
+<td>string</td>
+<td>Specifies the path used by the Kubernetes startup, readiness, and liveness probes. Set to an empty string to disable lifecycle probes.<br>
+<br>
+<i>Default</i>: /favicon.ico<br/>
+</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b><a href="#ordssrvsspecprobesettings">probeSettings</a></b></td>
+<td>object</td>
+<td>Specifies timeout, period, and failure-threshold settings for the Kubernetes startup, readiness, and liveness probes.</td>
+<td>false</td>
+</tr>
+<tr>
 <td><b>replicas</b></td>
 <td>integer</td>
 <td> Defines the number of desired Replicas when workloadType
@@ -267,6 +292,67 @@ Specifies the sidecar that forwards HTTP access logs to container stdout. The si
         <td>corev1.ResourceRequirements</td>
         <td>
           Specifies Kubernetes compute resource requests and limits, such as CPU and memory, for the HTTP access log forwarder sidecar.<br/>
+        </td>
+        <td>false</td>
+      </tr>
+</tbody>
+</table>
+
+### OrdsSrvs.spec.probeSettings
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
+
+
+
+Specifies timeout, period, and failure-threshold settings for the Kubernetes startup, readiness, and liveness probes.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>timeoutSeconds</b></td>
+        <td>integer</td>
+        <td>Specifies the timeout for each probe request, in seconds.<br/>
+          <br/>
+            <i>Default</i>: 3<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>periodSeconds</b></td>
+        <td>integer</td>
+        <td>Specifies the interval between probe requests, in seconds.<br/>
+          <br/>
+            <i>Default</i>: 10<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>startupFailureThreshold</b></td>
+        <td>integer</td>
+        <td>Specifies the number of consecutive startup-probe failures before Kubernetes restarts the ORDS container.<br/>
+          <br/>
+            <i>Default</i>: 30<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>readinessFailureThreshold</b></td>
+        <td>integer</td>
+        <td>Specifies the number of consecutive readiness-probe failures before the Pod is removed from ready Service endpoints.<br/>
+          <br/>
+            <i>Default</i>: 3<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>livenessFailureThreshold</b></td>
+        <td>integer</td>
+        <td>Specifies the number of consecutive liveness-probe failures before Kubernetes restarts the ORDS container.<br/>
+          <br/>
+            <i>Default</i>: 18<br/>
         </td>
         <td>false</td>
       </tr>
@@ -1464,6 +1550,27 @@ OrdsSrvsStatus defines the observed state of OrdsSrvs
         </td>
         <td>false</td>
       </tr><tr>
+        <td><b><a href="#ordssrvsstatuspoolprobesindex">poolProbes</a></b></td>
+        <td>[]object</td>
+        <td>
+          Contains the latest reachability-probe result for each configured pool.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>poolsHealth</b></td>
+        <td>string</td>
+        <td>
+          Indicates the aggregate health of the configured pools. Values are Healthy, Partial, Unhealthy, Disabled, or Unknown.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>poolsReachable</b></td>
+        <td>string</td>
+        <td>
+          Indicates the number of reachable configured pools in <code>n/total</code> format.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
         <td><b>httpPort</b></td>
         <td>integer</td>
         <td>
@@ -1514,6 +1621,56 @@ OrdsSrvsStatus defines the observed state of OrdsSrvs
         </td>
         <td>false</td>
       </tr></tbody>
+</table>
+
+
+### OrdsSrvs.status.poolProbes[index]
+<sup><sup>[↩ Parent](#ordssrvsstatus)</sup></sup>
+
+
+
+Contains the latest reachability-probe result for one configured pool.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>poolName</b></td>
+        <td>string</td>
+        <td>Specifies the configured pool alias tested by the probe.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>outcome</b></td>
+        <td>enum</td>
+        <td>Indicates the result of the latest pool-reachability probe.<br/>
+          <br/>
+            <i>Enum</i>: OK, POOL_NOT_FOUND, SERVER_ERROR, ERROR, UNEXPECTED<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>httpStatusCode</b></td>
+        <td>integer</td>
+        <td>Indicates the HTTP status code returned by the pool. A connection error or timeout has no HTTP response and is reported as 0.<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>lastChecked</b></td>
+        <td>string</td>
+        <td>Indicates when the pool was last checked.<br/>
+          <br/>
+            <i>Format</i>: date-time<br/>
+        </td>
+        <td>false</td>
+      </tr>
+    </tbody>
 </table>
 
 

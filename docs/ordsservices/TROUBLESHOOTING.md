@@ -1,7 +1,5 @@
 
-<span style="font-family:Liberation mono; font-size:0.8em; line-height: 1.2em">
-
-## TROUBLESHOOTING
+# Troubleshooting
 
 ### OrdsSrvs container names
 
@@ -145,5 +143,3 @@ Oracle REST Data Services java info: Java HotSpot(TM) 64-Bit Server VM 11.0.15+8
 ```sql
 alter user ORDS_PUBLIC_USER account unlock;
 ```
-
-<span/>

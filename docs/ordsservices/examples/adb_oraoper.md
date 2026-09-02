@@ -2,8 +2,6 @@
 
 This example walks through using the **OrdsSrvs controller** with an Autonomous Database managed through the OraOperator.
 
-When connecting to a mTLS enabled ADB while using the OraOperator to retrieve the Wallet as is done in the example, it is currently not supported to have multiple, different databases supported by the single OrdsSrvs resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-operator/issues/97)).
-
 Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 ### Setup Oracle Cloud Authorisation
@@ -154,3 +152,10 @@ Direct your browser to: `https://localhost:8443/ords/adb-oraoper`
 This example has a single database pool, named `adb-oraoper`.  It is set to:
 
 * Automatically restart when the configuration changes: `forceRestart: true`
+
+## Limitations
+
+When connecting to a mTLS-enabled ADB while using the OraOperator to retrieve
+the Wallet, this example does not support multiple, different databases in a
+single OrdsSrvs resource. This is due to a requirement to set the `TNS_ADMIN`
+parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-operator/issues/97)).

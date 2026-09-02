@@ -13,6 +13,7 @@ import javax.crypto.spec.OAEPParameterSpec;
 import javax.crypto.spec.PSource;
 import java.util.Base64;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class RSADecryptOAEP {
 
@@ -39,10 +40,10 @@ public class RSADecryptOAEP {
             Path keyPath = resolveKeyPath(privateKeyName);
 
             String pem = Files.readString(keyPath, StandardCharsets.UTF_8);
-            String enc64 = pem
-                    .replace("-----BEGIN PRIVATE KEY-----", "")
-                    .replace("-----END PRIVATE KEY-----", "")
-                    .replaceAll("\\s", "");
+            String pemWithoutBoundaries = pem.lines()
+                    .filter(line -> !line.startsWith("-----"))
+                    .collect(Collectors.joining("\n"));
+            String enc64 = pemWithoutBoundaries.replaceAll("\\s", "");
 
             byte[] privateKeyBytes = Base64.getDecoder().decode(enc64);
             KeyFactory keyFactory = KeyFactory.getInstance("RSA");

@@ -43,6 +43,35 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// OrdsSrvsProbeSettings defines timing settings shared by the ORDS lifecycle probes.
+// The controller owns the protocol, port, path, and HTTP host header.
+type OrdsSrvsProbeSettings struct {
+	// Specifies the timeout for each probe request in seconds.
+	//+kubebuilder:default:=3
+	//+kubebuilder:validation:Minimum=1
+	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
+
+	// Specifies the interval between probe attempts in seconds.
+	//+kubebuilder:default:=10
+	//+kubebuilder:validation:Minimum=1
+	PeriodSeconds int32 `json:"periodSeconds,omitempty"`
+
+	// Specifies consecutive startup probe failures allowed before restarting the container.
+	//+kubebuilder:default:=30
+	//+kubebuilder:validation:Minimum=1
+	StartupFailureThreshold int32 `json:"startupFailureThreshold,omitempty"`
+
+	// Specifies consecutive readiness probe failures allowed before removing the Pod from Service endpoints.
+	//+kubebuilder:default:=3
+	//+kubebuilder:validation:Minimum=1
+	ReadinessFailureThreshold int32 `json:"readinessFailureThreshold,omitempty"`
+
+	// Specifies consecutive liveness probe failures allowed before restarting the container.
+	//+kubebuilder:default:=18
+	//+kubebuilder:validation:Minimum=1
+	LivenessFailureThreshold int32 `json:"livenessFailureThreshold,omitempty"`
+}
+
 // OrdsSrvsSpec defines the desired state of OrdsSrvs
 type OrdsSrvsSpec struct {
 
@@ -68,6 +97,15 @@ type OrdsSrvsSpec struct {
 	//+kubebuilder:default=IfNotPresent
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 
+	// Specifies the local ORDS path used by startup, readiness, and liveness probes.
+	// Omit to use /favicon.ico. Set to an empty string to disable probes.
+	//+kubebuilder:default:="/favicon.ico"
+	//+kubebuilder:validation:Pattern=^$|/.*
+	ProbePath *string `json:"probePath,omitempty"`
+
+	// Specifies timing settings shared by startup, readiness, and liveness probes.
+	ProbeSettings OrdsSrvsProbeSettings `json:"probeSettings,omitempty"`
+
 	// Deprecated: ImagePullSecrets is not used by the OrdsSrvs controller and will be removed in a future API version.
 	// Specifies the Secret Name for pulling the ORDS container image
 	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
@@ -90,6 +128,12 @@ type OrdsSrvsSpec struct {
 
 	// Contains settings for individual pools/databases
 	PoolSettings []*PoolSettings `json:"poolSettings,omitempty"`
+
+	// Specifies the interval in seconds between pool reachability probes.
+	// Set to 0 to disable pool probing.
+	//+kubebuilder:default:=0
+	//+kubebuilder:validation:Minimum=0
+	PoolProbeIntervalSeconds int32 `json:"poolProbeIntervalSeconds,omitempty"`
 
 	// Global metadata for all generated resources
 	CommonMetadata *MetadataConfig `json:"commonMetadata,omitempty"`
@@ -772,6 +816,18 @@ type DBWalletSecret struct {
 	WalletName string `json:"walletName"`
 }
 
+// PoolProbeStatus defines the most recent reachability result for an ORDS pool.
+type PoolProbeStatus struct {
+	// PoolName is the configured ORDS pool alias.
+	PoolName string `json:"poolName"`
+	// Outcome describes the result of the pool alias request.
+	Outcome string `json:"outcome,omitempty"`
+	// HTTPStatusCode is the HTTP response status code, if a response was received.
+	HTTPStatusCode int32 `json:"httpStatusCode,omitempty"`
+	// LastChecked is the time at which this pool was last probed.
+	LastChecked metav1.Time `json:"lastChecked,omitempty"`
+}
+
 // OrdsSrvsStatus defines the observed state of OrdsSrvs
 type OrdsSrvsStatus struct {
 	//** PLACE HOLDER
@@ -793,6 +849,12 @@ type OrdsSrvsStatus struct {
 	RestartRequired bool `json:"restartRequired,omitempty"`
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	// PoolProbes contains the most recent result for each configured pool.
+	PoolProbes []PoolProbeStatus `json:"poolProbes,omitempty"`
+	// PoolsHealth summarizes the latest pool probe results.
+	PoolsHealth string `json:"poolsHealth,omitempty"`
+	// PoolsReachable is the number of reachable pools over configured pools, for example "2/3".
+	PoolsReachable string `json:"poolsReachable,omitempty"`
 	// last observed generation to log first creation or Spec changes
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
@@ -800,14 +862,13 @@ type OrdsSrvsStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:JSONPath=".status.status",name="status",type="string"
+//+kubebuilder:printcolumn:JSONPath=".status.poolsHealth",name="poolsHealth",type="string"
+//+kubebuilder:printcolumn:JSONPath=".status.poolsReachable",name="pools",type="string"
 //+kubebuilder:printcolumn:JSONPath=".status.workloadType",name="workloadType",type="string"
-//+kubebuilder:printcolumn:JSONPath=".status.ordsVersion",name="ordsVersion",type="string"
 //+kubebuilder:printcolumn:JSONPath=".status.httpPort",name="httpPort",type="integer"
 //+kubebuilder:printcolumn:JSONPath=".status.httpsPort",name="httpsPort",type="integer"
 //+kubebuilder:printcolumn:JSONPath=".status.mongoPort",name="MongoPort",type="integer"
-//+kubebuilder:printcolumn:JSONPath=".status.restartRequired",name="restartRequired",type="boolean"
 //+kubebuilder:printcolumn:JSONPath=".metadata.creationTimestamp",name="AGE",type="date"
-//+kubebuilder:printcolumn:JSONPath=".status.ordsInstalled",name="OrdsInstalled",type="boolean"
 //+kubebuilder:resource:path=ordssrvs,scope=Namespaced
 
 // OrdsSrvs is the Schema for the ordssrvs API
