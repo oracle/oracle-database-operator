@@ -1,26 +1,30 @@
 # Kubernetes Liveness, Readiness, and Startup Probes
 
-This page describes Kubernetes startup, readiness, and liveness probes for the ORDS Pod. OraOperator 2.3 introduces these lifecycle probes as a new feature; they are enabled by default.
+The OrdsSrvs controller automatically configures startup, readiness, and liveness HTTP probes on the main ORDS container.  
+It configures the endpoint, scheme, port, and timing for each probe. They are enabled by default and use the same local endpoint with different failure thresholds.   
+*(Available since OraOperator 2.3.)*  
 
-The controller configures the three probes on the ORDS container. They use the same local endpoint but have different failure thresholds. By default, the request is:
+A probe request has this form:
+```text
+<scheme>://<pod-ip>:<port>/<path>
+```
 
+For example, the default HTTPS configuration is:
 ```text
 https://<pod-ip>:8443/favicon.ico
 ```
 
-The controller sends the request with `Host: localhost`, which ORDS requires for this local request. It derives the protocol and port from the OrdsSrvs listener configuration; users configure only the probe path and timing.
-
-> **Note:** HTTPS is the normal configuration. When `standalone.https.port: 0` configures HTTP-only ORDS for edge TLS termination, the controller instead uses `http://<pod-ip>:8080/favicon.ico`.
-
-`/ords/` could be used as a probe path, but ORDS redirects that request. Kubernetes accepts the redirect as a positive result but reports a noisy warning in `kubectl describe pod`. `/favicon.ico` is a static ORDS file that returns HTTP `200 OK`.
-
-Lifecycle probes check the Kubernetes-facing ORDS listener only. They do not test database or pool reachability: an unavailable database pool must not make a Pod unready or cause ORDS to restart. See [Pool Probing](./pool_probing.md) for the separate pool-health feature.
+Kubernetes executes the probe request and evaluates the result. The controller only configures the probes.
 
 | Probe | Path | Timeout | Period | Consecutive failures before action | Failed result |
 |---|---|---:|---:|---:|---|
 | Startup | `/favicon.ico` | 3 seconds | 10 seconds | 30 | Kubernetes restarts the ORDS container. |
 | Readiness | `/favicon.ico` | 3 seconds | 10 seconds | 3 | The Pod is not `Ready` and is removed from ready Service endpoints. |
 | Liveness | `/favicon.ico` | 3 seconds | 10 seconds | 18 | Kubernetes restarts the ORDS container. |
+
+`/ords/` could be used as a probe path, but ORDS redirects that request. Kubernetes accepts the redirect as a positive result but reports a noisy warning in `kubectl describe pod`. `/favicon.ico` is a static ORDS file that returns HTTP `200 OK`.  
+
+Lifecycle probes check the Kubernetes-facing ORDS listener only. They do not test database or pool reachability: an unavailable database pool must not make a Pod unready or cause ORDS to restart. See [Pool Probing](./pool_probing.md) for the separate pool-health feature.  
 
 ## Optional Lifecycle-Probe Configuration
 
@@ -38,7 +42,7 @@ spec:
 
 ## Test Configuration
 
-The following complete resource creates three ORDS replicas for lifecycle-probe testing. Replace `ORDSIMG` and `CONNECTSTRING` before applying it. The short timeout, period, and failure-threshold values are for an empirical failure/recovery test; use the default settings or values appropriate for your environment in production.
+The following resource creates three ORDS replicas for lifecycle-probe testing. Replace `ORDSIMG` and `CONNECTSTRING` before applying it. The shortened timeout, period, and failure-threshold values are for the failure/recovery test; use values appropriate for your environment otherwise.
 
 ```yaml
 apiVersion: database.oracle.com/v4
@@ -81,9 +85,7 @@ The OrdsSrvs `status.status` value reports workload availability. For Deployment
 
 Use the custom resource together with its child workload objects to inspect lifecycle-probe effects. The OrdsSrvs resource reports the aggregate workload status; the Deployment and ReplicaSet report replica availability; Pods and EndpointSlices show which replicas are ready to receive Service traffic.
 
-For a healthy three-replica resource, inspect each object next to its output:
-
-The outputs below are representative.
+The following representative outputs show a healthy three-replica resource and its child objects:
 
 ### OrdsSrvs resource
 
@@ -241,7 +243,7 @@ ordssrvs-probes   3/3     3            3           30m
 
 ### All-Pods Failure
 
-Suspend Java in every ORDS Pod. Run the one-Pod `kubectl exec ... kill -STOP` command once for each Pod. No endpoint remains ready, and the workload is reported as `Unhealthy` until liveness restarts the containers.
+Suspend Java in every ORDS Pod by running the one-Pod `kubectl exec ... kill -STOP` command once for each Pod. No endpoint remains ready, and the workload is reported as `Unhealthy` until liveness restarts the containers.
 
 ```bash
 # Initial Pods
@@ -252,8 +254,6 @@ ordssrvs-probes-d7c9998f8-4cmmf   1/1     Running   1          30m
 ordssrvs-probes-d7c9998f8-5xscz   1/1     Running   0          30m
 ordssrvs-probes-d7c9998f8-b72g2   1/1     Running   0          30m
 ```
-
-Run the one-Pod `kubectl exec ... kill -STOP` command for each of these Pod names.
 
 After every Pod has failed readiness:
 
