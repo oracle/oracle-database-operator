@@ -143,6 +143,8 @@ kubectl port-forward service/ords-multi-pool -n ordsnamespace 8443:8443
 1. For PDB3, direct your browser to: `https://localhost:8443/ords/pdb3`
 1. For PDB4, direct your browser to: `https://localhost:8443/ords/pdb4`
 
+> If `standalone.https.host` is configured, use that hostname instead of `localhost`.
+
 ## Conclusion
 
 This example has multiple pools, named `pdb1`, `pdb2`, `pdb3`, and `pdb4`.

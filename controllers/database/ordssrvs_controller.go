@@ -749,6 +749,7 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(
 		probePath = *ordssrvs.Spec.ProbePath
 	}
 	probeSettings := ordsProbeSettingsDefine(ordssrvs.Spec.ProbeSettings)
+	probeHost := ordsProbeHost(ordssrvs, rState)
 
 	podSpecTemplate :=
 		corev1.PodTemplateSpec{
@@ -786,9 +787,9 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(
 		}
 	if probePath != "" {
 		mainContainer := &podSpecTemplate.Spec.Containers[0]
-		mainContainer.StartupProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeSettings.timeoutSeconds, probeSettings.periodSeconds, probeSettings.startupFailureThreshold)
-		mainContainer.LivenessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeSettings.timeoutSeconds, probeSettings.periodSeconds, probeSettings.livenessFailureThreshold)
-		mainContainer.ReadinessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeSettings.timeoutSeconds, probeSettings.periodSeconds, probeSettings.readinessFailureThreshold)
+		mainContainer.StartupProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, probeSettings.timeoutSeconds, probeSettings.periodSeconds, probeSettings.startupFailureThreshold)
+		mainContainer.LivenessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, probeSettings.timeoutSeconds, probeSettings.periodSeconds, probeSettings.livenessFailureThreshold)
+		mainContainer.ReadinessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, probeSettings.timeoutSeconds, probeSettings.periodSeconds, probeSettings.readinessFailureThreshold)
 	}
 
 	if ordssrvs.Spec.AccessLogForwarder.Enabled {
@@ -836,20 +837,28 @@ func ordsProbeSettingsDefine(settings dbapi.OrdsSrvsProbeSettings) ordsProbeSett
 }
 
 // ordsHTTPProbe checks that the local ORDS listener can answer an HTTP request.
-func ordsHTTPProbe(path, portName string, scheme corev1.URIScheme, timeoutSeconds, periodSeconds, failureThreshold int32) *corev1.Probe {
+func ordsHTTPProbe(path, portName string, scheme corev1.URIScheme, host string, timeoutSeconds, periodSeconds, failureThreshold int32) *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
 				Path:        path,
 				Port:        intstr.FromString(portName),
 				Scheme:      scheme,
-				HTTPHeaders: []corev1.HTTPHeader{{Name: "Host", Value: "localhost"}},
+				HTTPHeaders: []corev1.HTTPHeader{{Name: "Host", Value: host}},
 			},
 		},
 		TimeoutSeconds:   timeoutSeconds,
 		PeriodSeconds:    periodSeconds,
 		FailureThreshold: failureThreshold,
 	}
+}
+
+// ordsProbeHost returns the Host header used by local ORDS probes.
+func ordsProbeHost(ordssrvs *dbapi.OrdsSrvs, rState *OrdsSrvsReconcileState) string {
+	if rState.httpsEnabled && ordssrvs.Spec.GlobalSettings.StandaloneHTTPSHost != "" {
+		return ordssrvs.Spec.GlobalSettings.StandaloneHTTPSHost
+	}
+	return "localhost"
 }
 
 // accessLogForwarderContainerDefine defines the sidecar that forwards HTTP access logs to stdout.

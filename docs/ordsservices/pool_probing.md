@@ -35,7 +35,7 @@ timeout.
 
 `poolProbeIntervalSeconds: 0` disables probing; this is the default. Pool
 probing is also reported as `Disabled` when Central Configuration Server is in
-use because the custom resource does not contain the authoritative pool list.
+use because the custom resource does not contain the definitive pool list.
 
 ## Probe URL and Outcomes
 
@@ -47,8 +47,9 @@ For each pool in `spec.poolSettings`, the controller sends a `GET` request to:
 
 The default pool uses only the context path, for example
 `/ords/`. A non-default pool adds its alias, for example `/ords/pdb1/`. The
-scheme, port, and context path come from the OrdsSrvs configuration. The
-request uses `Host: localhost`, as do the Kubernetes lifecycle probes.
+scheme, port, and context path come from the OrdsSrvs configuration.
+
+When `standalone.https.host` is set, the request sends the configured hostname in the HTTP `Host` header (`Host: <standalone.https.host>`). When it is not set, or the deployment is HTTP-only, it uses `Host: localhost`.
 
 | Response or error | `outcome` | Counted as reachable |
 |---|---|---|
@@ -182,7 +183,7 @@ service/ordssrvs-negative patched
 * The controller waits for workload `Healthy` before probing. Before the first
   result, an enabled resource reports `Unknown`.
 * With Central Configuration Server, pool probing reports `Disabled` because
-  the controller does not have the authoritative pool list in the custom
+  the controller does not have the definitive pool list in the custom
   resource.
 * Pool health does not change lifecycle probes, Pod readiness, workload
   availability, `status.status`, or container restarts.

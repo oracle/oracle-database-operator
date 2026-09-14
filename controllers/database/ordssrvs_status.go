@@ -130,8 +130,7 @@ func probePoolAlias(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, rState *OrdsS
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if scheme == "https" {
 		// ORDS commonly uses a self-signed certificate for its local Service.
-		// The request is limited to this OrdsSrvs Service and uses the same
-		// localhost Host header as the Kubernetes lifecycle probes.
+		// The request is limited to this OrdsSrvs Service.
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- local OrdsSrvs Service probe
 	}
 	client := &http.Client{
@@ -148,7 +147,7 @@ func probePoolAlias(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, rState *OrdsS
 		result.Outcome = "ERROR"
 		return result
 	}
-	req.Host = "localhost"
+	req.Host = ordsProbeHost(ordssrvs, rState)
 
 	resp, err := client.Do(req)
 	if err != nil {

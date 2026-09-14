@@ -127,6 +127,8 @@ kubectl port-forward service/ords-sidb -n ordsnamespace 8443:8443
 
 Direct your browser to: `https://localhost:8443/ords`
 
+> If `standalone.https.host` is configured, use that hostname instead of `localhost`.
+
 ## Conclusion
 
 This example has a single database pool, named `default`.  It is set to:

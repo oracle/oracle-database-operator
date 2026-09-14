@@ -129,14 +129,17 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("cache.metadata.jwks.expireAfterWrite", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSExpireAfterWrite) +
 				conditionalEntry("database.api.management.services.disabled", ordssrvs.Spec.GlobalSettings.DatabaseAPIManagementServicesDisabled) +
 				conditionalEntry("db.invalidPoolTimeout", ordssrvs.Spec.GlobalSettings.DBInvalidPoolTimeout) +
+				conditionalEntry("db.idlePoolTimeout", ordssrvs.Spec.GlobalSettings.DBIdlePoolTimeout) +
 				conditionalEntry("feature.graphql.max.nesting.depth", featureGraphqlMaxNestingDepth) +
 				conditionalEntry("request.traceHeaderName", ordssrvs.Spec.GlobalSettings.RequestTraceHeaderName) +
+				conditionalEntry("public.properties.url", ordssrvs.Spec.GlobalSettings.PublicPropertiesURL) +
 				conditionalEntry("security.credentials.attempts", ordssrvs.Spec.GlobalSettings.SecurityCredentialsAttempts) +
 				conditionalEntry("security.credentials.lock.time", ordssrvs.Spec.GlobalSettings.SecurityCredentialsLockTime) +
 				conditionalEntry("standalone.context.path", ordssrvs.Spec.GlobalSettings.StandaloneContextPath) +
 				conditionalEntry("standalone.http.port", ordssrvs.Spec.GlobalSettings.StandaloneHTTPPort) +
 				defStandaloneHTTPSHost +
 				defStandaloneHTTPSPort +
+				conditionalEntry("standalone.https.san", ordssrvs.Spec.GlobalSettings.StandaloneHTTPSSAN) +
 				conditionalEntry("standalone.stop.timeout", ordssrvs.Spec.GlobalSettings.StandaloneStopTimeout) +
 				conditionalEntry("standalone.access.log.retainDays", ordssrvs.Spec.GlobalSettings.StandaloneAccessLogRetainDays) +
 				conditionalEntry("cache.metadata.timeout", ordssrvs.Spec.GlobalSettings.CacheMetadataTimeout) +
@@ -153,26 +156,23 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("mongo.port", ordssrvs.Spec.GlobalSettings.MongoPort) +
 				conditionalEntry("mongo.idle.timeout", ordssrvs.Spec.GlobalSettings.MongoIdleTimeout) +
 				conditionalEntry("mongo.op.timeout", ordssrvs.Spec.GlobalSettings.MongoOpTimeout) +
+				conditionalEntry("mongo.tls", ordssrvs.Spec.GlobalSettings.MongoTLS) +
 				conditionalEntry("security.disableDefaultExclusionList", ordssrvs.Spec.GlobalSettings.SecurityDisableDefaultExclusionList) +
 				conditionalEntry("security.exclusionList", ordssrvs.Spec.GlobalSettings.SecurityExclusionList) +
 				conditionalEntry("security.inclusionList", ordssrvs.Spec.GlobalSettings.SecurityInclusionList) +
+				conditionalEntry("security.externalHostMappingHeader", ordssrvs.Spec.GlobalSettings.SecurityExternalHostMappingHeader) +
+				conditionalEntry("security.externalMappingPathPrefix", ordssrvs.Spec.GlobalSettings.SecurityExternalMappingPathPrefix) +
+				conditionalEntry("security.host.headers", ordssrvs.Spec.GlobalSettings.SecurityHostHeaders) +
 				conditionalEntry("security.maxEntries", ordssrvs.Spec.GlobalSettings.SecurityMaxEntries) +
 				conditionalEntry("security.verifySSL", ordssrvs.Spec.GlobalSettings.SecurityVerifySSL) +
 				conditionalEntry("security.httpsHeaderCheck", ordssrvs.Spec.GlobalSettings.SecurityHTTPSHeaderCheck) +
 				conditionalEntry("security.forceHTTPS", ordssrvs.Spec.GlobalSettings.SecurityForceHTTPS) +
-				conditionalEntry("externalSessionTrustedOrigins", ordssrvs.Spec.GlobalSettings.SecurityExternalSessionTrustedOrigins) +
+				conditionalEntry("security.externalSessionTrustedOrigins", ordssrvs.Spec.GlobalSettings.SecurityExternalSessionTrustedOrigins) +
 				`  <entry key="standalone.doc.root">` + ordsSABase + `/config/global/doc_root/</entry>` + "\n" +
 				// Dynamic
 				defStandaloneAccessLog +
 				defMongoAccessLog +
 				defCertEntry +
-				// Disabled (but not forgotten)
-				// conditionalEntry("standalone.binds", ords.Spec.GlobalSettings.StandaloneBinds) +
-				// conditionalEntry("error.externalPath", ords.Spec.GlobalSettings.ErrorExternalPath) +
-				// conditionalEntry("security.credentials.file ", ords.Spec.GlobalSettings.SecurityCredentialsFile) +
-				// conditionalEntry("standalone.static.path", ords.Spec.GlobalSettings.StandaloneStaticPath) +
-				// conditionalEntry("standalone.doc.root", ords.Spec.GlobalSettings.StandaloneDocRoot) +
-				// conditionalEntry("standalone.static.context.path", ords.Spec.GlobalSettings.StandaloneStaticContextPath) +
 				`</properties>`),
 			"logging.properties": fmt.Sprintf(`handlers=java.util.logging.FileHandler` + "\n" +
 				`.level=SEVERE` + "\n" +
@@ -213,18 +213,43 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("db.cdb.adminUser", ordssrvs.Spec.PoolSettings[poolIndex].DBCDBAdminUser) +
 				conditionalEntry("apex.security.administrator.roles", ordssrvs.Spec.PoolSettings[poolIndex].ApexSecurityAdministratorRoles) +
 				conditionalEntry("apex.security.user.roles", ordssrvs.Spec.PoolSettings[poolIndex].ApexSecurityUserRoles) +
+				conditionalEntry("apex.security.developer.roles", ordssrvs.Spec.PoolSettings[poolIndex].ApexSecurityDeveloperRoles) +
 				conditionalEntry("db.credentialsSource", ordssrvs.Spec.PoolSettings[poolIndex].DBCredentialsSource) +
 				conditionalEntry("db.poolDestroyTimeout", ordssrvs.Spec.PoolSettings[poolIndex].DBPoolDestroyTimeout) +
+				conditionalEntry("db.authProvider", ordssrvs.Spec.PoolSettings[poolIndex].DBAuthProvider) +
+				conditionalEntry("db.databaseToolsConnection", ordssrvs.Spec.PoolSettings[poolIndex].DBDatabaseToolsConnection) +
+				conditionalEntry("db.description", ordssrvs.Spec.PoolSettings[poolIndex].DBDescription) +
+				conditionalEntry("db.ociProfile", ordssrvs.Spec.PoolSettings[poolIndex].DBOCIProfile) +
+				conditionalEntry("db.serviceNameSuffix", ordssrvs.Spec.PoolSettings[poolIndex].DBServiceNameSuffix) +
 				conditionalEntry("debug.trackResources", ordssrvs.Spec.PoolSettings[poolIndex].DebugTrackResources) +
+				conditionalEntry("debug.printOWADebug", ordssrvs.Spec.PoolSettings[poolIndex].DebugPrintOWADebug) +
 				conditionalEntry("feature.openservicebroker.exclude", ordssrvs.Spec.PoolSettings[poolIndex].FeatureOpenservicebrokerExclude) +
 				conditionalEntry("feature.sdw", ordssrvs.Spec.PoolSettings[poolIndex].FeatureSDW) +
+				conditionalEntry("feature.sdw.selfServiceSchema", ordssrvs.Spec.PoolSettings[poolIndex].FeatureSDWSelfServiceSchema) +
+				conditionalEntry("feature.graphql", ordssrvs.Spec.PoolSettings[poolIndex].FeatureGraphQL) +
 				conditionalEntry("http.cookie.filter", ordssrvs.Spec.PoolSettings[poolIndex].HTTPCookieFilter) +
+				conditionalEntry("http.cookie.filter.byValue", ordssrvs.Spec.PoolSettings[poolIndex].HTTPCookieFilterByValue) +
 				conditionalEntry("jdbc.auth.admin.role", ordssrvs.Spec.PoolSettings[poolIndex].JDBCAuthAdminRole) +
 				conditionalEntry("jdbc.cleanup.mode", ordssrvs.Spec.PoolSettings[poolIndex].JDBCCleanupMode) +
+				conditionalEntry("jdbc.ConnectionWaitTimeout", ordssrvs.Spec.PoolSettings[poolIndex].JDBCConnectionWaitTimeout) +
+				conditionalEntry("jdbc.driverName", ordssrvs.Spec.PoolSettings[poolIndex].JDBCDriverName) +
+				conditionalEntry("jdbc.sessionlesstxn.timeout", ordssrvs.Spec.PoolSettings[poolIndex].JDBCSessionlessTxnTimeout) +
+				conditionalEntry("jdbc.ucp.enableJMX", ordssrvs.Spec.PoolSettings[poolIndex].JDBCUCPEnableJMX) +
+				conditionalEntry("json.sdo.geometry.output.geojson", ordssrvs.Spec.PoolSettings[poolIndex].JSONSDOGeometryOutputGeoJSON) +
+				conditionalEntry("oracle.jdbc.vectorDefaultGetObjectType", ordssrvs.Spec.PoolSettings[poolIndex].OracleJDBCVectorDefaultGetObjectType) +
 				conditionalEntry("owa.trace.sql", ordssrvs.Spec.PoolSettings[poolIndex].OwaTraceSQL) +
+				conditionalEntry("owa.docTable", ordssrvs.Spec.PoolSettings[poolIndex].OwaDocTable) +
 				conditionalEntry("plsql.gateway.mode", ordssrvs.Spec.PoolSettings[poolIndex].PlsqlGatewayMode) +
 				conditionalEntry("security.jwt.profile.enabled", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileEnabled) +
+				conditionalEntry("security.jwt.profile.mode", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileMode) +
+				conditionalEntry("security.jwt.profile.audience", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileAudience) +
+				conditionalEntry("security.jwt.profile.issuer", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileIssuer) +
+				conditionalEntry("security.jwt.profile.jwk.url", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileJWKURL) +
+				conditionalEntry("security.jwt.profile.role.claim.name", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileRoleClaimName) +
+				conditionalEntry("security.jwt.profile.allowed.roles", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileAllowedRoles) +
+				conditionalEntry("security.jwt.profile.allowed.scopes", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileAllowedScopes) +
 				conditionalEntry("security.jwks.size", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSSize) +
+				conditionalEntry("security.jwks.allowed.urls", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSAllowedURLs) +
 				conditionalEntry("security.jwks.connection.timeout", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSConnectionTimeout) +
 				conditionalEntry("security.jwks.read.timeout", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSReadTimeout) +
 				conditionalEntry("security.jwks.refresh.interval", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSRefreshInterval) +
@@ -256,6 +281,8 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("security.requestAuthenticationFunction", ordssrvs.Spec.PoolSettings[poolIndex].SecurityRequestAuthenticationFunction) +
 				conditionalEntry("security.validationFunctionType", ordssrvs.Spec.PoolSettings[poolIndex].SecurityValidationFunctionType) +
 				conditionalEntry("security.requestValidationFunction", ordssrvs.Spec.PoolSettings[poolIndex].SecurityRequestValidationFunction) +
+				conditionalEntry("security.oauth.implicitGrantEnabled", ordssrvs.Spec.PoolSettings[poolIndex].SecurityOAuthImplicitGrantEnabled) +
+				conditionalEntry("security.par.enabled", ordssrvs.Spec.PoolSettings[poolIndex].SecurityPAREnabled) +
 				conditionalEntry("soda.defaultLimit", ordssrvs.Spec.PoolSettings[poolIndex].SODADefaultLimit) +
 				conditionalEntry("soda.maxLimit", ordssrvs.Spec.PoolSettings[poolIndex].SODAMaxLimit) +
 				conditionalEntry("restEnabledSql.active", ordssrvs.Spec.PoolSettings[poolIndex].RestEnabledSQLActive) +
@@ -263,12 +290,6 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				tnsadminEntry +
 				zipWalletPathEntry +
 				sharedZipWalletEntry +
-				// Disabled (but not forgotten)
-				// conditionalEntry("autoupgrade.api.aulocation", ords.Spec.PoolSettings[poolIndex].AutoupgradeAPIAulocation) +
-				// conditionalEntry("autoupgrade.api.enabled", ords.Spec.PoolSettings[poolIndex].AutoupgradeAPIEnabled) +
-				// conditionalEntry("autoupgrade.api.jvmlocation", ords.Spec.PoolSettings[poolIndex].AutoupgradeAPIJvmlocation) +
-				// conditionalEntry("autoupgrade.api.loglocation", ords.Spec.PoolSettings[poolIndex].AutoupgradeAPILoglocation) +
-				// conditionalEntry("db.serviceNameSuffix", ords.Spec.PoolSettings[poolIndex].DBServiceNameSuffix) +
 				`</properties>`),
 		}
 	}

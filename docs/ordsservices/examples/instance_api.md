@@ -63,6 +63,8 @@ For example, you can test the Instance API with:
 curl -sS -f -k -u iapi_user -H 'Accept: application/json' -H "Host: localhost" https://ordssrvs-base:8443/ords/_/instance-api/stable/status -w '\n'
 ```
 
+> If `standalone.https.host` is configured, use that hostname instead of `localhost`.
+
 ## Conclusion
 
 This example enables the ORDS Instance API with:

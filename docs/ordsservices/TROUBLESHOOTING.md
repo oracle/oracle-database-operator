@@ -13,6 +13,18 @@ OrdsSrvs pods use stable container names:
 
 Use these names with `kubectl logs`, `kubectl exec`, and `kubectl cp`.
 
+### HTTP 400 from ORDS probes
+
+If ORDS is running but a probe returns HTTP 400, verify the `Host` header. When
+`standalone.https.host` is configured, the HTTP `Host` header must use that
+hostname instead of `localhost`:
+
+```bash
+curl -k -i -H "Host: <standalone.https.host>" https://<pod-ip>:8443/favicon.ico
+```
+
+When using Central Configuration, see [Central Configuration](./examples/central_configuration.md).
+
 ### Init container error
 
 Check the pod status and verify the init outcome

@@ -1,6 +1,6 @@
 # OrdsSrvs Controller: Central Configuration via central.config.url
 
-This feature introduces support for configuring ORDS instances managed by the OrdsSrvs controller using a Central Configuration Server. By setting the `central.config.url` attribute, OrdsSrvs retrieves global and pool-specific settings from a central endpoint that implements the ORDS Central Config Manager OpenAPI.
+This feature introduces support for configuring ORDS instances managed by the OrdsSrvs controller using a Central Configuration Server. By setting the `central.config.url` attribute, ORDS retrieves global and pool-specific settings from a central endpoint that implements the ORDS Central Config Manager OpenAPI.
 
 This document shows:
 - A minimal OrdsSrvs example that uses `central.config.url`
@@ -258,10 +258,24 @@ Apply:
 kubectl apply -f ordssrvs-central-config.yaml
 ```
 
-The controller will:
+ORDS will:
 - Fetch the global config from `/central/v1/config`
 - Resolve the pool by URL path (because `security.externalMappingPathPrefix` is true)
 - Fetch pool configs from `/central/v1/config/pool/{poolName}` as requests arrive
+
+### Lifecycle Probes
+
+When `central.config.url` is set, ORDS reads its global and pool configuration
+from the Central Configuration Server. If that configuration customizes
+`standalone.https.host`, `standalone.https.port`, or `standalone.http.port`,
+repeat the same settings in the OrdsSrvs CR.
+The settings in the CR must match those in Central Configuration so the
+controller can configure lifecycle probes consistently.
+
+If lifecycle probing is not needed, set `probePath: ""` in the OrdsSrvs CR.
+
+Pool probing is disabled when Central Configuration is used because the custom
+resource does not contain the definitive pool list.
 
 ## Prepare a test schema and object in the database
 
@@ -303,6 +317,8 @@ Assuming ORDS is listening on 8443 and using the `/ords` context path:
 curl -ik https://ordssrvs-cc:8443/ords/pool-a/ordssrvs_testcase/testcase_table/ -H "Host: localhost"
 curl -ik https://ordssrvs-cc:8443/ords/pool-b/ordssrvs_testcase/testcase_table/ -H "Host: localhost"
 ```
+
+> If `standalone.https.host` is configured, use that hostname instead of `localhost`.
 
 - The pool is resolved from the path segment after `/ords/` (pool-a or pool-b).
 - There is no server-name-to-pool mapping in this example.

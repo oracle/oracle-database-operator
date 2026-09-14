@@ -96,6 +96,8 @@ kubectl port-forward service/ords-db -n ordsnamespace 8443:8443
 
 Direct your browser to: `https://localhost:8443/ords`
 
+> If `standalone.https.host` is configured, use that hostname instead of `localhost`.
+
 
 ## Conclusion
 

@@ -14,6 +14,9 @@ For example, the default HTTPS configuration is:
 https://<pod-ip>:8443/favicon.ico
 ```
 
+When `standalone.https.host` is set, the probe still connects to the Pod IP but sends the configured hostname in the HTTP `Host` header: `Host: <standalone.https.host>`.
+When it is not set, the probe uses `Host: localhost`. HTTP-only deployments are unaffected.
+
 Kubernetes executes the probe request and evaluates the result. The controller only configures the probes.
 
 | Probe | Path | Timeout | Period | Consecutive failures before action | Failed result |

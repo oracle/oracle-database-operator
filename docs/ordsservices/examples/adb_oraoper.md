@@ -147,6 +147,8 @@ kubectl port-forward service/ords-adb-oraoper -n ordsnamespace 8443:8443
 
 Direct your browser to: `https://localhost:8443/ords/adb-oraoper`
 
+> If `standalone.https.host` is configured, use that hostname instead of `localhost`.
+
 ## Conclusion
 
 This example has a single database pool, named `adb-oraoper`.  It is set to:
