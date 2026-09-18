@@ -78,6 +78,12 @@ type LRESTSpec struct {
 	// LREST server port. For now, keep it as 8888. TO BE USED IN FUTURE RELEASE.
 	// +kubebuilder:default=8888
 	LRESTPort int `json:"lrestPort,omitempty"`
+	// Timing settings for the HTTPS liveness probe.
+	// +kubebuilder:default:={initialDelaySeconds: 20, periodSeconds: 15, timeoutSeconds: 9, failureThreshold: 0}
+	LivenessProbe LrestProbeSettings `json:"livenessProbe,omitempty"`
+	// Timing settings for the HTTPS readiness probe.
+	// +kubebuilder:default:={initialDelaySeconds: 60, periodSeconds: 15, timeoutSeconds: 9, failureThreshold: 0}
+	ReadinessProbe LrestProbeSettings `json:"readinessProbe,omitempty"`
 	// LREST Image Name
 	LRESTImage string `json:"lrestImage,omitempty"`
 	// The name of the image pull secret in case of a private docker repository.
@@ -132,6 +138,15 @@ type LRESTSpec struct {
 	ResetDBPassword bool `json:"resetDbpassword,omitempty"`
 	// Debug option , not yet implemented
 	Trclvl int `json:"tracelevel,omitempty"`
+}
+
+// LrestProbeSettings defines the configurable timing values for an LREST HTTP probe.
+// The probe path and port are managed by the controller.
+type LrestProbeSettings struct {
+	InitialDelaySeconds int32 `json:"initialDelaySeconds,omitempty"`
+	PeriodSeconds       int32 `json:"periodSeconds,omitempty"`
+	TimeoutSeconds      int32 `json:"timeoutSeconds,omitempty"`
+	FailureThreshold    int32 `json:"failureThreshold,omitempty"`
 }
 
 // LRESTSecret defines the secretName
@@ -203,7 +218,7 @@ type LRESTStatus struct {
 	// Phase of the LREST Resource
 	Phase string `json:"phase"`
 	// LREST Resource Status
-	Status bool `json:"status"`
+	//Status bool `json:"status"`
 	// Message
 	Msg string `json:"msg,omitempty"`
 	// Number of pdbs and crd detected
@@ -214,12 +229,19 @@ type LRESTStatus struct {
 	Npdbscrd string `json:"npdbscrd,omitempty"`
 	// connection info tnsalias
 	TNSstringGetAttr string `json:"tnsstring,omitempty"`
+	// last sqlcode
+	SQLcode int `json:"sqlcode,omitempty"`
+	// rest bitmask status
+	// ++kubebuilder:default=0
+	LRESTBitMask int `json:"lreststate,omitempty"`
+	// reset status using symbol
+	LRESTBitMaskStr string `json:"lreststrstate,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".spec.cdbName",name="CDB NAME",type="string",description="Name of the LREST"
-// +kubebuilder:printcolumn:JSONPath=".status.phase",name="STATUS",type="string",description="Status of the LREST Resource"
+// +kubebuilder:printcolumn:JSONPath=".status.phase",name="OP",type="string",description="Creation phases"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="MESSAGE",type="string",description="Error message if any"
 // +kubebuilder:printcolumn:JSONPath=".spec.autodiscover",name="AUTODISCOVER",type="boolean",description="Autodiscover"
 // +kubebuilder:printcolumn:JSONPath=".status.npdbscrd",name="PDB:CRD",type="string",description="Number of PDBS"

@@ -157,7 +157,10 @@ In this document, each controller is running in a dedicated namespace:
 Configure the **WATCH_NAMESPACE** list in the operator YAML file:
 
 ```bash
-sed -i 's/value: ""/value: "oracle-database-operator-system,pdbnamespace,cdbnamespace"/g' oracle-database-operator.yaml
+OPERATOR_NS=oracle-database-operator-system
+kubectl set env deployment/oracle-database-operator-controller-manager \
+  -n "${OPERATOR_NS}" \
+  WATCH_NAMESPACE="${OPERATOR_NS},cdbnamespace,pdbnamespace"
 ```
 
 ### 2.2. <a name='APPLYROLEBINDING'></a>APPLY ROLE BINDING
@@ -452,15 +455,14 @@ To create the REST pod and monitor its processing, use the `yaml` file [`create_
 
 Ensure that you update the **lrestImage** with the latest version available on the [Oracle Container Registry (OCR)](https://container-registry.oracle.com/ords/f?p=113:4:104288359787984:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:1283,1283,This%20image%20is%20part%20of%20and%20for%20use%20with%20the%20Oracle%20Database%20Operator%20for%20Kubernetes,This%20image%20is%20part%20of%20and%20for%20use%20with%20the%20Oracle%20Database%20Operator%20for%20Kubernetes,1,0&cs=3076h-hg1qX3eJANBcUHBNBCmYWjMvxLkZyTAhDn2e8VR8Gxb_a-I8jZLhf9j6gmnimHwlP_a0OQjX6vjBfSAqQ)
 
-```bash
---> for amd64
-```
-
 Example output:
 
 ```text
+--> for amd64
 lrestImage: container-registry.oracle.com/database/operator:lrest-241210-amd64
+```
 
+```text
 --> for arm64
 lrestImage: container-registry.oracle.com/database/operator:lrest-241210-arm64
 ```
@@ -469,27 +471,7 @@ lrestImage: container-registry.oracle.com/database/operator:lrest-241210-arm64
 kubectl apply -f create_lrest_pod.yaml
 ```
 
-Monitor the file processing:
-
-```bash
-kubectl get pods -n cdbnamespace --watch
-```
-
-Example output:
-
-```text
-NAME                     READY   STATUS    RESTARTS   AGE
-cdb-dev-lrest-rs-9gvx2   0/1     Pending   0          0s
-cdb-dev-lrest-rs-9gvx2   0/1     Pending   0          0s
-cdb-dev-lrest-rs-9gvx2   0/1     ContainerCreating   0          0s
-cdb-dev-lrest-rs-9gvx2   1/1     Running             0          2s
-
-/usr/bin/kubectl get lrest -n  cdbnamespace
-NAME      CDB NAME   STATUS   MESSAGE   AUTODISCOVER   PDB:CRD   TNS STRING
-cdb-dev   DB12       Ready              true                     (DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))
-```
-
-The PDB:CRD field shows the number of physical databases and the number of CRDs associated with them. If autodiscover is turned on, these two numbers should be equal. The controller automatically creates a new CRD/LRPDB instance if a new PDB is created manually through SQL*Plus.
+Read [lrest pod creation](./lrest_pod_creation.md) doc to monitor creation progress and check the status of the pod
 
 Check the Pod logs:
 
@@ -500,6 +482,7 @@ Check the Pod logs:
 Output example:
 
 ```text
+...
 ...
 ...
 2024/09/05 12:44:09 wallet file /opt/oracle/lrest/walletfile exists completed
@@ -552,7 +535,7 @@ Parsing sqltext=select count(*) from pdb_plug_in_violations where name =:b1
 2024/09/05 12:44:11 ==========================
 2024/09/05 12:44:11 HTTPS: Listening port=8888
 2024/09/05 12:44:23 call BasicAuth Succeded
-2024/09/05 12:44:23 HTTP: [1:0] Invalid credential <-- This message can be ignored
+2024/09/05 12:44:23 HTTP: [1:0] 
 
 ```
 

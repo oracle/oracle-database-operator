@@ -51,9 +51,11 @@ import (
 	"fmt"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -137,7 +139,22 @@ const (
 	NULL = ""
 )
 
-// * STATE TABLE *//
+// * LREST STATE TABLE *//
+const (
+	LRSRBT = 0x00000001 /* Rebotting rest server */
+	LRSCMP = 0x00000002 /* Lrest setup complete  */
+	LRSINI = 0x00000004 /* Init phase */
+	LRSINE = 0x00000008 /* Init phase wait */
+	LRSPOD = 0x00000010 /* Pod creation */
+	LRSPDE = 0x00000020 /* Pod creation wait */
+	LRSPVD = 0x00000040 /* Pod validation */
+	LRSPVE = 0x00000080 /* Pod validation wait */
+	LRSSVC = 0x00000100 /* Svc creation */
+	LRSSVE = 0x00000200 /* Svc creation wait */
+
+)
+
+// * LRPDB STATE TABLE *//
 const (
 	PDBCRT = 0x00000001 /* Create pdb */
 	PDBOPN = 0x00000002 /* Open pdb read write */
@@ -298,6 +315,43 @@ func Bit(bitmask int, bitval int) bool {
 func Bis(bitmask int, bitval int) int {
 	bitmask = ((bitmask) | (bitval))
 	return bitmask
+}
+
+func Bitmaskprint2(bitmask int) string {
+	BitRead := "|"
+	if Bit(bitmask, LRSRBT) {
+		BitRead = strings.Join([]string{BitRead, "LRSRBT|"}, "")
+	}
+	if Bit(bitmask, LRSCMP) {
+		BitRead = strings.Join([]string{BitRead, "LRSCMP|"}, "")
+	}
+	if Bit(bitmask, LRSINI) {
+		BitRead = strings.Join([]string{BitRead, "LRSINI|"}, "")
+	}
+	if Bit(bitmask, LRSINE) {
+		BitRead = strings.Join([]string{BitRead, "LRSINE|"}, "")
+	}
+	if Bit(bitmask, LRSPOD) {
+		BitRead = strings.Join([]string{BitRead, "LRSPOD|"}, "")
+	}
+	if Bit(bitmask, LRSPDE) {
+		BitRead = strings.Join([]string{BitRead, "LRSPDE|"}, "")
+	}
+	if Bit(bitmask, LRSPVD) {
+		BitRead = strings.Join([]string{BitRead, "LRSPVD|"}, "")
+	}
+	if Bit(bitmask, LRSPVE) {
+		BitRead = strings.Join([]string{BitRead, "LRSPVE|"}, "")
+	}
+	if Bit(bitmask, LRSSVC) {
+		BitRead = strings.Join([]string{BitRead, "LRSSVC|"}, "")
+	}
+	if Bit(bitmask, LRSSVE) {
+		BitRead = strings.Join([]string{BitRead, "LRSSVE|"}, "")
+	}
+
+	BitRead = fmt.Sprintf("[%d]%s", bitmask, BitRead)
+	return BitRead
 }
 
 func Bitmaskprint(bitmask int) string {
@@ -490,4 +544,81 @@ func Gnrn() []byte {
 		return []byte("00000")
 	}
 	return []byte(hex.EncodeToString(brn))
+}
+
+// GetSQLCode reads sqlcode from resource status and copy into sqlcode pointer
+func GetSQLCode02(rsp string, sqlcode *int, tracelevel int) error {
+
+	if Bit(tracelevel, TRCSQL) == true {
+		fmt.Printf("TRCSQL :Begin call\n")
+	}
+
+	var objmap map[string]interface{}
+	if err := json.Unmarshal([]byte(rsp), &objmap); err != nil {
+		fmt.Printf("failed to get respData from callAPI %s", err.Error())
+		return err
+	}
+
+	*sqlcode = int(objmap["sqlcode"].(float64))
+	if Bit(tracelevel, TRCSQL) == true {
+		fmt.Printf("TRCSQL :sqlcode.......:ora-%s\n", strconv.Itoa(*sqlcode))
+	}
+
+	if *sqlcode != 0 {
+		// Check the white list
+		if DiscardableError(*sqlcode) == true {
+			fmt.Printf("Discardable error: ora-%s \n", strconv.Itoa(*sqlcode))
+			return nil
+		}
+		err := fmt.Errorf("%v", sqlcode)
+		return err
+	}
+	return nil
+}
+
+func GetSQLbuffer02(rsp string, sqlmsg *string, tracelevel int) error {
+
+	if sqlmsg == nil {
+		return errors.New("sqlmsg must not be nil")
+	}
+
+	if Bit(tracelevel, TRCSQL) == true {
+		fmt.Printf("TRCSQL :Begin call\n")
+	}
+
+	var objmap map[string]interface{}
+	if err := json.Unmarshal([]byte(rsp), &objmap); err != nil {
+		fmt.Printf("failed to get respData from callAPI %s", err.Error())
+		return err
+	}
+
+	errbuffer, ok := objmap["errbuffer"].(string)
+	if !ok {
+		return errors.New("response is missing string errbuffer")
+	}
+	*sqlmsg = errbuffer
+
+	if Bit(tracelevel, TRCSQL) == true {
+		fmt.Printf("TRCSQL :errbuffer.......:%s\n", *sqlmsg)
+	}
+
+	return nil
+}
+
+// liveness probe: LrestHTTPProbe("/database/lrest/ping2/", 8888, 20, 15, 9, 0)
+// readiness probe: LrestHTTPProbe("/database/lrest/ping/", 8888, 60, 15, 9, 0)
+func LrestHTTPProbe(path string, portNum int, initialDelaySeconds, periodSeconds, timeoutSeconds, failureThreshold int32) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Scheme: corev1.URISchemeHTTPS,
+				Path:   path,
+				Port:   intstr.FromInt(portNum),
+			},
+		},
+		InitialDelaySeconds: initialDelaySeconds,
+		PeriodSeconds:       periodSeconds,
+		TimeoutSeconds:      timeoutSeconds,
+		FailureThreshold:    failureThreshold,
+	}
 }

@@ -1472,7 +1472,7 @@ toplrest:
 run00: cleanlrest
 	@$(call msg,"lrest pod creation")
 	$(KUBECTL) apply -f $(LREST_POD) 
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.phase'}="POD/LREST creation completed" lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"lrest pod completed")
 	$(KUBECTL) get lrest -n  $(LRSNAMESPACE)
 	$(KUBECTL) get pod -n  $(LRSNAMESPACE)
@@ -1693,7 +1693,7 @@ tkaudosicov:
 	$(KUBECTL) delete lrpdb pdb1 -n $(PDBNAMESPACE)
 	$(KUBECTL) wait --for=delete lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	 @$(call msg,"checking lrpdb pdb1 recreation")
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" \
+	$(KUBECTL) wait --for jsonpath='{.status.phase'}="POD/LREST creation completed" \
 		lrpdb atd-pdbdev -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	$(MAKE) -f $(MAKEFILE) genyaml ASSERTDELETION=true
 
@@ -1997,7 +1997,7 @@ lrestrecreation:
 	@$(call msg,"deleteing lrest pod")
 	$(MAKE) -f $(MAKEFILE) cleanlrest
 	$(KUBECTL) apply -f $(LREST_POD) 
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.phase'}="POD/LREST creation completed" lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"lrest pod completed")
 	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)
 
@@ -2183,4 +2183,11 @@ pdbcrtneg01:
 	-- $(KUBECTL) apply -f $(LRPDBCRE1NEG)
 	$(RM) $(LRPDBCRE1NEG)		
 
+# Monitor lrest creation 
+lrestmon:
+	$(call msg,"monitor lrest creation")
+	-- $(KUBECTL) delete lrest cdb-dev -n $(LRSNAMESPACE)
+	$(KUBECTL) apply -f $(LREST_POD) -n $(LRSNAMESPACE) 
+	#$(KUBECLT) kubectl get lrest cdb-dev -n $(LRSNAMESPACE) --no-headers -o custom-columns='OP:.status.phase,BTMSK:.status.lreststrstate,MSG:.status.msg'  --watch
+	$(KUBECTL) get lrest cdb-dev -n cdbnamespace --no-headers  -o jsonpath='{.status.phase}{"\t"}{.status.lreststrstate}{"\t"}{.status.msg}{"\n"}'  --watch 
 
