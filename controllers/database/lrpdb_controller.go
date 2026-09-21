@@ -266,7 +266,17 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			log.Info("REC. LOOP: monitor config map")
 			if err := r.MonitorConfigMap(ctx, req, lrpdb); err != nil {
 				log.Error(err, "MonitorConfigMapFailed")
-				return requeueN, err
+				// requeueN, err --> Reque the request here can be a problem
+				//                   alter cdb restart
+				lrpdb.Status.CmBitstat = Bid(lrpdb.Status.CmBitstat, MPSYNC)
+				lrpdb.Status.CmBitStatStr = CMBitmaskprint(lrpdb.Status.CmBitstat)
+				r.UpdateStatus(ctx, req, lrpdb)
+			} else {
+				if Bit(lrpdb.Status.CmBitstat, MPSYNC) == false {
+					lrpdb.Status.CmBitstat = Bis(lrpdb.Status.CmBitstat, MPSYNC)
+					lrpdb.Status.CmBitStatStr = CMBitmaskprint(lrpdb.Status.CmBitstat)
+					r.UpdateStatus(ctx, req, lrpdb)
+				}
 			}
 		}
 
@@ -369,7 +379,7 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 
 		/**** APPLY CONFIG MAP PARAMETER ****/
-		if lrpdb.Spec.PDBConfigMap != "" && Bit(lrpdb.Status.PDBBitMask, PDBOPN) == true && Bit(lrpdb.Status.PDBBitMask, PDBCRT) == true && Bit(lrpdb.Status.CmBitstat, MPAPPL) == false && lrpdb.Spec.LRPDBState != "UNPLUG" {
+		if lrpdb.Spec.PDBConfigMap != "" && Bit(lrpdb.Status.PDBBitMask, PDBOPN) == true && Bit(lrpdb.Status.PDBBitMask, PDBCRT) == true && Bit(lrpdb.Status.CmBitstat, MPAPPL) == false && lrpdb.Spec.LRPDBState != "UNPLUG" && Bit(lrpdb.Status.PDBBitMask, PDBCNE) == false {
 			log.Info("REC. LOOP: plug  pdb ")
 			log.Info("Apply configmap:" + lrpdb.Spec.PDBConfigMap)
 			Cardinality, err := r.ApplyConfigMap(ctx, req, lrpdb)
@@ -1906,6 +1916,10 @@ func (r *LRPDBReconciler) getCDBStatus(ctx context.Context, req ctrl.Request, lr
 			lrpdb.Status.Msg = "getCDBstate failure :OCIPing sqlcode " + strconv.Itoa(sqlcode)
 			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCNE)
 			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+			// In case of connection failure we have to re-apply the configmap
+			lrpdb.Status.CmBitstat = Bid(lrpdb.Status.CmBitstat, MPAPPL)
+			lrpdb.Status.CmBitstat = Bid(lrpdb.Status.CmBitstat, MPWARN)
+			lrpdb.Status.CmBitStatStr = CMBitmaskprint(lrpdb.Status.CmBitstat)
 			lrpdb.Status.SqlCode = sqlcode
 			r.UpdateStatus(ctx, req, lrpdb)
 		}
@@ -1919,6 +1933,7 @@ func (r *LRPDBReconciler) getCDBStatus(ctx context.Context, req ctrl.Request, lr
 			lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBCNE)
 			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 			lrpdb.Status.SqlCode = 0
+			r.InitConfigMap(ctx, req, lrpdb)
 			r.UpdateStatus(ctx, req, lrpdb)
 		}
 	}
@@ -2143,7 +2158,9 @@ func (r *LRPDBReconciler) MonitorConfigMap(ctx context.Context, req ctrl.Request
 		if value != mapMatrix[name]["value"] && mapMatrix[name]["value"] != "" {
 			log.Info("config map and v$parameter out of sync")
 			if r.alterSystemLRPDB2(ctx, req, lrpdb, name, mapMatrix[name]["value"], mapMatrix[name]["scope"], "resyncparameter") != nil {
-				//log.Error(err, "alterSystemLRPDB2 failure ", "err", err.Error())
+				lrpdb.Status.CmBitstat = Bid(lrpdb.Status.CmBitstat, MPSYNC)
+				lrpdb.Status.CmBitStatStr = CMBitmaskprint(lrpdb.Status.CmBitstat)
+				r.UpdateStatus(ctx, req, lrpdb)
 				log.Info("alterSystemLRPDB2 failure")
 			}
 

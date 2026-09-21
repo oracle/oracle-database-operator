@@ -1424,6 +1424,10 @@ dumpoperator:
 	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPRNAMESPACE)|grep oracle-database-operator-controller|head -1|cut  -d ' ' -f 1` -n $(OPRNAMESPACE) >>$(DIAGFILE)
 	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPRNAMESPACE)|grep oracle-database-operator-controller|head -2|tail -1 | cut -d ' ' -f 1` -n $(OPRNAMESPACE) >>$(DIAGFILE)
 	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPRNAMESPACE)|grep oracle-database-operator-controller|tail -1|cut  -d ' ' -f 1` -n $(OPRNAMESPACE) >>$(DIAGFILE)
+	$(KUBECTL) get deployment oracle-database-operator-controller-manager -n $(OPRNAMESPACE)  -o jsonpath='{.spec.template.spec.containers[*].image}{"\n"}'
+
+currimg:
+	$(KUBECTL) get deployment oracle-database-operator-controller-manager -n $(OPRNAMESPACE)  -o jsonpath='{.spec.template.spec.containers[*].image}{"\n"}'
 
 dumplrest:
 	@$(eval TMPSP := $(shell date "+%y%m%d%H%M%S" ))
