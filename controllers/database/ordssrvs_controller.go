@@ -1392,7 +1392,8 @@ func validatePVCConsistency(ordssrvs *dbapi.OrdsSrvs, pvcName string, pvc *corev
 	}
 
 	expectedVolumeName := persistence.VolumeName
-	if pvc.Spec.VolumeName != expectedVolumeName {
+	// When no volume is requested, Kubernetes selects and records the bound PV.
+	if expectedVolumeName != "" && pvc.Spec.VolumeName != expectedVolumeName {
 		return fmt.Errorf("pvc %s/%s volumeName mismatch: expected %q, found %q", ordssrvs.Namespace, pvcName, expectedVolumeName, pvc.Spec.VolumeName)
 	}
 
