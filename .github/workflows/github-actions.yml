@@ -1,0 +1,51 @@
+name: Operator Image
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  # github.repository as <account>/<repo>
+  IMAGE: ${{ github.repository }}
+  TAG: latest 
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Golang setup
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.16
+        id: go
+        
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # Login against a Docker registry
+      # https://github.com/docker/login-action
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@28218f9b04b4f3f62068d7b6ce6ca5b26e35336c
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # extract branch name on pull request to use as image tag
+      - name: Extract branch name
+        if: github.event_name == 'pull_request'
+        run: echo "TAG=${GITHUB_HEAD_REF}" >> "$GITHUB_ENV"
+
+      # Build and push Operator image
+      - name: Build and push Operator image
+        run:  |
+          make generate
+          make manifests
+          IMAGE_NAME=${{ env.IMAGE }}
+          IMAGE_NAME=${IMAGE,,}
+          make docker-build IMG="${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.TAG }}"
+          make docker-push IMG="${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.TAG }}"
+
