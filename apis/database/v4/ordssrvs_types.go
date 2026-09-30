@@ -951,6 +951,19 @@ type OrdsSrvsStatus struct {
 	PoolProbes []PoolProbeStatus `json:"poolProbes,omitempty"`
 	// PoolsHealth summarizes the latest pool probe results.
 	PoolsHealth string `json:"poolsHealth,omitempty"`
+	// PoolsTotal is the number of pools evaluated in the latest probe cycle.
+	// Omitted when probing is disabled or no results are available.
+	// +kubebuilder:validation:Minimum=0
+	PoolsTotal *int32 `json:"poolsTotal,omitempty"`
+	// PoolsOK is the number of OK outcomes in the latest probe cycle.
+	// Omitted when probing is disabled or no results are available.
+	// +kubebuilder:validation:Minimum=0
+	PoolsOK *int32 `json:"poolsOK,omitempty"`
+	// PoolsFailed is the number of non-OK outcomes in the latest probe cycle.
+	// This includes HTTP errors as well as connection errors and timeouts.
+	// Omitted when probing is disabled or no results are available.
+	// +kubebuilder:validation:Minimum=0
+	PoolsFailed *int32 `json:"poolsFailed,omitempty"`
 	// PoolsReachable is the number of reachable pools over configured pools, for example "2/3".
 	PoolsReachable string `json:"poolsReachable,omitempty"`
 	// last observed generation to log first creation or Spec changes

@@ -2,7 +2,7 @@
 
 The OrdsSrvs controller automatically configures startup, readiness, and liveness HTTP probes on the main ORDS container.  
 It configures the endpoint, scheme, port, and timing for each probe. They are enabled by default and use the same local endpoint with different failure thresholds.   
-*(Available since OraOperator 2.3.)*  
+*(Available since Oracle Database Operator 2.3.)*  
 
 A probe request has this form:
 ```text
@@ -27,7 +27,7 @@ Kubernetes executes the probe request and evaluates the result. The controller o
 
 `/ords/` could be used as a probe path, but ORDS redirects that request. Kubernetes accepts the redirect as a positive result but reports a noisy warning in `kubectl describe pod`. `/favicon.ico` is a static ORDS file that returns HTTP `200 OK`.  
 
-Lifecycle probes check the Kubernetes-facing ORDS listener only. They do not test database or pool reachability: an unavailable database pool must not make a Pod unready or cause ORDS to restart. See [Pool Probing](./pool_probing.md) for the separate pool-health feature.  
+Lifecycle probes check the Kubernetes-facing ORDS listener only. They do not test database or pool reachability.
 
 ## Optional Lifecycle-Probe Configuration
 

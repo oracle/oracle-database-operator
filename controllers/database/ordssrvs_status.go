@@ -43,12 +43,12 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	appsv1 "k8s.io/api/apps/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -101,8 +101,9 @@ func (r *OrdsSrvsReconciler) ReconcilePoolProbes(ctx context.Context, req ctrl.R
 	return time.Duration(intervalSeconds) * time.Second, nil
 }
 
-// probePoolAlias uses the documented pool-alias URL. A redirect means that the
-// alias is valid; a 404 means that the pool is invalid or does not exist.
+// probePoolAlias uses the documented ORDS pool-alias URL. A 3xx response
+// indicates a healthy pool redirect; a 404 means that the pool is invalid or
+// does not exist.
 func probePoolAlias(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, rState *OrdsSrvsReconcileState, poolName string) dbapi.PoolProbeStatus {
 	scheme := "http"
 	port := int32(8080)
@@ -158,7 +159,7 @@ func probePoolAlias(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, rState *OrdsS
 
 	result.HTTPStatusCode = int32(resp.StatusCode)
 	switch {
-	case resp.StatusCode >= http.StatusMultipleChoices && resp.StatusCode < http.StatusBadRequest:
+	case resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusBadRequest:
 		result.Outcome = "OK"
 	case resp.StatusCode == http.StatusNotFound:
 		result.Outcome = "POOL_NOT_FOUND"
@@ -170,15 +171,18 @@ func probePoolAlias(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, rState *OrdsS
 	return result
 }
 
-func summarizePoolProbes(poolProbes []dbapi.PoolProbeStatus) (string, string) {
-	reachable := 0
+func poolProbeCounts(poolProbes []dbapi.PoolProbeStatus) (total, reachable, failed int32) {
+	total = int32(len(poolProbes))
 	for _, poolProbe := range poolProbes {
 		if poolProbe.Outcome == "OK" {
 			reachable++
 		}
 	}
+	return total, reachable, total - reachable
+}
 
-	total := len(poolProbes)
+func summarizePoolProbes(poolProbes []dbapi.PoolProbeStatus) (string, string) {
+	total, reachable, _ := poolProbeCounts(poolProbes)
 	poolsReachable := fmt.Sprintf("%d/%d", reachable, total)
 	switch {
 	case total == 0:
@@ -190,6 +194,22 @@ func summarizePoolProbes(poolProbes []dbapi.PoolProbeStatus) (string, string) {
 	default:
 		return "Partial", poolsReachable
 	}
+}
+
+// setPoolProbeMetrics derives numeric fields from the same stored results as
+// the textual summary. It does not refresh timestamps or discard stale results.
+func setPoolProbeMetrics(status *dbapi.OrdsSrvsStatus) {
+	status.PoolsTotal, status.PoolsOK, status.PoolsFailed = nil, nil, nil
+	if status.PoolsHealth == "" {
+		return
+	}
+	if status.PoolsHealth == "Disabled" || status.PoolsReachable == "" {
+		return
+	}
+	// PoolsReachable distinguishes an evaluated empty list ("0/0") from no
+	// evaluation, since an empty PoolProbes slice is omitted from JSON.
+	total, reachable, failed := poolProbeCounts(status.PoolProbes)
+	status.PoolsTotal, status.PoolsOK, status.PoolsFailed = &total, &reachable, &failed
 }
 
 func poolProbeDue(ordssrvs *dbapi.OrdsSrvs) (bool, time.Duration) {
@@ -221,16 +241,14 @@ func (r *OrdsSrvsReconciler) updatePoolProbeStatus(ctx context.Context, req ctrl
 		if err := r.Get(ctx, req.NamespacedName, latest); err != nil {
 			return err
 		}
-		if latest.Status.PoolsHealth == poolsHealth &&
-			latest.Status.PoolsReachable == poolsReachable &&
-			reflect.DeepEqual(latest.Status.PoolProbes, poolProbes) {
-			return nil
-		}
-
 		base := latest.DeepCopy()
 		latest.Status.PoolProbes = poolProbes
 		latest.Status.PoolsHealth = poolsHealth
 		latest.Status.PoolsReachable = poolsReachable
+		setPoolProbeMetrics(&latest.Status)
+		if apiequality.Semantic.DeepEqual(base.Status, latest.Status) {
+			return nil
+		}
 		return r.Status().Patch(ctx, latest, client.MergeFrom(base))
 	})
 }
@@ -356,6 +374,9 @@ func (r *OrdsSrvsReconciler) UpdateStatus(
 
 		// Fill status
 		latest.Status.Status = workloadStatus
+		// Backfill numeric fields for existing resources even when no new pool
+		// probe is due, or workload health currently prevents probing.
+		setPoolProbeMetrics(&latest.Status)
 		latest.Status.WorkloadType = latest.Spec.WorkloadType
 
 		// ORDSVersion extraction (avoid panic if image has no ":tag")

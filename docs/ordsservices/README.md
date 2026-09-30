@@ -137,6 +137,7 @@ These pages provide scenario-specific OrdsSrvs manifests and configuration.
 * [Central Configuration Server with shared zip Wallets](./examples/cc_zip_wallets.md)
 * [Instance API](./examples/instance_api.md)
 * [Metadata and Resources Example](./examples/metadata_resources.md)
+* [OrdsSrvs Observability using Prometheus and Grafana](./examples/observability.md)
 
 ## Change Log
 
@@ -147,6 +148,9 @@ Added configurable startup, readiness, and liveness probes for the ORDS containe
 
 * **Pool Probing**  
 Added opt-in probing of directly configured ORDS pools. Pool health is reported separately from Kubernetes workload availability. See [Pool Probing](./pool_probing.md).
+
+* **Prometheus and Grafana Observability Example**
+Added a [Prometheus and Grafana observability example](./examples/observability.md) for OrdsSrvs resource status, workload health, and pool reachability.
 
 ### Version 2.2
 

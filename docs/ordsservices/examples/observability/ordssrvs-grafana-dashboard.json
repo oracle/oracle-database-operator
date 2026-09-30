@@ -1,0 +1,4474 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg State Healthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(148,163,184,0.04)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Text State Healthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dot State Healthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#16a34a",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg State Preparing"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(148,163,184,0.04)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Text State Preparing"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dot State Preparing"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#3b82f6",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg State Progressing"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(148,163,184,0.04)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Text State Progressing"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dot State Progressing"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#eab308",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg State Degraded"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(148,163,184,0.04)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Text State Degraded"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dot State Degraded"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#f97316",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg State Unhealthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(148,163,184,0.04)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Text State Unhealthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dot State Unhealthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#dc2626",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg Pool Healthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(148,163,184,0.04)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Text Pool Healthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dot Pool Healthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#16a34a",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg Pool Partial"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(148,163,184,0.04)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Text Pool Partial"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dot Pool Partial"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#f97316",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg Pool Unhealthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(148,163,184,0.04)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Text Pool Unhealthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dot Pool Unhealthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#dc2626",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg Pool Disabled"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(148,163,184,0.04)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Text Pool Disabled"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dot Pool Disabled"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(0,0,0,0)",
+                      "value": 0
+                    },
+                    {
+                      "color": "#64748b",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 10,
+      "options": {
+        "inlineEditing": false,
+        "panZoom": false,
+        "root": {
+          "background": {
+            "color": {
+              "fixed": "transparent"
+            }
+          },
+          "border": {
+            "color": {
+              "fixed": "dark-green"
+            }
+          },
+          "constraint": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "elements": [
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "fontWeight": "bold",
+                "size": 11,
+                "text": {
+                  "fixed": "OrdsSrvs Resource Status",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-title",
+              "placement": {
+                "height": 22,
+                "left": 10,
+                "rotation": 0,
+                "top": 4,
+                "width": 140
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg State Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Text State Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "radius": 3,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-healthy-pill",
+              "placement": {
+                "height": 26,
+                "left": 155,
+                "rotation": 0,
+                "top": 2,
+                "width": 150
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "Dot State Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "fixed": "●",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-healthy-dot",
+              "placement": {
+                "height": 26,
+                "left": 163,
+                "rotation": 0,
+                "top": 2,
+                "width": 14
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 10,
+                "text": {
+                  "fixed": "Healthy",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-healthy-label",
+              "placement": {
+                "height": 22,
+                "left": 213,
+                "rotation": 0,
+                "top": 4,
+                "width": 86
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "field": "State Healthy",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-healthy-count",
+              "placement": {
+                "height": 26,
+                "left": 179,
+                "rotation": 0,
+                "top": 2,
+                "width": 30
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg State Preparing",
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Text State Preparing",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "radius": 3,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-preparing-pill",
+              "placement": {
+                "height": 26,
+                "left": 325,
+                "rotation": 0,
+                "top": 2,
+                "width": 150
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "Dot State Preparing",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "fixed": "●",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-preparing-dot",
+              "placement": {
+                "height": 26,
+                "left": 333,
+                "rotation": 0,
+                "top": 2,
+                "width": 14
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Preparing",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 10,
+                "text": {
+                  "fixed": "Preparing",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-preparing-label",
+              "placement": {
+                "height": 22,
+                "left": 383,
+                "rotation": 0,
+                "top": 4,
+                "width": 86
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Preparing",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "field": "State Preparing",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-preparing-count",
+              "placement": {
+                "height": 26,
+                "left": 349,
+                "rotation": 0,
+                "top": 2,
+                "width": 30
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg State Progressing",
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Text State Progressing",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "radius": 3,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-progressing-pill",
+              "placement": {
+                "height": 26,
+                "left": 495,
+                "rotation": 0,
+                "top": 2,
+                "width": 150
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "Dot State Progressing",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "fixed": "●",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-progressing-dot",
+              "placement": {
+                "height": 26,
+                "left": 503,
+                "rotation": 0,
+                "top": 2,
+                "width": 14
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Progressing",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 10,
+                "text": {
+                  "fixed": "Progressing",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-progressing-label",
+              "placement": {
+                "height": 22,
+                "left": 553,
+                "rotation": 0,
+                "top": 4,
+                "width": 86
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Progressing",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "field": "State Progressing",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-progressing-count",
+              "placement": {
+                "height": 26,
+                "left": 519,
+                "rotation": 0,
+                "top": 2,
+                "width": 30
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg State Degraded",
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Text State Degraded",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "radius": 3,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-degraded-pill",
+              "placement": {
+                "height": 26,
+                "left": 665,
+                "rotation": 0,
+                "top": 2,
+                "width": 150
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "Dot State Degraded",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "fixed": "●",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-degraded-dot",
+              "placement": {
+                "height": 26,
+                "left": 673,
+                "rotation": 0,
+                "top": 2,
+                "width": 14
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Degraded",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 10,
+                "text": {
+                  "fixed": "Degraded",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-degraded-label",
+              "placement": {
+                "height": 22,
+                "left": 723,
+                "rotation": 0,
+                "top": 4,
+                "width": 86
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Degraded",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "field": "State Degraded",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-degraded-count",
+              "placement": {
+                "height": 26,
+                "left": 689,
+                "rotation": 0,
+                "top": 2,
+                "width": 30
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg State Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Text State Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "radius": 3,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-unhealthy-pill",
+              "placement": {
+                "height": 26,
+                "left": 835,
+                "rotation": 0,
+                "top": 2,
+                "width": 150
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "Dot State Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "fixed": "●",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-unhealthy-dot",
+              "placement": {
+                "height": 26,
+                "left": 843,
+                "rotation": 0,
+                "top": 2,
+                "width": 14
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 10,
+                "text": {
+                  "fixed": "Unhealthy",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-unhealthy-label",
+              "placement": {
+                "height": 22,
+                "left": 893,
+                "rotation": 0,
+                "top": 4,
+                "width": 86
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text State Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "field": "State Unhealthy",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-unhealthy-count",
+              "placement": {
+                "height": 26,
+                "left": 859,
+                "rotation": 0,
+                "top": 2,
+                "width": 30
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "fontWeight": "bold",
+                "size": 11,
+                "text": {
+                  "fixed": "OrdsSrvs Pool Health",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-title",
+              "placement": {
+                "height": 22,
+                "left": 10,
+                "rotation": 0,
+                "top": 32,
+                "width": 140
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Pool Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Text Pool Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "radius": 3,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-healthy-pill",
+              "placement": {
+                "height": 26,
+                "left": 155,
+                "rotation": 0,
+                "top": 30,
+                "width": 150
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "Dot Pool Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "fixed": "●",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-healthy-dot",
+              "placement": {
+                "height": 26,
+                "left": 163,
+                "rotation": 0,
+                "top": 30,
+                "width": 14
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text Pool Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 10,
+                "text": {
+                  "fixed": "Healthy",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-healthy-label",
+              "placement": {
+                "height": 22,
+                "left": 213,
+                "rotation": 0,
+                "top": 32,
+                "width": 86
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text Pool Healthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "field": "Pool Healthy",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-healthy-count",
+              "placement": {
+                "height": 26,
+                "left": 179,
+                "rotation": 0,
+                "top": 30,
+                "width": 30
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Pool Partial",
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Text Pool Partial",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "radius": 3,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-partial-pill",
+              "placement": {
+                "height": 26,
+                "left": 325,
+                "rotation": 0,
+                "top": 30,
+                "width": 150
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "Dot Pool Partial",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "fixed": "●",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-partial-dot",
+              "placement": {
+                "height": 26,
+                "left": 333,
+                "rotation": 0,
+                "top": 30,
+                "width": 14
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text Pool Partial",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 10,
+                "text": {
+                  "fixed": "Partial",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-partial-label",
+              "placement": {
+                "height": 22,
+                "left": 383,
+                "rotation": 0,
+                "top": 32,
+                "width": 86
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text Pool Partial",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "field": "Pool Partial",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-partial-count",
+              "placement": {
+                "height": 26,
+                "left": 349,
+                "rotation": 0,
+                "top": 30,
+                "width": 30
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Pool Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Text Pool Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "radius": 3,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-unhealthy-pill",
+              "placement": {
+                "height": 26,
+                "left": 495,
+                "rotation": 0,
+                "top": 30,
+                "width": 150
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "Dot Pool Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "fixed": "●",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-unhealthy-dot",
+              "placement": {
+                "height": 26,
+                "left": 503,
+                "rotation": 0,
+                "top": 30,
+                "width": 14
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text Pool Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 10,
+                "text": {
+                  "fixed": "Unhealthy",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-unhealthy-label",
+              "placement": {
+                "height": 22,
+                "left": 553,
+                "rotation": 0,
+                "top": 32,
+                "width": 86
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text Pool Unhealthy",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "field": "Pool Unhealthy",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-unhealthy-count",
+              "placement": {
+                "height": 26,
+                "left": 519,
+                "rotation": 0,
+                "top": 30,
+                "width": 30
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Pool Disabled",
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Text Pool Disabled",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "radius": 3,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-disabled-pill",
+              "placement": {
+                "height": 26,
+                "left": 665,
+                "rotation": 0,
+                "top": 30,
+                "width": 150
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "Dot Pool Disabled",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "fixed": "●",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-disabled-dot",
+              "placement": {
+                "height": 26,
+                "left": 673,
+                "rotation": 0,
+                "top": 30,
+                "width": 14
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text Pool Disabled",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 10,
+                "text": {
+                  "fixed": "Disabled",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-disabled-label",
+              "placement": {
+                "height": 22,
+                "left": 723,
+                "rotation": 0,
+                "top": 32,
+                "width": 86
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Text Pool Disabled",
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "fontWeight": "bold",
+                "size": 14,
+                "text": {
+                  "field": "Pool Disabled",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-disabled-count",
+              "placement": {
+                "height": 26,
+                "left": 689,
+                "rotation": 0,
+                "top": 30,
+                "width": 30
+              },
+              "type": "metric-value"
+            }
+          ],
+          "name": "root",
+          "placement": {
+            "height": 100,
+            "left": 0,
+            "rotation": 0,
+            "top": 0,
+            "width": 100
+          },
+          "type": "frame"
+        },
+        "showAdvancedTypes": false,
+        "tooltip": {
+          "disableForOneClick": false,
+          "mode": "single"
+        },
+        "zoomToContent": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "State Healthy",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Preparing\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "State Preparing",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Progressing\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "State Progressing",
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Degraded\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "State Degraded",
+          "range": false,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "State Unhealthy",
+          "range": false,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Pool Healthy",
+          "range": false,
+          "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Partial\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Pool Partial",
+          "range": false,
+          "refId": "H"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Pool Unhealthy",
+          "range": false,
+          "refId": "I"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Disabled\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Pool Disabled",
+          "range": false,
+          "refId": "J"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg State Healthy",
+          "range": false,
+          "refId": "V11"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Text State Healthy",
+          "range": false,
+          "refId": "V12"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Dot State Healthy",
+          "range": false,
+          "refId": "V13"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Preparing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg State Preparing",
+          "range": false,
+          "refId": "V14"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Preparing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Text State Preparing",
+          "range": false,
+          "refId": "V15"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Preparing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Dot State Preparing",
+          "range": false,
+          "refId": "V16"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Progressing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg State Progressing",
+          "range": false,
+          "refId": "V17"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Progressing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Text State Progressing",
+          "range": false,
+          "refId": "V18"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Progressing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Dot State Progressing",
+          "range": false,
+          "refId": "V19"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Degraded\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg State Degraded",
+          "range": false,
+          "refId": "V20"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Degraded\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Text State Degraded",
+          "range": false,
+          "refId": "V21"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Degraded\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Dot State Degraded",
+          "range": false,
+          "refId": "V22"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg State Unhealthy",
+          "range": false,
+          "refId": "V23"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Text State Unhealthy",
+          "range": false,
+          "refId": "V24"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Dot State Unhealthy",
+          "range": false,
+          "refId": "V25"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg Pool Healthy",
+          "range": false,
+          "refId": "V29"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Text Pool Healthy",
+          "range": false,
+          "refId": "V30"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Dot Pool Healthy",
+          "range": false,
+          "refId": "V31"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Partial\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg Pool Partial",
+          "range": false,
+          "refId": "V32"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Partial\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Text Pool Partial",
+          "range": false,
+          "refId": "V33"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Partial\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Dot Pool Partial",
+          "range": false,
+          "refId": "V34"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg Pool Unhealthy",
+          "range": false,
+          "refId": "V35"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Text Pool Unhealthy",
+          "range": false,
+          "refId": "V36"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Dot Pool Unhealthy",
+          "range": false,
+          "refId": "V37"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Disabled\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg Pool Disabled",
+          "range": false,
+          "refId": "V38"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Disabled\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Text Pool Disabled",
+          "range": false,
+          "refId": "V39"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Disabled\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Dot Pool Disabled",
+          "range": false,
+          "refId": "V40"
+        }
+      ],
+      "title": "",
+      "transparent": true,
+      "type": "canvas"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Compact repeated OrdsSrvs tile with restored ring dimensions, dark theme-background cutouts, light-blue 1px separators, and a dark counter",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "state"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "Degraded": {
+                        "color": "#f97316",
+                        "text": "Degraded"
+                      },
+                      "Healthy": {
+                        "color": "#16a34a",
+                        "text": "Healthy"
+                      },
+                      "Preparing": {
+                        "color": "#3b82f6",
+                        "text": "Preparing"
+                      },
+                      "Progressing": {
+                        "color": "#eab308",
+                        "text": "Progressing"
+                      },
+                      "Unhealthy": {
+                        "color": "#dc2626",
+                        "text": "Unhealthy"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pool_health"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "Disabled": {
+                        "color": "#64748b",
+                        "text": "Disabled"
+                      },
+                      "Healthy": {
+                        "color": "#16a34a",
+                        "text": "Healthy"
+                      },
+                      "Partial": {
+                        "color": "#f97316",
+                        "text": "Partial"
+                      },
+                      "Unhealthy": {
+                        "color": "#dc2626",
+                        "text": "Unhealthy"
+                      },
+                      "Unknown": {
+                        "color": "#64748b",
+                        "text": "Unknown"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 2
+      },
+      "id": 2,
+      "maxPerRow": 5,
+      "options": {
+        "inlineEditing": false,
+        "panZoom": false,
+        "root": {
+          "background": {
+            "color": {
+              "fixed": "transparent"
+            }
+          },
+          "border": {
+            "color": {
+              "fixed": "dark-green"
+            }
+          },
+          "constraint": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "elements": [
+            {
+              "background": {
+                "color": {
+                  "field": "state",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#20262e"
+                },
+                "width": 0
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-border",
+              "placement": {
+                "height": 90,
+                "left": 13,
+                "rotation": 0,
+                "top": 7,
+                "width": 90
+              },
+              "type": "ellipse"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#64748b"
+                },
+                "width": 0
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "status-pool-separator",
+              "placement": {
+                "height": 68,
+                "left": 24,
+                "rotation": 0,
+                "top": 18,
+                "width": 68
+              },
+              "type": "ellipse"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "pool_health",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#20262e"
+                },
+                "width": 0
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-ring",
+              "placement": {
+                "height": 64,
+                "left": 26,
+                "rotation": 0,
+                "top": 20,
+                "width": 64
+              },
+              "type": "ellipse"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "pool_health",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#20262e"
+                },
+                "width": 0
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "inner-core",
+              "placement": {
+                "height": 40,
+                "left": 38,
+                "rotation": 0,
+                "top": 32,
+                "width": 40
+              },
+              "type": "ellipse"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(255,255,255,0.25)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                },
+                "width": 0
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "counter-lighten",
+              "placement": {
+                "height": 40,
+                "left": 38,
+                "rotation": 0,
+                "top": 32,
+                "width": 40
+              },
+              "type": "ellipse"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#000000"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "pools",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-value",
+              "placement": {
+                "height": 40,
+                "left": 38,
+                "rotation": 0,
+                "top": 32,
+                "width": 40
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "fontWeight": "bold",
+                "size": 13,
+                "text": {
+                  "field": "ordssrvs",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "ordssrvs-name",
+              "placement": {
+                "height": 20,
+                "left": 126,
+                "rotation": 0,
+                "top": 2,
+                "width": 130
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "fontWeight": "bold",
+                "size": 11,
+                "text": {
+                  "fixed": "Status:",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-label-title",
+              "placement": {
+                "height": 18,
+                "left": 126,
+                "rotation": 0,
+                "top": 24,
+                "width": 42
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "state",
+                  "fixed": "#e2e8f0"
+                },
+                "fontWeight": "bold",
+                "size": 11,
+                "text": {
+                  "field": "state",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-label",
+              "placement": {
+                "height": 18,
+                "left": 168,
+                "rotation": 0,
+                "top": 24,
+                "width": 88
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "fontWeight": "bold",
+                "size": 11,
+                "text": {
+                  "fixed": "Pools:",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-label-title",
+              "placement": {
+                "height": 18,
+                "left": 126,
+                "rotation": 0,
+                "top": 48,
+                "width": 42
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "pool_health",
+                  "fixed": "#e2e8f0"
+                },
+                "fontWeight": "bold",
+                "size": 11,
+                "text": {
+                  "field": "pool_health",
+                  "fixed": "-",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-label",
+              "placement": {
+                "height": 18,
+                "left": 168,
+                "rotation": 0,
+                "top": 48,
+                "width": 88
+              },
+              "type": "text"
+            }
+          ],
+          "name": "root",
+          "placement": {
+            "height": 100,
+            "left": 0,
+            "rotation": 0,
+            "top": 0,
+            "width": 100
+          },
+          "type": "frame"
+        },
+        "showAdvancedTypes": false,
+        "tooltip": {
+          "disableForOneClick": false,
+          "mode": "single"
+        },
+        "zoomToContent": true
+      },
+      "pluginVersion": "12.4.2",
+      "repeat": "ordssrvs",
+      "repeatDirection": "h",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "(ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1)\n* on(namespace, ordssrvs) group_left(pool_health)\nlabel_replace(\n  ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1,\n  \"pool_health\", \"$1\", \"state\", \"(.*)\"\n)\n* on(namespace, ordssrvs) group_left(total, ok, failed, pools)\n(\n  label_join(\n    (\n      count_values by(namespace, ordssrvs)(\n  \"total\",\n  (ordssrvs_pool_total_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1))\n)\n      * on(namespace, ordssrvs) group_left(ok)\n      count_values by(namespace, ordssrvs)(\n  \"ok\",\n  (ordssrvs_pool_ok_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1))\n)\n      * on(namespace, ordssrvs) group_left(failed)\n      count_values by(namespace, ordssrvs)(\n  \"failed\",\n  (ordssrvs_pool_failed_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1))\n)\n    ),\n    \"pools\", \"/\", \"ok\", \"total\"\n  )\n  or on(namespace, ordssrvs)\n  group by(namespace, ordssrvs)(\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"}\n  )\n)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "",
+      "type": "canvas"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "OrdsSrvs count",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Healthy"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#16a34a",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Degraded"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#f97316",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unhealthy"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#dc2626",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Preparing"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#3b82f6",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Progressing"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#eab308",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "timeZone": "browser",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (state) (ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"})",
+          "format": "time_series",
+          "instant": false,
+          "legendFormat": "{{state}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "OrdsSrvs Resource Status Count",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Pool health count",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Healthy"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#16a34a",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unhealthy"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#dc2626",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Partial"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#f97316",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Disabled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#64748b",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "timeZone": "browser",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (state) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"})",
+          "format": "time_series",
+          "instant": false,
+          "legendFormat": "{{state}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "OrdsSrvs Pool Health Count",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ordssrvs"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 213
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "markdown"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "pattern": "^(.+)$",
+                      "result": {
+                        "text": "<strong>$1</strong>"
+                      }
+                    },
+                    "type": "regex"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "state"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 135
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "markdown"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "Degraded": {
+                        "text": "<div style=\"background-color:#f97316;padding:0 2px;border-radius:3px;\">Degraded</div>"
+                      },
+                      "Healthy": {
+                        "text": "<div style=\"background-color:#16a34a;padding:0 2px;border-radius:3px;\">Healthy</div>"
+                      },
+                      "Preparing": {
+                        "text": "<div style=\"background-color:#3b82f6;padding:0 2px;border-radius:3px;\">Preparing</div>"
+                      },
+                      "Progressing": {
+                        "text": "<div style=\"background-color:#eab308;padding:0 2px;border-radius:3px;\">Progressing</div>"
+                      },
+                      "Unhealthy": {
+                        "text": "<div style=\"background-color:#dc2626;padding:0 2px;border-radius:3px;\">Unhealthy</div>"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pool_health"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 135
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "markdown"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "Healthy": {
+                        "text": "<div style=\"background-color:#16a34a;padding:0 2px;border-radius:3px;\">Healthy</div>"
+                      },
+                      "Partial": {
+                        "text": "<div style=\"background-color:#f97316;padding:0 2px;border-radius:3px;\">Partial</div>"
+                      },
+                      "Unhealthy": {
+                        "text": "<div style=\"background-color:#dc2626;padding:0 2px;border-radius:3px;\">Unhealthy</div>"
+                      },
+                      "Unknown": {
+                        "text": "<div style=\"background-color:#64748b;padding:0 2px;border-radius:3px;\">Unknown</div>"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pools_last_checked"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 154
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "0": {
+                        "text": "-"
+                      }
+                    },
+                    "type": "value"
+                  },
+                  {
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "-"
+                      }
+                    },
+                    "type": "special"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pools"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "OrdsSrvs"
+          }
+        ]
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1)\n* on(namespace, ordssrvs) group_left(pool_health)\nlabel_replace(\n  ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1,\n  \"pool_health\", \"$1\", \"state\", \"(.*)\"\n)\n* on(namespace, ordssrvs) group_left(total, ok, failed, pools)\n(\n  label_join(\n    (\n    count_values by(namespace, ordssrvs)(\"total\", (ordssrvs_pool_total_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\", state=\"Disabled\"} == 1)))\n    * on(namespace, ordssrvs) group_left(ok)\n    count_values by(namespace, ordssrvs)(\"ok\", (ordssrvs_pool_ok_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\", state=\"Disabled\"} == 1)))\n    * on(namespace, ordssrvs) group_left(failed)\n    count_values by(namespace, ordssrvs)(\"failed\", (ordssrvs_pool_failed_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\", state=\"Disabled\"} == 1)))\n    ),\n    \"pools\", \"/\", \"ok\", \"total\"\n  )\n  or on(namespace, ordssrvs)\n  group by(namespace, ordssrvs)(ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"})\n)\n* on(namespace, ordssrvs) group_left(pools_last_checked)\n(\n  count_values by(namespace, ordssrvs)(\n    \"pools_last_checked\",\n    (1000 * max by(namespace, ordssrvs)(ordssrvs_pool_last_checked_timestamp_seconds{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"}))\n    unless on(namespace, ordssrvs)\n    (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\", state=\"Disabled\"} == 1)\n  )\n  or on(namespace, ordssrvs)\n  group by(namespace, ordssrvs)(ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"})\n)",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "OrdsSrvs Details",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "ordssrvs",
+                "state",
+                "pool_health",
+                "pools",
+                "pools_last_checked"
+              ]
+            }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "number",
+                "targetField": "pools_last_checked"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "namespace": 0,
+              "ordssrvs": 1,
+              "pool_health": 3,
+              "pools": 4,
+              "pools_last_checked": 5,
+              "state": 2
+            },
+            "renameByName": {
+              "namespace": "Namespace",
+              "ordssrvs": "OrdsSrvs",
+              "pool_health": "Pool Health",
+              "pools": "Pools",
+              "pools_last_checked": "Last Checked",
+              "state": "Status"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Namespace"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "OrdsSrvs"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 220
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "markdown"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "pattern": "^(.+)$",
+                      "result": {
+                        "text": "<strong>$1</strong>"
+                      }
+                    },
+                    "type": "regex"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pool"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "markdown"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "pattern": "^(.+)$",
+                      "result": {
+                        "text": "<strong>$1</strong>"
+                      }
+                    },
+                    "type": "regex"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outcome"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "markdown"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "ERROR": {
+                        "text": "<div style=\"background-color:#dc2626;padding:0 2px;border-radius:3px;\">ERROR</div>"
+                      },
+                      "OK": {
+                        "text": "<div style=\"background-color:#16a34a;padding:0 2px;border-radius:3px;\">OK</div>"
+                      },
+                      "POOL_NOT_FOUND": {
+                        "text": "<div style=\"background-color:#f97316;padding:0 2px;border-radius:3px;\">POOL_NOT_FOUND</div>"
+                      },
+                      "SERVER_ERROR": {
+                        "text": "<div style=\"background-color:#dc2626;padding:0 2px;border-radius:3px;\">SERVER_ERROR</div>"
+                      },
+                      "UNEXPECTED": {
+                        "text": "<div style=\"background-color:#eab308;padding:0 2px;border-radius:3px;\">UNEXPECTED</div>"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "HTTP Code"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last Checked"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "OrdsSrvs"
+          }
+        ]
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace((ordssrvs_pool_http_status_code{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} * on(namespace, ordssrvs, pool) group_left(outcome) (ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1)), \"metric\", \"HTTP Code\", \"namespace\", \".*\")",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * (ordssrvs_pool_last_checked_timestamp_seconds{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} * on(namespace, ordssrvs, pool) group_left(outcome) (ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1)), \"metric\", \"Last Checked\", \"namespace\", \".*\")",
+          "format": "time_series",
+          "instant": true,
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "title": "OrdsSrvs Pool Details",
+      "transformations": [
+        {
+          "id": "joinByLabels",
+          "options": {
+            "value": "metric"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "ordssrvs",
+                "pool",
+                "outcome",
+                "HTTP Code",
+                "Last Checked"
+              ]
+            }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "time",
+                "targetField": "Last Checked"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "HTTP Code": 4,
+              "Last Checked": 5,
+              "namespace": 0,
+              "ordssrvs": 1,
+              "outcome": 3,
+              "pool": 2
+            },
+            "renameByName": {
+              "namespace": "Namespace",
+              "ordssrvs": "OrdsSrvs",
+              "outcome": "Outcome",
+              "pool": "Pool"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "5s",
+  "schemaVersion": 42,
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "baseFilters": [],
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "filters": [],
+        "name": "Filters",
+        "type": "adhoc"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(ordssrvs_status, namespace)",
+        "includeAll": true,
+        "label": "Namespace",
+        "multi": true,
+        "name": "namespace",
+        "options": [],
+        "query": "label_values(ordssrvs_status, namespace)",
+        "refresh": 1,
+        "regexApplyTo": "value",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "query_result(ordssrvs_status{namespace=~\"$namespace\"} == 1)",
+        "includeAll": true,
+        "label": "OrdsSrvs",
+        "multi": true,
+        "name": "ordssrvs",
+        "options": [],
+        "query": "query_result(ordssrvs_status{namespace=~\"$namespace\"} == 1)",
+        "refresh": 2,
+        "regex": "/ordssrvs=\\\"([^\\\"]+)\\\"/",
+        "regexApplyTo": "value",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "OrdsSrvs Resources",
+  "uid": "ordssrvs-state-pool-health",
+  "version": 1,
+  "weekStart": "",
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "Prometheus scraping the OrdsSrvs kube-state-metrics metrics",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "id": null
+}

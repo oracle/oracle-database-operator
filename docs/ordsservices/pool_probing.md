@@ -1,27 +1,27 @@
 # Pool Probing
 
-Starting with OraOperator 2.3, this opt-in feature checks whether
-the ORDS pool aliases configured in an `OrdsSrvs` custom resource are reachable
-through the OrdsSrvs Service. It is disabled by default.
+This opt-in feature checks whether the ORDS pool aliases configured in an
+`OrdsSrvs` custom resource are reachable through the OrdsSrvs Service. 
+
+> **Note:** Pool probing is available starting with OraOperator 2.3. It is
+disabled by default.
 
 Pool reachability is independent of Kubernetes lifecycle probes. Kubernetes
 executes the lifecycle probes, while the OrdsSrvs controller executes the
 pool-reachability probes and records their results. The two signals answer
 different questions:
 
-| Signal | Checks | Can change |
-|---|---|---|
-| Kubernetes lifecycle probes | Kubernetes checks whether the ORDS process responds on its local HTTP or HTTPS listener | Pod readiness, container restarts, workload availability, and `status.status` |
-| Pool reachability probes | The OrdsSrvs controller checks whether each configured pool alias responds through the OrdsSrvs Service | `status.poolProbes`, `status.poolsHealth`, and `status.poolsReachable` only |
+| Signal | Checks | Effect | Relevant status fields |
+|---|---|---|---|
+| Kubernetes lifecycle probes | Kubernetes checks whether the ORDS process responds on its local HTTP or HTTPS listener | Readiness failure removes the Pod from Service endpoints. Liveness failure restarts the container. | `status.status`, `status.conditions` |
+| Pool reachability probes | The OrdsSrvs controller checks whether each configured pool alias responds through the OrdsSrvs Service | No Kubernetes action is taken; results are recorded in the OrdsSrvs status. | `status.poolProbes`, `status.poolsHealth`, `status.poolsReachable`, `status.poolsTotal`, `status.poolsOK`, `status.poolsFailed` |
 
-A failed pool does not make a healthy ORDS Pod unready and does not restart the
-container. See [Kubernetes Liveness, Readiness, and Startup Probes](./lifecycle_probes.md) for Pod
-lifecycle behavior.
+A failed pool does not make an OrdsSrvs Pod unready or restart it.
 
 ## Enable Pool Probing
 
-Set a non-zero interval on an `OrdsSrvs` resource with pools defined directly in
-`spec.poolSettings`:
+Pool probing applies only to pools listed in `spec.poolSettings`. Enable it by
+setting a non-zero interval:
 
 ```yaml
 spec:
@@ -42,28 +42,57 @@ use because the custom resource does not contain the definitive pool list.
 For each pool in `spec.poolSettings`, the controller sends a `GET` request to:
 
 ```text
-<scheme>://<ordssrvs>.<namespace>.svc:<port>/<context-path>[/<pool-alias>/]
+Default pool: https://<ordssrvs>.<namespace>.svc:<port>/<context-path>/
+Named pool:   https://<ordssrvs>.<namespace>.svc:<port>/<context-path>/<pool-alias>/
 ```
 
 The default pool uses only the context path, for example
 `/ords/`. A non-default pool adds its alias, for example `/ords/pdb1/`. The
-scheme, port, and context path come from the OrdsSrvs configuration.
+trailing slash is required in both cases. HTTPS is enabled by default; the
+controller uses HTTP only when HTTPS is disabled. The port and context path
+come from the OrdsSrvs configuration.
 
-When `standalone.https.host` is set, the request sends the configured hostname in the HTTP `Host` header (`Host: <standalone.https.host>`). When it is not set, or the deployment is HTTP-only, it uses `Host: localhost`.
+The controller evaluates the initial response without following redirects.
 
-| Response or error | `outcome` | Counted as reachable |
+| HTTP response or error | `outcome` | Reachable |
 |---|---|---|
-| Any `3xx` response, including a redirect | `OK` | Yes |
+| Any `2xx` or `3xx` response, including a redirect | `OK` | Yes |
 | `404 Not Found` | `POOL_NOT_FOUND` | No |
 | Any `5xx` response | `SERVER_ERROR` | No |
 | Connection error or timeout | `ERROR` | No |
 | Any other HTTP response | `UNEXPECTED` | No |
 
+When `standalone.https.host` is set, the request sends the configured hostname in the HTTP `Host` header (`Host: <standalone.https.host>`). When it is not set, or the deployment is HTTP-only, it uses `Host: localhost`.
+
 For HTTPS, the controller disables certificate verification for this local
 OrdsSrvs Service request so the default self-signed certificate does not block
 the probe. This check is reachability validation, not certificate validation.
 
-## View Pool Health
+## Pool Probe Status
+
+Probe results are exposed as status fields on the `OrdsSrvs` resource:
+
+| Field | Description |
+|---|---|
+| `status.poolProbes` | Array containing the latest result for each configured pool. |
+| `status.poolProbes[].poolName` | Configured pool alias. |
+| `status.poolProbes[].outcome` | Probe result: `OK`, `POOL_NOT_FOUND`, `SERVER_ERROR`, `ERROR`, or `UNEXPECTED`. |
+| `status.poolProbes[].httpStatusCode` | HTTP response code; omitted when no HTTP response was received. |
+| `status.poolProbes[].lastChecked` | Timestamp of the latest probe for the pool. |
+| `status.poolsHealth` | Aggregate pool health: `Healthy`, `Partial`, `Unhealthy`, `Disabled`, or `Unknown`. |
+| `status.poolsReachable` | Reachable pools over total evaluated pools, formatted as `n/total`. |
+| `status.poolsTotal` | Total number of pools evaluated in the latest probe cycle. |
+| `status.poolsOK` | Number of pools with an `OK` outcome in the latest probe cycle. |
+| `status.poolsFailed` | Number of pools with a non-`OK` outcome in the latest probe cycle. |
+
+The numeric count fields are omitted when probing is disabled or no result is
+available. An evaluated empty pool list reports zero counts. When workload
+health prevents a new probe, previous results and counts are retained; use
+`lastChecked` to determine result freshness.
+
+## Inspect Pool Health
+
+### Summary
 
 The `STATUS` column is workload health. `POOLSHEALTH` and `POOLS` are the
 separate pool-probe summary:
@@ -71,7 +100,9 @@ separate pool-probe summary:
 ```bash
 # OrdsSrvs resources: compare workload health with pool health
 kubectl get ordssrvs -n $NAMESPACE
+```
 
+```text
 NAME                STATUS   POOLSHEALTH   POOLS   WORKLOADTYPE   HTTPPORT   HTTPSPORT   MONGOPORT   AGE
 ordssrvs-base       Healthy  Healthy       1/1     Deployment     8080       8443                    18m
 ordssrvs-edgehttp   Healthy  Healthy       1/1     Deployment     8080       0                       7m
@@ -96,64 +127,65 @@ from pool health.
 When probing is enabled with no configured pools, the summary is `Unknown` and
 `POOLS` is `0/0` after the first probe attempt.
 
-## Inspect Detailed Results
+### Single-pool details
 
-Read the latest per-pool result from the custom resource. The command prints
-the pool alias, outcome, HTTP status code, and check time:
+Use `kubectl describe` to view the single-pool results and aggregate fields:
 
 ```bash
-# Pool-probe details for an OrdsSrvs resource
-kubectl get ordssrvs ordssrvs-partial -n $NAMESPACE \
-  -o jsonpath='{range .status.poolProbes[*]}{"POOL "}{.poolName}{" OUTCOME="}{.outcome}{" HTTP_STATUS="}{.httpStatusCode}{" LAST_CHECKED="}{.lastChecked}{"\n"}{end}'
-
-POOL positive OUTCOME=OK HTTP_STATUS=302 LAST_CHECKED=2026-08-31T11:54:51Z
-POOL negative OUTCOME=SERVER_ERROR HTTP_STATUS=574 LAST_CHECKED=2026-08-31T11:54:51Z
+kubectl describe -n $NAMESPACE ordssrvs/ordssrvs-partial
 ```
 
-`status.poolProbes` contains `poolName`, `outcome`, `httpStatusCode` when an
-HTTP response was received, and `lastChecked`. A connection error or timeout
-has no HTTP response and therefore has an HTTP status code of `0`.
+Example output excerpt:
 
-For the complete OrdsSrvs resource details, including every pool-probe result,
-use `kubectl describe`:
-
-```bash
-# OrdsSrvs resource: show pool results and aggregate pool health
-kubectl describe ordssrvs ordssrvs-partial -n $NAMESPACE
-
-...
+```text
 Status:
   Pool Probes:
     Http Status Code: 302
-    Last Checked:      2026-08-31T11:54:51Z
+    Last Checked:      2026-09-29T10:03:24Z
     Outcome:           OK
-    Pool Name:         positive
+    Pool Name:         pool1
     Http Status Code: 574
-    Last Checked:      2026-08-31T11:54:51Z
+    Last Checked:      2026-09-29T10:03:24Z
     Outcome:           SERVER_ERROR
-    Pool Name:         negative
+    Pool Name:         pool2
+    Http Status Code: 302
+    Last Checked:      2026-09-29T10:03:24Z
+    Outcome:           OK
+    Pool Name:         pool3
+  Pools Failed:        1
   Pools Health:        Partial
-  Pools Reachable:     1/2
+  Pools OK:            2
+  Pools Reachable:     2/3
+  Pools Total:         3
   Status:              Healthy
 ```
 
 ## Empirical Service-Endpoint Test
 
-The following non-production test deliberately changes the generated Service
-selector so that it selects no Pods. It simulates the generic reachability
-symptom that could result from a network error or a database error: the
-controller cannot reach the pool through the Service. It validates the
-controller's handling of a Service with no endpoints, but does not reproduce a
-specific network or database failure.
+This non-production test simulates pool unavailability by changing the Service
+selector so that it has no matching OrdsSrvs Pods.
 
-Generate the reachability failure by changing the Service selector to a label
-that no ORDS Pod has:
+Use a resource with probing enabled and healthy pools, such as `ordssrvs-base`.
+Confirm that both workload and pool health are `Healthy` before proceeding:
 
 ```bash
-# Service: remove all selected endpoints for the test
-kubectl patch service ordssrvs-negative -n $NAMESPACE --type merge -p '{"spec":{"selector":{"app":"ordssrvs-negative-no-endpoints"}}}'
+kubectl get ordssrvs ordssrvs-base -n "$NAMESPACE"
+```
 
-service/ordssrvs-negative patched
+```text
+NAME              STATUS   POOLSHEALTH   POOLS   WORKLOADTYPE   HTTPPORT   HTTPSPORT   MONGOPORT   AGE
+ordssrvs-base     Healthy  Healthy       1/1     Deployment     8080       8443                    12m
+```
+
+For this example, the Service's `app` selector is `ordssrvs-base`. Change only
+that value to stop matching Pods:
+
+```bash
+kubectl patch service ordssrvs-base -n "$NAMESPACE" --type=merge -p='{"spec":{"selector":{"app":"ordssrvs-base-no-endpoints"}}}'
+```
+
+```text
+service/ordssrvs-base patched
 ```
 
 After the next pool-probe interval, check that pool health is `Unhealthy` while
@@ -161,25 +193,38 @@ the workload remains `Healthy`:
 
 ```bash
 # OrdsSrvs resource: check the reachability failure
-kubectl get ordssrvs ordssrvs-negative -n $NAMESPACE
-
-NAME              STATUS   POOLSHEALTH   POOLS   WORKLOADTYPE   HTTPPORT   HTTPSPORT   MONGOPORT   AGE
-ordssrvs-negative Healthy  Unhealthy     0/1     Deployment     8080       8443                    13m
+kubectl get ordssrvs ordssrvs-base -n "$NAMESPACE"
 ```
 
-Restore the generated selector immediately after the check:
+```text
+NAME              STATUS   POOLSHEALTH   POOLS   WORKLOADTYPE   HTTPPORT   HTTPSPORT   MONGOPORT   AGE
+ordssrvs-base     Healthy  Unhealthy     0/1     Deployment     8080       8443                    13m
+```
+
+Restore the `app` selector immediately after the check:
 
 ```bash
 # Service: restore the normal OrdsSrvs selector
-kubectl patch service ordssrvs-negative -n $NAMESPACE --type merge -p '{"spec":{"selector":{"app":"ordssrvs-negative","app.kubernetes.io/instance":"ordssrvs-negative","oracle.com/ords-operator-filter":"oracle-database-operator"}}}'
+kubectl patch service ordssrvs-base -n "$NAMESPACE" --type=merge -p='{"spec":{"selector":{"app":"ordssrvs-base"}}}'
+```
 
-service/ordssrvs-negative patched
+```text
+service/ordssrvs-base patched
+```
+
+After the next probe, verify that pool health returns to `Healthy`:
+
+```bash
+kubectl get ordssrvs ordssrvs-base -n "$NAMESPACE"
+```
+
+```text
+NAME              STATUS   POOLSHEALTH   POOLS   WORKLOADTYPE   HTTPPORT   HTTPSPORT   MONGOPORT   AGE
+ordssrvs-base     Healthy  Healthy       1/1     Deployment     8080       8443                    14m
 ```
 
 ## Limitations
 
-* Pool probing applies only to pools defined directly in `spec.poolSettings`.
-* `poolProbeIntervalSeconds: 0` disables probing. This is the default.
 * The controller waits for workload `Healthy` before probing. Before the first
   result, an enabled resource reports `Unknown`.
 * With Central Configuration Server, pool probing reports `Disabled` because
