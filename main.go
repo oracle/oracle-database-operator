@@ -76,8 +76,6 @@ import (
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	networkv4 "github.com/oracle/oracle-database-operator/apis/network/v4"
-	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
-	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
 	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
@@ -96,12 +94,10 @@ var (
 // init registers all API schemas used by the manager.
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(observabilityv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(monitorv1.AddToScheme(scheme))
 	utilruntime.Must(databasev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(databasev4.AddToScheme(scheme))
 	utilruntime.Must(networkv4.AddToScheme(scheme))
-	utilruntime.Must(observabilityv1.AddToScheme(scheme))
 	utilruntime.Must(observabilityv4.AddToScheme(scheme))
 	utilruntime.Must(privateaiv4.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
@@ -456,8 +452,6 @@ func setupWebhooks(mgr ctrl.Manager) error {
 		{name: "ShardingDatabase", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1ShardingDatabaseWebhook},
 		{name: "ShardingDatabase", setup: setupV4ShardingDatabaseWebhook},
 		{name: "DbcsSystem", setup: setupV4DbcsSystemWebhook},
-		{name: "DatabaseObserver", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1DatabaseObserverWebhook},
-		{name: "DatabaseObserver", apiVersion: "v1", deprecated: true, setup: setupV1DatabaseObserverWebhook},
 		{name: "DatabaseObserver", setup: setupV4DatabaseObserverWebhook},
 		{name: "SingleInstanceDatabase", setup: setupV4SingleInstanceDatabaseWebhook},
 		{name: "DataguardBroker", setup: setupV4DataguardBrokerWebhook},
@@ -573,16 +567,8 @@ func setupV4ShardingDatabaseWebhook(mgr ctrl.Manager) error {
 	return (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr)
 }
 
-func setupV1Alpha1DatabaseObserverWebhook(mgr ctrl.Manager) error {
-	return (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr)
-}
-
 func setupV4DbcsSystemWebhook(mgr ctrl.Manager) error {
 	return (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr)
-}
-
-func setupV1DatabaseObserverWebhook(mgr ctrl.Manager) error {
-	return (&observabilityv1.DatabaseObserver{}).SetupWebhookWithManager(mgr)
 }
 
 func setupV4DatabaseObserverWebhook(mgr ctrl.Manager) error {

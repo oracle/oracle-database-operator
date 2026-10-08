@@ -116,10 +116,8 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 
-# DatabaseObserver v1alpha1 is retained for source compatibility but is no
-# longer served by admission webhooks. Keep the webhook generator scoped to
-# supported observability API versions while preserving the other API groups.
-WEBHOOK_PATHS ?= {./apis/database/...,./apis/network/...,./apis/observability/v1,./apis/observability/v4,./apis/privateai/...}
+# Keep the webhook generator scoped to supported observability API versions while preserving the other API groups.
+WEBHOOK_PATHS ?= {./apis/database/...,./apis/network/...,./apis/observability/v4,./apis/privateai/...}
 
 # Derive Dockerfile target from DEBUG, unless TARGET explicitly provided
 ifeq ($(TARGET),)
