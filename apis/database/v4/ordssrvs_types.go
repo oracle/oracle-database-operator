@@ -106,10 +106,6 @@ type OrdsSrvsSpec struct {
 	// Specifies timing settings shared by startup, readiness, and liveness probes.
 	ProbeSettings OrdsSrvsProbeSettings `json:"probeSettings,omitempty"`
 
-	// Deprecated: ImagePullSecrets is not used by the OrdsSrvs controller and will be removed in a future API version.
-	// Specifies the Secret Name for pulling the ORDS container image
-	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
-
 	// Contains settings that are configured across the entire ORDS instance.
 	//+kubebuilder:default:={}
 	GlobalSettings GlobalSettings `json:"globalSettings,omitempty"`
@@ -235,10 +231,6 @@ type GlobalSettings struct {
 	// Specifies for how long to wait before destroying an idle pool.
 	DBIdlePoolTimeout string `json:"db.idlePoolTimeout,omitempty"`
 
-	// Deprecated: use FeatureGraphQLMaxNestingDepth (json:"feature.graphql.max.nesting.depth").
-	// Specifies the maximum join nesting depth limit for GraphQL queries.
-	FeatureGrahpQLMaxNestingDepth *int32 `json:"feature.grahpql.max.nesting.depth,omitempty"`
-
 	// Specifies the maximum join nesting depth limit for GraphQL queries.
 	FeatureGraphQLMaxNestingDepth *int32 `json:"feature.graphql.max.nesting.depth,omitempty"`
 
@@ -353,20 +345,6 @@ type GlobalSettings struct {
 	/*************************************************
 	* Custom attributes, not written to global.xml
 	/************************************************/
-
-	// Specify whether to download APEX installation files
-	// This setting will be ignored for ADB
-	// This is not written to ORDS global settings.
-	// Deprecated: use apex.installation.persistence with a pre-staged APEX installation artifact.
-	//+kubebuilder:default:=false
-	APEXDownload bool `json:"apex.download,omitempty"`
-
-	// Specify the url to download APEX installation files
-	// This setting will be ignored for ADB
-	// This is not written to ORDS global settings.
-	// Deprecated: stage APEX installation files with apex.installation.persistence.
-	//+kubebuilder:default:="https://download.oracle.com/otn_software/apex/apex-latest.zip"
-	APEXDownloadURL string `json:"apex.download.url,omitempty"`
 
 	// Specify the storage attributes for PersistenceVolume and PersistenceVolumeClaim
 	// This is not written to ORDS global settings.

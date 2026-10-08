@@ -1290,8 +1290,6 @@ func (r *OrdsSrvsReconciler) envDefine(ctx context.Context, ordssrvs *dbapi.Ords
 	// init container only
 	if initContainer {
 
-		envVars = addEnvVar(envVars, "download_apex", strconv.FormatBool(ordssrvs.Spec.GlobalSettings.APEXDownload))
-		envVars = addEnvVar(envVars, "download_url_apex", ordssrvs.Spec.GlobalSettings.APEXDownloadURL)
 		envVars = addEnvVar(envVars, "external_apex", strconv.FormatBool(rState.APEXInstallationExternal))
 
 		instanceAPIAdminUser := ordssrvs.Spec.GlobalSettings.InstanceAPIAdminUser

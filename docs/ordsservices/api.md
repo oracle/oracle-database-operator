@@ -110,14 +110,6 @@ configurations change<br>
 <td>false</td>
 </tr>
 <tr>
-<td><b>DEPRECATED</b><br>imagePullSecrets</td>
-<td>string</td>
-<td>Deprecated: this field is not used by the OrdsSrvs controller and will be removed in a future API version.<br>
-Specifies the Secret Name for pulling the ORDS container image
-</td>
-<td>false</td>
-</tr>
-<tr>
 <td><b>jdkJavaOptions</b></td>
 <td>string</td>
 <td>Specifies JVM options passed to ORDS through the JDK_JAVA_OPTIONS environment variable</td>
@@ -497,26 +489,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr>
       <tr>
-        <td><b>DEPRECATED</b><br/>apex.download</td>
-        <td>boolean</td>
-        <td>
-          Specifies whether to download APEX installation files.<br/>
-          Deprecated: use <code>apex.installation.persistence</code> with pre-staged APEX installation files instead.<br/>
-        </td>
-        <td>false</td>
-      </tr>
-      <tr>
-        <td><b>DEPRECATED</b><br/>apex.download.url</td>
-        <td>string</td>
-        <td>
-          Specifies the URL to download APEX installation files.<br/>
-          Deprecated: stage APEX installation files with <code>apex.installation.persistence</code> instead.<br/>
-          <br/>
-            <i>Default</i>: https://download.oracle.com/otn_software/apex/apex-latest.zip<br/>
-        </td>
-        <td>false</td>
-      </tr>
-      <tr>
         <td><b><a href="#ordssrvsspecglobalsettingsapexinstallationpersistence">apex.installation.persistence</a></b></td>
         <td>object</td>
         <td>
@@ -556,16 +528,6 @@ Contains settings that are configured across the entire ORDS instance.
         <td>string</td>
         <td>
           Specifies how the HTTP error responses must be formatted. html - Force all responses to be in HTML format json - Force all responses to be in JSON format auto - Automatically determines most appropriate format for the request (default).<br/>
-        </td>
-        <td>false</td>
-      </tr>
-      <tr>
-        <td><b>DEPRECATED</b><BR>feature.grahpql.max.nesting.depth</td>
-        <td>integer</td>
-        <td>
-          Specifies the maximum join nesting depth limit for GraphQL queries.<BR>
-          Deprecated: use <code>feature.graphql.max.nesting.depth</code> instead.<br/>
-            <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
       </tr>

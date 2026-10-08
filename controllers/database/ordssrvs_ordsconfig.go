@@ -98,15 +98,6 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 			defCertEntry = defCertEntry + `  <entry key="standalone.https.cert.key">` + defCertKey + `</entry>` + "\n"
 		}
 
-		// Graphq deprecation
-		featureGraphqlMaxNestingDepth := ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth
-		deprecatedFeatureGraphqlMaxNestingDepth := readDeprecatedInt32(&ordssrvs.Spec.GlobalSettings, "FeatureGrahpQLMaxNestingDepth")
-		if deprecatedFeatureGraphqlMaxNestingDepth != nil {
-			rState.specInfo.Info("feature.grahpql.max.nesting.depth is DEPRECATED, use feature.graphql.max.nesting.depth")
-			if ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth == nil {
-				featureGraphqlMaxNestingDepth = deprecatedFeatureGraphqlMaxNestingDepth
-			}
-		}
 		var defStandaloneHTTPSPort string
 		if rState.httpsEnabled {
 			defStandaloneHTTPSPort = conditionalEntry("standalone.https.port", ordssrvs.Spec.GlobalSettings.StandaloneHTTPSPort)
@@ -130,7 +121,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("database.api.management.services.disabled", ordssrvs.Spec.GlobalSettings.DatabaseAPIManagementServicesDisabled) +
 				conditionalEntry("db.invalidPoolTimeout", ordssrvs.Spec.GlobalSettings.DBInvalidPoolTimeout) +
 				conditionalEntry("db.idlePoolTimeout", ordssrvs.Spec.GlobalSettings.DBIdlePoolTimeout) +
-				conditionalEntry("feature.graphql.max.nesting.depth", featureGraphqlMaxNestingDepth) +
+				conditionalEntry("feature.graphql.max.nesting.depth", ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth) +
 				conditionalEntry("request.traceHeaderName", ordssrvs.Spec.GlobalSettings.RequestTraceHeaderName) +
 				conditionalEntry("public.properties.url", ordssrvs.Spec.GlobalSettings.PublicPropertiesURL) +
 				conditionalEntry("security.credentials.attempts", ordssrvs.Spec.GlobalSettings.SecurityCredentialsAttempts) +
@@ -344,18 +335,4 @@ func conditionalEntry(key string, value interface{}) string {
 	}
 
 	return fmt.Sprintf(`  <entry key="%s">%s</entry>`+"\n", key, escapeXMLText(content))
-}
-
-func readDeprecatedInt32(globalSettings *dbapi.GlobalSettings, fieldName string) *int32 {
-	if globalSettings == nil {
-		return nil
-	}
-
-	field := reflect.ValueOf(globalSettings).Elem().FieldByName(fieldName)
-	if !field.IsValid() || field.IsNil() {
-		return nil
-	}
-
-	depth, _ := field.Interface().(*int32)
-	return depth
 }

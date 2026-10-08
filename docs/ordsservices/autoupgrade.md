@@ -7,6 +7,8 @@ Each pool can be configured to automatically install and upgrade the ORDS and/or
 The ORDS version is determined by the ORDS image used for the OrdsSrvs resource.
 ORDS schema installation and upgrade can be activated at the pool level:
 
+For non-ADB databases, set `db.adminUser` and `db.adminUser.secret` on the same pool as `autoUpgradeORDS: true`. If either admin setting is missing, the ORDS auto-upgrade setting is ignored. `autoUpgradeORDS` is ignored for ADB.
+
 ```yaml
 apiVersion: database.oracle.com/v4
 kind: OrdsSrvs
@@ -17,72 +19,50 @@ spec:
     poolSettings:
       - poolName: pdb1
         autoUpgradeORDS: true
+        db.adminUser: SYS
+        db.adminUser.secret:
+          secretName: ordssrvs-auth
+          passwordKey: adminAuth
 ```
 
 ## APEX autoUpgrade
 
 ORDS image does **not** contain APEX installation files.
-APEX installation files can be provided to the pod in two ways:
+You can provide APEX installation files in a dedicated `PersistentVolume` containing a single `apex.zip` file.
 
- - automatic download
- - external storage (`PersistentVolume`)
+You can download `apex.zip` from: [Oracle APEX Downloads](https://www.oracle.com/tools/downloads/apex-downloads/)
 
+For non-ADB databases, set `db.adminUser` and `db.adminUser.secret` on the same pool as `autoUpgradeAPEX: true`. If either admin setting is missing, the APEX auto-upgrade setting is ignored. The admin account runs the APEX installation or upgrade and must have the required privileges. This example uses `SYS`. `autoUpgradeAPEX` is ignored for ADB.
 
-### APEX installation automatic download
-
-The ORDS container can download the latest APEX version either from "Oracle APEX Downloads" or a specified custom URL.
-To download APEX installation files, the Kubernetes worker node must have internet access.
-The APEX download is defined globally, and upgrades can be enabled or disabled for each pool individually.
+Replace the uppercase placeholders with values for your deployment.
 
 ```yaml
 apiVersion: database.oracle.com/v4
 kind: OrdsSrvs
 metadata:
-    name: ordspoc-server
+  name: ordssrvs-apexpv
+  namespace: NAMESPACE
 spec:
-    ...
-    globalSettings:
-        apex.download: true
-        apex.download.url: https://download.oracle.com/otn_software/apex/apex_24.2.zip
-    poolSettings:
-      - poolName: pdb1
-        autoUpgradeAPEX: true
-        ...
-      - poolName: pdb2
-        autoUpgradeAPEX: false
-        ...
-```
-
-If you do not specify a download URL (`apex.download.url`), then the default value is used:
-https://download.oracle.com/otn_software/apex/apex-latest.zip
-
-
-### APEX installation files on external storage
-
-Alternatively, you can provide APEX installation files in a dedicated `PersistentVolume` containing a single `apex.zip` file.
-
-You can download `apex.zip` from:
-https://www.oracle.com/tools/downloads/apex-downloads/
-
-```yaml
-apiVersion: database.oracle.com/v4
-kind: OrdsSrvs
-metadata:
-  name: ordssrvs
-  namespace: testcase
-spec:
-  ...
+  image: ORDSIMG
   globalSettings:
-    apex.download : false
     apex.installation.persistence:
-      volumeName : apexpv
-      storageClass :
-      size : 20Gi
-      accessMode : ReadWriteMany
-    ...
+      volumeName: APEXPVNAME
+      storageClass: APEXPVSTORAGECLASS
+      size: APEXPVSIZE
+      accessMode: APEXPVACCESSMODE
   poolSettings:
     - poolName: default
       autoUpgradeAPEX: true
+      db.connectionType: customurl
+      db.customURL: jdbc:oracle:thin:@//CONNECTSTRING
+      db.username: ORDS_PUBLIC_USER
+      db.secret:
+        secretName: ordssrvs-auth
+        passwordKey: dbAuth
+      db.adminUser: SYS
+      db.adminUser.secret:
+        secretName: ordssrvs-auth
+        passwordKey: adminAuth
 ```
 
 The OrdsSrvs controller will create a `PersistentVolumeClaim` (PVC) for the PV and mount it in the pod’s container at `/opt/oracle/apex`.
@@ -92,86 +72,13 @@ The init container logs the following message:
 
 ``` bash
 Missing /opt/oracle/apex/apex.zip, manually copy apex.zip in /opt/oracle/apex on the init container of the pod
-```bash
+```
+
 You can copy the apex.zip file into the container while the init script is waiting:
 
+```bash
 kubectl cp /tmp/apex.zip <ordspod>:/tmp -c ordssrvs-init -n ordsnamespace
 kubectl exec -c ordssrvs-init -n ordsnamespace <ordspod> -- mv /tmp/apex.zip /opt/oracle/apex
 ```
 
-Example output:
-
-```text
-``` bash
-```
-
-
-
-## Example: ORDS autoUpgrade and APEX download/autoUpgrade
-
-In the following manifest example:
-
-* APEX installation files will be downloaded from latest version.
-* `Pool: pdb1` is configured to automatically install/upgrade both ORDS and APEX to the ORDS image version
-* `Pool: pdb2` will install or upgrade ORDS
-* `Pool: pdb3` will not install or upgrade ORDS/APEX
-
-As an additional requirement for `Pool: pdb1`, the `spec.poolSettings.db.adminUser` and `spec.poolSettings.db.adminUser.secret`
-must be provided.  If they are not, the `autoUpgrade` specification is ignored.
-
-```yaml
-apiVersion: database.oracle.com/v4
-kind: OrdsSrvs
-metadata:
-    name: ordspoc-server
-spec:
-    image: container-registry.oracle.com/database/ords:<ords-version>
-    forceRestart: true
-    globalSettings:
-        database.api.enabled: true
-        apex.download: true
-        apex.download.url: https://download.oracle.com/otn_software/apex/apex_24.2.zip
-    poolSettings:
-      - poolName: pdb1
-        autoUpgradeORDS: true
-        autoUpgradeAPEX: true
-        db.connectionType: customurl
-        db.customURL: jdbc:oracle:thin:@//localhost:1521/PDB1
-        db.secret:
-            secretName:  ordssrvs-auth
-            passwordKey: dbAuth
-        db.adminUser: SYS
-        db.adminUser.secret:
-            secretName:  ordssrvs-auth
-            passwordKey: adminAuth
-      - poolName: pdb2
-        autoUpgradeORDS: true
-        db.connectionType: customurl
-        db.customURL: jdbc:oracle:thin:@//localhost:1521/PDB2
-        db.secret:
-            secretName:  ordssrvs-auth
-            passwordKey: dbAuth
-      - poolName: pdb3
-        db.connectionType: customurl
-        db.customURL: jdbc:oracle:thin:@//localhost:1521/PDB3
-        db.secret:
-            secretName:  ordssrvs-auth
-            passwordKey: dbAuth
-```
-
-
-
-## Minimum Privileges for Admin User
-
-The `db.adminUser` must have privileges to create users and objects in the database.  For Oracle Autonomous Database (ADB), this could be `ADMIN` while for
-non-ADBs this could be `SYS AS SYSDBA`.  When you do not want to use `ADMIN` or `SYS AS SYSDBA` to install, upgrade, validate and uninstall ORDS a script is provided
-to create a new user to be used.
-
-1. Download the equivalent version of ORDS to the image you will be using.
-1. Extract the software and locate: `scripts/installer/ords_installer_privileges.sql`
-1. Using SQLcl or SQL*Plus, connect to the Oracle PDB with SYSDBA privileges.
-1. Execute the following script providing the database user:
-    ```sql
-    @/path/to/installer/ords_installer_privileges.sql privuser
-    exit
-    ```
+> **Note:** `db.adminUser` must have privileges to create users and objects in the database. For Oracle Autonomous Database (ADB), this could be `ADMIN`; for non-ADB databases, this could be `SYS AS SYSDBA`.

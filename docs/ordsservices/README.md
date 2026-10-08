@@ -189,7 +189,7 @@ Fixed configuration generation for `spec.globalSettings."cache.metadata.graphql.
 OrdsSrvs pods now use stable container names for operational commands: `ordssrvs-init`, `ordssrvs-main`, and `ordssrvs-access-log-forwarder`. [Troubleshooting](./TROUBLESHOOTING.md)
 
 * **Deprecations**  
-  The following fields are deprecated in 2.2 and planned for removal in 2.3:
+  The following fields are deprecated in 2.2 and removed in 2.3:
   * Deprecated `spec.imagePullSecrets`  
   the field is not used by the OrdsSrvs controller.
   * Deprecated `spec.globalSettings."apex.download"` and `spec.globalSettings."apex.download.url"`.  

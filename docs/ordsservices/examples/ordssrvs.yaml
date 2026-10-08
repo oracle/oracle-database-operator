@@ -9,7 +9,6 @@ spec:
   globalSettings:
     database.api.enabled: true
     mongo.enabled: true
-    apex.download : false
     db.invalidPoolTimeout: 1m
   poolSettings:
     - poolName: default

@@ -63,7 +63,6 @@ function apex_parameters(){
 
 	sub "APEX parameters"
 	echo "external_apex          : ${external_apex:?}"
-	echo "download_apex          : ${download_apex:?}"
 
 	APEX_INSTALL=/opt/oracle/apex
 	# backward compatibility for ORDS images prior to 24.1.x (included)
@@ -72,14 +71,8 @@ function apex_parameters(){
 		APEX_INSTALL=${APEX_HOME}/${APEX_VER}
 		echo "WARNING: APEX_HOME detected, APEX_HOME:${APEX_HOME}; ORDS image may be older than 24.2"
 	fi	
-	APEXINS=${APEX_INSTALL}/apexins.sql
 	APEX_IMAGES=${APEX_INSTALL}/images
     APEX_VERSION_TXT=${APEX_IMAGES}/apex_version.txt 
-
-	if [[ ${download_apex} == "true" ]] 
-	then
-	  echo "download_url_apex      : ${download_url_apex:?}"
-	fi
 
     echo "APEX_INSTALL           : $APEX_INSTALL"
     echo "APEX_IMAGES            : $APEX_IMAGES"
@@ -727,41 +720,6 @@ function apex_external(){
 }
 
 #------------------------------------------------------------------------------
-function apex_download(){
-
-	sub "APEX download"
-
-	if [[ ${download_apex} != "true" ]]; then
-		echo "APEX download disabled"
-		return 0
-	fi
-
-	mkdir -pv "${APEX_INSTALL}"
-	[ -n "${APEX_INSTALL:-}" ] && [ "${APEX_INSTALL}" != "/" ] || exit 1
-	rm -rf -- "${APEX_INSTALL:?}/"*
-	cd /tmp || return
-	echo "Downloading ${download_url_apex}"
-	curl -o apex.zip "${download_url_apex}"
-	ls -l "/tmp/apex.zip"
-	echo "Extracting apex.zip"
-	jar xf apex.zip
-    mv "/tmp/apex/"* "${APEX_INSTALL}"
-
-	if [[ ! (-f ${APEXINS}) ]]; then
-		echo "ERROR: ${APEXINS} not found, APEX download failed"
-		return 1
-	fi
-	echo "APEX_INSTALL: ${APEX_INSTALL}"
-
-	# config can be read-only, it will be set again at command-line ords start
-	sub "Configuring ORDS images"
-	echo "APEX_IMAGES: ${APEX_IMAGES}"
-	ords config set standalone.static.path "${APEX_IMAGES}"
-
-	return 0
-}
-
-#------------------------------------------------------------------------------
 function apex_upgrade() {
 	local -r _upgrade_key="${1}"
 	local -i _rc=0
@@ -1024,8 +982,7 @@ ords_client_version
 
 [[ -n ${instance_api_admin_user} ]] && setup_instance_api_user
 
-[[ ${download_apex} == "true" || ${external_apex} == "true" ]] && apex_parameters
-[[ ${download_apex} == "true" ]] && apex_download
+[[ ${external_apex} == "true" ]] && apex_parameters
 [[ ${external_apex} == "true" ]] && apex_external
 
 # check APEX installation files version, downloaded or mounted by PVC
