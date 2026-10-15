@@ -42,7 +42,7 @@ To create a Oracle database, complete the steps in the following sections:
 
 **IMPORTANT :** You must make the changes specified in this section before you proceed to the next section.
 
-To become familiar with Oracle Restart in containerized environments, review the [this documentation](https://github.com/oracle/docker-images/blob/main/OracleDatabase/RAC/OracleRealApplicationClusters/README.md) before proceeding further
+To become familiar with Oracle RAC in containerized environments, review the [this documentation](https://github.com/oracle/docker-images/blob/main/OracleDatabase/RAC/OracleRealApplicationClusters/README.md) before proceeding further
 
 If you are using Multus for the RAC private interconnect, also apply the RAC-specific RBAC helper before provisioning so the operator can read `NetworkAttachmentDefinition` objects:
 
