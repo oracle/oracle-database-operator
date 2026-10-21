@@ -11,6 +11,16 @@ This example follows the ORDS Central Configuration Server model.
 
 >Note: This example is for demo/testing only. Do not use plaintext passwords or HTTP in production.
 
+## Prerequisites
+
+See [OrdsSrvs prerequisites](../README.md#prerequisites).
+
+Security reminder:
+
+> - Use HTTPS/TLS for the central config service and for ORDS in production.
+> - Store credentials in Kubernetes Secrets (not ConfigMaps) and avoid plaintext passwords.
+> - Restrict network access via NetworkPolicies.
+
 ## Overview
 
 - Central Configuration Server endpoints:
@@ -20,19 +30,6 @@ This example follows the ORDS Central Configuration Server model.
 - Example pools: `pool-a` and `pool-b`
 - ORDS base path: `/ords`
 - Example REST access: `/ords/{poolName}/...`
-
-## Prerequisites
-
-See OrdsSrvs prerequisites: [OrdsSrvs prerequisites](../README.md#prerequisites)
-
-In addition to the above, you’ll need:
-- A reachable Oracle database for the pools
-- Target Kubernetes namespace (replace NAMESPACE)
-
-Security reminder:
->- Use HTTPS/TLS for the central config service and for ORDS in production.
->- Store credentials in Kubernetes Secrets (not ConfigMaps) and avoid plaintext passwords.
->- Restrict network access via NetworkPolicies.
 
 ## Central Config Manager files
 
@@ -239,7 +236,7 @@ You should receive the JSON documents defined above.
 
 ## Configure OrdsSrvs to use central.config.url
 
-OrdsSrvs manifest:
+Save the following manifest as `ordssrvs-central-config.yaml`:
 ```yaml
 apiVersion: database.oracle.com/v4
 kind: OrdsSrvs
@@ -250,7 +247,6 @@ spec:
   image: container-registry.oracle.com/database/ords:<ords-version>
   globalSettings:
     central.config.url: http://central-config-svc/central/v1/config
-  serviceAccountName: ordssrvs-sa
 ```
 
 Apply:
@@ -263,23 +259,39 @@ ORDS will:
 - Resolve the pool by URL path (because `security.externalMappingPathPrefix` is true)
 - Fetch pool configs from `/central/v1/config/pool/{poolName}` as requests arrive
 
-### Lifecycle Probes
+### Container Probes
 
 When `central.config.url` is set, ORDS reads its global and pool configuration
 from the Central Configuration Server. If that configuration customizes
 `standalone.https.host`, `standalone.https.port`, or `standalone.http.port`,
 repeat the same settings in the OrdsSrvs CR.
 The settings in the CR must match those in Central Configuration so the
-controller can configure lifecycle probes consistently.
+controller can configure container probes consistently.
 
-If lifecycle probing is not needed, set `probePath: ""` in the OrdsSrvs CR.
+If container probing is not needed, set `path: ""` under `spec.containerProbeSettings` in the OrdsSrvs CR.
 
-Pool probing is disabled when Central Configuration is used because the custom
-resource does not contain the definitive pool list.
+### Pool Probing
+
+To enable pool probing with Central Configuration, provide the
+pool names explicitly:
+
+```yaml
+spec:
+  poolProbeSettings:
+    intervalSeconds: 60
+    poolList: [pool-a, pool-b]
+```
+
+Use URL-path pool mapping (`security.externalMappingPathPrefix: true`), as in
+this example, and repeat `standalone.context.path` in the CR if customized.
+The list controls monitoring only and does not configure pools or trigger a
+Pod rollout. Probing remains disabled when the list is empty or omitted.
+HTTPS probes do not validate server certificates or hostnames. See
+[Pool Probing](../pool_probing.md) for details.
 
 ## Prepare a test schema and object in the database
 
-Run the following in your database (adjust schema if needed). Example uses schema `ORDSSRVSTESTCASE`.
+Run the following in your database using schema `ORDSSRVSTESTCASE`:
 
 ```sql
 CREATE TABLE TESTCASE ( STATUS VARCHAR2 (100));
@@ -325,8 +337,8 @@ curl -ik https://ordssrvs-cc:8443/ords/pool-b/ordssrvs_testcase/testcase_table/ 
 
 ## Troubleshooting
 
-- OrdsSrvs not picking up central config:
-  - Check logs of the OrdsSrvs pods for fetch errors
+- ORDS runtime not fetching central configuration:
+  - Check the ORDS container logs in the OrdsSrvs Pods for fetch errors
   - Confirm `central.config.url` is reachable via in-cluster DNS
   - Validate central config endpoints return HTTP 200 and JSON
 
@@ -337,7 +349,7 @@ curl -ik https://ordssrvs-cc:8443/ords/pool-b/ordssrvs_testcase/testcase_table/ 
 - Database connectivity:
   - Verify `db.customURL`, `db.username`, and credentials for each pool
   - Use Secrets for credentials in production
-  - Check network access from ORDS pods to the database
+  - Check network access from OrdsSrvs Pods to the database
 
 - Security:
   - Use TLS for the central config service (`https`) and for ORDS
@@ -345,11 +357,15 @@ curl -ik https://ordssrvs-cc:8443/ords/pool-b/ordssrvs_testcase/testcase_table/ 
 
 ## Notes and Best Practices
 
-- Replace `NAMESPACE`, `<database-password>`, and `<httpd-version>` with your values.
+- Replace `NAMESPACE`, `<database-password>`, `<httpd-version>`, and
+  `<ords-version>` in the examples with your values.
+
 - For production:
   - Replace HTTP with HTTPS and configure trusted certificates
   - Move credentials to Secrets or wallet-based authentication
   - Apply NetworkPolicies to limit ingress/egress
   - Implement caching/failover strategies for central config availability
 
-This example demonstrates how OrdsSrvs can centrally source both global and pool configurations, enabling consistent, scalable ORDS deployments with path-based pool selection.
+This example configures an `OrdsSrvs` resource whose ORDS runtime retrieves
+global and pool settings from the Central Configuration Server and selects
+pools by URL path.

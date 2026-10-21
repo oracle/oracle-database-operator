@@ -4,8 +4,14 @@ This example walks through using the **OrdsSrvs controller** with multiple datab
 Keep in mind that all pools are running in the same Pod, therefore, changing the configuration of one pool will require
 a recycle of all pools.
 
-Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
+## Prerequisites
 
+See [OrdsSrvs prerequisites](../README.md#prerequisites).
+
+### Database Requirements
+
+ORDS must already be installed in PDB2, PDB3, and PDB4; this example installs or
+upgrades it only in PDB1.
 
 ### TNS_ADMIN Secret
 
@@ -15,13 +21,15 @@ The example shows using a `$TNS_ADMIN` environment variable which points to a di
 To create a secret with all files in the TNS_ADMIN directory:
 ```bash
 kubectl create secret generic multi-tns-admin \
-    --from-file=$TNS_ADMIN
+    --from-file="$TNS_ADMIN" \
+    -n ordsnamespace
 ```
 
 To create a secret with just the tnsnames.ora file:
 ```bash
 kubectl create secret generic multi-tns-admin \
-    --from-file=$TNS_ADMIN/tnsnames.ora
+    --from-file="$TNS_ADMIN/tnsnames.ora" \
+    -n ordsnamespace
 ```
 
 In this example, 4 PDBs will be connected to and the example `tnsnames.ora` file contents are as below:
@@ -46,9 +54,12 @@ kubectl create secret generic ordssrvs-auth \
   -n ordsnamespace
 ```
 
+All four pools use the same runtime user password from `ordssrvs-auth.dbAuth`.
+The `adminAuth` key supplies the SYS password for PDB1.
+
 ### Create OrdsSrvs Resource
 
-1. Create a manifest for ORDS, ords-multi-pool.yaml:
+1. Create an `OrdsSrvs` custom resource, ords-multi-pool.yaml:
 
     ```yaml
     apiVersion: database.oracle.com/v4
@@ -126,13 +137,13 @@ kubectl create secret generic ordssrvs-auth \
     kubectl get OrdsSrvs ords-multi-pool -n ordsnamespace -w
     ```
 
-    **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  As APEX
-    is being installed for the first time by the Operator into PDB1, it will remain in the **Preparing**
-    status for an additional 5-10 minutes.
+    APEX installation is not enabled in this example. Image downloads and ORDS
+    initialization can take several minutes; inspect the `ordssrvs-init` logs
+    if the resource remains in `Preparing`.
 
 ### Test
 
-Open a port-forward to the ORDS service, for example:
+Open a port-forward to the OrdsSrvs Service, for example:
 
 ```bash
 kubectl port-forward service/ords-multi-pool -n ordsnamespace 8443:8443
@@ -151,5 +162,5 @@ This example has multiple pools, named `pdb1`, `pdb2`, `pdb3`, and `pdb4`.
 
 * They all share the same `tnsAdminSecret` to connect using their individual `db.tnsAliasName`
 * They will all automatically restart when the configuration changes: `forceRestart: true`
-* Only the `pdb1` pool will automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
+* Only `pdb1` enables `autoUpgradeORDS`. Both `db.adminUser` and `db.adminUser.secret` must be set on that pool; otherwise auto-upgrade is ignored.
 * The `passwordKey` fields identify the credential keys used by `db.secret` and `db.adminUser.secret`

@@ -61,21 +61,29 @@ import (
 
 const poolProbeTimeout = 3 * time.Second
 
-// ReconcilePoolProbes probes configured pool aliases without changing workload health.
+// ReconcilePoolProbes probes selected pool aliases without changing workload health.
 func (r *OrdsSrvsReconciler) ReconcilePoolProbes(ctx context.Context, req ctrl.Request, ordssrvs *dbapi.OrdsSrvs, rState *OrdsSrvsReconcileState) (time.Duration, error) {
-	intervalSeconds := ordssrvs.Spec.PoolProbeIntervalSeconds
-	configuredPools := len(ordssrvs.Spec.PoolSettings)
+	intervalSeconds := ordssrvs.Spec.PoolProbeSettings.IntervalSeconds
+	explicitPools := len(ordssrvs.Spec.PoolProbeSettings.PoolList) > 0
 
-	if intervalSeconds == 0 || ordssrvs.Spec.GlobalSettings.CentralConfigURL != "" {
+	if intervalSeconds == 0 || (ordssrvs.Spec.GlobalSettings.CentralConfigURL != "" && !explicitPools) {
 		if err := r.updatePoolProbeStatus(ctx, req, nil, "Disabled", ""); err != nil {
 			return 0, err
 		}
 		return 0, nil
 	}
 
+	poolNames := ordssrvs.Spec.PoolProbeSettings.PoolList
+	if !explicitPools {
+		poolNames = make([]string, len(ordssrvs.Spec.PoolSettings))
+		for i, pool := range ordssrvs.Spec.PoolSettings {
+			poolNames[i] = pool.PoolName
+		}
+	}
+
 	workloadStatus := r.ComputeWorkloadStatus(ctx, ordssrvs)
 	if workloadStatus != "Healthy" {
-		if len(ordssrvs.Status.PoolProbes) == 0 && ordssrvs.Status.PoolsHealth == "" {
+		if len(ordssrvs.Status.PoolProbes) == 0 && (ordssrvs.Status.PoolsHealth == "" || ordssrvs.Status.PoolsHealth == "Disabled") {
 			if err := r.updatePoolProbeStatus(ctx, req, nil, "Unknown", ""); err != nil {
 				return 0, err
 			}
@@ -83,14 +91,14 @@ func (r *OrdsSrvsReconciler) ReconcilePoolProbes(ctx context.Context, req ctrl.R
 		return time.Duration(intervalSeconds) * time.Second, nil
 	}
 
-	due, requeueAfter := poolProbeDue(ordssrvs)
+	due, requeueAfter := poolProbeDue(ordssrvs, poolNames)
 	if !due {
 		return requeueAfter, nil
 	}
 
-	poolProbes := make([]dbapi.PoolProbeStatus, 0, configuredPools)
-	for _, pool := range ordssrvs.Spec.PoolSettings {
-		poolProbes = append(poolProbes, probePoolAlias(ctx, ordssrvs, rState, pool.PoolName))
+	poolProbes := make([]dbapi.PoolProbeStatus, 0, len(poolNames))
+	for _, poolName := range poolNames {
+		poolProbes = append(poolProbes, probePoolAlias(ctx, ordssrvs, rState, poolName))
 	}
 
 	poolsHealth, poolsReachable := summarizePoolProbes(poolProbes)
@@ -130,9 +138,11 @@ func probePoolAlias(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, rState *OrdsS
 	endpoint := fmt.Sprintf("%s://%s.%s.svc:%d%s", scheme, ordssrvs.Name, ordssrvs.Namespace, port, poolPath)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if scheme == "https" {
-		// ORDS commonly uses a self-signed certificate for its local Service.
-		// The request is limited to this OrdsSrvs Service.
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- local OrdsSrvs Service probe
+		// Pool probes use unauthenticated HTTPS without certificate or hostname validation.
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: ordssrvs.Spec.PoolProbeSettings.IntervalSeconds > 0, // #nosec G402 -- unauthenticated Service health probe; certificate validation is intentionally disabled and documented.
+			MinVersion:         tls.VersionTLS12,
+		}
 	}
 	client := &http.Client{
 		Timeout:   poolProbeTimeout,
@@ -212,10 +222,19 @@ func setPoolProbeMetrics(status *dbapi.OrdsSrvsStatus) {
 	status.PoolsTotal, status.PoolsOK, status.PoolsFailed = &total, &reachable, &failed
 }
 
-func poolProbeDue(ordssrvs *dbapi.OrdsSrvs) (bool, time.Duration) {
-	interval := time.Duration(ordssrvs.Spec.PoolProbeIntervalSeconds) * time.Second
+func poolProbeDue(ordssrvs *dbapi.OrdsSrvs, poolNames []string) (bool, time.Duration) {
+	interval := time.Duration(ordssrvs.Spec.PoolProbeSettings.IntervalSeconds) * time.Second
 	if interval <= 0 || len(ordssrvs.Status.PoolProbes) == 0 {
 		return true, 0
+	}
+
+	if len(poolNames) != len(ordssrvs.Status.PoolProbes) {
+		return true, 0
+	}
+	for i, poolProbe := range ordssrvs.Status.PoolProbes {
+		if poolProbe.PoolName != poolNames[i] {
+			return true, 0
+		}
 	}
 
 	var lastChecked time.Time

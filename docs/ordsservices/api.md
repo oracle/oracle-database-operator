@@ -1,6 +1,8 @@
 # API Reference
 
-
+Field types below describe the Kubernetes API. Use YAML strings for fields whose
+type is `string`, including numeric-looking timeout and duration values such as
+`jdbc.MaxConnectionReuseTime: "900"`.
 
 ## OrdsSrvs
 OrdsSrvs is the Schema for the ordssrvs API
@@ -69,9 +71,9 @@ OrdsSrvsSpec defines the desired state of OrdsSrvs
 a--></a></b></td>
 <td>object</td>
 <td> Contains settings that are configured across the entire
-ORDS instance.<br>
-</td>
-<td>true</td>
+ORDS instance.<br><br/>
+<i>Default</i>: {}</td>
+<td>false</td>
 </tr>
 <tr>
 <td><b><a href="#ordssrvsspecaccesslogpersistence">accessLogPersistence</a></b></td>
@@ -88,8 +90,8 @@ ORDS instance.<br>
 <tr>
 <td><b>image</b></td>
 <td>string</td>
-<td> Specifies the ORDS container image<br>
-</td>
+<td> Specifies the ORDS container image<br><br/>
+<i>Default</i>: container-registry.oracle.com/database/ords:latest</td>
 <td>true</td>
 </tr>
 <tr>
@@ -123,28 +125,17 @@ configurations change<br>
 <td>false</td>
 </tr>
 <tr>
-<td><b>poolProbeIntervalSeconds</b></td>
-<td>integer</td>
-<td>Specifies the interval, in seconds, between pool-reachability probe cycles. A value of 0 disables pool probing. Pool probing applies to pools defined directly in <code>poolSettings</code>.<br>
-<br>
-<i>Default</i>: 0<br/>
-<i>Minimum</i>: 0<br/>
-</td>
-<td>false</td>
-</tr>
-<tr>
-<td><b>probePath</b></td>
-<td>string</td>
-<td>Specifies the path used by the Kubernetes startup, readiness, and liveness probes. Set to an empty string to disable lifecycle probes.<br>
-<br>
-<i>Default</i>: /favicon.ico<br/>
-</td>
-<td>false</td>
-</tr>
-<tr>
-<td><b><a href="#ordssrvsspecprobesettings">probeSettings</a></b></td>
+<td><b><a href="#ordssrvsspecpoolprobesettings">poolProbeSettings</a></b></td>
 <td>object</td>
-<td>Specifies timeout, period, and failure-threshold settings for the Kubernetes startup, readiness, and liveness probes.</td>
+<td>Specifies the interval and pool selection for pool-reachability probes. Pool probing is experimental and disabled by default.<br><br>
+<b>Note:</b> HTTPS pool probes do not validate server certificates or hostnames. They send no credentials or application data and only update reported pool health. Enable probing only where this limitation is acceptable. <br>
+</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b><a href="#ordssrvsspeccontainerprobesettings">containerProbeSettings</a></b></td>
+<td>object</td>
+<td>Specifies path, timeout, period, and failure-threshold settings for the Kubernetes startup, readiness, and liveness probes.</td>
 <td>false</td>
 </tr>
 <tr>
@@ -184,13 +175,41 @@ Deployment or StatefulSet<br>
 <tr>
 <td valign="top"><b>encPrivKey</b><b><br>
 </b></td>
-<td valign="top">secret<br>
-</td>
-<td valign="top"><b>secretName</b>: string&nbsp; <b>passwordKey:
-</b>string Define the private key to decrypt passwords<br>
-</td>
+<td valign="top">object</td>
+<td valign="top">Secret containing the RSA private key used to decrypt password values. See <a href="#ordssrvsspecencprivkey">Secret fields</a>.</td>
 <td valign="top">false<br>
 </td>
+</tr>
+
+<tr>
+  <td><b><a href="#ordssrvsspeccommonmetadata">commonMetadata</a></b></td>
+  <td>object</td>
+  <td>Additional labels and annotations shared by generated resources.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b><a href="#ordssrvsspecworkload">workload</a></b></td>
+  <td>object</td>
+  <td>Metadata for the generated Deployment, StatefulSet, or DaemonSet.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b><a href="#ordssrvsspecpodtemplate">podTemplate</a></b></td>
+  <td>object</td>
+  <td>Metadata for the Pod template.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b><a href="#ordssrvsspecservice">service</a></b></td>
+  <td>object</td>
+  <td>Metadata for the generated Service.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>automountServiceAccountToken</b></td>
+  <td>boolean</td>
+  <td>Whether to mount the ServiceAccount token in OrdsSrvs Pods.<br/><i>Default</i>: false</td>
+  <td>false</td>
 </tr>
 </tbody>
 </table>
@@ -290,12 +309,10 @@ Specifies the sidecar that forwards HTTP access logs to container stdout. The si
 </tbody>
 </table>
 
-### OrdsSrvs.spec.probeSettings
+### OrdsSrvs.spec.poolProbeSettings
 <sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
 
-
-
-Specifies timeout, period, and failure-threshold settings for the Kubernetes startup, readiness, and liveness probes.
+Settings for optional pool reachability probing.
 
 <table>
     <thead>
@@ -308,44 +325,90 @@ Specifies timeout, period, and failure-threshold settings for the Kubernetes sta
     </thead>
     <tbody>
       <tr>
+        <td><b>intervalSeconds</b></td>
+        <td>integer</td>
+        <td>Interval, in seconds, between pool-reachability probe cycles. A value of 0 disables pool probing; a positive value enables HTTP or HTTPS probes. Uses a non-empty <code>poolList</code> when provided; otherwise uses <code>poolSettings</code>. Central Configuration requires a non-empty <code>poolList</code>.<br/>
+          <br/>
+          <i>Default</i>: 0<br/>
+          <i>Minimum</i>: 0<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>poolList</b></td>
+        <td>[]string</td>
+        <td>Pool names to monitor, for example <code>[poola, poolb]</code>. A non-empty list overrides <code>poolSettings</code> for probing and supports Central Configuration with URL-path pool mapping. An empty or omitted list preserves the default pool selection. This list does not configure pools or trigger a Pod rollout. Probing still requires a positive <code>intervalSeconds</code>.<br/>
+          Each name must match <code>^[a-z0-9._-]+$</code>. Names must be unique.<br/>
+        </td>
+        <td>false</td>
+      </tr>
+    </tbody>
+</table>
+
+### OrdsSrvs.spec.containerProbeSettings
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
+
+
+
+Specifies path, timeout, period, and failure-threshold settings for the Kubernetes startup, readiness, and liveness probes.
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Required</th>
+        </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>path</b></td>
+        <td>string</td>
+        <td>Specifies the path used by the Kubernetes startup, readiness, and liveness probes. Set to an empty string to disable all three container probes.<br/>
+          <br/>
+          <i>Default</i>: /favicon.ico<br/><br/>
+          <i>Pattern</i>: <code>^$|/.*</code> (empty or beginning with /)
+        </td>
+        <td>false</td>
+      </tr><tr>
         <td><b>timeoutSeconds</b></td>
         <td>integer</td>
         <td>Specifies the timeout for each probe request, in seconds.<br/>
           <br/>
-            <i>Default</i>: 3<br/>
-        </td>
+            <i>Default</i>: 3<br/><br/>
+<i>Minimum</i>: 1</td>
         <td>false</td>
       </tr><tr>
         <td><b>periodSeconds</b></td>
         <td>integer</td>
         <td>Specifies the interval between probe requests, in seconds.<br/>
           <br/>
-            <i>Default</i>: 10<br/>
-        </td>
+            <i>Default</i>: 10<br/><br/>
+<i>Minimum</i>: 1</td>
         <td>false</td>
       </tr><tr>
         <td><b>startupFailureThreshold</b></td>
         <td>integer</td>
         <td>Specifies the number of consecutive startup-probe failures before Kubernetes restarts the ORDS container.<br/>
           <br/>
-            <i>Default</i>: 30<br/>
-        </td>
+            <i>Default</i>: 30<br/><br/>
+<i>Minimum</i>: 1</td>
         <td>false</td>
       </tr><tr>
         <td><b>readinessFailureThreshold</b></td>
         <td>integer</td>
         <td>Specifies the number of consecutive readiness-probe failures before the Pod is removed from ready Service endpoints.<br/>
           <br/>
-            <i>Default</i>: 3<br/>
-        </td>
+            <i>Default</i>: 3<br/><br/>
+<i>Minimum</i>: 1</td>
         <td>false</td>
       </tr><tr>
         <td><b>livenessFailureThreshold</b></td>
         <td>integer</td>
         <td>Specifies the number of consecutive liveness-probe failures before Kubernetes restarts the ORDS container.<br/>
           <br/>
-            <i>Default</i>: 18<br/>
-        </td>
+            <i>Default</i>: 18<br/><br/>
+<i>Minimum</i>: 1</td>
         <td>false</td>
       </tr>
     </tbody>
@@ -575,23 +638,21 @@ Contains settings that are configured across the entire ORDS instance.
         <td><b>mongo.enabled</b></td>
         <td>boolean</td>
         <td>
-          Specifies to enable the API for MongoDB.<br/>
-        </td>
+          Specifies to enable the API for MongoDB.<br/><br/>
+<i>Default</i>: false</td>
         <td>false</td>
       </tr><tr>
         <td><b>mongo.idle.timeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the maximum idle time for a Mongo connection in milliseconds.<br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>mongo.op.timeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the maximum time for a Mongo database operation in milliseconds.<br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -635,10 +696,9 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>security.credentials.lock.time</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the period to lock the account that has exceeded maximum attempts.<br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -762,13 +822,37 @@ Contains settings that are configured across the entire ORDS instance.
         <td>false</td>
       </tr><tr>
         <td><b>standalone.stop.timeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the period for Standalone Mode to wait until it is gracefully shutdown.<br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
-      </tr></tbody>
+      </tr>
+<tr>
+  <td><b>instance.api.enabled</b></td>
+  <td>boolean</td>
+  <td>Enables the ORDS Instance API.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>instanceAPIAdminUser</b></td>
+  <td>string</td>
+  <td>Bootstrap administrator for the Instance API. Used with <code>instanceAPIAdminSecret</code>.<br/><i>Default</i>: instance_api_admin</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b><a href="#ordssrvsspecglobalsettingsinstanceapiadminsecret">instanceAPIAdminSecret</a></b></td>
+  <td>object</td>
+  <td>Secret containing the Instance API bootstrap administrator password.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>zipWalletsSecretName</b></td>
+  <td>string</td>
+  <td>Secret containing shared wallet zip archives. Mounted at <code>/opt/oracle/sa/zipwallets/</code>; pools select an archive with <code>zipWalletName</code>.</td>
+  <td>false</td>
+</tr>
+</tbody>
 	</table>
 
 
@@ -887,16 +971,14 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
     <tbody><tr>
         <td><b><a href="#ordssrvsspecpoolsettingsindexdbsecret">db.secret</a></b></td>
         <td>object</td>
-        <td>
-          Specifies the Secret with the dbUsername and dbPassword values for the connection.<br/>
-        </td>
-        <td>true</td>
+        <td>Secret containing the password for <code>db.username</code>. May be omitted when credentials are supplied by a SEPS wallet.</td>
+        <td>false</td>
       </tr><tr>
         <td><b>poolName</b></td>
         <td>string</td>
         <td>
-          Specifies the Pool Name<br/>
-        </td>
+          Specifies the Pool Name<br/><br/>
+<i>Pattern</i>: <code>^[a-z0-9._-]+$</code> (lowercase letters, digits, dots, underscores, and hyphens)</td>
         <td>true</td>
       </tr><tr>
         <td><b>apex.security.administrator.roles</b></td>
@@ -955,7 +1037,7 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         <td><b><a href="#ordssrvsspecpoolsettingsindexdbadminusersecret">db.adminUser.secret</a></b></td>
         <td>object</td>
         <td>
-          Specifies the Secret with the dbAdminUser (SYS) and dbAdminPassword values for the database account that ORDS uses for administration operations in the database. replaces: db.adminUser.password<br/>
+          Secret containing the password for the database account specified by db.adminUser.<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -969,7 +1051,7 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         <td><b><a href="#ordssrvsspecpoolsettingsindexdbcdbadminusersecret">db.cdb.adminUser.secret</a></b></td>
         <td>object</td>
         <td>
-          Specifies the Secret with the dbCdbAdminUser (SYS) and dbCdbAdminPassword values Specifies the username for the database account that ORDS uses for the Pluggable Database Lifecycle Management. Replaces: db.cdb.adminUser.password<br/>
+          Secret containing the password for db.cdb.adminUser, used for Pluggable Database lifecycle management.<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -1027,11 +1109,10 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         <td>false</td>
       </tr><tr>
         <td><b>db.poolDestroyTimeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Indicates how long to wait to gracefully destroy a pool before moving to forcefully destroy all connections including borrowed ones.<br/>
           <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -1074,11 +1155,7 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
       </tr><tr>
         <td><b>db.username</b></td>
         <td>string</td>
-        <td>
-          Specifies the name of the database user for the connection. For non-ADB this will default to ORDS_PUBLIC_USER For ADBs this must be specified and not ORDS_PUBLIC_USER If ORDS_PUBLIC_USER is specified for an ADB, the workload will fail<br/>
-          <br/>
-            <i>Default</i>: ORDS_PUBLIC_USER<br/>
-        </td>
+        <td>Database user for the pool connection. For ADB, specify a user other than <code>ORDS_PUBLIC_USER</code>. It may be omitted when using a Secure External Password Store (SEPS) wallet containing the credentials.</td>
         <td>false</td>
       </tr><tr>
         <td><b>db.wallet.zip.service</b></td>
@@ -1188,11 +1265,10 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         <td>false</td>
       </tr><tr>
         <td><b>jdbc.MaxConnectionReuseTime</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Sets the maximum connection reuse time property.<br/>
           <br/>
-            <i>Format</i>: int32<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -1381,29 +1457,26 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         <td>false</td>
       </tr><tr>
         <td><b>security.jwks.connection.timeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the maximum amount of time before timing-out when accessing a JWK url.<br/>
           <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>security.jwks.read.timeout</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the maximum amount of time reading a response from the JWK url before timing-out.<br/>
           <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>security.jwks.refresh.interval</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the minimum interval between refreshing the JWK cached value.<br/>
           <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -1417,20 +1490,18 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         <td>false</td>
       </tr><tr>
         <td><b>security.jwt.allowed.age</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the maximum allowed age of a JWT in seconds, regardless of expired claim. The age of the JWT is taken from the JWT issued at claim.<br/>
           <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>security.jwt.allowed.skew</b></td>
-        <td>integer</td>
+        <td>string</td>
         <td>
           Specifies the maximum skew the JWT time claims are accepted. This is useful if the clock on the JWT issuer and ORDS differs by a few seconds.<br/>
           <br/>
-            <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -1549,7 +1620,14 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
           Specifies the Secret containing the TNS_ADMIN directory Replaces: db.tnsDirectory<br/>
         </td>
         <td>false</td>
-      </tr></tbody>
+      </tr>
+<tr>
+  <td><b>zipWalletName</b></td>
+  <td>string</td>
+  <td>Name of the wallet zip archive in the Secret selected by <code>globalSettings.zipWalletsSecretName</code>.</td>
+  <td>false</td>
+</tr>
+</tbody>
 </table>
 
 
@@ -1558,7 +1636,7 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
 
 
 
-Specifies the Secret with the dbUsername and dbPassword values for the connection.
+Secret containing the password for the pool database user.
 
 <table>
     <thead>
@@ -1594,7 +1672,7 @@ Specifies the Secret with the dbUsername and dbPassword values for the connectio
 
 
 
-Specifies the Secret with the dbAdminUser (SYS) and dbAdminPassword values for the database account that ORDS uses for administration operations in the database. replaces: db.adminUser.password
+Secret containing the password for the database account specified by db.adminUser.
 
 <table>
     <thead>
@@ -1630,7 +1708,7 @@ Specifies the Secret with the dbAdminUser (SYS) and dbAdminPassword values for t
 
 
 
-Specifies the Secret with the dbCdbAdminUser (SYS) and dbCdbAdminPassword values Specifies the username for the database account that ORDS uses for the Pluggable Database Lifecycle Management. Replaces: db.cdb.adminUser.password
+Secret containing the password for db.cdb.adminUser, used for Pluggable Database lifecycle management.
 
 <table>
     <thead>
@@ -1722,6 +1800,204 @@ Specifies the Secret containing the TNS_ADMIN directory Replaces: db.tnsDirector
 </table>
 
 
+### OrdsSrvs.spec.commonMetadata
+
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
+
+Metadata shared by generated resources. Resource-specific values override common metadata. The following reserved label keys are ignored: <code>app</code>, <code>app.kubernetes.io/name</code>, <code>app.kubernetes.io/instance</code>, <code>app.kubernetes.io/managed-by</code>, <code>app.kubernetes.io/component</code>, and <code>oracle.com/ords-operator-filter</code>.
+
+<table>
+<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Required</th></tr></thead>
+<tbody>
+<tr>
+  <td><b>additionalLabels</b></td>
+  <td>map[string]string</td>
+  <td>Additional labels. Resource-specific values override common values for the same non-reserved key.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>additionalAnnotations</b></td>
+  <td>map[string]string</td>
+  <td>Additional annotations. Resource-specific values override common values for the same key.</td>
+  <td>false</td>
+</tr>
+</tbody>
+</table>
+
+### OrdsSrvs.spec.workload
+
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
+
+Workload metadata.
+
+<table>
+<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Required</th></tr></thead>
+<tbody>
+<tr>
+  <td><b><a href="#ordssrvsspecworkloadmetadata">metadata</a></b></td>
+  <td>object</td>
+  <td>Additional labels and annotations.</td>
+  <td>false</td>
+</tr>
+</tbody>
+</table>
+
+### OrdsSrvs.spec.workload.metadata
+
+<sup><sup>[↩ Parent](#ordssrvsspecworkload)</sup></sup>
+
+Workload metadata. Resource-specific values override common metadata. The following reserved label keys are ignored: <code>app</code>, <code>app.kubernetes.io/name</code>, <code>app.kubernetes.io/instance</code>, <code>app.kubernetes.io/managed-by</code>, <code>app.kubernetes.io/component</code>, and <code>oracle.com/ords-operator-filter</code>.
+
+<table>
+<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Required</th></tr></thead>
+<tbody>
+<tr>
+  <td><b>additionalLabels</b></td>
+  <td>map[string]string</td>
+  <td>Additional labels. Resource-specific values override common values for the same non-reserved key.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>additionalAnnotations</b></td>
+  <td>map[string]string</td>
+  <td>Additional annotations. Resource-specific values override common values for the same key.</td>
+  <td>false</td>
+</tr>
+</tbody>
+</table>
+
+### OrdsSrvs.spec.podTemplate
+
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
+
+Pod template metadata.
+
+<table>
+<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Required</th></tr></thead>
+<tbody>
+<tr>
+  <td><b><a href="#ordssrvsspecpodtemplatemetadata">metadata</a></b></td>
+  <td>object</td>
+  <td>Additional labels and annotations.</td>
+  <td>false</td>
+</tr>
+</tbody>
+</table>
+
+### OrdsSrvs.spec.podTemplate.metadata
+
+<sup><sup>[↩ Parent](#ordssrvsspecpodtemplate)</sup></sup>
+
+Pod template metadata. Resource-specific values override common metadata. The following reserved label keys are ignored: <code>app</code>, <code>app.kubernetes.io/name</code>, <code>app.kubernetes.io/instance</code>, <code>app.kubernetes.io/managed-by</code>, <code>app.kubernetes.io/component</code>, and <code>oracle.com/ords-operator-filter</code>.
+
+<table>
+<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Required</th></tr></thead>
+<tbody>
+<tr>
+  <td><b>additionalLabels</b></td>
+  <td>map[string]string</td>
+  <td>Additional labels. Resource-specific values override common values for the same non-reserved key.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>additionalAnnotations</b></td>
+  <td>map[string]string</td>
+  <td>Additional annotations. Resource-specific values override common values for the same key.</td>
+  <td>false</td>
+</tr>
+</tbody>
+</table>
+
+### OrdsSrvs.spec.service
+
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
+
+Service metadata.
+
+<table>
+<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Required</th></tr></thead>
+<tbody>
+<tr>
+  <td><b><a href="#ordssrvsspecservicemetadata">metadata</a></b></td>
+  <td>object</td>
+  <td>Additional labels and annotations.</td>
+  <td>false</td>
+</tr>
+</tbody>
+</table>
+
+### OrdsSrvs.spec.service.metadata
+
+<sup><sup>[↩ Parent](#ordssrvsspecservice)</sup></sup>
+
+Service metadata. Resource-specific values override common metadata. The following reserved label keys are ignored: <code>app</code>, <code>app.kubernetes.io/name</code>, <code>app.kubernetes.io/instance</code>, <code>app.kubernetes.io/managed-by</code>, <code>app.kubernetes.io/component</code>, and <code>oracle.com/ords-operator-filter</code>.
+
+<table>
+<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Required</th></tr></thead>
+<tbody>
+<tr>
+  <td><b>additionalLabels</b></td>
+  <td>map[string]string</td>
+  <td>Additional labels. Resource-specific values override common values for the same non-reserved key.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>additionalAnnotations</b></td>
+  <td>map[string]string</td>
+  <td>Additional annotations. Resource-specific values override common values for the same key.</td>
+  <td>false</td>
+</tr>
+</tbody>
+</table>
+
+### OrdsSrvs.spec.encPrivKey
+
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
+
+Secret containing the RSA private key for encrypted credentials.
+
+<table>
+<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Required</th></tr></thead>
+<tbody>
+<tr>
+  <td><b>secretName</b></td>
+  <td>string</td>
+  <td>Name of a Secret in the same namespace as the OrdsSrvs resource.</td>
+  <td>true</td>
+</tr>
+<tr>
+  <td><b>passwordKey</b></td>
+  <td>string</td>
+  <td>Key containing the Secret value.<br/><i>Default</i>: password</td>
+  <td>false</td>
+</tr>
+</tbody>
+</table>
+
+### OrdsSrvs.spec.globalSettings.instanceAPIAdminSecret
+
+<sup><sup>[↩ Parent](#ordssrvsspecglobalsettings)</sup></sup>
+
+Secret containing the Instance API bootstrap administrator password.
+
+<table>
+<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Required</th></tr></thead>
+<tbody>
+<tr>
+  <td><b>secretName</b></td>
+  <td>string</td>
+  <td>Name of a Secret in the same namespace as the OrdsSrvs resource.</td>
+  <td>true</td>
+</tr>
+<tr>
+  <td><b>passwordKey</b></td>
+  <td>string</td>
+  <td>Key containing the Secret value.<br/><i>Default</i>: password</td>
+  <td>false</td>
+</tr>
+</tbody>
+</table>
+
 ### OrdsSrvs.status
 <sup><sup>[↩ Parent](#ordssrvs)</sup></sup>
 
@@ -1744,7 +2020,7 @@ OrdsSrvsStatus defines the observed state of OrdsSrvs
         <td>
           Indicates if the resource is out-of-sync with the configuration<br/>
         </td>
-        <td>true</td>
+        <td>false</td>
       </tr><tr>
         <td><b><a href="#ordssrvsstatusconditionsindex">conditions</a></b></td>
         <td>[]object</td>
@@ -1756,21 +2032,21 @@ OrdsSrvsStatus defines the observed state of OrdsSrvs
         <td><b><a href="#ordssrvsstatuspoolprobesindex">poolProbes</a></b></td>
         <td>[]object</td>
         <td>
-          Contains the latest reachability-probe result for each configured pool.<br/>
+          Contains the latest reachability-probe result for each selected pool.<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>poolsHealth</b></td>
         <td>string</td>
         <td>
-          Indicates the aggregate health of the configured pools. Values are Healthy, Partial, Unhealthy, Disabled, or Unknown.<br/>
+          Indicates the aggregate health of the selected pools. Values are Healthy, Partial, Unhealthy, Disabled, or Unknown.<br/>
         </td>
         <td>false</td>
       </tr><tr>
         <td><b>poolsReachable</b></td>
         <td>string</td>
         <td>
-          Indicates the number of reachable configured pools in <code>n/total</code> format.<br/>
+          Indicates the number of reachable selected pools in <code>n/total</code> format.<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -1823,7 +2099,38 @@ OrdsSrvsStatus defines the observed state of OrdsSrvs
           Indicates the current Workload type of the resource<br/>
         </td>
         <td>false</td>
-      </tr></tbody>
+      </tr>
+<tr>
+  <td><b>ordsInstalled</b></td>
+  <td>boolean</td>
+  <td>Set to true when the OrdsSrvs workload first becomes Healthy. This field does not verify database schema installation.</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>observedGeneration</b></td>
+  <td>integer</td>
+  <td>Last resource generation observed by the controller.<br/><i>Format</i>: int64</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>poolsTotal</b></td>
+  <td>integer</td>
+  <td>Number of pools evaluated in the latest probe cycle. Omitted when probing is disabled or results are unavailable.<br/><i>Format</i>: int32<br/><i>Minimum</i>: 0</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>poolsOK</b></td>
+  <td>integer</td>
+  <td>Number of OK outcomes in the latest probe cycle. Omitted when probing is disabled or results are unavailable.<br/><i>Format</i>: int32<br/><i>Minimum</i>: 0</td>
+  <td>false</td>
+</tr>
+<tr>
+  <td><b>poolsFailed</b></td>
+  <td>integer</td>
+  <td>Number of non-OK outcomes, including HTTP errors, connection errors, and timeouts. Omitted when probing is disabled or results are unavailable.<br/><i>Format</i>: int32<br/><i>Minimum</i>: 0</td>
+  <td>false</td>
+</tr>
+</tbody>
 </table>
 
 
@@ -1832,7 +2139,7 @@ OrdsSrvsStatus defines the observed state of OrdsSrvs
 
 
 
-Contains the latest reachability-probe result for one configured pool.
+Contains the latest reachability-probe result for one selected pool.
 
 <table>
     <thead>
@@ -1847,9 +2154,9 @@ Contains the latest reachability-probe result for one configured pool.
       <tr>
         <td><b>poolName</b></td>
         <td>string</td>
-        <td>Specifies the configured pool alias tested by the probe.<br/>
+        <td>Specifies the selected pool alias tested by the probe.<br/>
         </td>
-        <td>false</td>
+        <td>true</td>
       </tr><tr>
         <td><b>outcome</b></td>
         <td>enum</td>

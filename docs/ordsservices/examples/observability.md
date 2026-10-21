@@ -33,7 +33,30 @@ To set up monitoring:
   and [ordssrvs-grafana-dashboard.json](./observability/ordssrvs-grafana-dashboard.json).
 - Apply the values using the [Helm command](#configure-metric-collection) below.
 - [Import the dashboard](#import-the-dashboard) and select your datasource and resources.
-- Optionally enable [pool probing](../pool_probing.md) to include pool reachability results.
+- Optionally enable pool probing as shown below to include pool reachability results.
+
+### Optional pool probing
+
+For an existing `OrdsSrvs` resource, merge these settings into its specification:
+
+```yaml
+spec:
+  poolProbeSettings:
+    intervalSeconds: 60
+```
+
+A positive interval enables HTTP or HTTPS probing. HTTPS probes do not validate
+certificates or hostnames. Probes send no credentials or application data and
+only update reported pool health. Enable probing where the limitation is
+acceptable.
+
+The default interval is `0`, which disables probing. Probing starts after the
+workload becomes `Healthy` and uses the pools in `spec.poolSettings` by default.
+To override that selection, add `poolList: [poola, poolb]` under
+`spec.poolProbeSettings`.
+A non-empty list is required with Central Configuration; see
+[Pool Probing](../pool_probing.md) for the routing requirements. Changing the
+list does not configure pools or trigger a Pod rollout.
 
 ## Configure metric collection
 

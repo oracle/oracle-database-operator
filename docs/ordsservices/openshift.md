@@ -1,13 +1,12 @@
 # OpenShift Deployment
 
-If you are deploying the OrdsSrvs controller on OpenShift, configure the
-appropriate Security Context Constraints (SCCs). Assign the custom SCCs to the
-service accounts used by OrdsSrvs to permit the required operations.
+When using the `OrdsSrvs` controller on OpenShift, configure Security Context
+Constraints (SCCs) for the ServiceAccount specified in the `OrdsSrvs` custom
+resource. The controller assigns this ServiceAccount to the Pods it creates.
 
 ## Create a Service Account
 
-Create the service account used to assign the required SCCs to the OrdsSrvs
-controller:
+Create the ServiceAccount to reference in the `OrdsSrvs` custom resource:
 
 ```yaml
 apiVersion: v1
@@ -17,18 +16,29 @@ metadata:
   namespace: ordsnamespace
 ```
 
-The same manifest is available as [ordssrvs-sa.yaml](./examples/ordssrvs-sa.yaml).
+Save the manifest as `ordssrvs-sa.yaml`, or download
+[ordssrvs-sa.yaml](./examples/ordssrvs-sa.yaml), then apply it:
+
+```bash
+kubectl apply -f ordssrvs-sa.yaml
+```
 
 ## Create a Custom Security Context Constraint
 
 Use [ordssrvs-sa-scc.yaml](./examples/ordssrvs-sa-scc.yaml) to create the
-required SCC and bind it to the `ordssrvs-sa` service account. This gives the
-OrdsSrvs controller the permissions it needs to operate on OpenShift.
+required SCC and bind it to the `ordssrvs-sa` ServiceAccount. This allows the
+Pods created by the `OrdsSrvs` controller to run under that SCC. The operator
+controller uses its own ServiceAccount. Download the linked SCC manifest and
+apply it:
+
+```bash
+kubectl apply -f ordssrvs-sa-scc.yaml
+```
 
 ## Set `serviceAccountName` in OrdsSrvs
 
-Set `serviceAccountName` to the dedicated service account in the OrdsSrvs
-resource:
+Merge `spec.serviceAccountName` into your `OrdsSrvs` custom resource. This is a
+partial manifest; retain your existing image, connection, and credential settings:
 
 ```yaml
 apiVersion: database.oracle.com/v4
@@ -45,4 +55,4 @@ spec:
   serviceAccountName: ordssrvs-sa
 ```
 
-See the complete [OrdsSrvs example](./examples/ordssrvs.yaml).
+A complete manifest is also available as [ordssrvs.yaml](./examples/ordssrvs.yaml).

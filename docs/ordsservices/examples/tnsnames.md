@@ -41,4 +41,5 @@ Below is a snippet (not a complete manifest) showing how to reference the extern
 ## Notes
 
 - Ensure the db.tnsAliasName matches the alias present in tnsnames.ora (TESTCASE in this example).
+- Create the Secret in the same namespace as the OrdsSrvs resource.
 - Handle Kubernetes Secrets and wallet files in accordance with your organization’s security and compliance policies.

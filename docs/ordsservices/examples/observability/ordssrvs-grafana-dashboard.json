@@ -70,23 +70,64 @@
       },
       "fieldConfig": {
         "defaults": {
+          "decimals": 0,
           "mappings": [],
-          "noValue": "-",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
+          "noValue": "0",
+          "unit": "none"
         },
         "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Resource Total"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^([0-9]+)$",
+                      "result": {
+                        "text": "OrdsSrvs Resource Status ($1)"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State Healthy"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#64748b",
+                      "value": 0
+                    },
+                    {
+                      "color": "#16a34a",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
           {
             "matcher": {
               "id": "byName",
@@ -99,7 +140,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
@@ -120,7 +161,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Text State Healthy"
+              "options": "State Preparing"
             },
             "properties": [
               {
@@ -129,41 +170,11 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "#64748b",
                       "value": 0
                     },
                     {
-                      "color": "#166534",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Dot State Healthy"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(0,0,0,0)",
-                      "value": 0
-                    },
-                    {
-                      "color": "#16a34a",
+                      "color": "#3b82f6",
                       "value": 1
                     }
                   ]
@@ -189,7 +200,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
@@ -210,7 +221,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Text State Preparing"
+              "options": "State Progressing"
             },
             "properties": [
               {
@@ -219,41 +230,11 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "#64748b",
                       "value": 0
                     },
                     {
-                      "color": "#1d4ed8",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Dot State Preparing"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(0,0,0,0)",
-                      "value": 0
-                    },
-                    {
-                      "color": "#3b82f6",
+                      "color": "#eab308",
                       "value": 1
                     }
                   ]
@@ -279,7 +260,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
@@ -300,7 +281,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Text State Progressing"
+              "options": "State Degraded"
             },
             "properties": [
               {
@@ -309,41 +290,11 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "#64748b",
                       "value": 0
                     },
                     {
-                      "color": "#854d0e",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Dot State Progressing"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(0,0,0,0)",
-                      "value": 0
-                    },
-                    {
-                      "color": "#eab308",
+                      "color": "#f97316",
                       "value": 1
                     }
                   ]
@@ -369,7 +320,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
@@ -390,7 +341,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Text State Degraded"
+              "options": "State Unhealthy"
             },
             "properties": [
               {
@@ -399,41 +350,11 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "#64748b",
                       "value": 0
                     },
                     {
-                      "color": "#c2410c",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Dot State Degraded"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(0,0,0,0)",
-                      "value": 0
-                    },
-                    {
-                      "color": "#f97316",
+                      "color": "#dc2626",
                       "value": 1
                     }
                   ]
@@ -459,7 +380,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
@@ -480,37 +401,29 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Text State Unhealthy"
+              "options": "Pool Health Total"
             },
             "properties": [
               {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(0,0,0,0)",
-                      "value": 0
-                    },
-                    {
-                      "color": "#b91c1c",
-                      "value": 1
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^([0-9]+)$",
+                      "result": {
+                        "text": "OrdsSrvs Pool Health ($1)"
+                      }
                     }
-                  ]
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
+                  }
+                ]
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "Dot State Unhealthy"
+              "options": "Pool Healthy"
             },
             "properties": [
               {
@@ -519,11 +432,11 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "#64748b",
                       "value": 0
                     },
                     {
-                      "color": "#dc2626",
+                      "color": "#16a34a",
                       "value": 1
                     }
                   ]
@@ -549,7 +462,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
@@ -570,7 +483,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Text Pool Healthy"
+              "options": "Pool Partial"
             },
             "properties": [
               {
@@ -579,41 +492,11 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "#64748b",
                       "value": 0
                     },
                     {
-                      "color": "#166534",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Dot Pool Healthy"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(0,0,0,0)",
-                      "value": 0
-                    },
-                    {
-                      "color": "#16a34a",
+                      "color": "#f97316",
                       "value": 1
                     }
                   ]
@@ -639,7 +522,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
@@ -660,7 +543,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Text Pool Partial"
+              "options": "Pool Unhealthy"
             },
             "properties": [
               {
@@ -669,41 +552,11 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "#64748b",
                       "value": 0
                     },
                     {
-                      "color": "#c2410c",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Dot Pool Partial"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(0,0,0,0)",
-                      "value": 0
-                    },
-                    {
-                      "color": "#f97316",
+                      "color": "#dc2626",
                       "value": 1
                     }
                   ]
@@ -729,7 +582,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
@@ -750,7 +603,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Text Pool Unhealthy"
+              "options": "Pool Disabled"
             },
             "properties": [
               {
@@ -759,41 +612,11 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "#64748b",
                       "value": 0
                     },
                     {
-                      "color": "#b91c1c",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Dot Pool Unhealthy"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(0,0,0,0)",
-                      "value": 0
-                    },
-                    {
-                      "color": "#dc2626",
+                      "color": "#c4b5d9",
                       "value": 1
                     }
                   ]
@@ -819,7 +642,67 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(196,181,217,0.12)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pool Unknown"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#64748b",
+                      "value": 0
+                    },
+                    {
+                      "color": "#94a3b8",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg Pool Unknown"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
@@ -840,7 +723,29 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Text Pool Disabled"
+              "options": "Outcome Total"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^([0-9]+)$",
+                      "result": {
+                        "text": "Pool Outcomes ($1)"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outcome Healthy"
             },
             "properties": [
               {
@@ -849,11 +754,11 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "#64748b",
                       "value": 0
                     },
                     {
-                      "color": "#475569",
+                      "color": "#16a34a",
                       "value": 1
                     }
                   ]
@@ -870,7 +775,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Dot Pool Disabled"
+              "options": "Bg Outcome Healthy"
             },
             "properties": [
               {
@@ -879,11 +784,251 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "rgba(0,0,0,0)",
+                      "color": "rgba(100,116,139,0.08)",
                       "value": 0
                     },
                     {
+                      "color": "rgba(22,163,74,0.16)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outcome Not found"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
                       "color": "#64748b",
+                      "value": 0
+                    },
+                    {
+                      "color": "#ca8a04",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg Outcome Not found"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(100,116,139,0.08)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(202,138,4,0.16)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outcome Server error"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#64748b",
+                      "value": 0
+                    },
+                    {
+                      "color": "#dc2626",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg Outcome Server error"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(100,116,139,0.08)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(220,38,38,0.16)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outcome Connection error"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#64748b",
+                      "value": 0
+                    },
+                    {
+                      "color": "#f97316",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg Outcome Connection error"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(100,116,139,0.08)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(249,115,22,0.16)",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outcome Unexpected"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#64748b",
+                      "value": 0
+                    },
+                    {
+                      "color": "#eab308",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bg Outcome Unexpected"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "rgba(100,116,139,0.08)",
+                      "value": 0
+                    },
+                    {
+                      "color": "rgba(234,179,8,0.16)",
                       "value": 1
                     }
                   ]
@@ -917,8 +1062,9 @@
           },
           "border": {
             "color": {
-              "fixed": "dark-green"
-            }
+              "fixed": "transparent"
+            },
+            "width": 0
           },
           "constraint": {
             "horizontal": "left",
@@ -941,8 +1087,9 @@
                 "fontWeight": "bold",
                 "size": 12,
                 "text": {
-                  "fixed": "OrdsSrvs Resource Status",
-                  "mode": "fixed"
+                  "field": "Resource Total",
+                  "fixed": "OrdsSrvs Resource Status (0)",
+                  "mode": "field"
                 },
                 "valign": "middle"
               },
@@ -952,28 +1099,28 @@
               },
               "name": "state-title",
               "placement": {
-                "height": 22,
-                "left": 10,
-                "rotation": 0,
-                "top": 4,
-                "width": 200
+                "left": 8,
+                "width": 190,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
               },
-              "type": "text"
+              "type": "metric-value"
             },
             {
               "background": {
                 "color": {
                   "field": "Bg State Healthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "rgba(100,116,139,0.08)"
                 }
               },
               "border": {
                 "color": {
-                  "field": "Text State Healthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "State Healthy",
+                  "fixed": "#64748b"
                 },
-                "radius": 6,
-                "width": 1.5
+                "radius": 5,
+                "width": 1
               },
               "config": {
                 "align": "center",
@@ -993,35 +1140,36 @@
               },
               "name": "state-healthy-pill",
               "placement": {
-                "height": 26,
-                "left": 220,
-                "rotation": 0,
-                "top": 2,
-                "width": 140
+                "left": 206,
+                "width": 166,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
               },
               "type": "rectangle"
             },
             {
               "background": {
                 "color": {
-                  "fixed": "transparent"
+                  "field": "State Healthy",
+                  "fixed": "#64748b"
                 }
               },
               "border": {
                 "color": {
-                  "fixed": "dark-green"
-                }
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
               },
               "config": {
                 "align": "center",
                 "color": {
-                  "field": "Dot State Healthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "#ffffff"
                 },
-                "fontWeight": "bold",
-                "size": 14,
+                "size": 1,
                 "text": {
-                  "fixed": "●",
+                  "fixed": "",
                   "mode": "fixed"
                 },
                 "valign": "middle"
@@ -1030,15 +1178,55 @@
                 "horizontal": "left",
                 "vertical": "top"
               },
-              "name": "state-healthy-dot",
+              "name": "state-healthy-bullet",
               "placement": {
-                "height": 26,
-                "left": 228,
-                "rotation": 0,
-                "top": 2,
-                "width": 14
+                "left": 215,
+                "width": 14.7,
+                "top": 3.15,
+                "height": 14.7,
+                "rotation": 0
               },
-              "type": "text"
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "State Healthy",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "State Healthy",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-healthy-count",
+              "placement": {
+                "left": 235,
+                "width": 24,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
             },
             {
               "background": {
@@ -1054,11 +1242,11 @@
               "config": {
                 "align": "left",
                 "color": {
-                  "field": "Text State Healthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "State Healthy",
+                  "fixed": "#64748b"
                 },
                 "fontWeight": "normal",
-                "size": 11,
+                "size": 12,
                 "text": {
                   "fixed": "Healthy",
                   "mode": "fixed"
@@ -1071,545 +1259,28 @@
               },
               "name": "state-healthy-label",
               "placement": {
-                "height": 22,
-                "left": 277,
-                "rotation": 0,
-                "top": 4,
-                "width": 78
+                "left": 265,
+                "width": 98,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
               },
               "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "rgba(0,0,0,0)"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text State Healthy",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 15,
-                "text": {
-                  "field": "State Healthy",
-                  "fixed": "-",
-                  "mode": "field"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-healthy-count",
-              "placement": {
-                "height": 26,
-                "left": 244,
-                "rotation": 0,
-                "top": 2,
-                "width": 30
-              },
-              "type": "metric-value"
-            },
-            {
-              "background": {
-                "color": {
-                  "field": "Bg State Preparing",
-                  "fixed": "rgba(0,0,0,0)"
-                }
-              },
-              "border": {
-                "color": {
-                  "field": "Text State Preparing",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "radius": 6,
-                "width": 1.5
-              },
-              "config": {
-                "align": "center",
-                "color": {
-                  "fixed": "#ffffff"
-                },
-                "size": 1,
-                "text": {
-                  "fixed": "",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-preparing-pill",
-              "placement": {
-                "height": 26,
-                "left": 370,
-                "rotation": 0,
-                "top": 2,
-                "width": 140
-              },
-              "type": "rectangle"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "center",
-                "color": {
-                  "field": "Dot State Preparing",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 14,
-                "text": {
-                  "fixed": "●",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-preparing-dot",
-              "placement": {
-                "height": 26,
-                "left": 378,
-                "rotation": 0,
-                "top": 2,
-                "width": 14
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text State Preparing",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "normal",
-                "size": 11,
-                "text": {
-                  "fixed": "Preparing",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-preparing-label",
-              "placement": {
-                "height": 22,
-                "left": 427,
-                "rotation": 0,
-                "top": 4,
-                "width": 78
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "rgba(0,0,0,0)"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text State Preparing",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 15,
-                "text": {
-                  "field": "State Preparing",
-                  "fixed": "-",
-                  "mode": "field"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-preparing-count",
-              "placement": {
-                "height": 26,
-                "left": 394,
-                "rotation": 0,
-                "top": 2,
-                "width": 30
-              },
-              "type": "metric-value"
-            },
-            {
-              "background": {
-                "color": {
-                  "field": "Bg State Progressing",
-                  "fixed": "rgba(0,0,0,0)"
-                }
-              },
-              "border": {
-                "color": {
-                  "field": "Text State Progressing",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "radius": 6,
-                "width": 1.5
-              },
-              "config": {
-                "align": "center",
-                "color": {
-                  "fixed": "#ffffff"
-                },
-                "size": 1,
-                "text": {
-                  "fixed": "",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-progressing-pill",
-              "placement": {
-                "height": 26,
-                "left": 520,
-                "rotation": 0,
-                "top": 2,
-                "width": 140
-              },
-              "type": "rectangle"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "center",
-                "color": {
-                  "field": "Dot State Progressing",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 14,
-                "text": {
-                  "fixed": "●",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-progressing-dot",
-              "placement": {
-                "height": 26,
-                "left": 528,
-                "rotation": 0,
-                "top": 2,
-                "width": 14
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text State Progressing",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "normal",
-                "size": 11,
-                "text": {
-                  "fixed": "Progressing",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-progressing-label",
-              "placement": {
-                "height": 22,
-                "left": 577,
-                "rotation": 0,
-                "top": 4,
-                "width": 78
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "rgba(0,0,0,0)"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text State Progressing",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 15,
-                "text": {
-                  "field": "State Progressing",
-                  "fixed": "-",
-                  "mode": "field"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-progressing-count",
-              "placement": {
-                "height": 26,
-                "left": 544,
-                "rotation": 0,
-                "top": 2,
-                "width": 30
-              },
-              "type": "metric-value"
-            },
-            {
-              "background": {
-                "color": {
-                  "field": "Bg State Degraded",
-                  "fixed": "rgba(0,0,0,0)"
-                }
-              },
-              "border": {
-                "color": {
-                  "field": "Text State Degraded",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "radius": 6,
-                "width": 1.5
-              },
-              "config": {
-                "align": "center",
-                "color": {
-                  "fixed": "#ffffff"
-                },
-                "size": 1,
-                "text": {
-                  "fixed": "",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-degraded-pill",
-              "placement": {
-                "height": 26,
-                "left": 670,
-                "rotation": 0,
-                "top": 2,
-                "width": 140
-              },
-              "type": "rectangle"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "center",
-                "color": {
-                  "field": "Dot State Degraded",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 14,
-                "text": {
-                  "fixed": "●",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-degraded-dot",
-              "placement": {
-                "height": 26,
-                "left": 678,
-                "rotation": 0,
-                "top": 2,
-                "width": 14
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text State Degraded",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "normal",
-                "size": 11,
-                "text": {
-                  "fixed": "Degraded",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-degraded-label",
-              "placement": {
-                "height": 22,
-                "left": 727,
-                "rotation": 0,
-                "top": 4,
-                "width": 78
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "rgba(0,0,0,0)"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text State Degraded",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 15,
-                "text": {
-                  "field": "State Degraded",
-                  "fixed": "-",
-                  "mode": "field"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "state-degraded-count",
-              "placement": {
-                "height": 26,
-                "left": 694,
-                "rotation": 0,
-                "top": 2,
-                "width": 30
-              },
-              "type": "metric-value"
             },
             {
               "background": {
                 "color": {
                   "field": "Bg State Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "rgba(100,116,139,0.08)"
                 }
               },
               "border": {
                 "color": {
-                  "field": "Text State Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "State Unhealthy",
+                  "fixed": "#64748b"
                 },
-                "radius": 6,
-                "width": 1.5
+                "radius": 5,
+                "width": 1
               },
               "config": {
                 "align": "center",
@@ -1629,35 +1300,36 @@
               },
               "name": "state-unhealthy-pill",
               "placement": {
-                "height": 26,
-                "left": 820,
-                "rotation": 0,
-                "top": 2,
-                "width": 140
+                "left": 378,
+                "width": 166,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
               },
               "type": "rectangle"
             },
             {
               "background": {
                 "color": {
-                  "fixed": "transparent"
+                  "field": "State Unhealthy",
+                  "fixed": "#64748b"
                 }
               },
               "border": {
                 "color": {
-                  "fixed": "dark-green"
-                }
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
               },
               "config": {
                 "align": "center",
                 "color": {
-                  "field": "Dot State Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "#ffffff"
                 },
-                "fontWeight": "bold",
-                "size": 14,
+                "size": 1,
                 "text": {
-                  "fixed": "●",
+                  "fixed": "",
                   "mode": "fixed"
                 },
                 "valign": "middle"
@@ -1666,15 +1338,55 @@
                 "horizontal": "left",
                 "vertical": "top"
               },
-              "name": "state-unhealthy-dot",
+              "name": "state-unhealthy-bullet",
               "placement": {
-                "height": 26,
-                "left": 828,
-                "rotation": 0,
-                "top": 2,
-                "width": 14
+                "left": 387,
+                "width": 14.7,
+                "top": 3.15,
+                "height": 14.7,
+                "rotation": 0
               },
-              "type": "text"
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "State Unhealthy",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "State Unhealthy",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-unhealthy-count",
+              "placement": {
+                "left": 407,
+                "width": 24,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
             },
             {
               "background": {
@@ -1690,11 +1402,11 @@
               "config": {
                 "align": "left",
                 "color": {
-                  "field": "Text State Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "State Unhealthy",
+                  "fixed": "#64748b"
                 },
                 "fontWeight": "normal",
-                "size": 11,
+                "size": 12,
                 "text": {
                   "fixed": "Unhealthy",
                   "mode": "fixed"
@@ -1707,13 +1419,94 @@
               },
               "name": "state-unhealthy-label",
               "placement": {
-                "height": 22,
-                "left": 877,
-                "rotation": 0,
-                "top": 4,
-                "width": 78
+                "left": 437,
+                "width": 98,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
               },
               "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg State Degraded",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "State Degraded",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-degraded-pill",
+              "placement": {
+                "left": 550,
+                "width": 166,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "State Degraded",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-degraded-bullet",
+              "placement": {
+                "left": 559,
+                "width": 14.7,
+                "top": 3.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
             },
             {
               "background": {
@@ -1729,14 +1522,14 @@
               "config": {
                 "align": "left",
                 "color": {
-                  "field": "Text State Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "State Degraded",
+                  "fixed": "#64748b"
                 },
                 "fontWeight": "bold",
-                "size": 15,
+                "size": 12,
                 "text": {
-                  "field": "State Unhealthy",
-                  "fixed": "-",
+                  "field": "State Degraded",
+                  "fixed": "0",
                   "mode": "field"
                 },
                 "valign": "middle"
@@ -1745,15 +1538,374 @@
                 "horizontal": "left",
                 "vertical": "top"
               },
-              "name": "state-unhealthy-count",
+              "name": "state-degraded-count",
               "placement": {
-                "height": 26,
-                "left": 844,
-                "rotation": 0,
-                "top": 2,
-                "width": 30
+                "left": 579,
+                "width": 24,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
               },
               "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "State Degraded",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Degraded",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-degraded-label",
+              "placement": {
+                "left": 609,
+                "width": 98,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg State Progressing",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "State Progressing",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-progressing-pill",
+              "placement": {
+                "left": 722,
+                "width": 166,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "State Progressing",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-progressing-bullet",
+              "placement": {
+                "left": 731,
+                "width": 14.7,
+                "top": 3.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "State Progressing",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "State Progressing",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-progressing-count",
+              "placement": {
+                "left": 751,
+                "width": 24,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "State Progressing",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Progressing",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-progressing-label",
+              "placement": {
+                "left": 781,
+                "width": 98,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg State Preparing",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "State Preparing",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-preparing-pill",
+              "placement": {
+                "left": 894,
+                "width": 166,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "State Preparing",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-preparing-bullet",
+              "placement": {
+                "left": 903,
+                "width": 14.7,
+                "top": 3.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "State Preparing",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "State Preparing",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-preparing-count",
+              "placement": {
+                "left": 923,
+                "width": 24,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "State Preparing",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Preparing",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "state-preparing-label",
+              "placement": {
+                "left": 953,
+                "width": 98,
+                "top": 0,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
             },
             {
               "background": {
@@ -1771,8 +1923,9 @@
                 "fontWeight": "bold",
                 "size": 12,
                 "text": {
-                  "fixed": "OrdsSrvs Pool Health",
-                  "mode": "fixed"
+                  "field": "Pool Health Total",
+                  "fixed": "OrdsSrvs Pool Health (0)",
+                  "mode": "field"
                 },
                 "valign": "middle"
               },
@@ -1782,28 +1935,28 @@
               },
               "name": "pool-health-title",
               "placement": {
-                "height": 22,
-                "left": 10,
-                "rotation": 0,
-                "top": 32,
-                "width": 200
+                "left": 8,
+                "width": 190,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
               },
-              "type": "text"
+              "type": "metric-value"
             },
             {
               "background": {
                 "color": {
                   "field": "Bg Pool Healthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "rgba(100,116,139,0.08)"
                 }
               },
               "border": {
                 "color": {
-                  "field": "Text Pool Healthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "Pool Healthy",
+                  "fixed": "#64748b"
                 },
-                "radius": 6,
-                "width": 1.5
+                "radius": 5,
+                "width": 1
               },
               "config": {
                 "align": "center",
@@ -1823,146 +1976,27 @@
               },
               "name": "pool-health-healthy-pill",
               "placement": {
-                "height": 26,
-                "left": 220,
-                "rotation": 0,
-                "top": 30,
-                "width": 140
+                "left": 206,
+                "width": 166,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
               },
               "type": "rectangle"
             },
             {
               "background": {
                 "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "center",
-                "color": {
-                  "field": "Dot Pool Healthy",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 14,
-                "text": {
-                  "fixed": "●",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "pool-health-healthy-dot",
-              "placement": {
-                "height": 26,
-                "left": 228,
-                "rotation": 0,
-                "top": 30,
-                "width": 14
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text Pool Healthy",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "normal",
-                "size": 11,
-                "text": {
-                  "fixed": "Healthy",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "pool-health-healthy-label",
-              "placement": {
-                "height": 22,
-                "left": 277,
-                "rotation": 0,
-                "top": 32,
-                "width": 86
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "rgba(0,0,0,0)"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text Pool Healthy",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 15,
-                "text": {
                   "field": "Pool Healthy",
-                  "fixed": "-",
-                  "mode": "field"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "pool-health-healthy-count",
-              "placement": {
-                "height": 26,
-                "left": 244,
-                "rotation": 0,
-                "top": 30,
-                "width": 30
-              },
-              "type": "metric-value"
-            },
-            {
-              "background": {
-                "color": {
-                  "field": "Bg Pool Partial",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "#64748b"
                 }
               },
               "border": {
                 "color": {
-                  "field": "Text Pool Partial",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "transparent"
                 },
-                "radius": 6,
-                "width": 1.5
+                "width": 0,
+                "radius": 7.35
               },
               "config": {
                 "align": "center",
@@ -1980,97 +2014,19 @@
                 "horizontal": "left",
                 "vertical": "top"
               },
-              "name": "pool-health-partial-pill",
+              "name": "pool-health-healthy-bullet",
               "placement": {
-                "height": 26,
-                "left": 390,
-                "rotation": 0,
-                "top": 30,
-                "width": 140
+                "left": 215,
+                "width": 14.7,
+                "top": 25.15,
+                "height": 14.7,
+                "rotation": 0
               },
               "type": "rectangle"
             },
             {
               "background": {
                 "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "center",
-                "color": {
-                  "field": "Dot Pool Partial",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "bold",
-                "size": 14,
-                "text": {
-                  "fixed": "●",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "pool-health-partial-dot",
-              "placement": {
-                "height": 26,
-                "left": 398,
-                "rotation": 0,
-                "top": 30,
-                "width": 14
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
-                  "fixed": "transparent"
-                }
-              },
-              "border": {
-                "color": {
-                  "fixed": "dark-green"
-                }
-              },
-              "config": {
-                "align": "left",
-                "color": {
-                  "field": "Text Pool Partial",
-                  "fixed": "rgba(0,0,0,0)"
-                },
-                "fontWeight": "normal",
-                "size": 11,
-                "text": {
-                  "fixed": "Partial",
-                  "mode": "fixed"
-                },
-                "valign": "middle"
-              },
-              "constraint": {
-                "horizontal": "left",
-                "vertical": "top"
-              },
-              "name": "pool-health-partial-label",
-              "placement": {
-                "height": 22,
-                "left": 447,
-                "rotation": 0,
-                "top": 32,
-                "width": 86
-              },
-              "type": "text"
-            },
-            {
-              "background": {
-                "color": {
                   "fixed": "rgba(0,0,0,0)"
                 }
               },
@@ -2082,14 +2038,14 @@
               "config": {
                 "align": "left",
                 "color": {
-                  "field": "Text Pool Partial",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "Pool Healthy",
+                  "fixed": "#64748b"
                 },
                 "fontWeight": "bold",
-                "size": 15,
+                "size": 12,
                 "text": {
-                  "field": "Pool Partial",
-                  "fixed": "-",
+                  "field": "Pool Healthy",
+                  "fixed": "0",
                   "mode": "field"
                 },
                 "valign": "middle"
@@ -2098,30 +2054,69 @@
                 "horizontal": "left",
                 "vertical": "top"
               },
-              "name": "pool-health-partial-count",
+              "name": "pool-health-healthy-count",
               "placement": {
-                "height": 26,
-                "left": 414,
-                "rotation": 0,
-                "top": 30,
-                "width": 30
+                "left": 235,
+                "width": 24,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
               },
               "type": "metric-value"
             },
             {
               "background": {
                 "color": {
-                  "field": "Bg Pool Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "transparent"
                 }
               },
               "border": {
                 "color": {
-                  "field": "Text Pool Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Pool Healthy",
+                  "fixed": "#64748b"
                 },
-                "radius": 6,
-                "width": 1.5
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Healthy",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-healthy-label",
+              "placement": {
+                "left": 265,
+                "width": 98,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Pool Unhealthy",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Pool Unhealthy",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
               },
               "config": {
                 "align": "center",
@@ -2141,35 +2136,36 @@
               },
               "name": "pool-health-unhealthy-pill",
               "placement": {
-                "height": 26,
-                "left": 560,
-                "rotation": 0,
-                "top": 30,
-                "width": 140
+                "left": 378,
+                "width": 166,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
               },
               "type": "rectangle"
             },
             {
               "background": {
                 "color": {
-                  "fixed": "transparent"
+                  "field": "Pool Unhealthy",
+                  "fixed": "#64748b"
                 }
               },
               "border": {
                 "color": {
-                  "fixed": "dark-green"
-                }
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
               },
               "config": {
                 "align": "center",
                 "color": {
-                  "field": "Dot Pool Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "#ffffff"
                 },
-                "fontWeight": "bold",
-                "size": 14,
+                "size": 1,
                 "text": {
-                  "fixed": "●",
+                  "fixed": "",
                   "mode": "fixed"
                 },
                 "valign": "middle"
@@ -2178,15 +2174,55 @@
                 "horizontal": "left",
                 "vertical": "top"
               },
-              "name": "pool-health-unhealthy-dot",
+              "name": "pool-health-unhealthy-bullet",
               "placement": {
-                "height": 26,
-                "left": 568,
-                "rotation": 0,
-                "top": 30,
-                "width": 14
+                "left": 387,
+                "width": 14.7,
+                "top": 25.15,
+                "height": 14.7,
+                "rotation": 0
               },
-              "type": "text"
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Pool Unhealthy",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "Pool Unhealthy",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-unhealthy-count",
+              "placement": {
+                "left": 407,
+                "width": 24,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
             },
             {
               "background": {
@@ -2202,11 +2238,11 @@
               "config": {
                 "align": "left",
                 "color": {
-                  "field": "Text Pool Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "Pool Unhealthy",
+                  "fixed": "#64748b"
                 },
                 "fontWeight": "normal",
-                "size": 11,
+                "size": 12,
                 "text": {
                   "fixed": "Unhealthy",
                   "mode": "fixed"
@@ -2219,13 +2255,94 @@
               },
               "name": "pool-health-unhealthy-label",
               "placement": {
-                "height": 22,
-                "left": 617,
-                "rotation": 0,
-                "top": 32,
-                "width": 86
+                "left": 437,
+                "width": 98,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
               },
               "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Pool Partial",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Pool Partial",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-partial-pill",
+              "placement": {
+                "left": 550,
+                "width": 166,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Pool Partial",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-partial-bullet",
+              "placement": {
+                "left": 559,
+                "width": 14.7,
+                "top": 25.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
             },
             {
               "background": {
@@ -2241,14 +2358,14 @@
               "config": {
                 "align": "left",
                 "color": {
-                  "field": "Text Pool Unhealthy",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "Pool Partial",
+                  "fixed": "#64748b"
                 },
                 "fontWeight": "bold",
-                "size": 15,
+                "size": 12,
                 "text": {
-                  "field": "Pool Unhealthy",
-                  "fixed": "-",
+                  "field": "Pool Partial",
+                  "fixed": "0",
                   "mode": "field"
                 },
                 "valign": "middle"
@@ -2257,30 +2374,69 @@
                 "horizontal": "left",
                 "vertical": "top"
               },
-              "name": "pool-health-unhealthy-count",
+              "name": "pool-health-partial-count",
               "placement": {
-                "height": 26,
-                "left": 584,
-                "rotation": 0,
-                "top": 30,
-                "width": 30
+                "left": 579,
+                "width": 24,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
               },
               "type": "metric-value"
             },
             {
               "background": {
                 "color": {
-                  "field": "Bg Pool Disabled",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "transparent"
                 }
               },
               "border": {
                 "color": {
-                  "field": "Text Pool Disabled",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Pool Partial",
+                  "fixed": "#64748b"
                 },
-                "radius": 6,
-                "width": 1.5
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Partial",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-partial-label",
+              "placement": {
+                "left": 609,
+                "width": 98,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Pool Disabled",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Pool Disabled",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
               },
               "config": {
                 "align": "center",
@@ -2300,35 +2456,36 @@
               },
               "name": "pool-health-disabled-pill",
               "placement": {
-                "height": 26,
-                "left": 730,
-                "rotation": 0,
-                "top": 30,
-                "width": 140
+                "left": 722,
+                "width": 166,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
               },
               "type": "rectangle"
             },
             {
               "background": {
                 "color": {
-                  "fixed": "transparent"
+                  "field": "Pool Disabled",
+                  "fixed": "#64748b"
                 }
               },
               "border": {
                 "color": {
-                  "fixed": "dark-green"
-                }
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
               },
               "config": {
                 "align": "center",
                 "color": {
-                  "field": "Dot Pool Disabled",
-                  "fixed": "rgba(0,0,0,0)"
+                  "fixed": "#ffffff"
                 },
-                "fontWeight": "bold",
-                "size": 14,
+                "size": 1,
                 "text": {
-                  "fixed": "●",
+                  "fixed": "",
                   "mode": "fixed"
                 },
                 "valign": "middle"
@@ -2337,15 +2494,55 @@
                 "horizontal": "left",
                 "vertical": "top"
               },
-              "name": "pool-health-disabled-dot",
+              "name": "pool-health-disabled-bullet",
               "placement": {
-                "height": 26,
-                "left": 738,
-                "rotation": 0,
-                "top": 30,
-                "width": 14
+                "left": 731,
+                "width": 14.7,
+                "top": 25.15,
+                "height": 14.7,
+                "rotation": 0
               },
-              "type": "text"
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Pool Disabled",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "Pool Disabled",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-disabled-count",
+              "placement": {
+                "left": 751,
+                "width": 24,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
             },
             {
               "background": {
@@ -2361,11 +2558,11 @@
               "config": {
                 "align": "left",
                 "color": {
-                  "field": "Text Pool Disabled",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "Pool Disabled",
+                  "fixed": "#64748b"
                 },
                 "fontWeight": "normal",
-                "size": 11,
+                "size": 12,
                 "text": {
                   "fixed": "Disabled",
                   "mode": "fixed"
@@ -2378,13 +2575,94 @@
               },
               "name": "pool-health-disabled-label",
               "placement": {
-                "height": 22,
-                "left": 787,
-                "rotation": 0,
-                "top": 32,
-                "width": 86
+                "left": 781,
+                "width": 98,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
               },
               "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Pool Unknown",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Pool Unknown",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-unknown-pill",
+              "placement": {
+                "left": 894,
+                "width": 166,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Pool Unknown",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-unknown-bullet",
+              "placement": {
+                "left": 903,
+                "width": 14.7,
+                "top": 25.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
             },
             {
               "background": {
@@ -2400,14 +2678,14 @@
               "config": {
                 "align": "left",
                 "color": {
-                  "field": "Text Pool Disabled",
-                  "fixed": "rgba(0,0,0,0)"
+                  "field": "Pool Unknown",
+                  "fixed": "#64748b"
                 },
                 "fontWeight": "bold",
-                "size": 15,
+                "size": 12,
                 "text": {
-                  "field": "Pool Disabled",
-                  "fixed": "-",
+                  "field": "Pool Unknown",
+                  "fixed": "0",
                   "mode": "field"
                 },
                 "valign": "middle"
@@ -2416,24 +2694,899 @@
                 "horizontal": "left",
                 "vertical": "top"
               },
-              "name": "pool-health-disabled-count",
+              "name": "pool-health-unknown-count",
               "placement": {
-                "height": 26,
-                "left": 754,
-                "rotation": 0,
-                "top": 30,
-                "width": 30
+                "left": 923,
+                "width": 24,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
               },
               "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Pool Unknown",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Unknown",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-health-unknown-label",
+              "placement": {
+                "left": 953,
+                "width": 98,
+                "top": 22,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "Outcome Total",
+                  "fixed": "Pool Outcomes (0)",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "pool-outcomes-title",
+              "placement": {
+                "left": 8,
+                "width": 190,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Outcome Healthy",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Outcome Healthy",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-healthy-pill",
+              "placement": {
+                "left": 206,
+                "width": 166,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Outcome Healthy",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-healthy-bullet",
+              "placement": {
+                "left": 215,
+                "width": 14.7,
+                "top": 47.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Healthy",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "Outcome Healthy",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-healthy-count",
+              "placement": {
+                "left": 235,
+                "width": 24,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Healthy",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Healthy",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-healthy-label",
+              "placement": {
+                "left": 265,
+                "width": 98,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Outcome Server error",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Outcome Server error",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-server-error-pill",
+              "placement": {
+                "left": 378,
+                "width": 166,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Outcome Server error",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-server-error-bullet",
+              "placement": {
+                "left": 387,
+                "width": 14.7,
+                "top": 47.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Server error",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "Outcome Server error",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-server-error-count",
+              "placement": {
+                "left": 407,
+                "width": 24,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Server error",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Server error",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-server-error-label",
+              "placement": {
+                "left": 437,
+                "width": 98,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Outcome Connection error",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Outcome Connection error",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-connection-error-pill",
+              "placement": {
+                "left": 550,
+                "width": 166,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Outcome Connection error",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-connection-error-bullet",
+              "placement": {
+                "left": 559,
+                "width": 14.7,
+                "top": 47.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Connection error",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "Outcome Connection error",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-connection-error-count",
+              "placement": {
+                "left": 579,
+                "width": 24,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Connection error",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "normal",
+                "size": 11,
+                "text": {
+                  "fixed": "Connection error",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-connection-error-label",
+              "placement": {
+                "left": 609,
+                "width": 98,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Outcome Not found",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Outcome Not found",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-not-found-pill",
+              "placement": {
+                "left": 722,
+                "width": 166,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Outcome Not found",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-not-found-bullet",
+              "placement": {
+                "left": 731,
+                "width": 14.7,
+                "top": 47.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Not found",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "Outcome Not found",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-not-found-count",
+              "placement": {
+                "left": 751,
+                "width": 24,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Not found",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Not found",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-not-found-label",
+              "placement": {
+                "left": 781,
+                "width": 98,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Bg Outcome Unexpected",
+                  "fixed": "rgba(100,116,139,0.08)"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "Outcome Unexpected",
+                  "fixed": "#64748b"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-unexpected-pill",
+              "placement": {
+                "left": 894,
+                "width": 166,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "field": "Outcome Unexpected",
+                  "fixed": "#64748b"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "width": 0,
+                "radius": 7.35
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "#ffffff"
+                },
+                "size": 1,
+                "text": {
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-unexpected-bullet",
+              "placement": {
+                "left": 903,
+                "width": 14.7,
+                "top": 47.15,
+                "height": 14.7,
+                "rotation": 0
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "rgba(0,0,0,0)"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Unexpected",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "bold",
+                "size": 12,
+                "text": {
+                  "field": "Outcome Unexpected",
+                  "fixed": "0",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-unexpected-count",
+              "placement": {
+                "left": 923,
+                "width": 24,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "left",
+                "color": {
+                  "field": "Outcome Unexpected",
+                  "fixed": "#64748b"
+                },
+                "fontWeight": "normal",
+                "size": 12,
+                "text": {
+                  "fixed": "Unexpected",
+                  "mode": "fixed"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "outcome-unexpected-label",
+              "placement": {
+                "left": 953,
+                "width": 98,
+                "top": 44,
+                "height": 21,
+                "rotation": 0
+              },
+              "type": "text"
             }
           ],
           "name": "root",
           "placement": {
-            "height": 100,
+            "height": 66,
             "left": 0,
             "rotation": 0,
             "top": 0,
-            "width": 100
+            "width": 1068
           },
           "type": "frame"
         },
@@ -2442,7 +3595,7 @@
           "disableForOneClick": false,
           "mode": "single"
         },
-        "zoomToContent": true
+        "zoomToContent": false
       },
       "pluginVersion": "12.4.2",
       "targets": [
@@ -2452,12 +3605,25 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Resource Total",
+          "range": false,
+          "refId": "RT"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Healthy\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "State Healthy",
           "range": false,
-          "refId": "A"
+          "refId": "S0"
         },
         {
           "datasource": {
@@ -2465,116 +3631,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Preparing\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "State Preparing",
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Progressing\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "State Progressing",
-          "range": false,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Degraded\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "State Degraded",
-          "range": false,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "State Unhealthy",
-          "range": false,
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Pool Healthy",
-          "range": false,
-          "refId": "G"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Partial\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Pool Partial",
-          "range": false,
-          "refId": "H"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Pool Unhealthy",
-          "range": false,
-          "refId": "I"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Disabled\",ordssrvs=~\"$ordssrvs\"} == 1) or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Pool Disabled",
-          "range": false,
-          "refId": "J"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Healthy\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "Bg State Healthy",
           "range": false,
-          "refId": "V11"
+          "refId": "BS0"
         },
         {
           "datasource": {
@@ -2582,12 +3644,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Preparing\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Text State Healthy",
+          "legendFormat": "State Preparing",
           "range": false,
-          "refId": "V12"
+          "refId": "S1"
         },
         {
           "datasource": {
@@ -2595,25 +3657,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Dot State Healthy",
-          "range": false,
-          "refId": "V13"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Preparing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Preparing\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "Bg State Preparing",
           "range": false,
-          "refId": "V14"
+          "refId": "BS1"
         },
         {
           "datasource": {
@@ -2621,12 +3670,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Preparing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Progressing\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Text State Preparing",
+          "legendFormat": "State Progressing",
           "range": false,
-          "refId": "V15"
+          "refId": "S2"
         },
         {
           "datasource": {
@@ -2634,25 +3683,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Preparing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Dot State Preparing",
-          "range": false,
-          "refId": "V16"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Progressing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Progressing\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "Bg State Progressing",
           "range": false,
-          "refId": "V17"
+          "refId": "BS2"
         },
         {
           "datasource": {
@@ -2660,12 +3696,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Progressing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Degraded\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Text State Progressing",
+          "legendFormat": "State Degraded",
           "range": false,
-          "refId": "V18"
+          "refId": "S3"
         },
         {
           "datasource": {
@@ -2673,25 +3709,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Progressing\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Dot State Progressing",
-          "range": false,
-          "refId": "V19"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Degraded\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Degraded\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "Bg State Degraded",
           "range": false,
-          "refId": "V20"
+          "refId": "BS3"
         },
         {
           "datasource": {
@@ -2699,12 +3722,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Degraded\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Unhealthy\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Text State Degraded",
+          "legendFormat": "State Unhealthy",
           "range": false,
-          "refId": "V21"
+          "refId": "S4"
         },
         {
           "datasource": {
@@ -2712,25 +3735,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Degraded\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Dot State Degraded",
-          "range": false,
-          "refId": "V22"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Unhealthy\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "Bg State Unhealthy",
           "range": false,
-          "refId": "V23"
+          "refId": "BS4"
         },
         {
           "datasource": {
@@ -2738,12 +3748,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Text State Unhealthy",
+          "legendFormat": "Pool Health Total",
           "range": false,
-          "refId": "V24"
+          "refId": "PHT"
         },
         {
           "datasource": {
@@ -2751,12 +3761,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_status{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Healthy\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Dot State Unhealthy",
+          "legendFormat": "Pool Healthy",
           "range": false,
-          "refId": "V25"
+          "refId": "P0"
         },
         {
           "datasource": {
@@ -2764,12 +3774,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Healthy\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "Bg Pool Healthy",
           "range": false,
-          "refId": "V29"
+          "refId": "BP0"
         },
         {
           "datasource": {
@@ -2777,12 +3787,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Partial\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Text Pool Healthy",
+          "legendFormat": "Pool Partial",
           "range": false,
-          "refId": "V30"
+          "refId": "P1"
         },
         {
           "datasource": {
@@ -2790,25 +3800,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Healthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Dot Pool Healthy",
-          "range": false,
-          "refId": "V31"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Partial\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Partial\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "Bg Pool Partial",
           "range": false,
-          "refId": "V32"
+          "refId": "BP1"
         },
         {
           "datasource": {
@@ -2816,12 +3813,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Partial\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Unhealthy\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Text Pool Partial",
+          "legendFormat": "Pool Unhealthy",
           "range": false,
-          "refId": "V33"
+          "refId": "P2"
         },
         {
           "datasource": {
@@ -2829,25 +3826,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Partial\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Dot Pool Partial",
-          "range": false,
-          "refId": "V34"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Unhealthy\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "Bg Pool Unhealthy",
           "range": false,
-          "refId": "V35"
+          "refId": "BP2"
         },
         {
           "datasource": {
@@ -2855,12 +3839,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Text Pool Unhealthy",
+          "legendFormat": "Pool Disabled",
           "range": false,
-          "refId": "V36"
+          "refId": "P3"
         },
         {
           "datasource": {
@@ -2868,25 +3852,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Unhealthy\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
-          "format": "time_series",
-          "instant": true,
-          "legendFormat": "Dot Pool Unhealthy",
-          "range": false,
-          "refId": "V37"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Disabled\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
           "legendFormat": "Bg Pool Disabled",
           "range": false,
-          "refId": "V38"
+          "refId": "BP3"
         },
         {
           "datasource": {
@@ -2894,12 +3865,12 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Disabled\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Unknown\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Text Pool Disabled",
+          "legendFormat": "Pool Unknown",
           "range": false,
-          "refId": "V39"
+          "refId": "P4"
         },
         {
           "datasource": {
@@ -2907,23 +3878,188 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(ordssrvs_pools_health{namespace=~\"$namespace\",state=\"Disabled\",ordssrvs=~\"$ordssrvs\"} == 1) > 0 or vector(0)",
+          "expr": "sum(\n  max by (namespace, ordssrvs) (\n    ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Unknown\"} == 1\n  )\n) or vector(0)",
           "format": "time_series",
           "instant": true,
-          "legendFormat": "Dot Pool Disabled",
+          "legendFormat": "Bg Pool Unknown",
           "range": false,
-          "refId": "V40"
+          "refId": "BP4"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Outcome Total",
+          "range": false,
+          "refId": "OT"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"OK\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Outcome Healthy",
+          "range": false,
+          "refId": "O0"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"OK\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg Outcome Healthy",
+          "range": false,
+          "refId": "BO0"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"POOL_NOT_FOUND\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Outcome Not found",
+          "range": false,
+          "refId": "O1"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"POOL_NOT_FOUND\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg Outcome Not found",
+          "range": false,
+          "refId": "BO1"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"SERVER_ERROR\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Outcome Server error",
+          "range": false,
+          "refId": "O2"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"SERVER_ERROR\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg Outcome Server error",
+          "range": false,
+          "refId": "BO2"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"ERROR\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Outcome Connection error",
+          "range": false,
+          "refId": "O3"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"ERROR\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg Outcome Connection error",
+          "range": false,
+          "refId": "BO3"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"UNEXPECTED\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Outcome Unexpected",
+          "range": false,
+          "refId": "O4"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(\n  max by (namespace, ordssrvs, pool) (\n    ordssrvs_pool_outcome{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",outcome=\"UNEXPECTED\"} == 1\n  )\n  unless on (namespace, ordssrvs)\n  (\n    max by (namespace, ordssrvs) (\n      ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"}\n    ) == 1\n  )\n) or vector(0)",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Bg Outcome Unexpected",
+          "range": false,
+          "refId": "BO4"
         }
       ],
-      "transparent": true,
-      "type": "canvas"
+      "transparent": false,
+      "type": "canvas",
+      "description": "The first two totals count OrdsSrvs resources; Pool Outcomes counts evaluated pools. All rows follow the Namespace and OrdsSrvs selections. Gray indicators have zero counts. Active Disabled counts are purple. Connection errors include timeouts.",
+      "transformations": [
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "Resource Total",
+                "destinationType": "string"
+              },
+              {
+                "targetField": "Pool Health Total",
+                "destinationType": "string"
+              },
+              {
+                "targetField": "Outcome Total",
+                "destinationType": "string"
+              }
+            ]
+          }
+        }
+      ]
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Compact repeated OrdsSrvs tile with restored ring dimensions, dark theme-background cutouts, light-blue 1px separators, and a dark counter",
+      "description": "Compact OrdsSrvs tile with rings scaled to 70%, resource status, pool health, and pool count.",
       "fieldConfig": {
         "defaults": {
           "mappings": [],
@@ -2993,6 +4129,82 @@
                   {
                     "options": {
                       "Disabled": {
+                        "color": "#cbd5e1",
+                        "text": "Disabled"
+                      },
+                      "Healthy": {
+                        "color": "#16a34a",
+                        "text": "Healthy"
+                      },
+                      "Partial": {
+                        "color": "#f97316",
+                        "text": "Partial"
+                      },
+                      "Unhealthy": {
+                        "color": "#dc2626",
+                        "text": "Unhealthy"
+                      },
+                      "Unknown": {
+                        "color": "#64748b",
+                        "text": "Unknown"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pool_health_core"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "Disabled": {
+                        "color": "#94a3b8",
+                        "text": "Disabled"
+                      },
+                      "Healthy": {
+                        "color": "#16a34a",
+                        "text": "Healthy"
+                      },
+                      "Partial": {
+                        "color": "#f97316",
+                        "text": "Partial"
+                      },
+                      "Unhealthy": {
+                        "color": "#dc2626",
+                        "text": "Unhealthy"
+                      },
+                      "Unknown": {
+                        "color": "#64748b",
+                        "text": "Unknown"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pool_health_text"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "Disabled": {
                         "color": "#64748b",
                         "text": "Disabled"
                       },
@@ -3022,7 +4234,7 @@
         ]
       },
       "gridPos": {
-        "h": 3,
+        "h": 2,
         "w": 24,
         "x": 0,
         "y": 2
@@ -3079,11 +4291,11 @@
               },
               "name": "state-border",
               "placement": {
-                "height": 90,
-                "left": 13,
+                "height": 63.0,
+                "left": 9.1,
                 "rotation": 0,
-                "top": 7,
-                "width": 90
+                "top": 1.0,
+                "width": 63.0
               },
               "type": "ellipse"
             },
@@ -3117,11 +4329,11 @@
               },
               "name": "status-pool-separator",
               "placement": {
-                "height": 68,
-                "left": 24,
+                "height": 47.6,
+                "left": 16.8,
                 "rotation": 0,
-                "top": 18,
-                "width": 68
+                "top": 8.7,
+                "width": 47.6
               },
               "type": "ellipse"
             },
@@ -3156,18 +4368,18 @@
               },
               "name": "pool-health-ring",
               "placement": {
-                "height": 64,
-                "left": 26,
+                "height": 44.8,
+                "left": 18.2,
                 "rotation": 0,
-                "top": 20,
-                "width": 64
+                "top": 10.1,
+                "width": 44.8
               },
               "type": "ellipse"
             },
             {
               "background": {
                 "color": {
-                  "field": "pool_health",
+                  "field": "pool_health_core",
                   "fixed": "#64748b"
                 }
               },
@@ -3195,11 +4407,11 @@
               },
               "name": "inner-core",
               "placement": {
-                "height": 40,
-                "left": 38,
+                "height": 28.0,
+                "left": 26.6,
                 "rotation": 0,
-                "top": 32,
-                "width": 40
+                "top": 18.5,
+                "width": 28.0
               },
               "type": "ellipse"
             },
@@ -3233,11 +4445,11 @@
               },
               "name": "counter-lighten",
               "placement": {
-                "height": 40,
-                "left": 38,
+                "height": 28.0,
+                "left": 26.6,
                 "rotation": 0,
-                "top": 32,
-                "width": 40
+                "top": 18.5,
+                "width": 28.0
               },
               "type": "ellipse"
             },
@@ -3258,7 +4470,7 @@
                   "fixed": "#000000"
                 },
                 "fontWeight": "bold",
-                "size": 12,
+                "size": 10,
                 "text": {
                   "field": "pools",
                   "fixed": "-",
@@ -3272,11 +4484,11 @@
               },
               "name": "pool-value",
               "placement": {
-                "height": 40,
-                "left": 38,
+                "height": 28.0,
+                "left": 26.6,
                 "rotation": 0,
-                "top": 32,
-                "width": 40
+                "top": 18.5,
+                "width": 28.0
               },
               "type": "text"
             },
@@ -3309,9 +4521,9 @@
               "name": "ordssrvs-name",
               "placement": {
                 "height": 20,
-                "left": 126,
+                "left": 90,
                 "rotation": 0,
-                "top": 2,
+                "top": 1,
                 "width": 130
               },
               "type": "text"
@@ -3344,9 +4556,9 @@
               "name": "state-label-title",
               "placement": {
                 "height": 18,
-                "left": 126,
+                "left": 90,
                 "rotation": 0,
-                "top": 24,
+                "top": 22,
                 "width": 42
               },
               "type": "text"
@@ -3384,9 +4596,9 @@
               "name": "state-label",
               "placement": {
                 "height": 18,
-                "left": 168,
+                "left": 132,
                 "rotation": 0,
-                "top": 24,
+                "top": 22,
                 "width": 88
               },
               "type": "text"
@@ -3419,9 +4631,9 @@
               "name": "pool-health-label-title",
               "placement": {
                 "height": 18,
-                "left": 126,
+                "left": 90,
                 "rotation": 0,
-                "top": 48,
+                "top": 42,
                 "width": 42
               },
               "type": "text"
@@ -3440,7 +4652,7 @@
               "config": {
                 "align": "left",
                 "color": {
-                  "field": "pool_health",
+                  "field": "pool_health_text",
                   "fixed": "#e2e8f0"
                 },
                 "fontWeight": "bold",
@@ -3459,9 +4671,9 @@
               "name": "pool-health-label",
               "placement": {
                 "height": 18,
-                "left": 168,
+                "left": 132,
                 "rotation": 0,
-                "top": 48,
+                "top": 42,
                 "width": 88
               },
               "type": "text"
@@ -3469,11 +4681,11 @@
           ],
           "name": "root",
           "placement": {
-            "height": 100,
+            "height": 66,
             "left": 0,
             "rotation": 0,
             "top": 0,
-            "width": 100
+            "width": 220
           },
           "type": "frame"
         },
@@ -3482,7 +4694,7 @@
           "disableForOneClick": false,
           "mode": "single"
         },
-        "zoomToContent": true
+        "zoomToContent": false
       },
       "pluginVersion": "12.4.2",
       "repeat": "ordssrvs",
@@ -3494,7 +4706,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1)\n* on(namespace, ordssrvs) group_left(pool_health)\nlabel_replace(\n  ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1,\n  \"pool_health\", \"$1\", \"state\", \"(.*)\"\n)\n* on(namespace, ordssrvs) group_left(total, ok, failed, pools)\n(\n  label_join(\n    (\n      count_values by(namespace, ordssrvs)(\n  \"total\",\n  (ordssrvs_pool_total_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1))\n)\n      * on(namespace, ordssrvs) group_left(ok)\n      count_values by(namespace, ordssrvs)(\n  \"ok\",\n  (ordssrvs_pool_ok_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1))\n)\n      * on(namespace, ordssrvs) group_left(failed)\n      count_values by(namespace, ordssrvs)(\n  \"failed\",\n  (ordssrvs_pool_failed_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1))\n)\n    ),\n    \"pools\", \"/\", \"ok\", \"total\"\n  )\n  or on(namespace, ordssrvs)\n  group by(namespace, ordssrvs)(\n    ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"}\n  )\n)",
+          "expr": "label_replace(\n  (\n    label_replace(\n      (\n        (ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1)\n        * on(namespace, ordssrvs) group_left(pool_health)\n        label_replace(\n          ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1,\n          \"pool_health\", \"$1\", \"state\", \"(.*)\"\n        )\n        * on(namespace, ordssrvs) group_left(total, ok, failed, pools)\n        (\n          label_join(\n            (\n              count_values by(namespace, ordssrvs)(\n          \"total\",\n          (ordssrvs_pool_total_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1))\n        )\n              * on(namespace, ordssrvs) group_left(ok)\n              count_values by(namespace, ordssrvs)(\n          \"ok\",\n          (ordssrvs_pool_ok_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1))\n        )\n              * on(namespace, ordssrvs) group_left(failed)\n              count_values by(namespace, ordssrvs)(\n          \"failed\",\n          (ordssrvs_pool_failed_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Disabled\"} == 1))\n        )\n            ),\n            \"pools\", \"/\", \"ok\", \"total\"\n          )\n          or on(namespace, ordssrvs)\n          group by(namespace, ordssrvs)(\n            ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"}\n          )\n        )\n      ),\n      \"pool_health_core\", \"$1\", \"pool_health\", \"(.*)\"\n    )\n  ),\n  \"pool_health_text\", \"$1\", \"pool_health\", \"(.*)\"\n)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -3517,7 +4729,7 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "OrdsSrvs count",
+            "axisLabel": "Resource status count",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "barWidthFactor": 1,
@@ -3645,7 +4857,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 6
       },
       "id": 3,
       "options": {
@@ -3670,15 +4882,66 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (state) (ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"})",
+          "expr": "sum by (state) (ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Healthy\"})",
           "format": "time_series",
           "instant": false,
-          "legendFormat": "{{state}}",
+          "legendFormat": "Healthy",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (state) (ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Preparing\"})",
+          "format": "time_series",
+          "instant": false,
+          "legendFormat": "Preparing",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (state) (ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Progressing\"})",
+          "format": "time_series",
+          "instant": false,
+          "legendFormat": "Progressing",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (state) (ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Degraded\"})",
+          "format": "time_series",
+          "instant": false,
+          "legendFormat": "Degraded",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (state) (ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\",state=\"Unhealthy\"})",
+          "format": "time_series",
+          "instant": false,
+          "legendFormat": "Unhealthy",
+          "range": true,
+          "refId": "E"
         }
       ],
-      "title": "OrdsSrvs Resource Status Count",
       "type": "timeseries"
     },
     {
@@ -3794,7 +5057,22 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "#64748b",
+                  "fixedColor": "#c4b5d9",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unknown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#94a3b8",
                   "mode": "fixed"
                 }
               }
@@ -3806,7 +5084,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 6
       },
       "id": 4,
       "options": {
@@ -3839,7 +5117,6 @@
           "refId": "A"
         }
       ],
-      "title": "OrdsSrvs Pool Health Count",
       "type": "timeseries"
     },
     {
@@ -3884,7 +5161,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 120
+                "value": 90
               }
             ]
           },
@@ -3896,7 +5173,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 213
+                "value": 180
               },
               {
                 "id": "custom.cellOptions",
@@ -3917,6 +5194,17 @@
                     "type": "regex"
                   }
                 ]
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Select this OrdsSrvs",
+                    "url": "/d/${__dashboard.uid}?${__url_time_range}&var-namespace=${__data.fields[\"Namespace\"]}&var-ordssrvs=${__value.raw}",
+                    "targetBlank": false,
+                    "oneClick": true
+                  }
+                ]
               }
             ]
           },
@@ -3928,7 +5216,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 135
+                "value": 100
               },
               {
                 "id": "custom.cellOptions",
@@ -3942,19 +5230,19 @@
                   {
                     "options": {
                       "Degraded": {
-                        "text": "<div style=\"background-color:#f97316;padding:0 2px;border-radius:3px;\">Degraded</div>"
+                        "text": "<div style=\"background-color:#f97316;padding:0 1px;border-radius:3px;\">Degraded</div>"
                       },
                       "Healthy": {
-                        "text": "<div style=\"background-color:#16a34a;padding:0 2px;border-radius:3px;\">Healthy</div>"
+                        "text": "<div style=\"background-color:#16a34a;padding:0 1px;border-radius:3px;\">Healthy</div>"
                       },
                       "Preparing": {
-                        "text": "<div style=\"background-color:#3b82f6;padding:0 2px;border-radius:3px;\">Preparing</div>"
+                        "text": "<div style=\"background-color:#3b82f6;padding:0 1px;border-radius:3px;\">Preparing</div>"
                       },
                       "Progressing": {
-                        "text": "<div style=\"background-color:#eab308;padding:0 2px;border-radius:3px;\">Progressing</div>"
+                        "text": "<div style=\"background-color:#eab308;padding:0 1px;border-radius:3px;\">Progressing</div>"
                       },
                       "Unhealthy": {
-                        "text": "<div style=\"background-color:#dc2626;padding:0 2px;border-radius:3px;\">Unhealthy</div>"
+                        "text": "<div style=\"background-color:#dc2626;padding:0 1px;border-radius:3px;\">Unhealthy</div>"
                       }
                     },
                     "type": "value"
@@ -3971,7 +5259,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 135
+                "value": 100
               },
               {
                 "id": "custom.cellOptions",
@@ -3985,16 +5273,16 @@
                   {
                     "options": {
                       "Healthy": {
-                        "text": "<div style=\"background-color:#16a34a;padding:0 2px;border-radius:3px;\">Healthy</div>"
+                        "text": "<div style=\"background-color:#16a34a;padding:0 1px;border-radius:3px;\">Healthy</div>"
                       },
                       "Partial": {
-                        "text": "<div style=\"background-color:#f97316;padding:0 2px;border-radius:3px;\">Partial</div>"
+                        "text": "<div style=\"background-color:#f97316;padding:0 1px;border-radius:3px;\">Partial</div>"
                       },
                       "Unhealthy": {
-                        "text": "<div style=\"background-color:#dc2626;padding:0 2px;border-radius:3px;\">Unhealthy</div>"
+                        "text": "<div style=\"background-color:#dc2626;padding:0 1px;border-radius:3px;\">Unhealthy</div>"
                       },
                       "Unknown": {
-                        "text": "<div style=\"background-color:#64748b;padding:0 2px;border-radius:3px;\">Unknown</div>"
+                        "text": "<div style=\"background-color:#64748b;padding:0 1px;border-radius:3px;\">Unknown</div>"
                       }
                     },
                     "type": "value"
@@ -4011,7 +5299,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 154
+                "value": 165
               },
               {
                 "id": "unit",
@@ -4053,7 +5341,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 70
+                "value": 55
               }
             ]
           }
@@ -4063,7 +5351,7 @@
         "h": 12,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 14
       },
       "id": 1,
       "options": {
@@ -4086,7 +5374,7 @@
           "editorMode": "code",
           "exemplar": false,
           "expr": "(ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1)\n* on(namespace, ordssrvs) group_left(pool_health)\nlabel_replace(\n  ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} == 1,\n  \"pool_health\", \"$1\", \"state\", \"(.*)\"\n)\n* on(namespace, ordssrvs) group_left(total, ok, failed, pools)\n(\n  label_join(\n    (\n    count_values by(namespace, ordssrvs)(\"total\", (ordssrvs_pool_total_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\", state=\"Disabled\"} == 1)))\n    * on(namespace, ordssrvs) group_left(ok)\n    count_values by(namespace, ordssrvs)(\"ok\", (ordssrvs_pool_ok_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\", state=\"Disabled\"} == 1)))\n    * on(namespace, ordssrvs) group_left(failed)\n    count_values by(namespace, ordssrvs)(\"failed\", (ordssrvs_pool_failed_count{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"} unless on(namespace, ordssrvs) (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\", state=\"Disabled\"} == 1)))\n    ),\n    \"pools\", \"/\", \"ok\", \"total\"\n  )\n  or on(namespace, ordssrvs)\n  group by(namespace, ordssrvs)(ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"})\n)\n* on(namespace, ordssrvs) group_left(pools_last_checked)\n(\n  count_values by(namespace, ordssrvs)(\n    \"pools_last_checked\",\n    (1000 * max by(namespace, ordssrvs)(ordssrvs_pool_last_checked_timestamp_seconds{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"}))\n    unless on(namespace, ordssrvs)\n    (ordssrvs_pools_health{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\", state=\"Disabled\"} == 1)\n  )\n  or on(namespace, ordssrvs)\n  group by(namespace, ordssrvs)(ordssrvs_status{namespace=~\"$namespace\",ordssrvs=~\"$ordssrvs\"})\n)",
-          "format": "table",
+          "format": "time_series",
           "instant": true,
           "range": false,
           "refId": "A"
@@ -4094,6 +5382,16 @@
       ],
       "title": "OrdsSrvs Details",
       "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
         {
           "id": "filterFieldsByName",
           "options": {
@@ -4188,7 +5486,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 120
+                "value": 90
               }
             ]
           },
@@ -4200,7 +5498,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 220
+                "value": 145
               },
               {
                 "id": "custom.cellOptions",
@@ -4221,6 +5519,17 @@
                     "type": "regex"
                   }
                 ]
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Select this OrdsSrvs",
+                    "url": "/d/${__dashboard.uid}?${__url_time_range}&var-namespace=${__data.fields[\"Namespace\"]}&var-ordssrvs=${__value.raw}",
+                    "targetBlank": false,
+                    "oneClick": true
+                  }
+                ]
               }
             ]
           },
@@ -4232,7 +5541,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 200
+                "value": 80
               },
               {
                 "id": "custom.cellOptions",
@@ -4264,7 +5573,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 180
+                "value": 150
               },
               {
                 "id": "custom.cellOptions",
@@ -4278,19 +5587,19 @@
                   {
                     "options": {
                       "ERROR": {
-                        "text": "<div style=\"background-color:#dc2626;padding:0 2px;border-radius:3px;\">ERROR</div>"
+                        "text": "<div style=\"background-color:#f97316;padding:0 1px;border-radius:3px;\">ERROR</div>"
                       },
                       "OK": {
-                        "text": "<div style=\"background-color:#16a34a;padding:0 2px;border-radius:3px;\">OK</div>"
+                        "text": "<div style=\"background-color:#16a34a;padding:0 1px;border-radius:3px;\">OK</div>"
                       },
                       "POOL_NOT_FOUND": {
-                        "text": "<div style=\"background-color:#f97316;padding:0 2px;border-radius:3px;\">POOL_NOT_FOUND</div>"
+                        "text": "<div style=\"background-color:#ca8a04;padding:0 1px;border-radius:3px;\">POOL_NOT_FOUND</div>"
                       },
                       "SERVER_ERROR": {
-                        "text": "<div style=\"background-color:#dc2626;padding:0 2px;border-radius:3px;\">SERVER_ERROR</div>"
+                        "text": "<div style=\"background-color:#dc2626;padding:0 1px;border-radius:3px;\">SERVER_ERROR</div>"
                       },
                       "UNEXPECTED": {
-                        "text": "<div style=\"background-color:#eab308;padding:0 2px;border-radius:3px;\">UNEXPECTED</div>"
+                        "text": "<div style=\"background-color:#eab308;padding:0 1px;border-radius:3px;\">UNEXPECTED</div>"
                       }
                     },
                     "type": "value"
@@ -4307,7 +5616,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 120
+                "value": 105
               }
             ]
           },
@@ -4319,7 +5628,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 220
+                "value": 160
               }
             ]
           }
@@ -4329,7 +5638,7 @@
         "h": 12,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 14
       },
       "id": 5,
       "options": {
@@ -4472,16 +5781,6 @@
         "regexApplyTo": "value",
         "sort": 1,
         "type": "query"
-      },
-      {
-        "baseFilters": [],
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
-        },
-        "filters": [],
-        "name": "Filters",
-        "type": "adhoc"
       }
     ]
   },

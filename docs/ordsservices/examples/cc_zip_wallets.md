@@ -2,6 +2,10 @@
 
 This configuration allows you to store multiple zip wallets in a single Kubernetes Secret, which can then be referenced by different database pools defined in your Central Configuration Server.
 
+## Prerequisites
+
+See [OrdsSrvs prerequisites](../README.md#prerequisites).
+
 ### 1. Create the Shared Secret
 
 Store multiple wallets (containing TCPS certificates, `tnsnames.ora`, and `sqlnet.ora`) in one Secret.
@@ -17,7 +21,8 @@ kubectl create secret -n NAMESPACE generic zipwallets \
 
 ### 2. OrdsSrvs Specification
 
-The controller mounts the secret to the **fixed path** `/opt/oracle/sa/zipwallets/`.
+The controller mounts the Secret to the **fixed path** `/opt/oracle/sa/zipwallets/`.
+Save the manifest below as `ordssrvs-cc-wallets.yaml`.
 
 ```yaml
 apiVersion: database.oracle.com/v4
@@ -30,12 +35,19 @@ spec:
   globalSettings:
     zipWalletsSecretName: zipwallets
     central.config.url: http://central-config-svc/central/v1/config
-  serviceAccountName: ordssrvs-sa
+```
+
+Apply the manifest:
+
+```bash
+kubectl apply -f ordssrvs-cc-wallets.yaml
 ```
 
 ### 3. Central Config Pool Example (`pool.json`)
 
-Reference the specific wallet file from the fixed mount directory. Credentials remain separate in the JSON.
+Merge these wallet settings into a pool document served by your Central
+Configuration Server. The pool must also provide the connection and credential
+settings required by your database; this fragment shows only the wallet fields.
 
 ```json
 {

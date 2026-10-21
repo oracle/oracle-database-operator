@@ -1,6 +1,8 @@
-# Oracle REST Data Services (OrdsSrvs) Controller for Kubernetes -  ORDS Lifecycle management
+# OrdsSrvs Controller for Oracle REST Data Services (ORDS)
 
-The OrdsSrvs controller extends the Kubernetes API with a Custom Resource (CR) and controller for automating Oracle REST Data Services (ORDS) lifecycle management.
+The `OrdsSrvs` custom resource and controller are part of Oracle Database
+Operator (OraOperator). They automate the deployment and lifecycle management
+of Oracle REST Data Services (ORDS) in Kubernetes.
 
 Using the OrdsSrvs controller, you can deploy and manage ORDS in Kubernetes for any reachable Oracle Database, whether the database runs inside Kubernetes or outside the cluster, on-premises or in the cloud.
 
@@ -24,7 +26,8 @@ See also the [Quick Start](./quickstart.md) for the shortest end-to-end setup us
 
 ## Features Summary
 
-The custom OrdsSrvs resource supports the following configurations as a Deployment, StatefulSet, or DaemonSet:
+For each `OrdsSrvs` custom resource, the controller creates a Deployment,
+StatefulSet, or DaemonSet with the following configuration options:
 
 * OrdsSrvs resource with one or multiple database pools
 * ORDS and APEX database schemas automatic installation/upgrade
@@ -43,12 +46,11 @@ OrdsSrvs controller supports the majority of ORDS configuration settings as per 
 
 ### Oracle Database Operator
 
-Before installing the OrdsSrvs controller, ensure that the Oracle Database Operator (OraOperator) is installed in your Kubernetes environment. Please follow the detailed installation steps provided in the [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) to complete this process. The OraOperator must be properly configured and running, as OrdsSrvs depends on its services for functionality.
+Before creating an `OrdsSrvs` custom resource, install Oracle Database Operator
+(OraOperator), which includes the `OrdsSrvs` controller. Follow the installation
+instructions in the [README](../../README.md).
 
 ### Namespace Scoped Deployment
-
-For a dedicated namespace deployment of the OrdsSrvs controller, refer to the "Namespace Scoped Deployment" section in the OraOperator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md#2-namespace-scoped-deployment).
-The following steps configure the controller to watch the `ordsnamespace` namespace.
 
 Create the namespace:
 
@@ -56,13 +58,16 @@ Create the namespace:
 kubectl create namespace ordsnamespace
 ```
 
-Apply namespace role binding [ordsnamespace-role-binding.yaml](./examples/ordsnamespace-role-binding.yaml):
+Apply the namespace [RoleBinding](./examples/ordsnamespace-role-binding.yaml).
+Its ServiceAccount name and namespace must match your operator installation:
 
 ```bash
-kubectl apply -f examples/ordsnamespace-role-binding.yaml
+kubectl apply -f docs/ordsservices/examples/ordsnamespace-role-binding.yaml
 ```
 
-Edit OraOperator to add the namespace under WATCH_NAMESPACE:
+Add `ordsnamespace` to `WATCH_NAMESPACE` in the OraOperator Deployment,
+keeping any namespaces already configured:
+
 ```yaml
   - name: WATCH_NAMESPACE
     value: "default,<your namespaces>,ordsnamespace"
@@ -118,7 +123,7 @@ These pages describe the main OrdsSrvs behavior and operational procedures.
 * [OpenShift Deployment](./openshift.md)
 * [ORDS and APEX schema automatic installation/upgrade](./autoupgrade.md)
 * [HTTP Access Logs](./access_log.md)
-* [Kubernetes Liveness, Readiness, and Startup Probes](./lifecycle_probes.md)
+* [Kubernetes Liveness, Readiness, and Startup Probes (container probes)](./container_probing.md)
 * [Pool Probing](./pool_probing.md)
 * [Troubleshooting](./TROUBLESHOOTING.md)
 
@@ -144,10 +149,12 @@ These pages provide scenario-specific OrdsSrvs manifests and configuration.
 ### Version 2.3
 
 * **Kubernetes Liveness, Readiness, and Startup Probes**  
-Added configurable startup, readiness, and liveness probes for the ORDS container. See [Kubernetes Liveness, Readiness, and Startup Probes](./lifecycle_probes.md).
+Added configurable startup, readiness, and liveness probes for the ORDS container (container probes). See [Kubernetes Liveness, Readiness, and Startup Probes](./container_probing.md).
 
-* **Pool Probing**  
-Added opt-in probing of directly configured ORDS pools. Pool health is reported separately from Kubernetes workload availability. See [Pool Probing](./pool_probing.md).
+* **Pool Probing (Experimental)**\
+Added pool probing to check whether ORDS database pools are reachable and report their health.\
+**Note:** HTTPS pool probes do not validate server certificates or hostnames. Enable pool probing only where this limitation is acceptable.\
+Pool probing is disabled by default. [Pool Probing](./pool_probing.md).
 
 * **Prometheus and Grafana Observability Example**
 Added a [Prometheus and Grafana observability example](./examples/observability.md) for OrdsSrvs resource status, workload health, and pool reachability.
@@ -203,7 +210,9 @@ OrdsSrvs pods now use stable container names for operational commands: `ordssrvs
 
 * **Native Kubernetes Secret**
 The `encPrivKey` attribute is now optional; database passwords can be managed via native Kubernetes Secrets.
+
 **⚠️WARNING⚠️** When using Kubernetes Secrets ensure secrets are protected at the Kubernetes level by following the [Good practices for Kubernetes Secrets](https://kubernetes.io/docs/concepts/security/secrets-good-practices/) in the official Kubernetes documentation.
+See [Secret protection guidance](#database-credentials-management).
 
 * **TNSAdminSecret**
 Added a dedicated documentation page for managing `tnsnames.ora` via Secrets. See [Custom tnsnames.ora Example](./examples/tnsnames.md).

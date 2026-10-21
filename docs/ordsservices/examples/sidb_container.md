@@ -6,7 +6,8 @@ Before testing this example, please verify the prerequisites : [OrdsSrvs prerequ
 
 ### Deploy a Containerized Oracle Database
 
-Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/oracle-database-operator/blob/main/docs/sidb/README.md) for details.
+The SingleInstanceDatabase controller must be enabled.
+Refer to the Single Instance Database (SIDB) [README](../../sidb/README.md) for details.
 
 1. Create a Secret for the database admin credential and the ORDS database user credential:
 
@@ -16,7 +17,8 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
       --from-literal=adminAuth='<database-admin-credential>' \
       --namespace ordsnamespace
     ```
-1. Create a manifest for the containerized Oracle Database.
+
+1. Save the following database manifest as `oraoper-sidb.yaml`.
 
     The POC uses an Oracle Free Image, but other versions may be substituted; review the OraOperator documentation for details on the manifests.
 
@@ -35,6 +37,12 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
         pullFrom: container-registry.oracle.com/database/free:<database-version>
         prebuiltDB: true
       replicas: 1
+    ```
+
+1. Apply the database manifest:
+
+    ```bash
+    kubectl apply -f oraoper-sidb.yaml
     ```
 
 1. Watch the `singleinstancedatabases` resource until the database status is **Healthy**:
@@ -58,23 +66,18 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
 
 1. Create a manifest for ORDS.
 
-    As the DB in the Free image does not contain ORDS (or APEX), the following additional keys are specified for the pool:
-    * `autoUpgradeORDS` - Boolean; when true the ORDS will be installed/upgraded in the database
-    * `db.adminUser` - User with privileges to install, upgrade or uninstall ORDS in the database (SYS).
-    * `db.adminUser.secret` - Secret containing the password for `db.adminUser` (created in the first step)
+    As the DB in the Free image does not contain ORDS, the following additional keys are specified for the pool:
 
-    The `db.username` will be used as the ORDS schema in the database during the install/upgrade process (ORDS_PUBLIC_USER).
+    * `autoUpgradeORDS` - Boolean; when true, ORDS will be installed/upgraded in the database. Both `db.adminUser` and `db.adminUser.secret` must be set on the same pool.
+    * `db.adminUser` - User with privileges to install, upgrade or uninstall ORDS in the database (SYS).
+    * `db.adminUser.secret` - Secret containing the password for `db.adminUser` (created in the first step).
+    * `db.username` - ORDS runtime database user (`ORDS_PUBLIC_USER`).
+    * APEX installation is not enabled in this example.
 
     ```bash
-    echo "
-    kind: OrdsSrvs
-    kubectl apply -f ords-sidb.yaml
-    ```
-
-    Example output:
-
-    ```text
+    cat > ords-sidb.yaml <<EOF
     apiVersion: database.oracle.com/v4
+    kind: OrdsSrvs
     metadata:
       name: ords-sidb
       namespace: ordsnamespace
@@ -98,18 +101,17 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
           db.adminUser.secret:
             secretName:  ordssrvs-auth
             passwordKey: adminAuth
-    " > ords-sidb.yaml
+    EOF
+    kubectl apply -f ords-sidb.yaml
     ```
 1. Watch the ordssrvs resource until the status is **Healthy**:
     ```bash
     kubectl get ordssrvs ords-sidb -n ordsnamespace -w
     ```
 
-    **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
-    is being installed for the first time by the Operator, it may remain in the **Preparing**
-    status for an additional 5 minutes.
+    **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.
 
-    You can watch the APEX/ORDS Installation progress by running:
+    You can watch ORDS initialization by running:
 
     ```bash
     POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-sidb" -n ordsnamespace -o custom-columns=NAME:.metadata.name --no-headers)
@@ -119,7 +121,7 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
 
 ### Test
 
-Open a port-forward to the ORDS service, for example:
+Open a port-forward to the OrdsSrvs Service, for example:
 
 ```bash
 kubectl port-forward service/ords-sidb -n ordsnamespace 8443:8443

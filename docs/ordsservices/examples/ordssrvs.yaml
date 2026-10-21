@@ -21,10 +21,9 @@ spec:
       db.customURL: jdbc:oracle:thin:@//<db_ip>:1521/FREEPDB1
       db.username: ORDS_PUBLIC_USER
       db.secret:
-        secretName:  ordssrvs-auth
+        secretName:  <secret-name>
         passwordKey: dbAuth
       db.adminUser: SYS
       db.adminUser.secret:
-        secretName:  ordssrvs-auth
+        secretName:  <secret-name>
         passwordKey: adminAuth
-  serviceAccountName: ordssrvs-sa

@@ -43,9 +43,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// OrdsSrvsProbeSettings defines timing settings shared by the ORDS lifecycle probes.
-// The controller owns the protocol, port, path, and HTTP host header.
-type OrdsSrvsProbeSettings struct {
+// OrdsSrvsContainerProbeSettings defines the path and timing shared by the ORDS container probes.
+// The controller derives the protocol, port, and HTTP host header from the ORDS listener settings.
+type OrdsSrvsContainerProbeSettings struct {
+	// Specifies the local ORDS path used by startup, readiness, and liveness probes.
+	// Omit to use /favicon.ico. Set to an empty string to disable probes.
+	//+kubebuilder:default:="/favicon.ico"
+	//+kubebuilder:validation:Pattern=^$|/.*
+	Path *string `json:"path,omitempty"`
+
 	// Specifies the timeout for each probe request in seconds.
 	//+kubebuilder:default:=3
 	//+kubebuilder:validation:Minimum=1
@@ -70,6 +76,23 @@ type OrdsSrvsProbeSettings struct {
 	//+kubebuilder:default:=18
 	//+kubebuilder:validation:Minimum=1
 	LivenessFailureThreshold int32 `json:"livenessFailureThreshold,omitempty"`
+}
+
+// OrdsSrvsPoolProbeSettings defines optional pool reachability probing.
+type OrdsSrvsPoolProbeSettings struct {
+	// Specifies the interval in seconds between pool reachability probes.
+	// Set to 0 to disable pool probing.
+	//+kubebuilder:default:=0
+	//+kubebuilder:validation:Minimum=0
+	IntervalSeconds int32 `json:"intervalSeconds,omitempty"`
+
+	// Specifies pool names to probe instead of the pools in poolSettings.
+	// A non-empty list also enables pool probing with Central Configuration.
+	// An empty or omitted list preserves the default pool selection.
+	// This list does not configure pools or trigger a workload rollout.
+	//+listType=set
+	//+kubebuilder:validation:items:Pattern=^[a-z0-9._-]+$
+	PoolList []string `json:"poolList,omitempty"`
 }
 
 // OrdsSrvsSpec defines the desired state of OrdsSrvs
@@ -97,14 +120,11 @@ type OrdsSrvsSpec struct {
 	//+kubebuilder:default=IfNotPresent
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 
-	// Specifies the local ORDS path used by startup, readiness, and liveness probes.
-	// Omit to use /favicon.ico. Set to an empty string to disable probes.
-	//+kubebuilder:default:="/favicon.ico"
-	//+kubebuilder:validation:Pattern=^$|/.*
-	ProbePath *string `json:"probePath,omitempty"`
+	// Specifies the path and timing shared by startup, readiness, and liveness probes.
+	ContainerProbeSettings OrdsSrvsContainerProbeSettings `json:"containerProbeSettings,omitempty"`
 
-	// Specifies timing settings shared by startup, readiness, and liveness probes.
-	ProbeSettings OrdsSrvsProbeSettings `json:"probeSettings,omitempty"`
+	// Specifies the interval and pool selection for pool reachability probes.
+	PoolProbeSettings OrdsSrvsPoolProbeSettings `json:"poolProbeSettings,omitempty"`
 
 	// Contains settings that are configured across the entire ORDS instance.
 	//+kubebuilder:default:={}
@@ -124,12 +144,6 @@ type OrdsSrvsSpec struct {
 
 	// Contains settings for individual pools/databases
 	PoolSettings []*PoolSettings `json:"poolSettings,omitempty"`
-
-	// Specifies the interval in seconds between pool reachability probes.
-	// Set to 0 to disable pool probing.
-	//+kubebuilder:default:=0
-	//+kubebuilder:validation:Minimum=0
-	PoolProbeIntervalSeconds int32 `json:"poolProbeIntervalSeconds,omitempty"`
 
 	// Global metadata for all generated resources
 	CommonMetadata *MetadataConfig `json:"commonMetadata,omitempty"`
@@ -894,7 +908,7 @@ type DBWalletSecret struct {
 
 // PoolProbeStatus defines the most recent reachability result for an ORDS pool.
 type PoolProbeStatus struct {
-	// PoolName is the configured ORDS pool alias.
+	// PoolName is the selected ORDS pool alias.
 	PoolName string `json:"poolName"`
 	// Outcome describes the result of the pool alias request.
 	Outcome string `json:"outcome,omitempty"`
@@ -925,7 +939,7 @@ type OrdsSrvsStatus struct {
 	RestartRequired bool `json:"restartRequired,omitempty"`
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	// PoolProbes contains the most recent result for each configured pool.
+	// PoolProbes contains the most recent result for each selected pool.
 	PoolProbes []PoolProbeStatus `json:"poolProbes,omitempty"`
 	// PoolsHealth summarizes the latest pool probe results.
 	PoolsHealth string `json:"poolsHealth,omitempty"`

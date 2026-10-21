@@ -7,13 +7,16 @@ Each pool can be configured to automatically install and upgrade the ORDS and/or
 The ORDS version is determined by the ORDS image used for the OrdsSrvs resource.
 ORDS schema installation and upgrade can be activated at the pool level:
 
-For non-ADB databases, set `db.adminUser` and `db.adminUser.secret` on the same pool as `autoUpgradeORDS: true`. If either admin setting is missing, the ORDS auto-upgrade setting is ignored. `autoUpgradeORDS` is ignored for ADB.
+Set `db.adminUser` and `db.adminUser.secret` on the same pool as `autoUpgradeORDS: true`. If either admin setting is missing, the ORDS auto-upgrade setting is ignored.
+
+This is a partial manifest; merge these settings into your resource:
 
 ```yaml
 apiVersion: database.oracle.com/v4
 kind: OrdsSrvs
 metadata:
     name: ordspoc-server
+    namespace: NAMESPACE
 spec:
     ...
     poolSettings:
@@ -21,9 +24,12 @@ spec:
         autoUpgradeORDS: true
         db.adminUser: SYS
         db.adminUser.secret:
-          secretName: ordssrvs-auth
+          secretName: <secret-name>
           passwordKey: adminAuth
 ```
+
+Replace `<secret-name>` with an existing Secret in the resource namespace
+containing the SYS password under `adminAuth`.
 
 ## APEX autoUpgrade
 
@@ -32,9 +38,7 @@ You can provide APEX installation files in a dedicated `PersistentVolume` contai
 
 You can download `apex.zip` from: [Oracle APEX Downloads](https://www.oracle.com/tools/downloads/apex-downloads/)
 
-For non-ADB databases, set `db.adminUser` and `db.adminUser.secret` on the same pool as `autoUpgradeAPEX: true`. If either admin setting is missing, the APEX auto-upgrade setting is ignored. The admin account runs the APEX installation or upgrade and must have the required privileges. This example uses `SYS`. `autoUpgradeAPEX` is ignored for ADB.
-
-Replace the uppercase placeholders with values for your deployment.
+Set `db.adminUser` and `db.adminUser.secret` on the same pool as `autoUpgradeAPEX: true`. If either admin setting is missing, the APEX auto-upgrade setting is ignored. The admin account runs the APEX installation or upgrade and must have the required privileges. This example uses `SYS`.
 
 ```yaml
 apiVersion: database.oracle.com/v4
@@ -57,13 +61,17 @@ spec:
       db.customURL: jdbc:oracle:thin:@//CONNECTSTRING
       db.username: ORDS_PUBLIC_USER
       db.secret:
-        secretName: ordssrvs-auth
+        secretName: <secret-name>
         passwordKey: dbAuth
       db.adminUser: SYS
       db.adminUser.secret:
-        secretName: ordssrvs-auth
+        secretName: <secret-name>
         passwordKey: adminAuth
 ```
+
+Replace `<secret-name>` with an existing Secret in the resource namespace
+containing the ORDS runtime user password under `dbAuth` and the SYS password
+under `adminAuth`.
 
 The OrdsSrvs controller will create a `PersistentVolumeClaim` (PVC) for the PV and mount it in the pod’s container at `/opt/oracle/apex`.
 
@@ -74,11 +82,9 @@ The init container logs the following message:
 Missing /opt/oracle/apex/apex.zip, manually copy apex.zip in /opt/oracle/apex on the init container of the pod
 ```
 
-You can copy the apex.zip file into the container while the init script is waiting:
+Copy `apex.zip` into the `ordssrvs-init` container while the init script is waiting:
 
 ```bash
-kubectl cp /tmp/apex.zip <ordspod>:/tmp -c ordssrvs-init -n ordsnamespace
-kubectl exec -c ordssrvs-init -n ordsnamespace <ordspod> -- mv /tmp/apex.zip /opt/oracle/apex
+kubectl cp /tmp/apex.zip ORDS_POD:/tmp -c ordssrvs-init -n NAMESPACE
+kubectl exec -c ordssrvs-init -n NAMESPACE ORDS_POD -- mv /tmp/apex.zip /opt/oracle/apex
 ```
-
-> **Note:** `db.adminUser` must have privileges to create users and objects in the database. For Oracle Autonomous Database (ADB), this could be `ADMIN`; for non-ADB databases, this could be `SYS AS SYSDBA`.

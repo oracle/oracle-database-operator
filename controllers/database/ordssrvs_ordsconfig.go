@@ -57,7 +57,7 @@ import (
 func readScript(ctx context.Context, filePath string) string {
 	log := ctrllog.FromContext(ctx).WithName("readScript")
 
-	// Read the file from controller's filesystem
+	// #nosec G304 -- callers use fixed script paths bundled in the operator image.
 	scriptData, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Error(err, "Error reading "+filePath)
@@ -319,7 +319,7 @@ func conditionalEntry(key string, value interface{}) string {
 	}
 
 	rv := reflect.ValueOf(value)
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return ""
 		}

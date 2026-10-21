@@ -183,7 +183,7 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Error retrieving resource")
-		return ctrl.Result{Requeue: true, RequeueAfter: time.Minute}, err
+		return ctrl.Result{}, err
 	}
 
 	rState.specChanged = ordssrvs.Status.ObservedGeneration != ordssrvs.Generation
@@ -745,10 +745,10 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(
 		probeScheme = corev1.URISchemeHTTPS
 	}
 	probePath := "/favicon.ico"
-	if ordssrvs.Spec.ProbePath != nil {
-		probePath = *ordssrvs.Spec.ProbePath
+	if ordssrvs.Spec.ContainerProbeSettings.Path != nil {
+		probePath = *ordssrvs.Spec.ContainerProbeSettings.Path
 	}
-	probeSettings := ordsProbeSettingsDefine(ordssrvs.Spec.ProbeSettings)
+	containerProbeSettings := ordsContainerProbeSettingsDefine(ordssrvs.Spec.ContainerProbeSettings)
 	probeHost := ordsProbeHost(ordssrvs, rState)
 
 	podSpecTemplate :=
@@ -787,9 +787,9 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(
 		}
 	if probePath != "" {
 		mainContainer := &podSpecTemplate.Spec.Containers[0]
-		mainContainer.StartupProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, probeSettings.timeoutSeconds, probeSettings.periodSeconds, probeSettings.startupFailureThreshold)
-		mainContainer.LivenessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, probeSettings.timeoutSeconds, probeSettings.periodSeconds, probeSettings.livenessFailureThreshold)
-		mainContainer.ReadinessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, probeSettings.timeoutSeconds, probeSettings.periodSeconds, probeSettings.readinessFailureThreshold)
+		mainContainer.StartupProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, containerProbeSettings.timeoutSeconds, containerProbeSettings.periodSeconds, containerProbeSettings.startupFailureThreshold)
+		mainContainer.LivenessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, containerProbeSettings.timeoutSeconds, containerProbeSettings.periodSeconds, containerProbeSettings.livenessFailureThreshold)
+		mainContainer.ReadinessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, containerProbeSettings.timeoutSeconds, containerProbeSettings.periodSeconds, containerProbeSettings.readinessFailureThreshold)
 	}
 
 	if ordssrvs.Spec.AccessLogForwarder.Enabled {
@@ -802,7 +802,7 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(
 	return podSpecTemplate, nil
 }
 
-type ordsProbeSettings struct {
+type ordsContainerProbeSettings struct {
 	timeoutSeconds            int32
 	periodSeconds             int32
 	startupFailureThreshold   int32
@@ -810,8 +810,8 @@ type ordsProbeSettings struct {
 	livenessFailureThreshold  int32
 }
 
-func ordsProbeSettingsDefine(settings dbapi.OrdsSrvsProbeSettings) ordsProbeSettings {
-	probeSettings := ordsProbeSettings{
+func ordsContainerProbeSettingsDefine(settings dbapi.OrdsSrvsContainerProbeSettings) ordsContainerProbeSettings {
+	containerProbeSettings := ordsContainerProbeSettings{
 		timeoutSeconds:            3,
 		periodSeconds:             10,
 		startupFailureThreshold:   30,
@@ -819,21 +819,21 @@ func ordsProbeSettingsDefine(settings dbapi.OrdsSrvsProbeSettings) ordsProbeSett
 		livenessFailureThreshold:  18,
 	}
 	if settings.TimeoutSeconds != 0 {
-		probeSettings.timeoutSeconds = settings.TimeoutSeconds
+		containerProbeSettings.timeoutSeconds = settings.TimeoutSeconds
 	}
 	if settings.PeriodSeconds != 0 {
-		probeSettings.periodSeconds = settings.PeriodSeconds
+		containerProbeSettings.periodSeconds = settings.PeriodSeconds
 	}
 	if settings.StartupFailureThreshold != 0 {
-		probeSettings.startupFailureThreshold = settings.StartupFailureThreshold
+		containerProbeSettings.startupFailureThreshold = settings.StartupFailureThreshold
 	}
 	if settings.ReadinessFailureThreshold != 0 {
-		probeSettings.readinessFailureThreshold = settings.ReadinessFailureThreshold
+		containerProbeSettings.readinessFailureThreshold = settings.ReadinessFailureThreshold
 	}
 	if settings.LivenessFailureThreshold != 0 {
-		probeSettings.livenessFailureThreshold = settings.LivenessFailureThreshold
+		containerProbeSettings.livenessFailureThreshold = settings.LivenessFailureThreshold
 	}
-	return probeSettings
+	return containerProbeSettings
 }
 
 // ordsHTTPProbe checks that the local ORDS listener can answer an HTTP request.

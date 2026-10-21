@@ -24,8 +24,6 @@ This guide assumes:
 4. The database is reachable with a connect string such as `dbhost:1521/FREE`.
 5. The target database is already prepared for ORDS use.
 
-If your environment uses different names, update the commands and YAML accordingly.
-
 ## 1. Create the Namespace
 
 Create the namespace used in this example:
@@ -41,8 +39,6 @@ If the operator is running in namespace-scoped mode, also grant it access to thi
 Create a secret for the ORDS runtime user password.
 
 ```bash
-kubectl delete secret -n ordsnamespace ordssrvs-auth --ignore-not-found=true
-
 kubectl create secret generic ordssrvs-auth \
   --from-literal=dbAuth='<ords-db-credential>' \
   -n ordsnamespace
@@ -52,7 +48,7 @@ In this quick start, `db.username` is set to `ORDS_PUBLIC_USER`.
 
 ## 3. Create the OrdsSrvs Resource
 
-Save the following manifest as `ords-quickstart.yaml` and replace `<db-host>`, `<port>`, and `<service-name>` with values from your environment:
+Save the following manifest as `ords-quickstart.yaml`:
 
 ```yaml
 apiVersion: database.oracle.com/v4
@@ -75,6 +71,8 @@ spec:
         secretName: ordssrvs-auth
         passwordKey: dbAuth
 ```
+
+Replace `<db-host>`, `<port>`, `<service-name>`, and `<ords-version>` before applying.
 
 Apply it:
 
@@ -113,19 +111,22 @@ kubectl describe ordssrvs ords-quickstart -n ordsnamespace
 
 ## 5. Access ORDS
 
-Open a local port-forward to the ORDS service:
+Open a local port-forward to the OrdsSrvs Service:
 
 ```bash
-kubectl port-forward service/ords-quickstart -n ordsnamespace 8080:8080
+kubectl port-forward service/ords-quickstart -n ordsnamespace 8443:8443
 ```
 
-Then open:
+HTTPS is enabled on port 8443 by default. Then open:
 
 ```text
-http://localhost:8080/ords
+https://localhost:8443/ords
 ```
 
-For production deployments, expose ORDS through HTTPS by configuring TLS at the ingress, load balancer, or ORDS standalone HTTPS layer.
+ORDS can generate a self-signed certificate, so the browser may show a certificate
+warning. For production, configure a trusted certificate at ORDS, the ingress,
+or the load balancer. If `standalone.https.host` is configured, use that hostname
+instead of `localhost`.
 
 ## What This Quick Start Configures
 

@@ -9,12 +9,14 @@ Before testing this example, please verify the prerequisites : [OrdsSrvs prerequ
 
 ### ADB Wallet Secret
 
-Download the ADB Wallet and create a Secret, replacing `<full_path_to_wallet.zip>` with the path to the wallet zip file:
+Download the ADB Wallet and create a Secret:
 
 ```bash
 kubectl create secret generic adb-wallet \
   --from-file=<full_path_to_wallet.zip> -n ordsnamespace
 ```
+
+Replace `<full_path_to_wallet.zip>` with the path to the wallet zip file.
 
 ### Database Credential Secrets
 
@@ -31,10 +33,7 @@ kubectl create secret generic ordssrvs-auth \
 
 1. Create a manifest for ORDS.
 
-    As an ADB already maintains ORDS and APEX, `autoUpgradeORDS` and `autoUpgradeAPEX` will be ignored if set.  A new DB User for ORDS will be created to avoid conflict with the pre-provisioned one.  This user will be
-    named, `ORDS_PUBLIC_USER_OPER` if `db.username` is either not specified or set to `ORDS_PUBLIC_USER`.
-
-    Replace <ADB_NAME> with the ADB Name and ensure that the `db.wallet.zip.service` is valid for your ADB Workload (e.g. _TP or _HIGH, etc.):
+    As an ADB already maintains ORDS and APEX, `autoUpgradeORDS` and `autoUpgradeAPEX` will be ignored if set. A new DB User for ORDS will be created or configured to avoid conflict with the pre-provisioned one. Explicitly set `db.username` to a user other than `ORDS_PUBLIC_USER`, such as `ORDS_PUBLIC_USER_OPER`; no username is substituted automatically.
 
     ```yaml
     apiVersion: database.oracle.com/v4
@@ -63,14 +62,17 @@ kubectl create secret generic ordssrvs-auth \
             secretName:  ordssrvs-auth
             passwordKey: adminAuth
     ```
+
+    Replace `<ADB_NAME>` with the ADB name and `<ords-version>` with your image
+    version. Ensure `db.wallet.zip.service` matches a service in your wallet
+    (for example, `_TP` or `_HIGH`).
+
 1. Watch the OrdsSrvs resource until the status is **Healthy**:
     ```bash
     kubectl get -n ordsnamespace ordssrvs ords-adb -w
     ```
 
-    **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
-    is being installed for the first time by the Operator, it may remain in the **Preparing**
-    status for an additional 5 minutes.
+    **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.
 
 ### Test
 
@@ -90,6 +92,6 @@ This example has a single database pool, named `adb`.  It is set to:
 
 * Not automatically restart when the configuration changes: `forceRestart` is not set.
   The pod must be manually restarted for new configurations to be picked up.
-* Automatically install/update APEX on startup, if required: This occurs due to the database being detected as an ADB.
-* The ADB admin user will be used to connect the ADB to install APEX/ORDS
-* Use the ADB Wallet file to connect to the database: `db.wallet.zip.service: adbpoc_tp` and `dbWalletSecret`
+* Leave ORDS and APEX schema management to ADB; the auto-upgrade settings are ignored.
+* Use the ADB admin user to create or configure the ORDS runtime user.
+* Use the ADB Wallet file to connect to the database: `db.wallet.zip.service: <ADB_NAME>_TP` and `dbWalletSecret`

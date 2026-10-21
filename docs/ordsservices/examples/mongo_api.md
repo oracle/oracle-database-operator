@@ -2,25 +2,35 @@
 
 This example walks through using the **OrdsSrvs controller** with a Containerized Oracle Database to enable MongoDB API Support.
 
-Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
+## Prerequisites
+
+See [OrdsSrvs prerequisites](../README.md#prerequisites).
 
 ### Database Access
 
-This example assumes you have a running, accessible Oracle Database.  For demonstration purposes,
-the [Containerized Single Instance Database using the OraOperator](sidb_container.md) will be used.
+Use the database and credential Secret from the
+[Containerized Single Instance Database example](./sidb_container.md).
+
+This example assumes a running `SingleInstanceDatabase` resource named
+`oraoper-sidb` in `ordsnamespace`, with an accessible `FREEPDB1` PDB and ORDS
+already installed in that PDB. The database Pod must have the label
+`app=oraoper-sidb`. The example uses the same admin password for SYS and SYSTEM.
 
 ### REST-enable a Schema
 
-In the database, create an ORDS-enabled user.  As this example uses the [Containerized Single Instance Database using the OraOperator](sidb_container.md), the following was performed:
-
+Create the database user used by the MongoDB client and enable its schema for
+ORDS:
 
 1. Connect to the database:
 
     ```bash
-    DBPWD=$(kubectl get secrets ordssrvs-auth -n ordsnamespace --template='{{.data.adminAuth | base64decode}}')
+    DBPWD=$(kubectl get secrets '<secret-name>' -n ordsnamespace --template='{{.data.adminAuth | base64decode}}')
     POD_NAME=$(kubectl get pod -l "app=oraoper-sidb" -n ordsnamespace -o custom-columns=NAME:.metadata.name --no-headers)
     kubectl exec -it ${POD_NAME} -n ordsnamespace -- sqlplus SYSTEM/${DBPWD}@FREEPDB1
     ```
+
+    Replace `<secret-name>` with the existing credential Secret from the SIDB
+    example (`ordssrvs-auth` if unchanged). It must contain `adminAuth` and `dbAuth`.
 
 1. Create the User:
     ```sql
@@ -32,9 +42,11 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
     exec ords.enable_schema;
     ```
 
+Use the same password in the MongoDB connection string below.
+
 ### Create ordssrvs Resource
 
-1. Reuse the `ordssrvs-auth` Secret from the [Containerized Single Instance Database using the OraOperator](sidb_container.md) example and retrieve the Connection String from the containerized SIDB.
+1. Retrieve the connection string from the existing SIDB resource:
 
     ```bash
     CONN_STRING=$(kubectl get singleinstancedatabase oraoper-sidb \
@@ -44,24 +56,20 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
     echo $CONN_STRING
     ```
 
-1. Create a manifest for ORDS.
+1. Create an `OrdsSrvs` custom resource.
 
-    As the DB in the Free image does not contain ORDS (or APEX), the following additional keys are specified for the pool:
-    * `autoUpgradeORDS` - Boolean; when true the ORDS will be installed/upgraded in the database
+    The following additional keys are specified for the pool:
+
+    * `autoUpgradeORDS` - Boolean; when true, ORDS will be installed/upgraded in the database. Both `db.adminUser` and `db.adminUser.secret` must be set on the same pool.
     * `db.adminUser` - User with privileges to install, upgrade or uninstall ORDS in the database (SYS).
-    * `db.adminUser.secret` - Secret containing the password for `db.adminUser` (created in the first step)
-
-    The `db.username` will be used as the ORDS schema in the database during the install/upgrade process (ORDS_PUBLIC_USER).
+    * `db.adminUser.secret` - Secret containing the password for `db.adminUser` (`adminAuth` in the existing credential Secret).
+    * `db.username` - ORDS runtime database user (`ORDS_PUBLIC_USER`).
+    * APEX installation is not enabled in this example.
 
     ```bash
-    echo "
-    kind: OrdsSrvs
-    ```
-
-    Example output:
-
-    ```text
+    cat > ords-sidb.yaml <<EOF
     apiVersion: database.oracle.com/v4
+    kind: OrdsSrvs
     metadata:
       name: ords-sidb
       namespace: ordsnamespace
@@ -77,7 +85,7 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
           restEnabledSql.active: true
           plsql.gateway.mode: direct
           jdbc.MaxConnectionReuseCount: 5000
-          jdbc.MaxConnectionReuseTime: 900
+          jdbc.MaxConnectionReuseTime: "900"
           jdbc.SecondsToTrustIdleConnection: 1
           jdbc.InitialLimit: 100
           jdbc.MaxLimit: 100
@@ -85,23 +93,27 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
           db.customURL: jdbc:oracle:thin:@//${CONN_STRING}
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName:  ordssrvs-auth
+            secretName:  <secret-name>
             passwordKey: dbAuth
           db.adminUser: SYS
           db.adminUser.secret:
-            secretName:  ordssrvs-auth
-            passwordKey: adminAuth" | kubectl apply -f -
+            secretName:  <secret-name>
+            passwordKey: adminAuth
+    EOF
+    kubectl apply -f ords-sidb.yaml
     ```
+
+    Replace `<secret-name>` with the same credential Secret used above.
+
 1. Watch the OrdsSrvs resource until the status is **Healthy**:
     ```bash
     kubectl get ordssrvs ords-sidb -n ordsnamespace -w
     ```
 
-    **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
-    is being installed for the first time by the Operator, it may remain in the **Preparing**
-    status for an additional 5 minutes.
+    Image downloads and ORDS initialization can take several minutes. Inspect
+    the `ordssrvs-init` logs to check progress or diagnose startup errors.
 
-    You can watch the APEX/ORDS Installation progress by running:
+    You can watch ORDS initialization by running:
 
     ```bash
     POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-sidb" -o custom-columns=NAME:.metadata.name -n ordsnamespace --no-headers)
@@ -118,7 +130,7 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
 
 1. Connect to ORDS using the MongoDB shell:
     ```bash
-    mongosh  --tlsAllowInvalidCertificates 'mongodb://MONGO:<password>!@localhost:27017/MONGO?authMechanism=PLAIN&authSource=$external&tls=true&retryWrites=false&loadBalanced=true'
+    mongosh  --tlsAllowInvalidCertificates 'mongodb://MONGO:<password>@localhost:27017/MONGO?authMechanism=PLAIN&authSource=$external&tls=true&retryWrites=false&loadBalanced=true'
     ```
 
 1. Insert some data:
@@ -139,9 +151,9 @@ This example has a single database pool, named `default`.  It is set to:
 * The `passwordKey` fields identify the credential keys used by `db.secret` and `db.adminUser.secret`
 * The MongoAPI service has been enabled: `mongo.enabled: true`
 * The MongoAPI service will default to port: `27017` as the property: `mongo.port` has been left undefined
-* A number of JDBC parameters were set at the pool level for achieving high performance:
+* A number of JDBC parameters were set at the pool level for performance tuning:
     * `jdbc.MaxConnectionReuseCount: 5000`
-    * `jdbc.MaxConnectionReuseTime: 900`
+    * `jdbc.MaxConnectionReuseTime: "900"`
     * `jdbc.SecondsToTrustIdleConnection: 1`
     * `jdbc.InitialLimit: 100`
     * `jdbc.MaxLimit: 100`

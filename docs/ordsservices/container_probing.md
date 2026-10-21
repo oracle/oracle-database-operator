@@ -1,7 +1,9 @@
 # Kubernetes Liveness, Readiness, and Startup Probes
 
+In this guide, we refer to liveness, readiness, and startup probes collectively as **container probes**. They use native Kubernetes health-check capabilities.
+
 The OrdsSrvs controller automatically configures startup, readiness, and liveness HTTP probes on the main ORDS container.  
-It configures the endpoint, scheme, port, and timing for each probe. They are enabled by default and use the same local endpoint with different failure thresholds.   
+It configures the endpoint, scheme, port, and timing for each probe. They are enabled by default and use the same local endpoint with different failure thresholds.\
 *(Available since Oracle Database Operator 2.3.)*  
 
 A probe request has this form:
@@ -27,25 +29,33 @@ Kubernetes executes the probe request and evaluates the result. The controller o
 
 `/ords/` could be used as a probe path, but ORDS redirects that request. Kubernetes accepts the redirect as a positive result but reports a noisy warning in `kubectl describe pod`. `/favicon.ico` is a static ORDS file that returns HTTP `200 OK`.  
 
-Lifecycle probes check the Kubernetes-facing ORDS listener only. They do not test database or pool reachability.
+Container probes check the Kubernetes-facing ORDS listener only. They do not test database or pool reachability.
 
-## Optional Lifecycle-Probe Configuration
+## Optional Container-Probe Configuration
 
-The controller uses the default values above when `probePath` and `probeSettings` are omitted. To override them, set only the fields required by your environment.
+The controller uses the default values above when `containerProbeSettings` is omitted. To override them, set only the fields required by your environment.
 
-> Set `probePath: ""` to disable Kubernetes lifecycle probes.
+To disable all three Kubernetes container probes, set `containerProbeSettings.path` to an empty string:
+
+```yaml
+spec:
+  containerProbeSettings:
+    path: ""
+```
 
 For example, reduce the startup allowance to three minutes while retaining the default ten-second probe period:
 
 ```yaml
 spec:
-  probeSettings:
+  containerProbeSettings:
     startupFailureThreshold: 18
 ```
 
 ## Test Configuration
 
-The following resource creates three ORDS replicas for lifecycle-probe testing. Replace `ORDSIMG` and `CONNECTSTRING` before applying it. The shortened timeout, period, and failure-threshold values are for the failure/recovery test; use values appropriate for your environment otherwise.
+The following resource creates three ORDS replicas for container-probe testing. The shortened timeout, period, and failure-threshold values are for the failure/recovery test; use values appropriate for your environment otherwise.
+
+Save the manifest as `ordssrvs-probes.yaml`:
 
 ```yaml
 apiVersion: database.oracle.com/v4
@@ -56,7 +66,7 @@ metadata:
 spec:
   image: ORDSIMG
   replicas: 3
-  probeSettings:
+  containerProbeSettings:
     timeoutSeconds: 1
     periodSeconds: 3
     startupFailureThreshold: 30
@@ -68,8 +78,18 @@ spec:
       db.customURL: jdbc:oracle:thin:@//CONNECTSTRING
       db.username: ORDS_PUBLIC_USER
       db.secret:
-        secretName: ordssrvs-auth
+        secretName: <secret-name>
         passwordKey: dbAuth
+```
+
+Replace `ORDSIMG` and `CONNECTSTRING` with your image and database connection
+string before applying the manifest. Replace `<secret-name>` with an existing
+Secret in `ordsnamespace` containing the ORDS runtime user password under `dbAuth`.
+
+Apply the test resource:
+
+```bash
+kubectl apply -f ordssrvs-probes.yaml
 ```
 
 ## OrdsSrvs Workload Status
@@ -86,7 +106,7 @@ The OrdsSrvs `status.status` value reports workload availability. For Deployment
 
 ## Inspect OrdsSrvs Workload Status
 
-Use the custom resource together with its child workload objects to inspect lifecycle-probe effects. The OrdsSrvs resource reports the aggregate workload status; the Deployment and ReplicaSet report replica availability; Pods and EndpointSlices show which replicas are ready to receive Service traffic.
+Use the custom resource together with its child workload objects to inspect container-probe effects. The OrdsSrvs resource reports the aggregate workload status; the Deployment and ReplicaSet report replica availability; Pods and EndpointSlices show which replicas are ready to receive Service traffic.
 
 The following representative outputs show a healthy three-replica resource and its child objects:
 
@@ -175,7 +195,7 @@ ordssrvs-probes-d7c9998f8-5xscz   1/1     Running   0          29m
 ordssrvs-probes-d7c9998f8-b72g2   1/1     Running   0          29m
 ```
 
-Replace `POD` with one of these Pod names, then suspend its Java process:
+Suspend the Java process in one Pod:
 
 ```bash
 # Suspend Java in one Pod
@@ -184,6 +204,8 @@ kubectl exec -n ordsnamespace POD -c ordssrvs-main -- bash -c \
 
 Stopping Java PID 8
 ```
+
+Replace `POD` with one of the Pod names listed above.
 
 After the readiness failure threshold:
 

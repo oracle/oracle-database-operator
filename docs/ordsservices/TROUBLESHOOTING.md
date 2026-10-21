@@ -13,6 +13,13 @@ OrdsSrvs pods use stable container names:
 
 Use these names with `kubectl logs`, `kubectl exec`, and `kubectl cp`.
 
+### Startup duration
+
+Image downloads and ORDS initialization can take several minutes. Database
+schema installation or upgrade can extend initialization when
+`autoUpgradeORDS` or `autoUpgradeAPEX` is enabled. Watch the resource status and
+inspect the `ordssrvs-init` logs to distinguish progress from an error.
+
 ### HTTP 400 from ORDS probes
 
 If ORDS is running but a probe returns HTTP 400, verify the `Host` header. When
@@ -23,7 +30,10 @@ hostname instead of `localhost`:
 curl -k -i -H "Host: <standalone.https.host>" https://<pod-ip>:8443/favicon.ico
 ```
 
-When using Central Configuration, see [Central Configuration](./examples/central_configuration.md).
+When using Central Configuration, keep `standalone.https.host`,
+`standalone.https.port`, and `standalone.http.port` consistent between the
+server configuration and the `OrdsSrvs` custom resource. The controller uses
+the values in the custom resource to configure container probes.
 
 ### Init container error
 
@@ -102,7 +112,7 @@ do
 done
 ```
 
-## Ords init error
+## ORDS initialization and pool errors
 
 Get pod name
 
@@ -123,15 +133,18 @@ NAME                               READY   STATUS    RESTARTS   AGE
 ords-multi-pool-55db776994-m7782   1/1     Running   0          2m51s
 ```
 ----
-Dump ords log
+Dump the init container log:
 
 *Commands:*
 ```bash
-kubectl logs --since=0 <podname> -n <namespace>
+kubectl logs --since=0 <podname> -c ordssrvs-init -n <namespace>
 ```
-*Example:*
+### Runtime pool errors
+
+For pool connection failures after startup, inspect the main ORDS container:
+
 ```text
-kubectl logs --since=0 ords-multi-pool-55db776994-m7782  -n ordsnamespace
+kubectl logs --since=0 ords-multi-pool-55db776994-m7782 -c ordssrvs-main -n ordsnamespace
 [..omissis..]
 2024-09-17T09:47:39.227Z WARNING     The pool named: |pdb2|lo| is invalid and will be ignored: ORDS was unable to make a connection to the database. The database user specified by db.username configuration setting is locked. The connection pool named: |pdb2|lo| had the following error(s): 🔥ORA-28000: The account is locked.🔥
 

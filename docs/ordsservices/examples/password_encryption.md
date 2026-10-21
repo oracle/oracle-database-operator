@@ -27,33 +27,32 @@ Create one Secret with separate encrypted values for the ORDS database user and 
 ```bash
 read -rsp 'ORDS database user credential: ' ORDS_DB_SECRET_VALUE
 printf '\n'
+read -rsp 'Database admin credential: ' ORDS_ADMIN_SECRET_VALUE
 printf '\n'
+
 printf '%s' "${ORDS_DB_SECRET_VALUE}" | \
   openssl pkeyutl -encrypt -pubin -inkey ordssrvs-public-key.pem \
   -pkeyopt rsa_padding_mode:oaep \
   -pkeyopt rsa_oaep_md:sha256 | base64 > e_db-auth
+
 printf '%s' "${ORDS_ADMIN_SECRET_VALUE}" | \
   openssl pkeyutl -encrypt -pubin -inkey ordssrvs-public-key.pem \
   -pkeyopt rsa_padding_mode:oaep \
   -pkeyopt rsa_oaep_md:sha256 | base64 > e_admin-auth
+
 kubectl create secret generic ordssrvs-auth-enc \
   --from-file=dbAuthEnc=e_db-auth \
   --from-file=adminAuthEnc=e_admin-auth \
   -n ordsnamespace
+
 rm e_db-auth e_admin-auth ordssrvs-private-key.pem ordssrvs-public-key.pem
-```
-
-Example output:
-
-```text
-read -rsp 'Database admin credential: ' ORDS_ADMIN_SECRET_VALUE
-
 unset ORDS_DB_SECRET_VALUE ORDS_ADMIN_SECRET_VALUE
 ```
 
 ### OrdsSrvs Credential Fields
 
-Use these fields together with the connection settings required by your database:
+Use these fields together with the connection settings required by your database.
+Save this manifest as `ordssrvs-encrypted-passwords.yaml`:
 
 ```yaml
 apiVersion: database.oracle.com/v4
@@ -68,6 +67,8 @@ spec:
     passwordKey: privateKey
   poolSettings:
     - poolName: default
+      db.connectionType: customurl
+      db.customURL: jdbc:oracle:thin:@//CONNECTSTRING
       db.username: ORDS_PUBLIC_USER
       db.secret:
         secretName: ordssrvs-auth-enc
@@ -76,4 +77,10 @@ spec:
       db.adminUser.secret:
         secretName: ordssrvs-auth-enc
         passwordKey: adminAuthEnc
+```
+
+Apply the manifest:
+
+```bash
+kubectl apply -f ordssrvs-encrypted-passwords.yaml
 ```

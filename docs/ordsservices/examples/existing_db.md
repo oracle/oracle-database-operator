@@ -9,7 +9,7 @@ Before testing this example, please verify the prerequisites : [OrdsSrvs prerequ
 This example assumes you have a running, accessible Oracle Database.
 
 ```bash
-export CONN_STRING=<database host ip or scan>:<port>/<service_name>
+export CONN_STRING='<db-host>:<port>/<service-name>'
 ```
 
 ### Database credential secrets
@@ -32,8 +32,9 @@ kubectl create secret generic ordssrvs-auth \
     This example assumes APEX is already installed in the database.
 
     The following additional keys are specified for the pool:
-    * `autoUpgradeORDS` - Boolean; when true the ORDS will be installed/upgraded in the database
-    * `db.username` will be used as the ORDS schema in the database during the install/upgrade process (ORDS_PUBLIC_USER).
+
+    * `autoUpgradeORDS` - Boolean; when true, ORDS will be installed/upgraded in the database. Both `db.adminUser` and `db.adminUser.secret` must be set on the same pool.
+    * `db.username` - ORDS runtime database user (`ORDS_PUBLIC_USER`).
     * `db.secret` - Secret containing the password for `db.username`
     * `db.adminUser` - User with privileges to install, upgrade or uninstall ORDS in the database (SYS).
     * `db.adminUser.secret` - Secret containing the password for `db.adminUser`
@@ -67,6 +68,9 @@ kubectl create secret generic ordssrvs-auth \
             passwordKey: adminAuth
     ```
 
+    Insert the value of `${CONN_STRING}` into `db.customURL`; saved YAML does
+    not expand shell variables.
+
     ```bash
     kubectl apply -f ords-db.yaml
     ```
@@ -78,7 +82,7 @@ kubectl create secret generic ordssrvs-auth \
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.
 
-    You can watch the APEX/ORDS Installation progress by running:
+    You can watch ORDS initialization by running:
 
     ```bash
     POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-db" -o custom-columns=NAME:.metadata.name -n ordsnamespace --no-headers)

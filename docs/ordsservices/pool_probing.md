@@ -1,45 +1,74 @@
-# Pool Probing
+# Pool Probing (Experimental)
 
-This opt-in feature checks whether the ORDS pool aliases configured in an
-`OrdsSrvs` custom resource are reachable through the OrdsSrvs Service. 
+This opt-in feature checks whether selected ORDS connection pools are reachable
+through the OrdsSrvs Service.
 
-> **Note:** Pool probing is available starting with OraOperator 2.3. It is
-disabled by default.
+Pool probing is a custom implementation in the OrdsSrvs controller. It reports
+results in custom OrdsSrvs status attributes, including `status.poolProbes` and
+`status.poolsHealth`.
 
-Pool reachability is independent of Kubernetes lifecycle probes. Kubernetes
-executes the lifecycle probes, while the OrdsSrvs controller executes the
+To enable pool probing, set `poolProbeSettings.intervalSeconds` to a value greater than
+`0`. This applies to both HTTP and HTTPS.
+
+> **Note:** HTTPS pool probes do not validate server certificates or hostnames.
+> Probes send no credentials or application data and only update reported pool
+> health. Pool probing is experimental and disabled by default. Enable it only
+> where this limitation is acceptable.
+
+Pool reachability is independent of Kubernetes [container probes](./container_probing.md). Kubernetes
+executes the container probes, while the OrdsSrvs controller executes the
 pool-reachability probes and records their results. The two signals answer
 different questions:
 
 | Signal | Checks | Effect | Relevant status fields |
 |---|---|---|---|
-| Kubernetes lifecycle probes | Kubernetes checks whether the ORDS process responds on its local HTTP or HTTPS listener | Readiness failure removes the Pod from Service endpoints. Liveness failure restarts the container. | `status.status`, `status.conditions` |
+| Kubernetes container probes | Kubernetes checks whether the ORDS process responds on its local HTTP or HTTPS listener | Readiness failure removes the Pod from Service endpoints. Liveness failure restarts the container. | `status.status`, `status.conditions` |
 | Pool reachability probes | The OrdsSrvs controller checks whether each configured pool alias responds through the OrdsSrvs Service | No Kubernetes action is taken; results are recorded in the OrdsSrvs status. | `status.poolProbes`, `status.poolsHealth`, `status.poolsReachable`, `status.poolsTotal`, `status.poolsOK`, `status.poolsFailed` |
 
 A failed pool does not make an OrdsSrvs Pod unready or restart it.
 
 ## Enable Pool Probing
 
-Pool probing applies only to pools listed in `spec.poolSettings`. Enable it by
-setting a non-zero interval:
+By default, pool probing uses the pool names in `spec.poolSettings`:
 
 ```yaml
 spec:
-  poolProbeIntervalSeconds: 60
+  poolProbeSettings:
+    intervalSeconds: 60
 ```
 
-The interval is in seconds. The controller first waits until the OrdsSrvs
-workload is `Healthy`, then probes each configured pool. It repeats the probes
-at the configured interval. Each HTTP request has a fixed three-second
-timeout.
+To select the pools to monitor, provide a non-empty `poolProbeSettings.poolList`:
 
-`poolProbeIntervalSeconds: 0` disables probing; this is the default. Pool
-probing is also reported as `Disabled` when Central Configuration Server is in
-use because the custom resource does not contain the definitive pool list.
+```yaml
+spec:
+  poolProbeSettings:
+    intervalSeconds: 60
+    poolList: [poola, poolb]
+```
+
+This list overrides `poolSettings` for probing only. It does not configure pools
+or trigger a Pod rollout. An empty or omitted list preserves the default
+selection.
+
+The interval is in seconds; `0` disables probing and is the default. The
+controller waits until the OrdsSrvs workload is `Healthy`, then probes each
+selected pool at that interval. Each request has a three-second timeout.
+
+With Central Configuration Server, provide `poolProbeSettings.poolList` to enable probing.
+Without a non-empty list, probing remains `Disabled`. The list can include pools
+that ORDS has not loaded yet; probing can trigger their initialization.
+
+Central Configuration must use URL-path pool mapping
+(`security.externalMappingPathPrefix: true`). Repeat the listener ports,
+`standalone.https.host` when set, and `standalone.context.path` in the CR so that
+probe requests match the remote configuration. Host-based and custom-header
+pool mapping are not supported by pool probing.
+
+> **Note:** Pool probing is available starting with OraOperator 2.3.
 
 ## Probe URL and Outcomes
 
-For each pool in `spec.poolSettings`, the controller sends a `GET` request to:
+For each selected pool, the controller sends a `GET` request to:
 
 ```text
 Default pool: https://<ordssrvs>.<namespace>.svc:<port>/<context-path>/
@@ -64,18 +93,14 @@ The controller evaluates the initial response without following redirects.
 
 When `standalone.https.host` is set, the request sends the configured hostname in the HTTP `Host` header (`Host: <standalone.https.host>`). When it is not set, or the deployment is HTTP-only, it uses `Host: localhost`.
 
-For HTTPS, the controller disables certificate verification for this local
-OrdsSrvs Service request so the default self-signed certificate does not block
-the probe. This check is reachability validation, not certificate validation.
-
 ## Pool Probe Status
 
 Probe results are exposed as status fields on the `OrdsSrvs` resource:
 
 | Field | Description |
 |---|---|
-| `status.poolProbes` | Array containing the latest result for each configured pool. |
-| `status.poolProbes[].poolName` | Configured pool alias. |
+| `status.poolProbes` | Array containing the latest result for each selected pool. |
+| `status.poolProbes[].poolName` | Selected pool alias. |
 | `status.poolProbes[].outcome` | Probe result: `OK`, `POOL_NOT_FOUND`, `SERVER_ERROR`, `ERROR`, or `UNEXPECTED`. |
 | `status.poolProbes[].httpStatusCode` | HTTP response code; omitted when no HTTP response was received. |
 | `status.poolProbes[].lastChecked` | Timestamp of the latest probe for the pool. |
@@ -109,22 +134,22 @@ ordssrvs-edgehttp   Healthy  Healthy       1/1     Deployment     8080       0  
 ordssrvs-wallets    Healthy  Healthy       4/4     Deployment     8080       8443                    9m
 ordssrvs-cc         Healthy  Disabled              Deployment     8080       8443                    12m
 ordssrvs-partial    Healthy  Partial       2/3     Deployment     8080       8443                    20m
-ordssrvs-negative   Healthy  Unhealthy     0/1     Deployment     8080       8443                    2m
+ordssrvs-unhealthy  Healthy  Unhealthy     0/1     Deployment     8080       8443                    2m
 ```
 
-The example shows that `ordssrvs-negative` remains workload `Healthy` even
+The example shows that `ordssrvs-unhealthy` remains workload `Healthy` even
 though no configured pool is reachable. The workload status is not derived
 from pool health.
 
 | `POOLSHEALTH` | `POOLS` | Meaning |
 |---|---|---|
-| `Healthy` | `n/n` | All configured pools passed their latest probe. |
-| `Partial` | `n/total` | Some configured pools passed and some failed. |
-| `Unhealthy` | `0/total` | No configured pool passed. |
-| `Disabled` | empty | Probing is disabled or unsupported for the resource. |
+| `Healthy` | `n/n` | All selected pools passed their latest probe. |
+| `Partial` | `n/total` | Some selected pools passed and some failed. |
+| `Unhealthy` | `0/total` | No selected pool passed. |
+| `Disabled` | empty | The interval is zero, or Central Configuration Server is used without a non-empty `poolProbeSettings.poolList`. |
 | `Unknown` | empty | Probing is enabled but has not completed a probe yet. |
 
-When probing is enabled with no configured pools, the summary is `Unknown` and
+When probing is enabled with no selected pools, the summary is `Unknown` and
 `POOLS` is `0/0` after the first probe attempt.
 
 ### Single-pool details
@@ -225,10 +250,10 @@ ordssrvs-base     Healthy  Healthy       1/1     Deployment     8080       8443 
 
 ## Limitations
 
+* HTTPS certificate and hostname validation are not supported.
 * The controller waits for workload `Healthy` before probing. Before the first
   result, an enabled resource reports `Unknown`.
-* With Central Configuration Server, pool probing reports `Disabled` because
-  the controller does not have the definitive pool list in the custom
-  resource.
-* Pool health does not change lifecycle probes, Pod readiness, workload
+* Central Configuration Server requires a non-empty `poolProbeSettings.poolList` and
+  URL-path pool mapping.
+* Pool health does not change container probes, Pod readiness, workload
   availability, `status.status`, or container restarts.
