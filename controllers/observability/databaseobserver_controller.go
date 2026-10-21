@@ -576,7 +576,7 @@ func (r *DatabaseObserverReconciler) validateDeploymentReadiness(ctx context.Con
 				Reason:  constants.ReasonDeploymentPending,
 				Message: constants.MessageExporterDeploymentPending,
 			})
-			return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 		}
 	}
 

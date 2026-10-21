@@ -124,7 +124,7 @@ The `DatabaseObserver` custom resource has the following prerequisites:
 
 2. A preexisting Oracle Database, and the proper database grants and privileges.
 
-    - The controller exports metrics through SQL queries that the user can control 
+    - The exporter collects metrics through SQL queries that the user can control
        and specify through the _toml_ files. The necessary access privileges to the tables used in the queries
        are not provided and applied automatically.
     - Note: Bug `38699234` reports that `V_$DIAG_ALERT_EXT` is not granted
@@ -158,16 +158,16 @@ The following fields are available for configuring the exporter to successfully 
 | `spec.database.dbUser.key`                        | string | No          | _username_           |
 | `spec.database.dbPassword.key`                    | string | No          | _password_           |
 | `spec.database.dbConnectionString.key`            | string | No          | _connection_         |
-| `spec.database.dbUser.secret`                     | string | Yes         | _db-secret_          |
-| `spec.database.dbPassword.secret`                 | string | Yes         | _db-secret_          |
-| `spec.database.dbConnectionString.secret`         | string | Yes         | _db-secret_          |
+| `spec.database.dbUser.secret`                     | string | Conditional         | _db-secret_          |
+| `spec.database.dbPassword.secret`                 | string | Conditional         | _db-secret_          |
+| `spec.database.dbConnectionString.secret`         | string | Conditional         | _db-secret_          |
 | `spec.database.dbPassword.envName`                | string | No          | _DB_PASSWORD_        |
 | `spec.databases.<key>.dbUser.key`                 | string | No          | _username_           |
 | `spec.databases.<key>.dbPassword.key`             | string | No          | _password_           |
 | `spec.databases.<key>.dbConnectionString.key`     | string | No          | _connection_         |
-| `spec.databases.<key>.dbUser.secret`              | string | Yes         | _db02-secret_        |
-| `spec.databases.<key>.dbPassword.secret`          | string | Yes         | _db02-secret_        |
-| `spec.databases.<key>.dbConnectionString.secret`  | string | Yes         | _db02-secret_        |
+| `spec.databases.<key>.dbUser.secret`              | string | Conditional         | _db02-secret_        |
+| `spec.databases.<key>.dbPassword.secret`          | string | Conditional         | _db02-secret_        |
+| `spec.databases.<key>.dbConnectionString.secret`  | string | Conditional         | _db02-secret_        |
 | `spec.databases.<key>.dbUser.envName`             | string | No          | _DB2_USERNAME_       |
 | `spec.databases.<key>.dbPassword.envName`         | string | No          | _DB2_PASSWORD_       |
 | `spec.databases.<key>.dbConnectionString.envName` | string | No          | _DB2_CONN_STRING_    |
@@ -176,6 +176,9 @@ The following fields are available for configuring the exporter to successfully 
 | `spec.wallet.additional[].name`                   | string | Conditional | _db02_               |
 | `spec.wallet.additional[].secret`                 | string | Conditional | _db02-wallet_        |
 | `spec.wallet.additional[].mountPath`              | string | Conditional | _"/wallet/db02"_     |
+
+Secret references are required for the credentials supplied through Kubernetes
+Secrets; configure only the database entries and authentication mode you use.
 
 These fields enable you to define connection details for a single database, or for multiple databases. For default values, environment variables and default behavior, see [defaults](#environment-variables-and-default-values).
 
@@ -205,7 +208,6 @@ The following fields are available for configuring the exporter to use the vault
 | `spec.database.azure.vaultPasswordSecret` | string | Conditional | _sample_pwd_secret_                     |
 | `spec.ociConfig.configMap.key`            | string | No          | _config_                                |
 | `spec.ociConfig.configMap.name`           | string | Conditional | _oci-config-file_                       |
-| `spec.ociConfig.privateKey.key`           | string | No          | _private.pem_                           |
 | `spec.ociConfig.privateKey.secret`        | string | Conditional | _oci-privatekey_                        |
 | `spec.ociConfig.mountPath`                | string | No          | _"/.oci"_                               |
 | `spec.azureConfig.configMap.name`         | string | Conditional | _azure-configmap_                       |
@@ -247,10 +249,10 @@ The following fields below are available for configuring the controller-managed 
 | `spec.deployment.podTemplate.labels`    | map    | No  | _environment: dev_                                                    |
 | `spec.service.ports`                    | array  | No  | -                                                                     |
 | `spec.service.labels`                   | map    | No  | _environment: dev_                                                    |                                                                   
-| `spec.serviceMonitor.labels`            | map    | Yes       | _release: prometheus_                                                 |
+| `spec.serviceMonitor.labels`            | map    | Conditional       | _release: prometheus_                                                 |
 | `spec.serviceMonitor.endpoints`         | array  | No  | -                                                                     |
 | `spec.replicas`                         | number | No  | _1_                                                                   |
-| `spec.inheritLabels`                    | array  | No  | _- environment: dev_<br/>- app.kubernetes.io/name: observer           |
+| `spec.inheritLabels`                    | array  | No  | _[environment, app.kubernetes.io/name]_           |
 
 These fields enable you to define deployment, service and serviceMonitor details. For default values, environment variables and default behavior, see [defaults](#environment-variables-and-default-values).
 
@@ -264,7 +266,7 @@ the `securityContext` and `podSecurityContext` are available.
 3. `spec.serviceMonitor` - Use to configure the serviceMonitor resource.
 Only documented ServiceMonitor fields are supported.
 
-> Note: It is an essential requirement that you set the Prometheus label inside `serviceMonitor.labels`. Ensure that the label set is included in the serviceMonitorSelector field of your Prometheus CR. 
+> Note: Set `serviceMonitor.labels` to match the `serviceMonitorSelector` of your Prometheus resource when that selector requires labels; `release: prometheus` is the example used here.
 
 
 5. `spec.replicas` - Use to configure the number of replicas to deploy
@@ -361,7 +363,7 @@ See the ADB README section on [Download Wallets](../../docs/adb/README.md#downlo
 
 You can also choose to create the wallet secret from a local directory containing the wallet files:
 ```bash
-kubectl create secret generic db-wallet --from-file=<wallet_dir>
+kubectl create secret generic db-wallet --from-file="<wallet_dir>"
 ```
 
 3. Create the exporter ConfigMap as described in [Defining an Exporter Config File](#defining-an-exporter-config-file), then update the `databaseObserver` manifest with the resources that you have created.
@@ -604,7 +606,7 @@ To create the configMap, run the following command:
 kubectl create cm config-file --from-file=config.yaml
 ```
 
-To learn more about the config file, you can consult the [official documentation for Oracle AI Database Metrics Exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#standalone-binary).
+To learn more about the config file, you can consult the [official documentation for Oracle AI Database Metrics Exporter](https://oracle.github.io/oracle-db-appdev-monitoring/docs/configuration/config-file).
 
 #### Configuring Wallets for Multiple Databases
 In configuring multiple databases where each connection requires a database wallet, a combined wallet is required and can be configured through the databaseobserver YAML file. To
@@ -654,9 +656,9 @@ specific database wallet files (.sso, .p12, .pem) under `.spec.wallet.additional
 
 6. Finally, set the TNS_ADMIN to the location of the `tnsnames.ora`.
 
-> Note: When setting the name under `spec.wallets.additional[].name`, you must provide a unique name other than `creds`,  because this is the default volume name.
+> Note: When setting the name under `spec.wallet.additional[].name`, you must provide a unique name other than `creds`,  because this is the default volume name.
 
-To learn more about this requirement, you can consult the [official documentation for Oracle AI Database Metrics Exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#configuring-connections-for-multiple-databases-using-oracle-database-wallets).
+To learn more about this requirement, you can consult the [official documentation for Oracle AI Database Metrics Exporter](https://oracle.github.io/oracle-db-appdev-monitoring/docs/configuration/oracle-wallet).
 
 
 ## Database Authentication with Vaults in the Cloud
@@ -672,7 +674,7 @@ When you configure the Vault, you must provide the following:
   - The string OCID of the Vault used
   - The string name of the OCI Vault Secret containing the password
 - Authentication details (if applicable):
-  - Kubernetes Secret containing the [OCI CLI Config file](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliconfigure.htm)
+  - Kubernetes ConfigMap containing the [OCI CLI Config file](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliconfigure.htm)
   - Kubernetes Secret containing the user's OCI CLI Private Key
 
 The exporter needs to authenticate requests to retrieve the database password from the OCI Vault. When configuring API Key authentication,
@@ -680,7 +682,7 @@ the OCI CLI config file and the __DEFAULT profile is used__.
 > Note: The exporter uses the DEFAULT profile.
 
 For example, the OCI CLI config file can appear as follows:
-```bash
+```ini
 [DEFAULT]
 user=<ocid1.user.oc1..>
 fingerprint=<your-fingerprint>
@@ -693,8 +695,16 @@ region=<us-ashburn-1>
 
 You can create the configmap with the following command:
 ```bash
-kubectl create cm oci-cred --from-file=config
+kubectl create cm oci-cred --from-file=config \
+  --from-literal=user='<ocid1.user.oc1..>' \
+  --from-literal=fingerprint='<your-fingerprint>' \
+  --from-literal=tenancy='<ocid1.tenancy.oc1..>' \
+  --from-literal=region='<us-ashburn-1>'
 ```
+
+Replace the placeholders with the same values as the `DEFAULT` profile in
+`config`. The controller reads these separate ConfigMap keys to populate the
+exporter environment variables.
 
 You can create the secret with the following command:
 ```bash
@@ -715,7 +725,7 @@ spec:
       configMap:
         name: oci-cred
       privateKey:
-        name: oci-privatekey
+        secret: oci-privatekey
 ```
 
 ### Azure Vault Configuration
@@ -745,10 +755,14 @@ The `spec.azureConfig` field allows you to provide the environment variables thr
 You can then create the following configmap referenced in the YAML file above with your desired values:
 ```bash
 kubectl create configmap azure-cred \
---from-literal=tenantId=<AZURE_TENANT_ID> \
---from-literal=clientId=<AZURE_CLIENT_ID> \
---from-literal=clientSecret=<AZURE_CLIENT_SECRET>
+--from-literal=tenantId='<AZURE_TENANT_ID>' \
+--from-literal=clientId='<AZURE_CLIENT_ID>' \
+--from-literal=clientSecret='<AZURE_CLIENT_SECRET>'
 ```
+
+> **Warning:** This API reads the Azure client secret from a ConfigMap; it does
+> not provide a Secret reference for this field. Restrict access to the ConfigMap
+> and review this limitation before using the example.
 
 ## Defining an Exporter Config File
 Exporter 2.4.0 and later require a YAML configuration file. Set the `--config.file=`
@@ -823,7 +837,7 @@ The `databaseObserver` resource defines the desired configuration for the
 exporter container deployed by the controller. This container
 connects to an Oracle Database and scrapes metrics using SQL queries. By
 default, the exporter provides standard metrics, which are listed in the
-[official GitHub page for Oracle AI Database Metrics Exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#standard-metrics).
+[official GitHub page for Oracle AI Database Metrics Exporter](https://oracle.github.io/oracle-db-appdev-monitoring/docs/getting-started/default-metrics).
 
 To define custom metrics in Oracle Database for scraping, a TOML file that lists your custom queries and properties is required.
 For example, the code snippet that follows shows how you can define custom metrics:
@@ -843,7 +857,7 @@ oracledb_test_value_1 1
 oracledb_test_value_2 2
 ```
 
-You can find more information in the [__Custom Metrics__](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#custom-metrics) section of the Official GitHub page.
+You can find more information in the [__Custom Metrics__](https://oracle.github.io/oracle-db-appdev-monitoring/docs/configuration/custom-metrics) section of the Official GitHub page.
 
 ### Custom Metrics Config
 When configuring a `databaseObserver` resource, you can use the field `spec.metrics.configMap[]` to provide one or more
@@ -878,8 +892,9 @@ spec:
 the provided TOML files.
 
 ### Prometheus Release
-To enable your Prometheus configuration to find and include the `ServiceMonitor` created by the `databaseObserver` resource, the field `spec.serviceMonitor.labels` is an __important__ and __required__ field. The label on the ServiceMonitor
-must match the `spec.serviceMonitorSelector` field in your Prometheus configuration.
+To enable your Prometheus configuration to find and include the `ServiceMonitor` created by the `databaseObserver` resource, set `spec.serviceMonitor.labels` when required by the
+`spec.serviceMonitorSelector` in your Prometheus configuration. The labels
+must satisfy that selector.
 
 ```yaml
   serviceMonitor:
@@ -992,7 +1007,7 @@ scrape_configs:
       - targets:
           - localhost
         labels:
-          app: {my-database-observer-label}
+          app: "<database-observer-label>"
           __path__: /log/*.log
  ```
 
@@ -1017,7 +1032,7 @@ Exporter 2.4.0 and later require `--config.file`. Controller-provided environmen
 | `DB_CONNECT_STRING`        | database.dbConnectionString             | -                                         | Database connection string, retrieved from a Kubernetes secret,  not set or used for multi-databases            |
 | `<key>_USERNAME`           | databases.&lt;key&gt;.dbUser            | -                                         | Database username, Environment Variable can be completely renamed through `dbUser.envName`                      |
 | `<key>_PASSWORD`           | databases.&lt;key&gt;.dbPassword        | -                                         | Database password, Environment Variable can be completely renamed through `dbPassword.envName`                  |
-| `<key>_CONNECT_STRING`     | database.&lt;key&gt;.dbConnectionString | -                                         | Database connection string, Environment Variable can be completely renamed through `dbConnectionString.envName` |
+| `<key>_CONNECT_STRING`     | databases.&lt;key&gt;.dbConnectionString | -                                         | Database connection string, Environment Variable can be completely renamed through `dbConnectionString.envName` |
 | `OCI_VAULT_ID`             | database.oci.vaultID                    | -                                         | Vault OCID containing the OCI Vault Secret referenced                                                           |
 | `OCI_VAULT_SECRET_NAME`    | database.oci.vaultPasswordSecret        | -                                         | Vault Secret name containing the DB Password secret                                                             |
 | `AZ_VAULT_ID`              | database.azure.vaultID                  | -                                         | Vault ID containing the Azure Vault Secret referenced                                                           |
@@ -1027,7 +1042,7 @@ Exporter 2.4.0 and later require `--config.file`. Controller-provided environmen
 | `AZURE_CLIENT_ID`          | azureConfig.configMap.name              | -                                         | Your Azure cloud client ID                                                                                      |
 | `AZURE_CLIENT_SECRET`      | azureConfig.configMap.name              | -                                         | Your Azure cloud client secret                                                                                  |
 | `LOG_DESTINATION`          | log.destination                         | /log/alert.log                            | Location of where alert.log will be placed                                                                      |
-| `CUSTOM_METRICS`           | metrics.ConfigMap[]                     | -                                         | List of paths where the TOML files are located                                                                  |
+| `CUSTOM_METRICS`           | metrics.configMap[]                     | -                                         | List of paths where the TOML files are located                                                                  |
 
 The following default values or behavior is set:
 
@@ -1036,7 +1051,7 @@ The following default values or behavior is set:
 | Database Username Key                       | `database.dbUser.key`                        | username                                                            |         |
 | Database Password Key                       | `database.dbPassword.key`                    | password                                                            |         |
 | Database Connection String Key              | `database.dbConnectionString.key`            | connection                                                          |         |
-| Wallet MountPath                            | `wallet.MountPath`                           | /lib/oracle/21/client64/lib/network/admin                           |         |
+| Wallet MountPath                            | `wallet.mountPath`                           | /lib/oracle/21/client64/lib/network/admin                           |         |
 | Env Var for Database Username               | `databases.<key>.dbUser.envName`             | &lt;key&gt;_USERNAME                                                |         |
 | Env Var for Database Password               | `databases.<key>.dbPassword.envName`         | &lt;key&gt;_PASSWORD                                                |         |
 | Env Var for Database Connection String      | `databases.<key>.dbConnectionString.envName` | &lt;key&gt;_CONNECT_STRING                                          |         |
@@ -1138,7 +1153,7 @@ spec:
         runAsUser: 1000
 ```
 
-Configuring security context under the PodTemplate is also possible. You can set this object under: `spec.deployment.podTemplate.securityContext`
+Configuring security context under the PodTemplate is also possible. You can set this object under: `spec.deployment.podSecurityContext`
 
 ```yaml
 spec:

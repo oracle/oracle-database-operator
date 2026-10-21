@@ -12,7 +12,7 @@ cluster standards.
 This example was validated with the following environment:
 
 - Observability Controller `2.1`
-- OpenShift `v1.31.7`
+- Kubernetes `v1.31.7` on OpenShift
 - Oracle AI Database Metrics Exporter image `container-registry.oracle.com/database/observability-exporter:2.2.0`
 
 The validation covered these use cases:
@@ -55,6 +55,12 @@ ServiceMonitor labels with your cluster conventions.
 This is a one-time cluster configuration and typically requires cluster-admin
 privileges. It causes OpenShift to create the user workload monitoring
 Prometheus components in the `openshift-user-workload-monitoring` namespace.
+
+If `config.yaml` already contains settings, use
+`kubectl edit configmap cluster-monitoring-config -n openshift-monitoring`
+and add `enableUserWorkload: true` inside the existing `config.yaml`, preserving
+its other settings. The patch below replaces the whole `config.yaml` value;
+use it only when there are no existing settings to retain.
 
 ```bash
 kubectl patch configmap cluster-monitoring-config \
@@ -144,24 +150,20 @@ When querying from inside a pod, use the internal service address and the
 ServiceAccount token for authentication:
 
 ```bash
+QUERY_POD='<query-pod-name>'
 PROMETHEUS_SVC="thanos-querier.openshift-monitoring.svc:9091"
 PQUERY='oracledb_sessions_value{status="ACTIVE", database="default", type="USER"}'
 
-kubectl exec -n testcase "$QUERY_POD" -- bash -c "
-  TOKEN=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-  curl -s -k -H \"Authorization: Bearer \$TOKEN\" \
-  -G \"https://$PROMETHEUS_SVC/api/v1/query\" \
-  --data-urlencode \"query=$PQUERY\"
+kubectl exec -n testcase "$QUERY_POD" -- bash -c '
+  TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+  curl -s -k -H "Authorization: Bearer $TOKEN" \
+    -G "https://$1/api/v1/query" \
+    --data-urlencode "query=$2"
+' bash "$PROMETHEUS_SVC" "$PQUERY"
 ```
 
-Example output:
-
-```text
-"
-```
-
-Replace `QUERY_POD` with the name of a pod that runs with the ServiceAccount to
-which you granted access.
+Replace `<query-pod-name>` with the name of a pod that runs with the
+ServiceAccount to which you granted access.
 
 If the setup is working, the query returns Oracle database metrics scraped from
 the exporter endpoint created for the `DatabaseObserver`.
