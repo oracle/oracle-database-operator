@@ -2,6 +2,7 @@ package commons
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -30,5 +31,18 @@ func TestGetORDSStatusUsesUnmappedLandingEndpoint(t *testing.T) {
 		if !strings.Contains(statusCommand, fragment) {
 			t.Fatalf("expected ORDS status command to contain %q, got %q", fragment, statusCommand)
 		}
+	}
+}
+
+func TestWalletEntriesCMDCanBeChained(t *testing.T) {
+	// The SIDB controller runs WalletEntriesCMD followed by "&& rm -f admin.pwd".
+	script := fmt.Sprintf("%s && %s && %s && %s && rm -f admin.pwd",
+		WalletPwdCMD,
+		WalletCreateCMD,
+		BuildSecureHereDocWriteCommand("admin.pwd", "password"),
+		WalletEntriesCMD)
+
+	if out, err := exec.Command("bash", "-n", "-c", script).CombinedOutput(); err != nil {
+		t.Fatalf("wallet command has a shell syntax error: %v\n%s", err, out)
 	}
 }

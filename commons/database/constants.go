@@ -449,7 +449,7 @@ const WalletCreateCMD string = "if [[ ! -f ${WALLET_DIR}/ewallet.p12 ]]; then mk
 const WalletDeleteCMD string = "rm -rf ${WALLET_DIR}"
 
 const WalletEntriesCMD string = "umask 177\ncat > wallet.passwd <<EOF\n${WALLET_PWD}\nEOF\nENTRY_VALUE=\"$(cat admin.pwd)\"\n mkstore -wrl ${WALLET_DIR} -createEntry oracle.dbsecurity.sysPassword \"$ENTRY_VALUE\" -createEntry oracle.dbsecurity.systemPassword \"$ENTRY_VALUE\" " +
-	"-createEntry oracle.dbsecurity.pdbAdminPassword \"$ENTRY_VALUE\" -createEntry oracle.dbsecurity.dbsnmpPassword \"$ENTRY_VALUE\" < wallet.passwd\nunset ENTRY_VALUE\nrm -f wallet.passwd\numask 022;"
+	"-createEntry oracle.dbsecurity.pdbAdminPassword \"$ENTRY_VALUE\" -createEntry oracle.dbsecurity.dbsnmpPassword \"$ENTRY_VALUE\" < wallet.passwd\nunset ENTRY_VALUE\nrm -f wallet.passwd\numask 022"
 
 const InitWalletCMD string = "if [ ! -f $ORACLE_BASE/oradata/.${ORACLE_SID}${CHECKPOINT_FILE_EXTN} ] || [ ! -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_%s ];" +
 	" then while [ ! -f ${WALLET_DIR}/ewallet.p12 ] || pgrep -f $WALLET_CLI > /dev/null; do sleep 0.5; done; fi "
