@@ -1,0 +1,27 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# OLM creates the webhook certificate, but it does not create the separate
+# cert-manager certificate used by the secure metrics endpoint. Serve metrics
+# over HTTP for the OLM deployment so the bundle has no metrics Secret dependency.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        env:
+        - name: METRICS_SECURE
+          value: "false"
+        volumeMounts:
+        - $patch: delete
+          mountPath: /metrics-certs
+      volumes:
+      - $patch: delete
+        name: metrics-certs

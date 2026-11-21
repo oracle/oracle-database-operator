@@ -279,6 +279,77 @@ func TestSIDBWebhookAllowsDataguardStandbySourcesOnPrimary(t *testing.T) {
 	}
 }
 
+func TestSIDBWebhookRequiresTCPSPortForIPBasedTCPSStandbySources(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Dataguard = &DataguardProducerSpec{
+		StandbySources: []DataguardStandbySourceSpec{
+			{
+				DBUniqueName: "ORCLSTBY2",
+				Host:         "10.2.1.131",
+				TCPSEnabled:  true,
+				TCPPort:      30282,
+			},
+		},
+	}
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when tcpsEnabled IP standbySource omits tcpsPort")
+	}
+
+	sidb.Spec.Dataguard.StandbySources[0].TCPSPort = 30285
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected IP standbySource with tcpsPort to validate, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookAllowsNonTCPSIPStandbySourcesWithoutTCPSPort(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Dataguard = &DataguardProducerSpec{
+		StandbySources: []DataguardStandbySourceSpec{
+			{
+				DBUniqueName: "ORCLSTBY2",
+				Host:         "10.2.1.131",
+				TCPPort:      30282,
+			},
+		},
+	}
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected non-TCPS IP standbySource without tcpsPort to remain valid, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookRequiresPrimarySourceTCPSPortForIPConnectString(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{
+		TCPS: &SingleInstanceDatabaseSecurityTCPS{
+			Enabled:   true,
+			TlsSecret: "sidb-standby-tcps-tls",
+		},
+	}
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		ConnectString: "10.0.2.240:32331/ORCLPRD",
+	}
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error when TCPS standby uses IP connectString without tcpsPort")
+	}
+
+	sidb.Spec.PrimarySource.TCPSPort = 32484
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected TCPS standby with primarySource.tcpsPort to validate, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookAllowsNonTCPSIPPrimarySourceWithoutTCPSPort(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{
+		ConnectString: "10.0.2.240:32331/ORCLPRD",
+	}
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected non-TCPS standby IP connectString without tcpsPort to remain valid, got: %v", errs)
+	}
+}
+
 func TestSIDBWebhookRejectsDataguardStandbySourcesOnStandby(t *testing.T) {
 	sidb := sidbWebhookValidBaseSpec()
 	sidb.Spec.CreateAs = "standby"
@@ -294,6 +365,94 @@ func TestSIDBWebhookRejectsDataguardStandbySourcesOnStandby(t *testing.T) {
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
 		t.Fatalf("expected validation error for dataguard standbySources on standby")
+	}
+}
+
+func TestSIDBWebhookRejectsStandbyTDESecretKeyOn19cImage(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{DatabaseRef: "sidb-primary"}
+	sidb.Spec.Image.PullFrom = "example.com/oracle/database:19.3.0-ee"
+	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{
+		Secrets: &SingleInstanceDatabaseSecrets{
+			TDE: &SingleInstanceDatabasePasswordSecret{
+				SecretName:       "sidb-standby-tde-wallet",
+				SecretKey:        "tde_wallet_pwd",
+				WalletZipFileKey: "wallet.zip",
+			},
+		},
+	}
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for standby tde.secretKey on 19c image")
+	}
+}
+
+func TestSIDBWebhookRejectsStandbyTDESecretKeyOnOCR128786(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{DatabaseRef: "sidb-primary"}
+	sidb.Spec.Image.PullFrom = "example.com/oracle/database:128786"
+	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{
+		Secrets: &SingleInstanceDatabaseSecrets{
+			TDE: &SingleInstanceDatabasePasswordSecret{
+				SecretName:       "sidb-standby-tde-wallet",
+				SecretKey:        "tde_wallet_pwd",
+				WalletZipFileKey: "wallet.zip",
+			},
+		},
+	}
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected validation error for standby tde.secretKey on OCR :128786")
+	}
+}
+
+func TestSIDBWebhookAllowsStandbyTDEWalletZipWithoutSecretKeyOn19c(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{DatabaseRef: "sidb-primary"}
+	sidb.Spec.Image.Version = "19.3.0"
+	sidb.Spec.Image.PullFrom = "example.com/oracle/database:128786"
+	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{
+		Secrets: &SingleInstanceDatabaseSecrets{
+			TDE: &SingleInstanceDatabasePasswordSecret{
+				SecretName:       "sidb-standby-tde-wallet",
+				WalletZipFileKey: "wallet.zip",
+			},
+		},
+	}
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected 19c standby without tde.secretKey to validate, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookAllowsStandbyTDESecretKeyOn23aiImage(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{DatabaseRef: "sidb-primary"}
+	sidb.Spec.Image.PullFrom = "container-registry.oracle.com/database/enterprise:23.26.0-ee"
+	sidb.Spec.Security = &SingleInstanceDatabaseSecurity{
+		Secrets: &SingleInstanceDatabaseSecrets{
+			TDE: &SingleInstanceDatabasePasswordSecret{
+				SecretName:       "sidb-standby-tde-wallet",
+				SecretKey:        "tde_wallet_pwd",
+				WalletZipFileKey: "wallet.zip",
+			},
+		},
+	}
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected 23ai standby with tde.secretKey to validate, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookAllowsFlashbackOnStandby(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.CreateAs = "standby"
+	sidb.Spec.PrimarySource = &SingleInstanceDatabasePrimarySource{DatabaseRef: "sidb-primary"}
+	flashback := true
+	sidb.Spec.FlashBack = &flashback
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected flashBack to be allowed on standby, got: %v", errs)
 	}
 }
 
@@ -572,6 +731,69 @@ func TestSIDBWebhookAllowsExplicitSetupOrStartupScripts(t *testing.T) {
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
 		t.Fatalf("expected explicit startup scripts config to be accepted, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookAllowsHugePagesBackedSga(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.InitParams = &SingleInstanceDatabaseInitParams{
+		SgaTarget:          8192,
+		PgaAggregateTarget: 2048,
+	}
+	sidb.Spec.Resources = &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceMemory:                resource.MustParse("4Gi"),
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("8Gi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceMemory:                resource.MustParse("4Gi"),
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("8Gi"),
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+		t.Fatalf("expected HugePages-backed SGA to be accepted, got: %v", errs)
+	}
+}
+
+func TestSIDBWebhookRejectsHugePagesWithAutomaticMemoryTarget(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.InitParams = &SingleInstanceDatabaseInitParams{MemoryTarget: "4Gi"}
+	sidb.Spec.Resources = &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceMemory:                resource.MustParse("4Gi"),
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("4Gi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceMemory:                resource.MustParse("4Gi"),
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("4Gi"),
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected HugePages with memoryTarget to be rejected")
+	}
+}
+
+func TestSIDBWebhookRejectsHugePagesBelowFourGiB(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.InitParams = &SingleInstanceDatabaseInitParams{
+		SgaTarget:          2048,
+		PgaAggregateTarget: 512,
+	}
+	sidb.Spec.Resources = &corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceMemory:                resource.MustParse("3Gi"),
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceMemory:                resource.MustParse("3Gi"),
+			corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		},
+	}
+
+	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+		t.Fatalf("expected regular memory below 4GiB to be rejected")
 	}
 }
 
@@ -1595,6 +1817,91 @@ func TestSIDBWebhookPrimarySourceRejectsPdbNameWithoutConnectString(t *testing.T
 
 	if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
 		t.Fatalf("expected validation error when primarySource.pdbName is set without connectString")
+	}
+}
+
+func TestSIDBWebhookRejectsShellMetacharactersInPdbName(t *testing.T) {
+	sidb := sidbWebhookValidBaseSpec()
+	sidb.Spec.Pdbname = "APP;DROP TABLE USERS--"
+
+	errs := validateSingleInstanceDatabaseSpec(sidb)
+	for _, err := range errs {
+		if err.Field == "spec.pdbName" && strings.Contains(err.Detail, "valid Oracle identifier") {
+			return
+		}
+	}
+	t.Fatalf("expected shell metacharacters in spec.pdbName to be rejected, got: %v", errs)
+}
+
+func TestSIDBWebhookValidatesPDBParameters(t *testing.T) {
+	t.Run("accepts max string size extended", func(t *testing.T) {
+		sidb := sidbWebhookValidBaseSpec()
+		sidb.Spec.PDBParameters = []SingleInstanceDatabasePDBParameter{{
+			PdbName: "APPPDB1",
+			Name:    "MAX_STRING_SIZE",
+			Value:   "EXTENDED",
+		}}
+		if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) != 0 {
+			t.Fatalf("expected PDB parameter to validate, got: %v", errs)
+		}
+	})
+
+	t.Run("rejects unsupported parameter", func(t *testing.T) {
+		sidb := sidbWebhookValidBaseSpec()
+		sidb.Spec.PDBParameters = []SingleInstanceDatabasePDBParameter{{
+			PdbName: "APPPDB1",
+			Name:    "OPEN_CURSORS",
+			Value:   "1000",
+		}}
+		if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+			t.Fatalf("expected unsupported PDB parameter to be rejected")
+		}
+	})
+
+	t.Run("rejects duplicate PDB parameter", func(t *testing.T) {
+		sidb := sidbWebhookValidBaseSpec()
+		sidb.Spec.PDBParameters = []SingleInstanceDatabasePDBParameter{
+			{PdbName: "APPPDB1", Name: "MAX_STRING_SIZE", Value: "EXTENDED"},
+			{PdbName: "apppdb1", Name: "max_string_size", Value: "EXTENDED"},
+		}
+		if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+			t.Fatalf("expected duplicate PDB parameter to be rejected")
+		}
+	})
+
+	t.Run("rejects standby PDB parameters", func(t *testing.T) {
+		sidb := sidbWebhookValidBaseSpec()
+		sidb.Spec.CreateAs = "standby"
+		sidb.Spec.PDBParameters = []SingleInstanceDatabasePDBParameter{{
+			PdbName: "APPPDB1",
+			Name:    "MAX_STRING_SIZE",
+			Value:   "EXTENDED",
+		}}
+		if errs := validateSingleInstanceDatabaseSpec(sidb); len(errs) == 0 {
+			t.Fatalf("expected standby PDB parameters to be rejected")
+		}
+	})
+}
+
+func TestSIDBWebhookRejectsPDBParameterResetAfterExtended(t *testing.T) {
+	oldObj := sidbWebhookValidBaseSpec()
+	oldObj.Spec.PDBParameters = []SingleInstanceDatabasePDBParameter{{
+		PdbName: "APPPDB1",
+		Name:    "MAX_STRING_SIZE",
+		Value:   "EXTENDED",
+	}}
+	oldObj.Status.PDBParameters = append([]SingleInstanceDatabasePDBParameter(nil), oldObj.Spec.PDBParameters...)
+
+	newObj := oldObj.DeepCopy()
+	newObj.Spec.PDBParameters[0].Value = "STANDARD"
+	if _, err := (&SingleInstanceDatabase{}).ValidateUpdate(context.Background(), oldObj, newObj); err == nil {
+		t.Fatalf("expected MAX_STRING_SIZE reset to be rejected")
+	}
+
+	newObj = oldObj.DeepCopy()
+	newObj.Spec.PDBParameters = nil
+	if _, err := (&SingleInstanceDatabase{}).ValidateUpdate(context.Background(), oldObj, newObj); err == nil {
+		t.Fatalf("expected removal of MAX_STRING_SIZE=EXTENDED to be rejected")
 	}
 }
 

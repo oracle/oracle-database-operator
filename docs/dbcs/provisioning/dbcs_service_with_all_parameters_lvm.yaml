@@ -7,7 +7,7 @@ spec:
   ociSecret: "oci-privatekey"
   dbSystem:
     availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+    compartmentId: "ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>"
     dbAdminPasswordSecret: "admin-password"
     dbBackupConfig:
       autoBackupEnabled: True
@@ -29,7 +29,7 @@ spec:
     sshPublicKeys:
       - "oci-publickey"
     storageManagement: "LVM"
-    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
+    subnetId: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"
     tags:
       "TEST": "test_case_provision"
       "CreatedBy": "MAA_TEAM"

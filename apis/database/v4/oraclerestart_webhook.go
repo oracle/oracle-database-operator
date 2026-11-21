@@ -646,6 +646,7 @@ func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 				"ASM disk group details must be provided",
 			))
 	}
+	validationErrs = append(validationErrs, validateAsmNames(r.Spec.AsmStorageDetails, field.NewPath("spec").Child("asmDiskGroupDetails"))...)
 
 	return validationErrs
 }

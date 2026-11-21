@@ -3,7 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.21.0
   creationTimestamp: null
   name: oraclerestdataservices.database.oracle.com
 spec:
@@ -12,6 +12,8 @@ spec:
     kind: OracleRestDataService
     listKind: OracleRestDataServiceList
     plural: oraclerestdataservices
+    shortNames:
+    - ords
     singular: oraclerestdataservice
   scope: Namespaced
   versions:
@@ -34,6 +36,9 @@ spec:
     - jsonPath: .status.mongoDbApiAccessUrl
       name: MongoDbApi Access URL
       type: string
+    deprecated: true
+    deprecationWarning: OracleRestDataService is deprecated; use the OrdsSrvs controller
+      instead. See https://github.com/oracle/oracle-database-operator/blob/main/docs/ordsservices/README.md.
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -60,6 +65,12 @@ spec:
                 type: object
               databaseRef:
                 type: string
+              httpPort:
+                default: 8080
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
               image:
                 properties:
                   pullFrom:
@@ -184,8 +195,6 @@ spec:
                 type: string
             type: object
         type: object
-    deprecated: true
-    deprecationWarning: OracleRestDataService v1alpha1 is deprecated; use apiVersion database.oracle.com/v4. Existing v1alpha1 resources remain supported for migration only.
     served: true
     storage: false
     subresources:
@@ -209,6 +218,9 @@ spec:
     - jsonPath: .status.mongoDbApiAccessUrl
       name: MongoDbApi Access URL
       type: string
+    deprecated: true
+    deprecationWarning: OracleRestDataService is deprecated; use the OrdsSrvs controller
+      instead. See https://github.com/oracle/oracle-database-operator/blob/main/docs/ordsservices/README.md.
     name: v4
     schema:
       openAPIV3Schema:
@@ -235,6 +247,12 @@ spec:
                 type: object
               databaseRef:
                 type: string
+              httpPort:
+                default: 8080
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
               image:
                 properties:
                   pullFrom:
@@ -297,16 +315,49 @@ spec:
                     enable:
                       type: boolean
                     pdbName:
+                      pattern: ^$|^[A-Za-z][A-Za-z0-9_]{0,29}$
                       type: string
                     schemaName:
+                      pattern: ^[A-Za-z][A-Za-z0-9_]{0,29}$
                       type: string
                     urlMapping:
+                      pattern: ^$|^[A-Za-z][A-Za-z0-9_-]{0,29}$
                       type: string
                   required:
                   - enable
                   - schemaName
                   type: object
                 type: array
+              security:
+                properties:
+                  secrets:
+                    properties:
+                      databaseAdmin:
+                        properties:
+                          keepSecret:
+                            type: boolean
+                          secretKey:
+                            default: oracle_pwd
+                            type: string
+                          secretName:
+                            type: string
+                        required:
+                        - secretName
+                        type: object
+                      ordsPublicUser:
+                        properties:
+                          keepSecret:
+                            type: boolean
+                          secretKey:
+                            default: oracle_pwd
+                            type: string
+                          secretName:
+                            type: string
+                        required:
+                        - secretName
+                        type: object
+                    type: object
+                type: object
               serviceAccountName:
                 type: string
               serviceAnnotations:
@@ -314,9 +365,7 @@ spec:
                   type: string
                 type: object
             required:
-            - adminPassword
             - databaseRef
-            - ordsPassword
             type: object
           status:
             properties:

@@ -7,7 +7,7 @@ spec:
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   setupDBCloning: true
-  dbBackupId: "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyaae3fmnpacavkuwt2zqaj5q3gol2g6m6tirriveytoarq"
+  dbBackupId: "ocid1.dbbackup.oc1..<REPLACE_WITH_DB_BACKUP_OCID>"
   dbClone:
     dbAdminPasswordSecret: "admin-password"
     tdeWalletPasswordSecret: "tde-password"
@@ -18,5 +18,5 @@ spec:
     domain: "subdda0b5eaa.cluster1.oraclevcn.com"
     sshPublicKeys:
      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
+    subnetId: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"
     initialDataStorageSizeInGB: 256

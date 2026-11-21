@@ -113,8 +113,9 @@ type SingleInstanceDatabaseSpec struct {
 	// +kubebuilder:validation:Maximum=1
 	Replicas int `json:"replicas,omitempty"`
 
-	NodeSelector map[string]string  `json:"nodeSelector,omitempty"`
-	HostAliases  []corev1.HostAlias `json:"hostAliases,omitempty"`
+	NodeSelector map[string]string   `json:"nodeSelector,omitempty"`
+	Tolerations  []corev1.Toleration `json:"tolerations,omitempty"`
+	HostAliases  []corev1.HostAlias  `json:"hostAliases,omitempty"`
 	// Deprecated: use spec.security.secrets.admin.
 	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
 	Image         SingleInstanceDatabaseImage         `json:"image"`
@@ -122,6 +123,8 @@ type SingleInstanceDatabaseSpec struct {
 	// Scripts configures optional PVC-backed setup and startup script mounts.
 	Scripts    *SingleInstanceDatabaseScriptsSpec `json:"scripts,omitempty"`
 	InitParams *SingleInstanceDatabaseInitParams  `json:"initParams,omitempty"`
+	// PDBParameters configures supported PDB-level parameters for individual PDBs.
+	PDBParameters []SingleInstanceDatabasePDBParameter `json:"pdbParameters,omitempty"`
 	// ShmSize configures the memory-backed /dev/shm volume size. If omitted, the pod uses the container runtime default.
 	ShmSize string `json:"shmSize,omitempty"`
 	// Resources configures standard Kubernetes container resource requests and limits.
@@ -131,8 +134,10 @@ type SingleInstanceDatabaseSpec struct {
 	DisableDefaultDiagVolumeClaim bool                         `json:"disableDefaultDiagVolumeClaim,omitempty"`
 	SecurityContext               *corev1.PodSecurityContext   `json:"securityContext,omitempty"`
 	Capabilities                  *corev1.Capabilities         `json:"capabilities,omitempty"`
+	// +kubebuilder:default:=false
+	AllowPrivilegeEscalation *bool `json:"allowPrivilegeEscalation,omitempty"`
 
-	ConvertToSnapshotStandby bool            `json:"convertToSnapshotStandby,omitempty"`
+	ConvertToSnapshotStandby *bool           `json:"convertToSnapshotStandby,omitempty"`
 	EnvVars                  []corev1.EnvVar `json:"envVars,omitempty"`
 	// Restore config enables primary creation from backup sources.
 	Restore *SingleInstanceDatabaseRestoreSpec `json:"restore,omitempty"`
@@ -270,9 +275,14 @@ type SingleInstanceDatabaseServiceEndpoint struct {
 	// Annotations are applied to this Service regardless of its rendered Service type.
 	Annotations map[string]string `json:"annotations,omitempty"`
 	// +kubebuilder:validation:Enum=Cluster;Local
-	ExternalTrafficPolicy corev1.ServiceExternalTrafficPolicyType    `json:"externalTrafficPolicy,omitempty"`
-	TCP                   *SingleInstanceDatabaseServiceEndpointPort `json:"tcp,omitempty"`
-	TCPS                  *SingleInstanceDatabaseServiceEndpointPort `json:"tcps,omitempty"`
+	ExternalTrafficPolicy corev1.ServiceExternalTrafficPolicy `json:"externalTrafficPolicy,omitempty"`
+	// PublishNotReadyAddresses publishes this endpoint before the database Pod
+	// becomes Ready. This is useful when an external client must reach the
+	// listener during database bootstrap.
+	// +optional
+	PublishNotReadyAddresses *bool                                      `json:"publishNotReadyAddresses,omitempty"`
+	TCP                      *SingleInstanceDatabaseServiceEndpointPort `json:"tcp,omitempty"`
+	TCPS                     *SingleInstanceDatabaseServiceEndpointPort `json:"tcps,omitempty"`
 }
 
 type SingleInstanceDatabaseServiceEndpointPort struct {
@@ -413,6 +423,9 @@ type SingleInstanceDatabasePrimaryDetails struct {
 type SingleInstanceDatabasePrimarySource struct {
 	DatabaseRef   string `json:"databaseRef,omitempty"`
 	ConnectString string `json:"connectString,omitempty"`
+	// TCPSPort is the externally reachable TCPS port when connectString points
+	// to a NodePort or other external endpoint. It defaults to 2484.
+	TCPSPort int `json:"tcpsPort,omitempty"`
 	// DBName optionally supplies the primary CDB DB_NAME when it differs from the connect string service name.
 	DBName string `json:"dbName,omitempty"`
 	// Pdbname optionally supplies the primary PDB name when the source is expressed as connectString.
@@ -428,6 +441,9 @@ type SingleInstanceDatabasePersistence struct {
 	Fra *SingleInstanceDatabasePersistenceFra `json:"fra,omitempty"`
 	// Additional PVCs for custom mount paths.
 	AdditionalPVCs []AdditionalPVCSpec `json:"additionalPVCs,omitempty"`
+	// RetainOnDelete preserves PVCs created by the operator when the SIDB is deleted.
+	// User-provided PVCs referenced with pvcName are always preserved.
+	RetainOnDelete bool `json:"retainOnDelete,omitempty"`
 
 	// Deprecated: use persistence.oradata.size.
 	Size string `json:"size,omitempty"`
@@ -469,6 +485,21 @@ type SingleInstanceDatabaseInitParams struct {
 	PgaAggregateTarget int `json:"pgaAggregateTarget,omitempty"`
 	CpuCount           int `json:"cpuCount,omitempty"`
 	Processes          int `json:"processes,omitempty"`
+	// MemoryTarget configures Oracle MEMORY_TARGET. Kubernetes resource limits
+	// must still be sized to include this value and database overhead.
+	MemoryTarget string `json:"memoryTarget,omitempty"`
+}
+
+// SingleInstanceDatabasePDBParameter defines a supported PDB-level parameter.
+type SingleInstanceDatabasePDBParameter struct {
+	// PdbName is the Oracle PDB to which the parameter applies.
+	// +kubebuilder:validation:Pattern=`^[A-Za-z][A-Za-z0-9_$#]*$`
+	PdbName string `json:"pdbName"`
+	// Name is the Oracle parameter name.
+	// +kubebuilder:validation:Pattern=`^[A-Za-z][A-Za-z0-9_$#]*$`
+	Name string `json:"name"`
+	// Value is the requested parameter value.
+	Value string `json:"value"`
 }
 
 // SingleInstanceDatabaseImage defines the Image source and pullSecrets for POD
@@ -493,6 +524,14 @@ type SingleInstanceDatabaseAdminPassword struct {
 	SkipInitWallet bool   `json:"skipInitWallet,omitempty"`
 }
 
+// SingleInstanceDatabaseDatapatchStatus records the patch inventories verified after a successful datapatch run.
+type SingleInstanceDatabaseDatapatchStatus struct {
+	Image                      string `json:"image,omitempty"`
+	ImageID                    string `json:"imageID,omitempty"`
+	OracleHomePatchFingerprint string `json:"oracleHomePatchFingerprint,omitempty"`
+	SQLPatchFingerprint        string `json:"sqlPatchFingerprint,omitempty"`
+}
+
 // SingleInstanceDatabaseStatus defines the observed state of SingleInstanceDatabase
 type SingleInstanceDatabaseStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -505,11 +544,12 @@ type SingleInstanceDatabaseStatus struct {
 	ReleaseUpdate string   `json:"releaseUpdate,omitempty"`
 	DgBroker      *string  `json:"dgBroker,omitempty"`
 	// +kubebuilder:default:="false"
-	DatafilesPatched     string            `json:"datafilesPatched,omitempty"`
-	ConnectString        string            `json:"connectString,omitempty"`
-	ClusterConnectString string            `json:"clusterConnectString,omitempty"`
-	TcpsConnectString    string            `json:"tcpsConnectString,omitempty"`
-	StandbyDatabases     map[string]string `json:"standbyDatabases,omitempty"`
+	DatafilesPatched     string                                 `json:"datafilesPatched,omitempty"`
+	Datapatch            *SingleInstanceDatabaseDatapatchStatus `json:"datapatch,omitempty"`
+	ConnectString        string                                 `json:"connectString,omitempty"`
+	ClusterConnectString string                                 `json:"clusterConnectString,omitempty"`
+	TcpsConnectString    string                                 `json:"tcpsConnectString,omitempty"`
+	StandbyDatabases     map[string]string                      `json:"standbyDatabases,omitempty"`
 	// +kubebuilder:default:="false"
 	DatafilesCreated     string `json:"datafilesCreated,omitempty"`
 	Sid                  string `json:"sid,omitempty"`
@@ -551,8 +591,9 @@ type SingleInstanceDatabaseStatus struct {
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	InitParams  SingleInstanceDatabaseInitParams  `json:"initParams,omitempty"`
-	Persistence SingleInstanceDatabasePersistence `json:"persistence"`
+	InitParams    SingleInstanceDatabaseInitParams     `json:"initParams,omitempty"`
+	PDBParameters []SingleInstanceDatabasePDBParameter `json:"pdbParameters,omitempty"`
+	Persistence   SingleInstanceDatabasePersistence    `json:"persistence"`
 
 	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
 }

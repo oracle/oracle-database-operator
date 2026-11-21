@@ -1,0 +1,83 @@
+# Copyright (c) 2022, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at
+# http://oss.oracle.com/licenses/upl.
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: "__SHARDING_NAME__"
+  namespace: "__SHARDING_NAMESPACE__"
+  labels:
+    e2e.oracle.com/owner: operator-e2e
+    e2e.oracle.com/controller: sharding
+    e2e.oracle.com/test-id: 01-system-native-minimal
+    e2e.oracle.com/pipeline: "__CI_PIPELINE_ID__"
+spec:
+  dbImage: "__SHARDING_DB_IMAGE__"
+  dbImagePullSecret: "__SHARDING_DB_PULL_SECRET__"
+  gsmImage: "__SHARDING_GSM_IMAGE__"
+  gsmImagePullSecret: "__SHARDING_GSM_PULL_SECRET__"
+  storageClass: "__SHARDING_STORAGE_CLASS__"
+  shardingType: SYSTEM
+  replicationType: NATIVE
+  isExternalSvc: false
+  isDeleteOraPvc: true
+  dbSecret:
+    name: "__SHARDING_DB_SECRET_NAME__"
+    dbAdmin:
+      passwordKey: pwdfile.enc
+      privateKeyKey: key.pem
+  catalog:
+    - name: catalog
+      storageSizeInGb: 50
+      imagePullPolicy: Always
+      resources:
+        requests:
+          cpu: "2"
+          memory: "16Gi"
+        limits:
+          cpu: "2"
+          memory: "16Gi"
+      envVars:
+        - name: INIT_SGA_SIZE
+          value: "8192"
+        - name: INIT_PGA_SIZE
+          value: "4096"
+  gsmInfo:
+    storageSizeInGb: 50
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: "2"
+        memory: "4Gi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+    gsm:
+      - name: gsm1
+        region: primary
+      - name: gsm2
+        region: standby
+  shardInfo:
+    - shardPreFixName: pshard
+      shardNum: 3
+      storageSizeInGb: 50
+      resources:
+        requests:
+          cpu: "2"
+          memory: "16Gi"
+        limits:
+          cpu: "2"
+          memory: "16Gi"
+      envVars:
+        - name: INIT_SGA_SIZE
+          value: "8192"
+        - name: INIT_PGA_SIZE
+          value: "4096"
+      shardGroupDetails:
+        name: pshg1
+        region: primary
+  gsmService:
+    - name: oltp_rw_svc
+      role: primary
+    - name: oltp_ro_svc
+      role: primary

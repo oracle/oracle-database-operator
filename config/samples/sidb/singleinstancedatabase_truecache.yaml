@@ -2,9 +2,9 @@
 # Copyright (c) 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-# Same-cluster True Cache (TCP). Pair with a primary SIDB that has already
-# published ConfigMap <primary-name>-truecache-blob (see generateBlob /
-# createConfigMap on the primary, or the truecache_primary_tcps_peered sample).
+# Same-cluster True Cache (TCP). Pair with singleinstancedatabase_truecache_primary.yaml
+# after that primary has published ConfigMap <primary-name>-truecache-blob
+# (trueCache.generateBlob and trueCache.createConfigMap).
 #
 
 apiVersion: database.oracle.com/v4
@@ -23,7 +23,8 @@ spec:
   ## DB type
   createAs: truecache
 
-  ## Reference to the source primary database in the same namespace.
+  ## Same Kubernetes cluster and namespace only. Cross-cluster or external
+  ## primaries use primarySource.connectString instead (see *_external*.yaml).
   ## Lab alternative: primarySource.connectString: "sidb-sample:1521/ORCLPRD"
   primarySource:
     databaseRef: "sidb-sample"
@@ -34,12 +35,13 @@ spec:
     ## inheriting the primary db_domain on the True Cache database.
     # dbName: "ORCLPRD"
 
-  ## Optional environment overrides for the True Cache container.
-  ## Uncomment to override the default primary-host script path used by
-  ## autoTCServiceRegistration. Field is top-level under spec (not under trueCache).
+  ## Optional: custom primary-host helper path for autoTCServiceRegistration.
+  ## Top-level spec.envVars (not under trueCache). Needed when the helper is not
+  ## at /home/oracle/configure-primary-truecache-service.sh — typically external
+  ## or non-OCR primaries. OCR enterprise_ru keeps the prebaked default; leave unset.
   # envVars:
   #   - name: PRIMARY_TC_SERVICE_SCRIPT_PATH
-  #     value: /home/oracle/configure-primary-truecache-service.sh
+  #     value: /custom/path/configure-primary-truecache-service.sh
 
   ## True Cache options
   trueCache:
@@ -53,18 +55,13 @@ spec:
     ##   PRIMARY_PDB_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME
     ## The first value is the primary PDB name.
     ##
-    ## With autoTCServiceRegistration disabled (or omitted), primary-side service
-    ## creation/association stays manual on the primary host.
-    ## With autoTCServiceRegistration: true, the True Cache pod invokes
-    ## configure-primary-truecache-service.sh on the primary through DBMS_SCHEDULER.
-    ## Prerequisites (see docs/sidb/PREREQUISITES.md):
-    ## - helper present and executable on the primary (extension image prebakes
-    ##   /home/oracle/configure-primary-truecache-service.sh)
-    ## - externaljob.ora runs as oracle:oinstall (not nobody:nobody)
-    ## - DBMS_SCHEDULER smoke test passes
-    ## On RAC, install the helper at the same path on every node.
-    ## True Cache database readiness does not by itself confirm that primary-side
-    ## service association succeeded; verify TRUE_CACHE_SERVICE on the primary.
+    ## Quick Start / in-cluster OCR enterprise_ru: leave true and apply this YAML.
+    ## The helper is prebaked in the image; it creates/starts the primary PDB
+    ## service if needed and associates it with True Cache. No manual
+    ## DBMS_SERVICE.CREATE_SERVICE before apply.
+    ## External / non-OCR / auto=false: see docs/sidb/prerequisites/PREREQUISITES.md
+    ## (#automatic-path-autotcserviceregistration-true, #true-cache-helper-install).
+    ## After Healthy, verify TRUE_CACHE_SERVICE on the primary.
     autoTCServiceRegistration: true
     # primarySchedulerCredentialName: TC_ORACLE_OS_CRED
     trueCacheServices:
@@ -92,27 +89,29 @@ spec:
 
   ## Database image details
   image:
-    ## Oracle True Cache requires a True Cache capable image.
-    ## Replace <tenancy> / tag for your registry.
-    pullFrom: dbocir/oracle/database:truecache-23.26.0-ee
+    ## Oracle True Cache requires a True Cache capable enterprise image.
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    ## OCR database/enterprise_ru requires authenticated pull (accept OCR
+    ## terms + auth token). Create ocr-reg-cred in this namespace.
+    ## Anonymous pull of this licensed image is not supported.
+    pullSecrets: ocr-reg-cred
     prebuiltDB: false
     imagePullPolicy: Always
 
-  ## Optional init parameters (tune for lab or production)
-  initParams:
-    sgaTarget: 2048
-    pgaAggregateTarget: 1024
-    cpuCount: 2
-    processes: 600
-
-  ## Database pod resource details
-  resources:
-    requests:
-      memory: "12Gi"
-      cpu: "2"
-    limits:
-      memory: "24Gi"
-      cpu: "4"
+  ## Optional: SIDB initParams and pod resources (not True Cache-specific).
+  ## Uncomment and tune for lab or production. Omit both to use image/operator defaults.
+  # initParams:
+  #   sgaTarget: 3072
+  #   pgaAggregateTarget: 1024
+  #   cpuCount: 2
+  #   processes: 600
+  # resources:
+  #   requests:
+  #     memory: "12Gi"
+  #     cpu: "2"
+  #   limits:
+  #     memory: "24Gi"
+  #     cpu: "4"
 
   ## Optional node selector to restrict the database pod to nodes having specific labels.
   ## For a single exact node, kubernetes.io/hostname can be used.

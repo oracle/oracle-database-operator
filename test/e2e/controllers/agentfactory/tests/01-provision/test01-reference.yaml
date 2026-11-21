@@ -1,0 +1,238 @@
+apiVersion: privateai.oracle.com/v4
+kind: AgentFactory
+metadata:
+  name: agentfactory-sample
+  namespace: paf-ns
+spec:
+  runtime:
+    image:
+      # Required. Use the approved Agent Factory image for your environment.
+      name: container-registry.oracle.com/database/applied-ai:latest
+      pullPolicy: Always
+      # Optional. Required only when the image registry is private.
+      # pullSecret: oracle-container-registry-secret
+    replicas: 1
+    # Optional per-pod resources.
+    # resources:
+    #   requests:
+    #     cpu: "2"
+    #     memory: 8Gi
+    #   limits:
+    #     cpu: "4"
+    #     memory: 16Gi
+    # Optional non-secret environment variables.
+    # env:
+    # - name: EXAMPLE_SETTING
+    #   value: example-value
+    # Optional eligible worker node names. All names become required node
+    # affinity values and replicas are spread across matching hostnames on a
+    # best-effort basis.
+    # workerNodes:
+    # - worker-node-1
+    # Optional user annotations for the Deployment and Pod.
+    # annotations:
+    #   workload:
+    #     example.com/workload: agentfactory
+    #   pod:
+    #     example.com/pod-purpose: agentfactory
+
+  configuration:
+    # Defaults to prod. Image-based Agent Factory deployments support prod.
+    mode: prod
+    # Defaults to true and must remain true for image-based deployments.
+    silentInstall: true
+    uiAdminUsername: admin@example.com
+    # Defaults to 0.0.0.0.
+    bindHost: 0.0.0.0
+    # Optional certificate identity values.
+    # certFqdn: agentfactory.example.com
+    # certIpAddress: 192.0.2.10
+    # Defaults to false.
+    enableSwagger: false
+    # Optional runtime timeout overrides. Defaults are 5, 600, 1800, and 600
+    # seconds for state polling, API readiness, installation, and readiness.
+    # statePollIntervalSeconds: 5
+    # apiReadyTimeoutSeconds: 600
+    # installTimeoutSeconds: 1800
+    # readyTimeoutSeconds: 600
+    # Optional proxy settings. When a proxy is used, noProxy must include
+    # localhost, 127.0.0.1, and ::1.
+    # httpProxy: http://proxy.example.com:8080
+    # httpsProxy: https://proxy.example.com:8443
+    # noProxy: localhost,127.0.0.1,::1,.svc,.cluster.local
+    # Optional Nginx bind host.
+    # nginxBindHost: 0.0.0.0
+
+    # Optional LLM configuration. Configure one provider only and provide the
+    # referenced credential files through the runtime Secret.
+    # llm:
+    #   provider: oci
+    #   name: llm_model_entry
+    #   oci:
+    #     modelId: <model-ocid-or-id>
+    #     serviceEndpoint: https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com
+    #     compartmentId: <compartment-ocid>
+    #     userOcid: <user-ocid>
+    #     fingerprintFile: agent_factory_llm_oci_fingerprint
+    #     tenancyOcid: <tenancy-ocid>
+    #     region: us-ashburn-1
+    #     privateKeyFile: agent_factory_llm_oci_private_key.pem
+    #   vllm:
+    #     modelId: <model-id>
+    #     host: vllm.example.com
+    #     port: 8000
+    #     apiKeyFile: agent_factory_llm_vllm_api_key
+    #   openAI:
+    #     modelId: <model-id>
+    #     apiKeyFile: agent_factory_llm_openai_api_key
+    #   openAICompatible:
+    #     modelId: <model-id>
+    #     baseUrl: https://llm.example.com/v1
+    #     apiKeyFile: agent_factory_llm_openai_compatible_api_key
+    #   privateAiServices:
+    #     modelId: <model-id>
+    #     baseUrl: http://private-ai.pai-ns.svc.cluster.local:8080
+    #     apiKeyFile: agent_factory_llm_privateai_api_key
+    #   ollama:
+    #     modelId: <model-id>
+    #     host: ollama.example.com
+    #     port: 11434
+    #   google:
+    #     modelId: <model-id>
+    #     credentialsType: service-account
+    #     apiKeyFile: agent_factory_llm_google_api_key
+    #     region: us-central1
+    #     serviceAccountFile: agent_factory_llm_google_service_account.json
+
+  database:
+    connectionType: Details
+    # The documented runtime schema user. Bootstrap creates this user and its
+    # AAI_RO_paf_user companion when enabled.
+    username: paf_user
+    details:
+      protocol: TCP
+      host: sidb-e2e-primary.sidb-ns.svc.cluster.local
+      port: 1521
+      serviceName: ORCLPDB1
+    airGapped: false
+    bootstrap:
+      enabled: true
+      adminCredentials:
+        secretName: paf-db-bootstrap-admin
+        usernameKey: sys
+        passwordKey: password
+        # Use NORMAL for a dedicated provisioning user. Use SYSDBA only when
+        # the Secret username is SYS, as in the automated E2E test.
+        privilege: NORMAL
+      # DeleteOnSuccess is recommended for temporary administrator credentials.
+      cleanupPolicy: DeleteOnSuccess
+      # Optional. Defaults to the runtime image and must contain
+      # /usr/local/bin/paf-db-setup.
+      # image: <image-containing-paf-db-setup>
+    # Wallet mode is mutually exclusive with Details mode. Use this instead
+    # of details when connecting through an Oracle wallet.
+    # connectionType: Wallet
+    # wallet:
+    #   selectedTnsAlias: ORCLPDB1
+    #   hasOciCertificates: false
+
+  security:
+    secret:
+      name: agentfactory-runtime-secret
+      # Defaults to /run/secrets.
+      mountLocation: /run/secrets
+      uiAdminPasswordKey: paf_ui_admin_password
+      dbPasswordKey: paf_db_password
+      # Required only for Wallet mode.
+      # walletZipKey: db_wallet.zip
+    # Optional outbound CA bundle for HTTPS LLM, embedding, REST, or MCP
+    # endpoints. Store only CA certificates in this Secret, never a private
+    # key. The bundle may contain multiple PEM certificates.
+    # outboundTLS:
+    #   caBundle:
+    #     secretName: agentfactory-outbound-ca
+    #     key: ca.crt
+
+  storage:
+    volumes:
+    - name: app-mount
+      mountPath: /mount
+      # Choose exactly one volume source. /mount must be persistent; do not
+      # use emptyDir for Agent Factory application data.
+      source:
+        pvc:
+          storageClass: oci-bv
+          size: 100Gi
+          accessModes:
+          - ReadWriteOnce
+          deletePvcOnDelete: false
+      # Existing PVC alternative:
+      # source:
+      #   existingPVC:
+      #     claimName: agentfactory-shared-mount
+      # VolumeClaimTemplate is not supported by the AgentFactory Deployment
+      # controller; use pvc or existingPVC instead.
+      # source:
+      #   volumeClaimTemplate:
+      #     storageClass: oci-bv
+      #     size: 100Gi
+      #     accessModes:
+      #     - ReadWriteOnce
+      #     deletePvcOnDelete: false
+      # EmptyDir is only a schema example and is not suitable for /mount.
+      # source:
+      #   emptyDir:
+      #     sizeLimit: 10Gi
+
+  networking:
+    # Optional listeners. Service ports below control the generated Service
+    # and container ports; omitted ports default to HTTPS 443 -> 8080.
+    # listeners:
+    #   http:
+    #     enabled: true
+    #     port: 8080
+    #   https:
+    #     enabled: false
+    #     port: 8443
+    service:
+      # Defaults to true.
+      cluster:
+        enabled: true
+      # Optional explicit service ports.
+      # ports:
+      # - name: https
+      #   port: 443
+      #   targetPort: 8080
+      #   protocol: TCP
+      # Optional public LoadBalancer.
+      # publicLoadBalancer:
+      #   enabled: false
+      #   ip: <reserved-public-ip>
+      #   externalTrafficPolicy: Cluster
+      #   annotations: {}
+      # Optional private LoadBalancer.
+      # privateLoadBalancer:
+      #   enabled: false
+      #   ip: <reserved-private-ip>
+      #   externalTrafficPolicy: Cluster
+      #   annotations:
+      #     service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+
+  # Optional logging configuration. Disabled by default.
+  # logging:
+  #   enabled: false
+  #   path: /var/log/agentfactory
+  #   sidecar:
+  #     image: <log-forwarder-image>
+  #     configMap: agentfactory-log-config
+
+  # Optional rollout behavior. RollingUpdate defaults to maxSurge 25%,
+  # maxUnavailable 0, and a one-hour termination grace period.
+  # upgrade:
+  #   strategy: RollingUpdate
+  #   rollingUpdate:
+  #     maxSurge: 25%
+  #     maxUnavailable: 0
+  #   terminationGracePeriodSeconds: 3600
+  #   configChangePolicy: Rollout
+  #   secretChangePolicy: Rollout

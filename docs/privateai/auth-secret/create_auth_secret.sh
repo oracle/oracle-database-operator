@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Creates and manages a PrivateAI auth secret.
+Creates and manages a Private AI auth secret.
 
 The secret always supports:
   - api-key

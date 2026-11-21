@@ -33,9 +33,9 @@ For fast provisioning of single-node virtual machine database systems (using Log
 
 # Oracle DB Operator Oracle Base Database Service (OBDS) Controller Deployment
 
-To deploy Oracle Database Operator (`OraOperator`), use the [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
+To deploy Oracle AI Database Operator (`OraOperator`), use the [Oracle AI Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
 
-After the Oracle Database Operator is deployed, you can see the DB operator pods running in the Kubernetes Cluster. As part of the `OraOperator` deployment, the OBDS Controller is deployed as a CRD (Custom Resource Definition). The following screen output is an example of such a deployment:
+After the Oracle AI Database Operator is deployed, you can see the DB operator pods running in the Kubernetes Cluster. As part of the `OraOperator` deployment, the OBDS Controller is deployed as a CRD (Custom Resource Definition). The following screen output is an example of such a deployment:
 ```bash
 kubectl get ns
 kubectl get all -n  oracle-database-operator-system

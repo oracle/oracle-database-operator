@@ -1499,11 +1499,12 @@ func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.Oracle
 		return requeueY, nil
 	}
 
-	_, err = dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, m.Name,
-		ctx, req, true, "bash", "-c",
-		fmt.Sprintf("mkdir -p /opt/oracle/variables && echo %[1]s > /opt/oracle/variables/%[2]s",
-			fmt.Sprintf(dbcommons.DbConnectString, adminPassword, n.Name, n.Status.Pdbname),
-			"conn_string.txt"))
+	connectionStringCommand := fmt.Sprintf("IFS= read -r admin_password && mkdir -p /opt/oracle/variables && umask 177 && printf 'CONN_STRING=sys/%%s@%s:1521/%s\\n' \"$admin_password\" > /opt/oracle/variables/conn_string.txt && umask 022",
+		dbcommons.ShellQuote(n.Name), dbcommons.ShellQuote(n.Status.Pdbname))
+	_, err = dbcommons.ExecCommandWithInput(r, r.Config, pod.Name, pod.Namespace, m.Name,
+		ctx, req, true,
+		adminPassword+"\n",
+		"bash", "-c", connectionStringCommand)
 
 	if err != nil {
 		r.Log.Error(err, err.Error())
@@ -1775,8 +1776,9 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 				eventMsg := "Uninstalling Apex..."
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, "%s", eventMsg)
 				log.Info(eventMsg)
-				out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
-					fmt.Sprintf(dbcommons.UninstallApex, adminPassword, n.Status.Pdbname))
+				apexUninstallCommand := fmt.Sprintf("cd ${APEX_HOME}/${APEX_VER} && IFS= read -r admin_password && printf 'connect sys/\"%%s\"@${ORACLE_HOST}:${ORACLE_PORT}/%s as sysdba\\n@apxremov.sql\\nexit;\\n' \"$admin_password\" | sql -s /nolog", dbcommons.ShellQuote(n.Status.Pdbname))
+				out, err = dbcommons.ExecCommandWithInput(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true,
+					adminPassword+"\n", "bash", "-c", apexUninstallCommand)
 				if err != nil {
 					log.Info(err.Error())
 				}
@@ -1788,9 +1790,14 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 			eventMsg := "Uninstalling ORDS..."
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, "%s", eventMsg)
 			log.Info(eventMsg)
-			uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
-			out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
-				uninstallORDS)
+			ordsCredential := fmt.Sprintf("1\n${ORACLE_HOST}\n${ORACLE_PORT}\n1\n${ORACLE_SERVICE}\nsys\n%s\n%s\n1\n", adminPassword, adminPassword)
+			if _, err = dbcommons.ExecCommandWithInput(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true,
+				ordsCredential, "bash", "-c", "umask 177 && cat > ords.cred && umask 022"); err != nil {
+				log.Info(err.Error())
+			} else {
+				out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
+					dbcommons.UninstallORDSCMDNoPassword)
+			}
 			log.Info("ORDS uninstall output: " + out)
 			if strings.Contains(strings.ToUpper(out), "ERROR") {
 				return errors.New(out)
@@ -1879,8 +1886,9 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	}
 
 	// Checking if Apex is installed successfully or not
-	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf(dbcommons.IsApexInstalled, sidbPassword, n.Status.Pdbname))
+	apexStatusCommand := fmt.Sprintf(`IFS= read -r admin_password && printf "connect sys/\"%%s\"@%%s:%%s/%s as sysdba\nselect 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';\nexit;\n" "$admin_password" "$ORACLE_HOST" "$ORACLE_PORT" | sql -s /nolog`, dbcommons.ShellQuote(n.Status.Pdbname))
+	out, err := dbcommons.ExecCommandWithInput(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true,
+		sidbPassword+"\n", "bash", "-c", apexStatusCommand)
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY

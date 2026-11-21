@@ -1,9 +1,9 @@
 {
   "models": [
     {
-      "modelname": "<< Replace with model name>>",
-      "modelfile": "<<MODEL FILE URL. For e.g. Object Storage Pre-authenticated URL for the model file.>>",
-      "modelfunction": "EMBEDDING",
+      "name": "<< Replace with model name>>",
+      "path":"<<MODEL FILE URL. For e.g. Object Storage Pre-authenticated URL for the model file.>>",
+      "function":["EMBEDDING"],
       "cache_on_startup": true
     }
   ]

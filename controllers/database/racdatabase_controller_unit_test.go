@@ -3,6 +3,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -581,6 +582,116 @@ func TestDeleteRACInstKeepsClusterSoftwarePVCWhenRequested(t *testing.T) {
 	found := &corev1.PersistentVolumeClaim{}
 	if err := r.Client.Get(context.Background(), types.NamespacedName{Name: swPVC.Name, Namespace: swPVC.Namespace}, found); err != nil {
 		t.Fatalf("expected software PVC to be retained, got err=%v", err)
+	}
+}
+
+func TestExpandRACSoftwarePVCsExpandsAllExistingNodes(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	if err := storagev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add storage scheme: %v", err)
+	}
+
+	allowExpansion := true
+	storageClass := &storagev1.StorageClass{
+		ObjectMeta:           metav1.ObjectMeta{Name: "rook-ceph-block"},
+		AllowVolumeExpansion: &allowExpansion,
+	}
+	oldSpec := &racdb.RacDatabaseSpec{
+		SwStorageClass:       "rook-ceph-block",
+		SwLocStorageSizeInGb: 60,
+		ClusterDetails:       &racdb.RacClusterDetailSpec{NodeCount: 2, RacNodeName: "racnode"},
+	}
+	instance := &racdb.RacDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "racdb", Namespace: "rac"},
+		Spec: racdb.RacDatabaseSpec{
+			SwStorageClass:       "rook-ceph-block",
+			SwLocStorageSizeInGb: 90,
+			ClusterDetails:       &racdb.RacClusterDetailSpec{NodeCount: 2, RacNodeName: "racnode"},
+		},
+	}
+
+	var pvcs []corev1.PersistentVolumeClaim
+	for index := 1; index <= 2; index++ {
+		pvcName := fmt.Sprintf("racnode%d-oradata-sw-pvc-racnode%d-0", index, index)
+		storageClassName := "rook-ceph-block"
+		pvcs = append(pvcs, corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: pvcName, Namespace: "rac"},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				StorageClassName: &storageClassName,
+				Resources: corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("60Gi"),
+				}},
+			},
+		})
+	}
+
+	objects := []runtime.Object{storageClass}
+	for index := range pvcs {
+		objects = append(objects, &pvcs[index])
+	}
+	r := &RacDatabaseReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...).Build()}
+	if err := r.expandRACSoftwarePVCs(context.Background(), instance, oldSpec); err != nil {
+		t.Fatalf("expandRACSoftwarePVCs returned error: %v", err)
+	}
+
+	for index := 1; index <= 2; index++ {
+		pvcName := fmt.Sprintf("racnode%d-oradata-sw-pvc-racnode%d-0", index, index)
+		found := &corev1.PersistentVolumeClaim{}
+		if err := r.Get(context.Background(), types.NamespacedName{Name: pvcName, Namespace: "rac"}, found); err != nil {
+			t.Fatalf("failed to get expanded PVC %s: %v", pvcName, err)
+		}
+		if got := found.Spec.Resources.Requests[corev1.ResourceStorage]; got.Cmp(resource.MustParse("90Gi")) != 0 {
+			t.Fatalf("PVC %s size=%s, want 90Gi", pvcName, got.String())
+		}
+	}
+}
+
+func TestExpandRACSoftwarePVCsDoesNotTouchNonStorageClassSoftware(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	instance := &racdb.RacDatabase{
+		Spec: racdb.RacDatabaseSpec{
+			SwLocStorageSizeInGb: 90,
+			ClusterDetails:       &racdb.RacClusterDetailSpec{NodeCount: 1, RacNodeName: "racnode"},
+		},
+	}
+	oldSpec := &racdb.RacDatabaseSpec{
+		SwLocStorageSizeInGb: 60,
+		ClusterDetails:       &racdb.RacClusterDetailSpec{NodeCount: 1, RacNodeName: "racnode"},
+	}
+	r := &RacDatabaseReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+	if err := r.expandRACSoftwarePVCs(context.Background(), instance, oldSpec); err != nil {
+		t.Fatalf("non-StorageClass software mode returned error: %v", err)
+	}
+}
+
+func TestExpandRACSoftwarePVCsRejectsShrink(t *testing.T) {
+	t.Parallel()
+
+	oldSpec := &racdb.RacDatabaseSpec{
+		SwStorageClass:       "rook-ceph-block",
+		SwLocStorageSizeInGb: 90,
+		ClusterDetails:       &racdb.RacClusterDetailSpec{NodeCount: 1, RacNodeName: "racnode"},
+	}
+	instance := &racdb.RacDatabase{
+		Spec: racdb.RacDatabaseSpec{
+			SwStorageClass:       "rook-ceph-block",
+			SwLocStorageSizeInGb: 60,
+			ClusterDetails:       &racdb.RacClusterDetailSpec{NodeCount: 1, RacNodeName: "racnode"},
+		},
+	}
+	r := &RacDatabaseReconciler{}
+	if err := r.expandRACSoftwarePVCs(context.Background(), instance, oldSpec); err == nil {
+		t.Fatal("expected software PVC shrink to be rejected")
 	}
 }
 

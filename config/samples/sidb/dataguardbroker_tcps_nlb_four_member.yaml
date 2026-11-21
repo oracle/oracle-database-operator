@@ -1,0 +1,50 @@
+# Sanitized four-member TCPS NLB Broker example.
+# Apply in Cluster 2 after all four SIDBs are Healthy and the wallet Secret
+# exists in this namespace. Prefer the repository renderer for live endpoints.
+apiVersion: database.oracle.com/v4
+kind: DataguardBroker
+metadata:
+  name: <broker-name>
+  namespace: <namespace>
+spec:
+  execution:
+    authWallet: {enabled: true}
+    image: <database-image>
+  topology:
+    defaults:
+      adminSecretRef: {secretName: <admin-secret>, secretKey: oracle_pwd}
+      tcps: {clientWalletSecret: <primary-dg-client-wallet-secret>}
+    members:
+      - dbUniqueName: <primary-db-unique-name>
+        name: <primary-database-name>
+        role: PRIMARY
+        tcps: {enabled: true}
+        endpoints:
+          - {name: tcp, host: <primary-nlb-dns>, port: 1521, protocol: TCP, serviceName: <primary-db-unique-name>}
+          - {name: tcps, host: <primary-nlb-dns>, port: 2484, protocol: TCPS, serviceName: <primary-db-unique-name>}
+      - dbUniqueName: <standby1-db-unique-name>
+        name: <standby1-database-name>
+        role: PHYSICAL_STANDBY
+        tcps: {enabled: true}
+        endpoints:
+          - {name: tcp, host: <standby1-nlb-dns>, port: 1521, protocol: TCP, serviceName: <standby1-db-unique-name>}
+          - {name: tcps, host: <standby1-nlb-dns>, port: 2484, protocol: TCPS, serviceName: <standby1-db-unique-name>}
+        localRef: {apiVersion: database.oracle.com/v4, kind: SingleInstanceDatabase, name: <standby1-database-name>, namespace: <namespace>}
+      - dbUniqueName: <standby2-db-unique-name>
+        name: <standby2-database-name>
+        role: PHYSICAL_STANDBY
+        tcps: {enabled: true}
+        endpoints:
+          - {name: tcp, host: <standby2-nlb-dns>, port: 1521, protocol: TCP, serviceName: <standby2-db-unique-name>}
+          - {name: tcps, host: <standby2-nlb-dns>, port: 2484, protocol: TCPS, serviceName: <standby2-db-unique-name>}
+        localRef: {apiVersion: database.oracle.com/v4, kind: SingleInstanceDatabase, name: <standby2-database-name>, namespace: <namespace>}
+      - dbUniqueName: <standby3-db-unique-name>
+        name: <standby3-database-name>
+        role: PHYSICAL_STANDBY
+        tcps: {enabled: true}
+        endpoints:
+          - {name: tcp, host: <standby3-nlb-dns>, port: 1521, protocol: TCP, serviceName: <standby3-db-unique-name>}
+          - {name: tcps, host: <standby3-nlb-dns>, port: 2484, protocol: TCPS, serviceName: <standby3-db-unique-name>}
+        localRef: {apiVersion: database.oracle.com/v4, kind: SingleInstanceDatabase, name: <standby3-database-name>, namespace: <namespace>}
+    sourceKind: SingleInstanceDatabase
+    sourceRef: {apiVersion: database.oracle.com/v4, kind: SingleInstanceDatabase, name: <standby3-database-name>, namespace: <namespace>}

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ol9-sample-pod
+  namespace: paf
+spec:
+  containers:
+    - name: ol9
+      image: container-registry.oracle.com/os/oraclelinux:9
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "Pod started. Listing mounted volume and keeping container alive...";
+          sleep infinity
+      volumeMounts:
+        - name: agentfactory-shared-pv
+          mountPath: /mount
+          readOnly: false
+  volumes:
+    - name: agentfactory-shared-pv
+      persistentVolumeClaim:
+        claimName: agentfactory-shared-mount
+        readOnly: false

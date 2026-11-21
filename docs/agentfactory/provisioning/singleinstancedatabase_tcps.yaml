@@ -1,0 +1,93 @@
+#
+# Copyright (c) 2023, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: sidb
+spec:
+
+  initParams:
+    sgaTarget: 16384
+    pgaAggregateTarget: 4096
+  resources:
+    limits:
+      memory: 30Gi
+
+  ## Use only alphanumeric characters for sid
+  sid: PRODCDB
+
+  ## DB edition.
+  edition: enterprise
+
+  ## Grouped security settings.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-sample-tcps-tls
+
+  ## DB character set
+  charset: AL32UTF8
+
+  ## PDB name
+  pdbName: prodpdb
+
+  ## Enable/Disable Flashback
+  flashBack: true
+
+  ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
+  archiveLog: true
+
+  ## Enable/Disable ForceLogging
+  forceLog: true
+
+  ## Optional True Cache blob preparation for a primary database.
+  ## generateBlob ensures the in-pod blob file exists.
+  ## createConfigMap publishes that blob for truecache consumers.
+  ## The legacy generateEnabled=true still enables both behaviors.
+  ## Blob generation requires edition=enterprise and archiveLog=true.
+  ## The generated ConfigMap name defaults to <database-name>-truecache-blob.
+  # trueCache:
+  #   generateBlob: true
+  #   createConfigMap: true
+  #   generateEnabled: true
+  #   generatePath: /tmp/tc_config_blob.tar.gz
+
+  ## Database image details
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    #    pullSecrets: oracle-container-registry-secret
+
+  ## size is the required minimum size of the persistent volume
+  ## storageClass is specified for automatic volume provisioning
+  ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  persistence:
+    oradata:
+      size: 100Gi
+      # oci-bv applies to OCI block volumes.
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+
+  ## Optional service endpoint configuration.
+  ## Enable tcps because spec.security.tcps.enabled is true.
+#  services:
+#    endpoints:
+#      - name: nodeport
+#        type: NodePort
+#        tcp:
+#          enabled: true
+#        tcps:
+#          enabled: true
+
+  replicas: 1

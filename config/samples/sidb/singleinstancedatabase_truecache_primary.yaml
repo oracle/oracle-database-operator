@@ -1,0 +1,84 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+# Same-cluster True Cache primary (TCP) — same Kubernetes cluster and namespace
+# as singleinstancedatabase_truecache.yaml (which uses primarySource.databaseRef).
+#
+# Publishes ConfigMap <name>-truecache-blob via trueCache.generateBlob /
+# createConfigMap. Apply this first, then the True Cache SIDB.
+#
+# Services: same-cluster TCP does not need a LoadBalancer or NodePort. The
+# operator's default ClusterIP listener Services are enough for in-cluster
+# True Cache. Prefer spec.services.endpoints (below, commented). Do not use
+# deprecated spec.services.external.
+#
+# Cross-cluster / external True Cache: use
+# singleinstancedatabase_truecache_primary_tcp_peered.yaml (or *_tcps_peered)
+# with LoadBalancer/NodePort so the remote cluster can reach connectString.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: default
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  edition: enterprise
+  createAs: primary
+  archiveLog: true
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    ## OCR database/enterprise_ru requires authenticated pull (accept OCR
+    ## terms + auth token). Create ocr-reg-cred in this namespace.
+    ## Anonymous pull of this licensed image is not supported.
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: Always
+  trueCache:
+    generateBlob: true
+    createConfigMap: true
+    generatePath: /tmp/tc_config_blob.tar.gz
+  ## Optional: explicit ClusterIP endpoint (same-cluster only). Omit this block
+  ## to rely on the operator default ClusterIP Services. For cross-cluster,
+  ## switch to LoadBalancer/NodePort in the *_peered primary samples instead.
+  # services:
+  #   endpoints:
+  #     - name: listener
+  #       type: ClusterIP
+  #       tcp:
+  #         enabled: true
+  #         port: 1521
+  ## Optional: SIDB initParams and pod resources (not True Cache-specific).
+  ## Uncomment and tune for lab or production. Omit both to use image/operator defaults.
+  # initParams:
+  #   sgaTarget: 3072
+  #   pgaAggregateTarget: 1024
+  #   cpuCount: 2
+  #   processes: 600
+  # resources:
+  #   requests:
+  #     memory: "12Gi"
+  #     cpu: "2"
+  #   limits:
+  #     memory: "24Gi"
+  #     cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    setWritePermissions: true
+  replicas: 1

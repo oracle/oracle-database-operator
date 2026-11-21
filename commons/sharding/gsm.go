@@ -266,7 +266,7 @@ func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex 
 			RunAsNonRoot:             BoolPointer(true),
 			RunAsUser:                &user,
 			RunAsGroup:               &group,
-			AllowPrivilegeEscalation: BoolPointer(false),
+			AllowPrivilegeEscalation: boolPointerOrDefault(OraGsmSpex.AllowPrivilegeEscalation, false),
 			Capabilities: mergeCapabilitiesWithDefaults(&corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_RAW"},
 				Drop: []corev1.Capability{"ALL"},
@@ -312,7 +312,6 @@ func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex 
 func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
-	privFlag := true
 	// var uid int64 = 0
 	uid := oraRunAsUser
 	var scriptLoc string
@@ -326,9 +325,9 @@ func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmS
 		Name:  OraGsmSpex.Name + "-init1",
 		Image: instance.Spec.GsmImage,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             BoolPointer(false),
-			AllowPrivilegeEscalation: BoolPointer(true),
-			Privileged:               &privFlag,
+			RunAsNonRoot:             BoolPointer(true),
+			AllowPrivilegeEscalation: BoolPointer(false),
+			Privileged:               BoolPointer(false),
 			RunAsUser:                &uid,
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},

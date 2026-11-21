@@ -44,9 +44,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// DataguardProducerMode controls how producer-side Data Guard prerequisites are managed.
 type DataguardProducerMode string
 
 const (
+	// DataguardProducerModeDisabled disables producer-side Data Guard management.
 	DataguardProducerModeDisabled DataguardProducerMode = "Disabled"
 	DataguardProducerModePreview  DataguardProducerMode = "Preview"
 	DataguardProducerModeManaged  DataguardProducerMode = "Managed"
@@ -78,6 +80,9 @@ type DataguardStandbySourceSpec struct {
 	Host         string `json:"host,omitempty"`
 	TCPSEnabled  bool   `json:"tcpsEnabled,omitempty"`
 	TCPPort      int    `json:"tcpPort,omitempty"`
+	// TCPSPort is the externally reachable TCPS port for the standby. When
+	// omitted, the database container TCPS port is used for in-cluster routes.
+	TCPSPort int `json:"tcpsPort,omitempty"`
 }
 
 // DataguardProducerSpec configures how a producer exposes or manages DG topology.
@@ -96,6 +101,7 @@ func normalizeDataguardProducerMode(spec *DataguardProducerSpec) DataguardProduc
 	return EffectiveDataguardProducerMode(spec)
 }
 
+// EffectiveDataguardProducerMode returns the effective producer mode.
 func EffectiveDataguardProducerMode(spec *DataguardProducerSpec) DataguardProducerMode {
 	if spec == nil || strings.TrimSpace(string(spec.Mode)) == "" {
 		return DataguardProducerModePreview
@@ -103,10 +109,12 @@ func EffectiveDataguardProducerMode(spec *DataguardProducerSpec) DataguardProduc
 	return DataguardProducerMode(strings.TrimSpace(string(spec.Mode)))
 }
 
+// DataguardProducerPrereqsEnabled reports whether producer prerequisites are enabled.
 func DataguardProducerPrereqsEnabled(spec *DataguardProducerSpec) bool {
 	return spec != nil && spec.Prereqs != nil && spec.Prereqs.Enabled
 }
 
+// DataguardProducerBrokerConfigDir returns the configured broker directory.
 func DataguardProducerBrokerConfigDir(spec *DataguardProducerSpec) string {
 	if spec == nil || spec.Prereqs == nil {
 		return ""
@@ -114,6 +122,7 @@ func DataguardProducerBrokerConfigDir(spec *DataguardProducerSpec) string {
 	return strings.TrimSpace(spec.Prereqs.BrokerConfigDir)
 }
 
+// DataguardProducerStandbyRedoSize returns the configured standby redo size.
 func DataguardProducerStandbyRedoSize(spec *DataguardProducerSpec) string {
 	if spec == nil || spec.Prereqs == nil {
 		return ""
@@ -133,7 +142,7 @@ type DataguardSourceRef struct {
 type DataguardPolicySpec struct {
 	ProtectionMode    string `json:"protectionMode,omitempty"`
 	TransportMode     string `json:"transportMode,omitempty"`
-	FastStartFailover bool   `json:"fastStartFailover,omitempty"`
+	FastStartFailover *bool  `json:"fastStartFailover,omitempty"`
 }
 
 // DataguardLocalRef points to an in-cluster database resource backing a DG member.

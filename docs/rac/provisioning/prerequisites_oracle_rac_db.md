@@ -68,7 +68,7 @@ If you are using a Kubernetes Cluster Deployed on an Oracle Cloud Native Environ
         * Set up SELinux Module on Worker Nodes 
         * Using CVU to Validate Readiness for Worker Node 
 
-To use Oracle RAC Database Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Release Status Section](../../../README.md#release-status).
+To use Oracle RAC Database Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Oracle Database Operator releases](https://github.com/oracle/oracle-database-operator/releases).
 
 ### Preparing to Install Oracle RAC on OCNE
 

@@ -1,0 +1,12 @@
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: fss-dyn-storage
+provisioner: fss.csi.oraclecloud.com
+parameters:
+  availabilityDomain: <availability domain>
+  mountTargetOcid: ocid1.mounttarget.oc1..<REPLACE_WITH_MOUNTTARGET_OCID>
+  # Optional export path for the dynamically created export.
+  # The path must begin with "/" and be unique within the mount target.
+  # exportPath: /stage
+volumeBindingMode: Immediate

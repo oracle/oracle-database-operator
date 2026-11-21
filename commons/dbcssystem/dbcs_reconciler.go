@@ -1385,7 +1385,7 @@ func mergeInstancesFromLatest(instance, latestInstance *databasev4.DbcsSystem) e
 		}
 
 		// Handle pointer fields
-		if latestField.Kind() == reflect.Ptr {
+		if latestField.Kind() == reflect.Pointer {
 			if !latestField.IsNil() && instanceField.IsNil() {
 				// If instance's field is nil and latest's field is not nil, set the latest's field value
 				instanceField.Set(latestField)
@@ -1421,7 +1421,7 @@ func mergeStructFields(instanceField, latestField reflect.Value) {
 			continue
 		}
 
-		if latestSubField.Kind() == reflect.Ptr {
+		if latestSubField.Kind() == reflect.Pointer {
 			if !latestSubField.IsNil() && instanceSubField.IsNil() {
 				instanceSubField.Set(latestSubField)
 			}

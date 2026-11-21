@@ -8,9 +8,13 @@ These options are useful when you want to:
 * Add ownership or environment metadata for cost management and operational tracking
 * Influence dynamic worker node allocation by defining CPU and memory requests and limits that the Kubernetes scheduler can use
 
-Before testing this example, please verify the prerequisites: [OrdsSrvs prerequisites](../README.md#prerequisites)
+## Prerequisites
+
+See [OrdsSrvs prerequisites](../README.md#prerequisites).
 
 ## Example Manifest
+
+Save the following manifest as `ordssrvs-metadata.yaml`:
 
 ```yaml
 apiVersion: database.oracle.com/v4
@@ -31,7 +35,7 @@ spec:
       db.customURL: jdbc:oracle:thin:@//CONNECTSTRING
       db.username: ORDS_PUBLIC_USER
       db.secret:
-        secretName: ordssrvs-auth
+        secretName: <secret-name>
         passwordKey: dbAuth
 
   resources:
@@ -42,7 +46,6 @@ spec:
       cpu: "2"
       memory: "1Gi"
 
-  serviceAccountName: ordssrvs-sa
 
   commonMetadata:
     additionalLabels:
@@ -72,6 +75,15 @@ spec:
         exposure: internal
       additionalAnnotations:
         example.com/dns-name: "app.internal.example.com"
+```
+
+Replace `<secret-name>` with an existing Secret in the resource namespace
+containing the ORDS runtime user password under `dbAuth`.
+
+Apply it:
+
+```bash
+kubectl apply -f ordssrvs-metadata.yaml
 ```
 
 ## How Metadata Is Applied
@@ -130,11 +142,6 @@ This ensures the operator keeps control of selector and system identity labels.
 
 The `spec.resources` section uses the standard Kubernetes `ResourceRequirements` structure.
 
-These resource settings are applied to both:
-
-* the ORDS init container
-* the main ORDS container
-
 Example:
 
 ```yaml
@@ -146,6 +153,11 @@ resources:
     cpu: "2"
     memory: "1Gi"
 ```
+
+These resource settings are applied to both:
+
+* the ORDS init container
+* the main ORDS container
 
 This is useful when you want to:
 

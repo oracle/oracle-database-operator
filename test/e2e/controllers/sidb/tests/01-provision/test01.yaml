@@ -1,0 +1,40 @@
+# Parameterized template for SIDB test 01.
+# prerequisites.sh renders this file using SIDB_IMAGE and SIDB_STORAGE_CLASS.
+# SIDB_TEST_SID, SIDB_STORAGE_CLASS, and the other SIDB_* variables.
+# The namespace is intentionally omitted; the runner applies it with -n.
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: "sidb-e2e-primary"
+  labels:
+    e2e.oracle.com/owner: "operator-e2e"
+    e2e.oracle.com/controller: "sidb"
+    e2e.oracle.com/test-id: "test01"
+    e2e.oracle.com/pipeline: "__SIDB_CASE_PIPELINE__"
+spec:
+  sid: "ORCL1"
+  createAs: primary
+  edition: "enterprise"
+  charset: "AL32UTF8"
+  pdbName: "ORCLPDB1"
+  pdbParameters:
+  - pdbName: "ORCLPDB1"
+    name: "MAX_STRING_SIZE"
+    value: "EXTENDED"
+  archiveLog: true
+  security:
+    secrets:
+      admin:
+        secretName: "sidb-e2e-admin"
+        secretKey: "oracle_pwd"
+        keepSecret: true
+  image:
+    pullFrom: "__SIDB_IMAGE__"
+    pullSecrets: "__SIDB_PULL_SECRET__"
+    imagePullPolicy: "__SIDB_IMAGE_PULL_POLICY__"
+  persistence:
+    oradata:
+      size: "100Gi"
+      storageClass: "__SIDB_STORAGE_CLASS__"
+      accessMode: "ReadWriteOnce"
+  replicas: 1

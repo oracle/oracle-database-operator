@@ -305,6 +305,8 @@ type ShardSpec struct {
 	ExternalServiceAnnotations map[string]string          `json:"externalServiceAnnotations,omitempty"`
 	SecurityContext            *corev1.PodSecurityContext `json:"securityContext,omitempty"`
 	Capabilities               *corev1.Capabilities       `json:"capabilities,omitempty"`
+	// +kubebuilder:default:=false
+	AllowPrivilegeEscalation *bool `json:"allowPrivilegeEscalation,omitempty"`
 	// Extra shard fields for GDD-style sharding
 	PdbPreFix            string         `json:"pdbPreFix,omitempty"`
 	ReadinessCheckPeriod int            `json:"readinessCheckPeriod,omitempty"`
@@ -324,10 +326,11 @@ type CatalogSpec struct {
 	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         // Optional env variables
 	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirements
 	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
-	PvcName      string            `json:"pvcName,omitempty"`      // Optional PVC name
-	Label        string            `json:"label,omitempty"`        // Optional label
-	IsDelete     string            `json:"isDelete,omitempty"`     // Deletion flag
-	NodeSelector map[string]string `json:"nodeSelector,omitempty"` // Node selector for scheduling
+	PvcName       string            `json:"pvcName,omitempty"`       // Optional PVC name
+	Label         string            `json:"label,omitempty"`         // Optional label
+	IsDelete      string            `json:"isDelete,omitempty"`      // Deletion flag
+	NodeSelector  map[string]string `json:"nodeSelector,omitempty"`  // Node selector for scheduling
+	StorageSource *StorageSource    `json:"storageSource,omitempty"` // Optional source for the primary catalog volume
 	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
 	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"` // Annotations for PV
 	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
@@ -378,6 +381,8 @@ type CatalogSpec struct {
 	ExternalServiceAnnotations map[string]string          `json:"externalServiceAnnotations,omitempty"`
 	SecurityContext            *corev1.PodSecurityContext `json:"securityContext,omitempty"`
 	Capabilities               *corev1.Capabilities       `json:"capabilities,omitempty"`
+	// +kubebuilder:default:=false
+	AllowPrivilegeEscalation *bool `json:"allowPrivilegeEscalation,omitempty"`
 }
 
 // GsmSpec defines the desired state of GSM (ADD GSM + deployment info).
@@ -430,6 +435,8 @@ type GsmSpec struct {
 	ExternalServiceAnnotations map[string]string          `json:"externalServiceAnnotations,omitempty"`
 	SecurityContext            *corev1.PodSecurityContext `json:"securityContext,omitempty"`
 	Capabilities               *corev1.Capabilities       `json:"capabilities,omitempty"`
+	// +kubebuilder:default:=false
+	AllowPrivilegeEscalation *bool `json:"allowPrivilegeEscalation,omitempty"`
 }
 
 // GsmInfo wraps common GSM defaults and itemized GSM entries.

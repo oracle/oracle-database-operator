@@ -7,11 +7,12 @@ Generate namespace-scoped Oracle Database Operator install manifests.
 
 Usage:
   scripts/generate-namespace-install.sh <watch-namespace[,watch-namespace...]>
-  scripts/generate-namespace-install.sh --watch-namespaces <list> [--operator-namespace <namespace>] [--output-dir <dir>]
+  scripts/generate-namespace-install.sh --watch-namespaces <list> [--operator-namespace <namespace>] [--output-dir <dir>] [--source-system <path>] [--source-rbac <path>]
 
 Examples:
   scripts/generate-namespace-install.sh oracle-database-operator-system,shns
   scripts/generate-namespace-install.sh --watch-namespaces default,pdbnamespace,cdbnamespace --output-dir dist/install
+  scripts/generate-namespace-install.sh --watch-namespaces default,pdbnamespace --source-system system.yaml --source-rbac rbac.yaml
 
 The script writes:
   dist/install/oracle-database-operator-rbac.yaml
@@ -29,6 +30,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 watch_namespaces=""
 operator_namespace="oracle-database-operator-system"
 output_dir="${repo_root}/dist/install"
+source_system=""
+source_rbac=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,6 +48,16 @@ while [[ $# -gt 0 ]]; do
     --output-dir)
       [[ $# -ge 2 ]] || { echo "ERROR: --output-dir requires a value" >&2; exit 1; }
       output_dir="$2"
+      shift 2
+      ;;
+    --source-system)
+      [[ $# -ge 2 ]] || { echo "ERROR: --source-system requires a value" >&2; exit 1; }
+      source_system="$2"
+      shift 2
+      ;;
+    --source-rbac)
+      [[ $# -ge 2 ]] || { echo "ERROR: --source-rbac requires a value" >&2; exit 1; }
+      source_rbac="$2"
       shift 2
       ;;
     -h|--help)
@@ -103,8 +116,8 @@ done
 
 watch_csv="$(IFS=','; echo "${namespaces[*]}")"
 
-source_system="${repo_root}/oracle-database-operator-system.yaml"
-source_rbac="${repo_root}/oracle-database-operator-rbac.yaml"
+source_system="${source_system:-${repo_root}/oracle-database-operator-system.yaml}"
+source_rbac="${source_rbac:-${repo_root}/oracle-database-operator-rbac.yaml}"
 
 [[ -f "${source_system}" ]] || { echo "ERROR: Missing ${source_system}" >&2; exit 1; }
 [[ -f "${source_rbac}" ]] || { echo "ERROR: Missing ${source_rbac}" >&2; exit 1; }

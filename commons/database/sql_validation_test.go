@@ -16,6 +16,16 @@ func TestValidateAdminPasswordUsesExplicitSID(t *testing.T) {
 	}
 }
 
+func TestValidateAdminPasswordWithoutPasswordExcludesSecret(t *testing.T) {
+	script := fmt.Sprintf(ValidateAdminPasswordWithoutPassword, "ORCL1")
+	if strings.Contains(script, "Secret123!") || strings.Contains(script, "sys/\"") {
+		t.Fatalf("password-free validation script contains a password: %q", script)
+	}
+	if !strings.Contains(script, "conn sys@ORCL1 as sysdba") {
+		t.Fatalf("expected explicit SID in password-free validation script, got %q", script)
+	}
+}
+
 func TestValidateOracleSQLPassword(t *testing.T) {
 	t.Parallel()
 

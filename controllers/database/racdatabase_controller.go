@@ -593,6 +593,13 @@ func (r *RacDatabaseReconciler) runRACProvisionPhases(
 	phase = racPhaseStorageSync
 	r.phaseInfo(req, phase, "Entering reconcile phase")
 
+	// Software-home PVC expansion is intentionally independent from ASM disk
+	// change detection and StatefulSet reconciliation. Existing StatefulSet
+	// claim templates cannot resize the PVCs that they already created.
+	if err := r.expandRACSoftwarePVCs(ctx, racDatabase, oldSpec); err != nil {
+		return resultQ, completed, err
+	}
+
 	isNewSetup := true
 	upgradeSetup := false
 
@@ -1414,6 +1421,83 @@ func checkRACStateAndReturn(racDatabase *racdb.RacDatabase) error {
 	case string(racdb.RACManualState):
 		return fmt.Errorf("oracle RAC database is in manual state")
 	}
+	return nil
+}
+
+// expandRACSoftwarePVCs expands existing RAC software-home PVCs when the
+// StorageClass-backed software size is increased. It deliberately operates on
+// only the nodes that existed in the previous spec so a simultaneous scale-out
+// can create new claims from the desired StatefulSet template without being
+// mistaken for a missing existing claim.
+func (r *RacDatabaseReconciler) expandRACSoftwarePVCs(
+	ctx context.Context,
+	instance *racdb.RacDatabase,
+	oldSpec *racdb.RacDatabaseSpec,
+) error {
+	if instance == nil || oldSpec == nil || instance.Spec.ClusterDetails == nil || oldSpec.ClusterDetails == nil {
+		return nil
+	}
+
+	currentMode, currentErr := instance.Spec.ResolveSwStorageMode()
+	oldMode, oldErr := oldSpec.ResolveSwStorageMode()
+	if currentErr != nil || oldErr != nil ||
+		currentMode != racdb.RacSwStorageStorageClass || oldMode != racdb.RacSwStorageStorageClass {
+		return nil
+	}
+
+	oldSize := effectiveRACSoftwarePVCSize(oldSpec)
+	desiredSize := effectiveRACSoftwarePVCSize(&instance.Spec)
+	if desiredSize == oldSize {
+		return nil
+	}
+	if desiredSize < oldSize {
+		return fmt.Errorf("shrinking RAC software PVCs from %dGi to %dGi is not supported", oldSize, desiredSize)
+	}
+
+	nodeCount := oldSpec.ClusterDetails.NodeCount
+	if currentCount := instance.Spec.ClusterDetails.NodeCount; currentCount < nodeCount {
+		nodeCount = currentCount
+	}
+	desiredQuantity := resource.MustParse(fmt.Sprintf("%dGi", desiredSize))
+
+	for index := 0; index < nodeCount; index++ {
+		nodeName := fmt.Sprintf("%s%d", instance.Spec.ClusterDetails.RacNodeName, index+1)
+		pvcName := fmt.Sprintf("%s-%s-0", raccommon.GetClusterSwPvcName(nodeName), nodeName)
+		pvc := &corev1.PersistentVolumeClaim{}
+		if err := r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, pvc); err != nil {
+			return fmt.Errorf("failed to get RAC software PVC %s/%s for expansion: %w", instance.Namespace, pvcName, err)
+		}
+
+		currentQuantity, found := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+		if !found {
+			return fmt.Errorf("RAC software PVC %s has no storage request", pvcName)
+		}
+		if desiredQuantity.Cmp(currentQuantity) <= 0 {
+			continue
+		}
+		if pvc.Spec.StorageClassName == nil || strings.TrimSpace(*pvc.Spec.StorageClassName) == "" {
+			return fmt.Errorf("RAC software PVC %s has no StorageClass and cannot be expanded", pvcName)
+		}
+
+		storageClassName := strings.TrimSpace(*pvc.Spec.StorageClassName)
+		storageClass := &storagev1.StorageClass{}
+		if err := r.Get(ctx, types.NamespacedName{Name: storageClassName}, storageClass); err != nil {
+			return fmt.Errorf("failed to get StorageClass %s for RAC software PVC %s: %w", storageClassName, pvcName, err)
+		}
+		if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
+			if r.Recorder != nil {
+				r.Recorder.Eventf(instance, corev1.EventTypeWarning, "PVC not resizable", "The storage class %s doesn't support volume expansion", storageClassName)
+			}
+			return fmt.Errorf("the storage class %s doesn't support volume expansion for RAC software PVC %s", storageClassName, pvcName)
+		}
+
+		pvc.Spec.Resources.Requests[corev1.ResourceStorage] = desiredQuantity
+		if err := r.Update(ctx, pvc); err != nil {
+			return fmt.Errorf("failed to expand RAC software PVC %s to %s: %w", pvcName, desiredQuantity.String(), err)
+		}
+		r.Log.Info("Expanded RAC software PVC", "pvc", pvcName, "currentSize", currentQuantity.String(), "desiredSize", desiredQuantity.String())
+	}
+
 	return nil
 }
 
@@ -4825,6 +4909,10 @@ func (r *RacDatabaseReconciler) ensureStatefulSetUpdated(ctx context.Context,
 
 // diskGroupExists executes ASM queries against a pod to determine whether a
 // specific disk group is present, aiding add/remove workflows.
+func racShellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
 func (r *RacDatabaseReconciler) diskGroupExists(
 	podName, diskGroupName string,
 	resp *raccommon.ExecCommandResp,
@@ -4833,8 +4921,8 @@ func (r *RacDatabaseReconciler) diskGroupExists(
 ) (bool, error) {
 	_ = logger
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	cmd := fmt.Sprintf("su - grid -c 'asmcmd lsdg | grep -w %s'", diskGroupName)
-	stdout, _, err := raccommon.ExecCommandWithResp(podName, []string{"bash", "-c", cmd}, resp, instance, reqLogger)
+	cmd := []string{"python3", "/opt/scripts/startup/scripts/main.py", "--getasmdiskgroup=true"}
+	stdout, _, err := raccommon.ExecCommandWithResp(podName, cmd, resp, instance, reqLogger)
 	if err != nil {
 		return false, err
 	}
@@ -4889,11 +4977,7 @@ func (r *RacDatabaseReconciler) addDisks(
 
 	// Add all disks ONCE
 	for _, disk := range deviceList {
-		cmd := fmt.Sprintf(
-			"python3 /opt/scripts/startup/scripts/main.py --updateasmdevices=\"diskname=%s;diskgroup=%s;processtype=addition\"",
-			disk,
-			diskGroupName,
-		)
+		cmd := []string{"python3", "/opt/scripts/startup/scripts/main.py", "--updateasmdevices=diskname=" + disk + ";diskgroup=" + diskGroupName + ";processtype=addition"}
 
 		reqLogger.Info("Executing command to add disk",
 			"Pod.Name", podName,
@@ -4902,7 +4986,7 @@ func (r *RacDatabaseReconciler) addDisks(
 		)
 
 		stdout, stderr, err := raccommon.ExecCommandWithResp(
-			podName, []string{"bash", "-c", cmd}, resp, instance, reqLogger,
+			podName, cmd, resp, instance, reqLogger,
 		)
 		if err != nil {
 			// tolerate "already added"

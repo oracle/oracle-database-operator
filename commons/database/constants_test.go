@@ -32,3 +32,22 @@ func TestGetORDSStatusUsesUnmappedLandingEndpoint(t *testing.T) {
 		}
 	}
 }
+
+func TestStandbyFlashbackSQLControlsErrorsAndRecovery(t *testing.T) {
+	for name, script := range map[string]string{
+		"enable flashback":        FlashBackTrueSQL,
+		"disable flashback":       FlashBackFalseSQL,
+		"cancel managed recovery": CancelManagedRecoverySQL,
+		"start managed recovery":  StartManagedRecoverySQL,
+	} {
+		if !strings.Contains(script, "WHENEVER SQLERROR EXIT SQL.SQLCODE") {
+			t.Errorf("%s script must fail SQLPlus on Oracle errors: %q", name, script)
+		}
+	}
+	if !strings.Contains(CancelManagedRecoverySQL, "DATABASE CANCEL") {
+		t.Errorf("cancel script must stop managed recovery: %q", CancelManagedRecoverySQL)
+	}
+	if !strings.Contains(StartManagedRecoverySQL, "USING CURRENT LOGFILE DISCONNECT FROM SESSION") {
+		t.Errorf("start script must resume managed recovery: %q", StartManagedRecoverySQL)
+	}
+}

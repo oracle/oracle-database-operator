@@ -32,7 +32,7 @@ kubectl create secret generic pdb-password --from-file=./pdb-password -n default
 
 This example uses `createpdb_in_existing_dbcs_system_list.yaml` to scale up a Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with:
 
-- OCID of existing VMDB as `ocid1.dbsystem.oc1.iad.anuwcljsabf7htyag4akvoakzw4qk7cae55qyp7hlffbouozvyl5ngoputza`
+- OCID of existing VMDB as `ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>`
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`
 - TDE Wallet Password as `tde-password`

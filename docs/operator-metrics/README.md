@@ -1,4 +1,4 @@
-# Oracle Database Operator Metrics
+# Oracle AI Database Operator Metrics
 
 This guide explains how to read the metrics exposed by the Oracle Database
 Operator controller manager itself.

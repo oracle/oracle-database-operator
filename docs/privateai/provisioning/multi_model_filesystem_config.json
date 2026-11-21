@@ -4,7 +4,8 @@
       "name": "<<Replace with llm model name>>",
       "path": "<<Path of the llm model file>>",
       "runtime": "vllm",
-      "capabilities": ["TEXT_GENERATION"]
+      "capabilities": ["TEXT_GENERATION"],
+      "kv_cache": 0.6
     },
     {
       "name": "<<Replace with the model name>>",

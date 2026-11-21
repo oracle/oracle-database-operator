@@ -1,35 +1,50 @@
-# Deploy PrivateAI in OKE cluster using Multiple AI Models with HTTPS URL and an Internal LoadBalancer
+# Deploy Private AI in an OKE Cluster with Multiple Models from HTTPS URLs and an Internal Load Balancer
 
-Deploy Oracle PrivateAI Container on your Cloud-based Kubernetes cluster. The PrivateAI Container is deployed using multiple AI Models. HTTPS URLs for those model files are provided using a configmap. In this example, the deployment uses the YAML file based on an `OCI OKE` cluster.
+This example deploys the Oracle Private AI container on an OCI OKE cluster. It configures multiple models using HTTPS URLs specified in a ConfigMap and enables an internal load balancer.
 
-**NOTE:** The option to reserve a Private IP and use that with an OCI Internal LoadBalancer is available from `OCI OKE` cluster with Kubernetes version 1.32 onwards. Please check the [Configuring Load Balancers and Network Load Balancers documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
+**Note:** OKE supports assigning a reserved private IPv4 address to an internal load balancer on clusters running Kubernetes 1.32 or later. The reserved IP address must belong to the subnet used by the load balancer. For details, see [Configuring Load Balancers and Network Load Balancers](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
 
-**IMPORTANT:** Complete [Before You Begin](./README.md#before-you-begin) before using Oracle PrivateAI Controller. Make sure you use the Reserved Private IP Address for the Internal LoadBalancer to the parameter `IP_ADDRESS` while creating the certificate for this `PrivateAi` Deployment. Please refer to the [Adding a Reserved IPv4 Address documentation](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/reserved-ipv4-adding.htm) for the steps to reserve an IP in the subnet you want.
+**Important:** Complete [Before You Begin](./README.md#before-you-begin) before deploying the Private AI resource. Use the reserved private IP address as the `IP_ADDRESS` value when creating the certificate. Ensure that the certificate is valid for the address clients use to connect. For instructions on reserving a private IP address, see [Adding a Reserved IPv4 Address](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/reserved-ipv4-adding.htm).
 
-**NOTE:** Modify the file `pai_sample_multi_model_https_internallb.yaml` with the actual Reserved Private IP before deployment.
+Use [`pai_sample_multi_model_https_internallb.yaml`](./provisioning/pai_sample_multi_model_https_internallb.yaml) for this use case.
 
-Use the file: [pai_sample_multi_model_https_internallb.yaml](./provisioning/pai_sample_multi_model_https_internallb.yaml) for this use case as follows:
+1. Create the ConfigMap by following the [multiple-model HTTPS ConfigMap instructions](./configmap_multi_model_https.md).
 
-1. Confirm that you have created the [configmap](./configmap_multi_model_https.md).
-2. Deploy the `pai_sample_multi_model_https_internallb.yaml` file:
+2. Start with [`pai_sample_multi_model_https_internallb.yaml`](./provisioning/pai_sample_multi_model_https_internallb.yaml).
 
-    ```sh
-    kubectl apply -f pai_sample_multi_model_https_internallb.yaml
-    ```
+3. Replace the reserved private IP placeholder in the manifest. Ensure the certificate SAN contains the same IP address.
 
-3. Check the status of the deployment:
+4. From the repository root, apply the manifest and wait for the Private AI resource to become healthy:
 
-    ```sh
-    # Check the status of the Kubernetes Pods:
-    kubectl get all -n pai
+   ```sh
+   kubectl apply -f docs/privateai/provisioning/pai_sample_multi_model_https_internallb.yaml
+   kubectl wait --for=jsonpath='{.status.status}'=Healthy pai/pai-sample \
+     -n pai --timeout=15m
+   ```
 
-    # Check the logs of a particular pod. For example, to check status of pod "pai-sample-b669d7897-nkkhz":
-    kubectl logs pod/pai-sample-b669d7897-nkkhz -n pai
-    ```
+5. Verify the Private AI resource, load balancer, and Pods:
 
-**NOTE:** The file `/privateai/config/config.json` inside the running Kubernetes Pod will have the details of the AI Models currently deployed. To confirm, use the following steps:
+   ```sh
+   kubectl get pai pai-sample -n pai -o yaml
+   kubectl get pods,services -n pai
+   ```
 
-```sh
-kubectl exec -it -n pai $(kubectl get pod -n pai -l app.kubernetes.io/name=pai-sample -o jsonpath='{.items[0].metadata.name}') -- /bin/bash
-cat /privateai/config/config.json
-```
+6. Check the logs of the Private AI Pod:
+
+   ```sh
+   POD_NAME=$(kubectl get pods -n pai \
+     -l app.kubernetes.io/name=pai-sample \
+     -o jsonpath='{.items[0].metadata.name}')
+
+   kubectl logs -n pai "$POD_NAME"
+   ```
+
+7. Confirm that `status.paiConfigMap` identifies the expected ConfigMap, the private load balancer address matches the reserved IP, and the Pods are Ready. To inspect the mounted model configuration, check `/privateai/config/config.json` in a running Pod:
+
+   ```sh
+   POD_NAME=$(kubectl get pods -n pai \
+     -l app.kubernetes.io/name=pai-sample \
+     -o jsonpath='{.items[0].metadata.name}')
+
+   kubectl exec -n pai "$POD_NAME" -- cat /privateai/config/config.json
+   ```

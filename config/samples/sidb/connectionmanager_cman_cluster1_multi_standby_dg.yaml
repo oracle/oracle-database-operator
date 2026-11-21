@@ -1,0 +1,106 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Cluster 1 CMAN for multi-standby Data Guard.
+# File-mode with embedded tnsnames aliases and use_service_as_tnsnames_alias=on
+# so ORCLPRD / ORCLSTBY1 and their *_DGMGRL services route to local SIDB Services.
+# See docs/sidb/dataguard/DATAGUARD_MULTI_STANDBY_CMAN.md.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cman-cluster1-config
+  namespace: <operator-watched-namespace>
+data:
+  cman.ora: |
+    # CMAN_TNSNAMES_BEGIN
+    ORCLPRD =
+    (description=
+      (address=(protocol=tcp)(host=sidb-primary.default.svc.cluster.local)(port=1521))
+      (connect_data=(service_name=ORCLPRD))
+    )
+
+    ORCLPRD_DGMGRL =
+    (description=
+      (address=(protocol=tcp)(host=sidb-primary.default.svc.cluster.local)(port=1521))
+      (connect_data=(service_name=ORCLPRD_DGMGRL))
+    )
+
+    ORCLSTBY1 =
+    (description=
+      (address=(protocol=tcp)(host=sidb-standby1.default.svc.cluster.local)(port=1521))
+      (connect_data=(service_name=ORCLSTBY1))
+    )
+
+    ORCLSTBY1_DGMGRL =
+    (description=
+      (address=(protocol=tcp)(host=sidb-standby1.default.svc.cluster.local)(port=1521))
+      (connect_data=(service_name=ORCLSTBY1_DGMGRL))
+    )
+    # CMAN_TNSNAMES_END
+
+    CMAN_cman-sidb.default.svc.cluster.local =
+    (configuration=
+      (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
+      (parameter_list=
+        (connection_statistics=yes)
+        (log_directory=/u01/oracle/product/23ai/client_1/network/log)
+        (log_level=user)
+        (trace_directory=/u01/oracle/product/23ai/client_1/network/trace)
+        (trace_level=user)
+        (valid_node_checking_registration=on)
+        (registration_invited_nodes=*)
+        (use_service_as_tnsnames_alias=on)
+      )
+      (rule_list=
+        (rule=
+          (src=*)(dst=*)(srv=ORCLPRD)(act=accept)
+          (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+        (rule=
+          (src=*)(dst=*)(srv=ORCLPRD_DGMGRL)(act=accept)
+          (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+        (rule=
+          (src=*)(dst=*)(srv=ORCLSTBY1)(act=accept)
+          (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+        (rule=
+          (src=*)(dst=*)(srv=ORCLSTBY1_DGMGRL)(act=accept)
+          (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+      )
+    )
+---
+apiVersion: network.oracle.com/v4
+kind: ConnectionManager
+metadata:
+  name: cman-sidb
+  namespace: <operator-watched-namespace>
+spec:
+  runtime:
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: NodePort
+      externalTrafficPolicy: Cluster
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+          nodePort: 30189
+  configSource:
+    configMapRef:
+      name: cman-cluster1-config
+      key: cman.ora

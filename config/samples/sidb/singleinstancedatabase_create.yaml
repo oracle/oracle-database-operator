@@ -1,3 +1,4 @@
+
 #
 # Copyright (c) 2023, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
@@ -11,7 +12,7 @@ metadata:
   name: sidb-sample
   namespace: default
 spec:
-  
+
   ## Use only alphanumeric characters for sid
   sid: ORCL1
 
@@ -25,13 +26,15 @@ spec:
         secretName: db-admin-secret
         secretKey: oracle_pwd
         keepSecret: true
-      tde:
-        secretName: tde-wallet-secret
-        secretKey: tde_wallet_pwd
+      ## Optional TDE settings; uncomment only when using TDE.
+      ## See docs/sidb/prerequisites/PREREQUISITES.md#tde-secret.
+      # tde:
+      #   secretName: tde-wallet-secret
+      #   secretKey: tde_wallet_pwd
     ## Optional TCPS settings.
-    #  tcps:
-    #    enabled: true
-    #    tlsSecret: sidb-primary-tcps-tls
+    # tcps:
+    #   enabled: true
+    #   tlsSecret: sidb-primary-tcps-tls
 
   ## DB character set
   charset: AL32UTF8
@@ -56,9 +59,8 @@ spec:
 
   ## Database image details
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
-    pullSecrets: oracle-container-registry-secret
-
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
   ## Optional node selector to restrict the database pod to nodes having specific labels.
   ## For a single exact node, kubernetes.io/hostname can be used.
   # nodeSelector:
@@ -70,7 +72,7 @@ spec:
   persistence:
     oradata:
       size: 100Gi
-      # oci-bv applies to OCI block volumes. 
+      # oci-bv applies to OCI block volumes.
       # Use "standard" storageClass for dynamic provisioning in Minikube.
       # Update as appropriate for other cloud service providers
       storageClass: "oci-bv"
@@ -78,3 +80,17 @@ spec:
 
   ## Count of Database Pods.
   replicas: 1
+
+  ## Optional Data Guard configuration.
+  ## Enable prerequisites when preparing this primary for Data Guard.
+  ## For a standby using primarySource.connectString, also configure
+  ## standbySources with the standby's reachable listener endpoint.
+  ## standbySources is not required when using primarySource.databaseRef.
+  # dataguard:
+  #   prereqs:
+  #     enabled: true
+  #   standbySources:
+  #     - dbUniqueName: ORCLS
+  #       host: standby-1.example.com
+  #       tcpPort: 1521
+  #       tcpsEnabled: false

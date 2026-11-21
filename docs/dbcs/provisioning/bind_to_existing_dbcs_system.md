@@ -8,7 +8,7 @@ This example uses `bind_to_existing_dbcs_system.yaml` to bind to an existing OBD
 
 - OCI Configmap as `oci-cred-mumbai`  
 - OCI Secret as `oci-privatekey`  
-- OCID of the existing OBDS System as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
+- OCID of the existing OBDS System as `ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>`
 
 
 Use the file: [bind_to_existing_dbcs_system.yaml](./bind_to_existing_dbcs_system.yaml) for this use case, as described in the following steps:

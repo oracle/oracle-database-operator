@@ -2,14 +2,12 @@
 
 This example walks through using the **OrdsSrvs controller** with an Autonomous Database managed through the OraOperator.
 
-When connecting to a mTLS enabled ADB while using the OraOperator to retrieve the Wallet as is done in the example, it is currently not supported to have multiple, different databases supported by the single OrdsSrvs resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-operator/issues/97)).
-
 Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 ### Setup Oracle Cloud Authorisation
 
-In order for the OraOperator to access the ADB, some additional prerequisites are required, as detailed [here](https://github.com/oracle/oracle-database-operator/blob/main/docs/adb/ADB_PREREQUISITES.md).
-Either establish Instance Principles or create the required ConfigMap/Secret.  This example uses the latter, using the helper script [set_ocicredentials.sh](https://github.com/oracle/oracle-database-operator/blob/main/set_ocicredentials.sh) :
+In order for the OraOperator to access the ADB, some additional prerequisites are required, as detailed [here](../../adb/ADB_PREREQUISITES.md).
+Either establish Instance Principals or create the required ConfigMap/Secret.  This example uses the latter, using the helper script [set_ocicredentials.sh](../../../set_ocicredentials.sh) :
 
 ```bash
 ./set_ocicredentials.sh run -n ordsnamespace
@@ -26,11 +24,6 @@ echo
 printf '%s' "${DBPWD}" | kubectl create secret generic adb-oraoper-db-auth \
   --from-file=password=/dev/stdin \
   -n ordsnamespace
-```
-
-Example output:
-
-```text
 unset DBPWD
 ```
 
@@ -41,7 +34,7 @@ unset DBPWD
 1. Obtain the OCID of the ADB and set to an environment variable:
 
     ```bash
-    export ADB_OCID=<insert OCID here>
+    export ADB_OCID='<adb-ocid>'
     ```
 
 1. Create and apply a manifest to bind to the ADB.
@@ -63,6 +56,9 @@ unset DBPWD
       details:
         id: $ADB_OCID
     ```
+
+    Replace `$ADB_OCID` with the value of the environment variable before applying
+    the manifest; saved YAML does not expand shell variables.
 
 1. Update the ADB admin credential:
 
@@ -97,8 +93,7 @@ kubectl create secret generic ordssrvs-auth \
 
 1. Create a manifest for ORDS.
 
-    As an ADB already maintains ORDS and APEX, `autoUpgradeORDS` and `autoUpgradeAPEX` will be ignored if set.  A new DB User for ORDS will be created to avoid conflict with the pre-provisioned one.  This user will be
-    named, `ORDS_PUBLIC_USER_OPER` if `db.username` is either not specified or set to `ORDS_PUBLIC_USER`.
+    As an ADB already maintains ORDS and APEX, `autoUpgradeORDS` and `autoUpgradeAPEX` will be ignored if set. A new DB User for ORDS will be created or configured to avoid conflict with the pre-provisioned one. Explicitly set `db.username` to a user other than `ORDS_PUBLIC_USER`, such as `ORDS_PUBLIC_USER_OPER`; no username is substituted automatically.
 
     ```yaml
     apiVersion: database.oracle.com/v4
@@ -129,14 +124,17 @@ kubectl create secret generic ordssrvs-auth \
             secretName:  ordssrvs-auth
             passwordKey: adminAuth
     ```
+
+    Replace `$SERVICE_NAME` with the value retrieved above and `<ords-version>`
+    with your image version before applying the manifest; saved YAML does not
+    expand shell variables.
+
 1. Watch the ordssrvs resource until the status is **Healthy**:
     ```bash
     kubectl get ordssrvs ords-adb-oraoper -n ordsnamespace -w
     ```
 
-    **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
-    is being installed for the first time by the Operator, it may remain in the **Preparing**
-    status for an additional 5 minutes.
+    **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.
 
 
 ### Test
@@ -149,8 +147,17 @@ kubectl port-forward service/ords-adb-oraoper -n ordsnamespace 8443:8443
 
 Direct your browser to: `https://localhost:8443/ords/adb-oraoper`
 
+> If `standalone.https.host` is configured, use that hostname instead of `localhost`.
+
 ## Conclusion
 
 This example has a single database pool, named `adb-oraoper`.  It is set to:
 
 * Automatically restart when the configuration changes: `forceRestart: true`
+
+## Limitations
+
+When connecting to a mTLS-enabled ADB while using the OraOperator to retrieve
+the Wallet, this example does not support multiple, different databases in a
+single OrdsSrvs resource. This is due to a requirement to set the `TNS_ADMIN`
+parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-operator/issues/97)).

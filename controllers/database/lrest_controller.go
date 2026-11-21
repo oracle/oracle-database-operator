@@ -85,8 +85,7 @@ import (
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
-	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
-	//lrcommons "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
+	lrestutil "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 )
 
 // LRESTReconciler reconciles a LREST object
@@ -100,16 +99,23 @@ type LRESTReconciler struct {
 }
 
 var (
-	lrestPhaseInit    = "Initializing"
-	lrestPhasePod     = "CreatingPod"
-	lrestPhaseValPod  = "ValidatingPods"
-	lrestPhaseService = "CreatingService"
-	lrestPhaseSecrets = "DeletingSecrets"
-	lrestPhaseReady   = "Ready"
-	lrestPhaseDelete  = "Deleting"
-	lrestPhaseFail    = "Failed"
-	lrestHealthy      = "Healthy"
-	lrestUnHealthy    = "Unhealthy"
+	/* phase messages */
+	lrestPhaseInit        = "Init start"
+	lrestPhaseInitComp    = "Init completed "
+	lrestPhaseInitWaiting = "Init waiting"
+	lrestPhasePod         = "pod creation start"
+	lrestPhasePodComp     = "pod creation completed"
+	lrestPhasePodFail     = "pod creation failure"
+	lrestPhaseSvc         = "svc creation start"
+	lrestPhaseSvcComp     = "svc creation completed"
+	lrestPhaseSvcWaiting  = "svc creation waiting"
+	lrestPhaseVal         = "pod validation start"
+	lrestPhaseValComp     = "pod validation completed"
+	lrestPhaseValWaiting  = "pod validation waiting"
+	lrestPhaseDelete      = "pod/lrest deleting"
+	lrestPhaseLrestOK     = "POD/LREST creation completed"
+	lrestHealthy          = "Healthy"
+	lrestUnHealthy        = "Unhealthy"
 )
 
 // LRESTFinalizer name of the finalyzer
@@ -137,7 +143,7 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	log.Info("Reconcile requested")
 
 	reconcilePeriod := r.Interval * time.Second
-	requeueY := ctrl.Result{Requeue: true, RequeueAfter: reconcilePeriod}
+	requeueY := ctrl.Result{RequeueAfter: reconcilePeriod}
 	requeueN := ctrl.Result{}
 
 	var err error
@@ -145,8 +151,9 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// Execute for every reconcile
 	defer func() {
-		log.Info("DEFER", "Name", lrest.Name, "Phase", lrest.Status.Phase, "Status", strconv.FormatBool(lrest.Status.Status))
-		if !lrest.Status.Status {
+		log.Info("DEFER", "Name", lrest.Name, "Phase", lrest.Status.Phase)
+		//	if !lrest.Status.Status {
+		if !lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSCMP) {
 			if err := r.Status().Update(ctx, lrest); err != nil {
 				log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
 			}
@@ -160,14 +167,13 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// Request object not found, could have been deleted after reconcile req.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
-			lrest.Status.Status = true
+			//lrest.Status.Status = true
+			lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSCMP)
 			return requeueN, nil
 		}
 		// Error reading the object - requeue the req.
 		return requeueY, err
 	}
-
-	log.Info("Res Status:", "Name", lrest.Name, "Phase", lrest.Status.Phase, "Status", strconv.FormatBool(lrest.Status.Status))
 
 	// Finalizer section
 	err = r.manageLRESTDeletion(ctx, req, lrest)
@@ -177,15 +183,18 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// If post-creation, LREST spec is changed, check and take appropriate action
-	if (lrest.Status.Phase == lrestPhaseReady) && lrest.Status.Status {
+	//if (lrest.Status.Phase == lrestPhaseReady) && lrest.Status.Status {
+	//if (lrest.Status.Phase == lrestPhaseReady) && Bit(lrest.Status.LRESTBitMask, LRSCMP) == true {
+	if lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSCMP) {
+		r.lrestHealthCheck(ctx, req, lrest)
 		if err = r.evaluateSpecChange(ctx, req, lrest); err != nil {
 			log.Info("evaluateSpecChange failure")
 		}
-		r.lrestHealthCheck(ctx, req, lrest)
 	}
 
 	// Auto discover functionality looks for pdb with no crd
-	if lrest.Spec.PdbAutoDiscover == true && lrest.Status.Status == true {
+	//if lrest.Spec.PdbAutoDiscover == true && lrest.Status.Status == true && lrest.Status.SQLcode == 0 {
+	if lrest.Spec.PdbAutoDiscover && lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSCMP) && lrest.Status.SQLcode == 0 {
 		log.Info("PDB auto discover turned on")
 		if err := r.PdbAutoDiscover(ctx, req, lrest); err != nil {
 			log.Info("PdbAutoDiscover  failure")
@@ -193,83 +202,142 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// Reset database pwd
-	if lrest.Spec.ResetDBPassword == true && lrest.Status.Status == true {
+	//if lrest.Spec.ResetDBPassword == true && lrest.Status.Status == true {
+	if lrest.Spec.ResetDBPassword && lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSCMP) {
 		log.Info("ResetDbPassword")
 		if err = r.ResetCredential(ctx, req, lrest); err != nil {
 			log.Info("ResetDbPassword failure")
 		}
 	}
 
-	if !lrest.Status.Status {
-		phase := lrest.Status.Phase
-		log.Info("Current Phase:"+phase, "Name", lrest.Name)
+	if !lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSCMP) {
+		log.Info("Pod/lrest creation start ", "Name", lrest.Name)
 
-		switch phase {
-		case lrestPhaseInit:
+		/* INIT PHASE */
+		if !lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSINI) {
+			if lrest.Status.Phase != lrestPhaseInitWaiting {
+				lrest.Status.Phase = lrestPhaseInit
+				lrest.Status.Msg = "secrets:init"
+				GenUpdStatus(ctx, r, lrest)
+			}
+
 			err = r.verifySecrets(ctx, req, lrest)
 			if err != nil {
-				lrest.Status.Phase = lrestPhaseFail
+				lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSINE)
+				lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+				lrest.Status.Phase = lrestPhaseInitWaiting
+				lrest.Status.Msg = "Init:Waiting[1]"
+				GenUpdStatus(ctx, r, lrest)
 				return requeueN, nil
 			}
-			if err = r.ensureLRESTCAPinSecret(ctx, lrest); err != nil {
-				return ctrl.Result{}, err
-			}
-			if err = r.ensureTLSSecret(ctx, lrest); err != nil {
-				return ctrl.Result{}, err
-			}
-			lrest.Status.Phase = lrestPhasePod
-		case lrestPhasePod:
-			// Create LREST PODs
-			err = r.createLRESTInstances(ctx, req, lrest)
-			if err != nil {
-				log.Info("Reconcile queued")
-				return requeueY, nil
-			}
-			lrest.Status.Phase = lrestPhaseService
-		case lrestPhaseValPod:
-			// Validate LREST PODs
-			err = r.validateLRESTPods2(ctx, req, lrest)
-			if err != nil {
-				if lrest.Status.Phase == lrestPhaseFail {
-					return requeueN, nil
-				}
-				log.Info("Reconcile queued")
-				return requeueY, nil
-			}
-			lrest.Status.Phase = lrestPhaseReady
-		case lrestPhaseService:
-			// Create LREST Service
-			err = r.createLRESTSVC(ctx, req, lrest)
-			if err != nil {
-				log.Info("Reconcile queued")
-				return requeueY, nil
-			}
-			/*
-				if err = r.ensureLRESTCAPinSecret(ctx, lrest); err != nil {
-					return ctrl.Result{}, err
-				}
-			*/
 
-			//lrest.Status.Phase = lrestPhaseSecrets
-			lrest.Status.Phase = lrestPhaseValPod
-		case lrestPhaseSecrets:
-			// Delete LREST Secrets
-			//r.deleteSecrets(ctx, req, lrest)
-			lrest.Status.Phase = lrestPhaseReady
-			lrest.Status.Msg = "Success"
-		case lrestPhaseReady:
-			lrest.Status.Status = true
-			if err := r.Status().Update(ctx, lrest); err != nil {
-				log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
+			if err = r.ensureLRESTCAPinSecret(ctx, lrest); err != nil {
+				log.Info("ensureLRETCAPinSecret error ")
+				lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSINE)
+				lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+				lrest.Status.Phase = lrestPhaseInitWaiting
+				lrest.Status.Msg = "Init:Waiting[2]"
+				GenUpdStatus(ctx, r, lrest)
+				return requeueN, err
 			}
-			return requeueY, nil
-		default:
-			lrest.Status.Phase = lrestPhaseInit
-			log.Info("DEFAULT:", "Name", lrest.Name, "Phase", phase, "Status", strconv.FormatBool(lrest.Status.Status))
+
+			if err = r.ensureTLSSecret(ctx, lrest); err != nil {
+				log.Info("ensureTLSSecret error[]")
+				lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSINE)
+				lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+				lrest.Status.Phase = lrestPhaseInitWaiting
+				lrest.Status.Msg = "Init:Waiting[3]"
+				GenUpdStatus(ctx, r, lrest)
+				return requeueN, err
+			}
+			lrest.Status.LRESTBitMask = lrestutil.Bid(lrest.Status.LRESTBitMask, lrestutil.LRSINE)
+			lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+
+			lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSINI)
+			lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+			lrest.Status.Phase = lrestPhaseInitComp
+			GenUpdStatus(ctx, r, lrest)
 		}
 
-		if err := r.Status().Update(ctx, lrest); err != nil {
-			log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
+		/* POD CREATION */
+		if !lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSPOD) {
+			lrest.Status.Phase = lrestPhasePod
+			lrest.Status.Msg = "pod:createLRESTInstances"
+			GenUpdStatus(ctx, r, lrest)
+			err = r.createLRESTInstances(ctx, req, lrest)
+			if err != nil {
+				log.Info("createLRESTInstances error")
+				lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSPDE)
+				lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+				lrest.Status.Phase = lrestPhasePodFail
+				GenUpdStatus(ctx, r, lrest)
+				return requeueY, nil
+			}
+			lrest.Status.Phase = lrestPhasePodComp
+			lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSPOD)
+			lrest.Status.LRESTBitMask = lrestutil.Bid(lrest.Status.LRESTBitMask, lrestutil.LRSPDE)
+			lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+			GenUpdStatus(ctx, r, lrest)
+		}
+
+		/* SVC CREATION */
+
+		if !lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSSVC) {
+			if lrest.Status.Phase != lrestPhaseSvcWaiting {
+				lrest.Status.Phase = lrestPhaseSvc
+				lrest.Status.Msg = "svc:createLRESTSVC"
+				GenUpdStatus(ctx, r, lrest)
+			}
+
+			err = r.createLRESTSVC(ctx, req, lrest)
+			if err != nil {
+				log.Info("createLRESTSVC waiting/err")
+				lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSSVE)
+				lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+				lrest.Status.Phase = lrestPhaseSvcWaiting
+				GenUpdStatus(ctx, r, lrest)
+				return requeueY, nil
+			}
+
+			lrest.Status.LRESTBitMask = lrestutil.Bid(lrest.Status.LRESTBitMask, lrestutil.LRSSVE)
+			lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSSVC)
+			lrest.Status.Phase = lrestPhaseSvcComp
+			GenUpdStatus(ctx, r, lrest)
+			lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+		}
+
+		/* POD VALIDATION  */
+		if !lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSPVD) {
+			if lrest.Status.Phase != lrestPhaseValWaiting {
+				lrest.Status.Phase = lrestPhaseVal
+				lrest.Status.Msg = "pod:validateLRESTPods2"
+				GenUpdStatus(ctx, r, lrest)
+			}
+			err = r.validateLRESTPods2(ctx, req, lrest)
+			if err != nil {
+				log.Info("validationLRESTPods2 waiting")
+				lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSPVE)
+				lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+				lrest.Status.Phase = lrestPhaseValWaiting
+				GenUpdStatus(ctx, r, lrest)
+				return requeueY, nil
+			}
+
+			lrest.Status.LRESTBitMask = lrestutil.Bid(lrest.Status.LRESTBitMask, lrestutil.LRSPVE)
+			lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSPVD)
+			lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+			lrest.Status.Phase = lrestPhaseValComp
+			GenUpdStatus(ctx, r, lrest)
+		}
+
+		/* OPERATION COMPLETED */
+		if !lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSPVE|lrestutil.LRSSVE|lrestutil.LRSPDE|lrestutil.LRSINE) {
+			log.Info("POD/LREST creation completed")
+			lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSCMP)
+			lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+			lrest.Status.Phase = lrestPhaseLrestOK
+			GenUpdStatus(ctx, r, lrest)
+
 		}
 
 		return requeueY, nil
@@ -333,15 +401,6 @@ func (r *LRESTReconciler) validateLRESTPods2(ctx context.Context, req ctrl.Reque
 	log := r.Log.WithValues("validateLRESTPod2", req.NamespacedName)
 	log.Info("Validating Pod creation for :" + lrest.Name)
 
-	/*
-		_, err := r.SelectFromVpdbs(ctx, req, lrest)
-		if err != nil {
-			log.Info("LREST is not ready ", "Namespace", req.Namespace)
-			lrest.Status.Msg = "Waiting for LREST Pod(s) to be read"
-			return errors.New("Waiting for LREST pods to be ready")
-		}
-	*/
-
 	/* Using a smarter and ligther method to validate the pod
 	   No need  to read the whole v$pdbs*/
 	RestPort := lrest.Spec.LRESTPort
@@ -353,8 +412,7 @@ func (r *LRESTReconciler) validateLRESTPods2(ctx context.Context, req ctrl.Reque
 	_, err := NewCallAPISQL(ctx, r, req, lrest, url, nil, "GET")
 	if err != nil {
 		log.Info("LREST is not ready ", "Namespace", req.Namespace)
-		lrest.Status.Msg = "Waiting for LREST Pod(s) to be read"
-		return errors.New("Waiting for LREST pods to be ready")
+		return errors.New("waiting for pod to be ready")
 	}
 
 	lrest.Status.Msg = ""
@@ -400,7 +458,10 @@ func (r *LRESTReconciler) createPodSpec(ctx context.Context, lrest *dbapi.LREST)
 			},
 		}},
 		Containers: []corev1.Container{{
-			Image:           lrest.Spec.LRESTImage,
+			Image: lrest.Spec.LRESTImage,
+			Ports: []corev1.ContainerPort{
+				{Name: "https", ContainerPort: 8888},
+			},
 			Name:            lrest.Name + "-lrest",
 			ImagePullPolicy: corev1.PullIfNotPresent,
 			SecurityContext: securityContextDefineLrest(),
@@ -421,6 +482,16 @@ func (r *LRESTReconciler) createPodSpec(ctx context.Context, lrest *dbapi.LREST)
 					ReadOnly:  false,
 				},
 			},
+			LivenessProbe: lrestutil.HTTPProbe("/database/lrest/ping2/", 8888,
+				lrest.Spec.LivenessProbe.InitialDelaySeconds,
+				lrest.Spec.LivenessProbe.PeriodSeconds,
+				lrest.Spec.LivenessProbe.TimeoutSeconds,
+				lrest.Spec.LivenessProbe.FailureThreshold),
+			ReadinessProbe: lrestutil.HTTPProbe("/database/lrest/ping/", 8888,
+				lrest.Spec.ReadinessProbe.InitialDelaySeconds,
+				lrest.Spec.ReadinessProbe.PeriodSeconds,
+				lrest.Spec.ReadinessProbe.TimeoutSeconds,
+				lrest.Spec.ReadinessProbe.FailureThreshold),
 			Env: r.ContainerEnv(ctx, lrest, false), /* Environment Variables */
 		}},
 		Volumes: PodVolumes(lrest), /* Volumes */
@@ -573,7 +644,9 @@ func (r *LRESTReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Reque
 		}
 
 		lrest.Status.Phase = lrestPhaseInit
-		lrest.Status.Status = false
+		lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSINI)
+		//lrest.Status.Status = false
+		lrest.Status.LRESTBitMask = lrestutil.Bid(lrest.Status.LRESTBitMask, lrestutil.LRSCMP)
 		if err := r.Status().Update(ctx, lrest); err != nil {
 			log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
 			return err
@@ -599,8 +672,9 @@ func (r *LRESTReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Reque
 				log.Error(err, "Failed to update ReplicaSet for :"+lrest.Name, "Namespace", lrest.Namespace, "Name", replicaSetName)
 				return err
 			}
-			lrest.Status.Phase = lrestPhaseValPod
-			lrest.Status.Status = false
+			lrest.Status.Phase = lrestPhaseVal
+			//lrest.Status.Status = false
+			lrest.Status.LRESTBitMask = lrestutil.Bid(lrest.Status.LRESTBitMask, lrestutil.LRSCMP)
 			if err := r.Status().Update(ctx, lrest); err != nil {
 				log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
 			}
@@ -658,7 +732,7 @@ func (r *LRESTReconciler) createCoreService(lrest *dbapi.LREST) *corev1.Service 
 	svcspecIP.Selector = map[string]string{"name": lrest.Name + "-lrest"}
 	svcspecIP.Type = corev1.ServiceTypeClusterIP // internal IP
 
-	if lrest.Spec.ClusterIP == false {
+	if !lrest.Spec.ClusterIP {
 		svcspecIP.ClusterIP = corev1.ClusterIPNone
 	} else {
 		svcspecIP.Ports = []corev1.ServicePort{
@@ -675,7 +749,7 @@ func (r *LRESTReconciler) createCoreService(lrest *dbapi.LREST) *corev1.Service 
 				Name:       "lrest-port",
 			},
 		}
-		if lrest.Spec.LoadBalancer == true {
+		if lrest.Spec.LoadBalancer {
 			svcspecIP.Type = corev1.ServiceTypeLoadBalancer
 		}
 	}
@@ -718,7 +792,7 @@ func (r *LRESTReconciler) manageLRESTDeletion(ctx context.Context, req ctrl.Requ
 	} else {
 		log.Info("lrest mark to be delited")
 		lrest.Status.Phase = lrestPhaseDelete
-		lrest.Status.Status = true
+		lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSCMP)
 		if err := r.Status().Update(ctx, lrest); err != nil {
 			log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
 			return err
@@ -742,15 +816,6 @@ func (r *LRESTReconciler) manageLRESTDeletion(ctx context.Context, req ctrl.Requ
 				return err
 			}
 		}
-
-		//cdxhint: move the controller ref. before createReplicaset
-		/*
-			err := r.deleteLRESTInstance(req, lrest)
-			if err != nil {
-				log.Info("Could not delete LREST Resource", "LREST Name", lrest.Spec.LRESTName, "err", err.Error())
-				return err
-			}
-		*/
 
 	}
 	return nil
@@ -920,7 +985,7 @@ func (r *LRESTReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				// Ignore updates to CR status in which case metadata.Generation does not change
 				return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
 			},
-			DeleteFunc: func(e event.DeleteEvent) bool {
+			DeleteFunc: func(_ event.DeleteEvent) bool {
 				// Evaluates to false if the object has been confirmed deleted.
 				//return !e.DeleteStateUnknown
 				return false
@@ -963,14 +1028,6 @@ func (r *LRESTReconciler) ContainerEnv(ctx context.Context, lrest *dbapi.LREST, 
 			Name:  "DBTNSURL",
 			Value: lrest.Spec.DBTnsurl,
 		},
-		/*{
-			Name:  "TLSCRT",
-			Value: lrest.Spec.LRESTTlsCrt.Secret.Key,
-		},
-		{
-			Name:  "TLSKEY",
-			Value: lrest.Spec.LRESTTlsKey.Secret.Key,
-		},*/
 		{
 			Name:  "TNSALIAS",
 			Value: lrest.Spec.TNSalias,
@@ -979,17 +1036,10 @@ func (r *LRESTReconciler) ContainerEnv(ctx context.Context, lrest *dbapi.LREST, 
 			Name:  "ORAPKITAG",
 			Value: lrest.Spec.LRESTorapkitag,
 		},
-		// No longer required in the race condition
-		/*
-			{
-				Name:  "PUBKEY",
-				Value: lrest.Spec.LRESTPubKey.Secret.Key,
-			},
-			{
-				Name:  "PRVKEY",
-				Value: lrest.Spec.LRESTPriKey.Secret.Key,
-			},
-		*/
+		{
+			Name:  "TRCSRV",
+			Value: strconv.Itoa(lrest.Spec.TrcSrv),
+		},
 		{
 			Name:  "ORACLE_PORT",
 			Value: strconv.Itoa(lrest.Spec.DBPort),
@@ -1012,7 +1062,7 @@ func (r *LRESTReconciler) ContainerEnv(ctx context.Context, lrest *dbapi.LREST, 
 		},
 	}
 
-	if initcnt == true {
+	if initcnt {
 		EnvVar = appendEnvVar(EnvVar, "ARG", "INIT")
 		EnvVar = appendEnvVar(EnvVar, "PUBKEY", lrest.Spec.LRESTPubKey.Secret.Key)
 		EnvVar = appendEnvVar(EnvVar, "PRVKEY", lrest.Spec.LRESTPriKey.Secret.Key)
@@ -1050,44 +1100,6 @@ func (r *LRESTReconciler) ContainerEnv(ctx context.Context, lrest *dbapi.LREST, 
 				Value: "nullval"}
 		}
 
-		/*
-			R3 := corev1.EnvVar{
-				Name: "R3",
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: lrest.Spec.WebLrestServerUser.Secret.SecretName,
-						},
-						Key: lrest.Spec.WebLrestServerUser.Secret.Key,
-					},
-				},
-			}
-			R4 := corev1.EnvVar{
-				Name: "R4",
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: lrest.Spec.WebLrestServerPwd.Secret.SecretName,
-						},
-						Key: lrest.Spec.WebLrestServerPwd.Secret.Key,
-					},
-				},
-			}
-		*/
-		/*
-			BaseURL := lrest.Name + "-lrest." + lrest.Namespace
-
-			R3 := corev1.EnvVar{
-				Name:  "R3",
-				Value: GenHash(BaseURL, "USR")}
-
-			R4 := corev1.EnvVar{
-				Name:  "R4",
-				Value: GenHash(BaseURL, "PWD")}
-		*/
-
-		/* Get info from operator-mng secrets */
-
 		secret := &corev1.Secret{}
 		err := r.Get(ctx, types.NamespacedName{Name: lrestCAPinSecretName(lrest.Name),
 			Namespace: lrest.Namespace}, secret)
@@ -1123,7 +1135,7 @@ func (r *LRESTReconciler) ContainerEnv(ctx context.Context, lrest *dbapi.LREST, 
 		EnvVar = append(EnvVar, R4)
 	}
 
-	if initcnt == false {
+	if !initcnt {
 		EnvVar = appendEnvVar(EnvVar, "ARG", "STARTUP")
 	}
 
@@ -1423,7 +1435,7 @@ func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lres
 	log := r.Log.WithValues("DeletePDBS", req.NamespacedName)
 
 	/* =================== DELETE CASCADE ================ */
-	if lrest.Spec.DeletePDBCascade == true {
+	if lrest.Spec.DeletePDBCascade {
 		log.Info("DELETE PDB CASCADE OPTION")
 		lrpdbList := &dbapi.LRPDBList{}
 		listOpts := []client.ListOption{}
@@ -1460,8 +1472,8 @@ func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lres
 							return err
 						}
 
-						pdbitem.Status.SqlCode = int(objmap["sqlcode"].(float64))
-						log.Info("pdb closuer.......:", "sqlcode", pdbitem.Status.SqlCode)
+						pdbitem.Status.SQLCode = int(objmap["sqlcode"].(float64))
+						log.Info("pdb closuer.......:", "sqlcode", pdbitem.Status.SQLCode)
 
 						if errapi != nil {
 							log.Error(err, "callAPI cannot close pdb "+pdbitem.Spec.LRPDBName, "err", err.Error())
@@ -1483,8 +1495,8 @@ func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lres
 						return err
 					}
 
-					pdbitem.Status.SqlCode = int(objmap["sqlcode"].(float64))
-					log.Info(".......:", "sqlcode", pdbitem.Status.SqlCode)
+					pdbitem.Status.SQLCode = int(objmap["sqlcode"].(float64))
+					log.Info(".......:", "sqlcode", pdbitem.Status.SQLCode)
 
 					if errapi != nil {
 						log.Error(err, "callAPI cannot drop pdb "+pdbitem.Spec.LRPDBName, "err", err.Error())
@@ -1510,7 +1522,7 @@ func SearchElementInDBList(element string, TheList []string) bool {
 	var inthelist bool
 	inthelist = false
 	for idx := range TheList {
-		if strings.ToLower(element) == strings.ToLower(TheList[idx]) {
+		if strings.EqualFold(element, TheList[idx]) {
 			inthelist = true
 			return inthelist
 		}
@@ -1523,7 +1535,7 @@ func SearchElementInDBList2(element string, TheList []interface{}) bool {
 	var inthelist bool
 	inthelist = false
 	for idx := range TheList {
-		if strings.ToLower(element) == strings.ToLower(TheList[idx].(map[string]interface{})["name"].(string)) {
+		if strings.EqualFold(element, TheList[idx].(map[string]interface{})["name"].(string)) {
 			inthelist = true
 			return inthelist
 		}
@@ -1563,7 +1575,7 @@ func (r *LRESTReconciler) SelectFromVpdbs(ctx context.Context, req ctrl.Request,
 }
 
 // LrpdbCreation - this is part of autodiscovery process: create a crd in case of pdb  with no crd
-func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST, dbinfo []interface{}, idx int) error {
+func (r *LRESTReconciler) LrpdbCreation(_ context.Context, req ctrl.Request, lrest *dbapi.LREST, dbinfo []interface{}, idx int) error {
 	log := r.Log.WithValues("LrpdbCreation", req.NamespacedName)
 	log.Info("Creating LRPDB for :" + dbinfo[idx].(map[string]interface{})["name"].(string))
 	var PwdProtection string
@@ -1573,71 +1585,6 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 		log.Error(err, "Kubernetes Config Error")
 		return err
 	}
-
-	/*
-		TLSCrtecobj := &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"secret": map[string]interface{}{
-					"key":        lrest.Spec.LRESTTlsCrt.Secret.Key,
-					"secretName": lrest.Spec.LRESTTlsCrt.Secret.SecretName,
-				},
-			},
-		}
-	*/
-
-	/* Drop it because of the pin */
-	/*
-			TLSCatecobj := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"secret": map[string]interface{}{
-						"key":        lrest.Spec.LRESTTlsCat.Secret.Key,
-						"secretName": lrest.Spec.LRESTTlsCat.Secret.SecretName,
-					},
-				},
-			}
-
-
-		TLSKeyecobj := &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"secret": map[string]interface{}{
-					"key":        lrest.Spec.LRESTTlsKey.Secret.Key,
-					"secretName": lrest.Spec.LRESTTlsKey.Secret.SecretName,
-				},
-			},
-		}
-	*/
-
-	/*
-		placeholder := &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"secret": map[string]interface{}{
-					"key":        "placeholderkey",
-					"secretName": "placeholderval",
-				},
-			},
-		}
-	*/
-
-	/*
-
-		WebUseObj := &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"secret": map[string]interface{}{
-					"key":        lrest.Spec.WebLrestServerUser.Secret.Key,
-					"secretName": lrest.Spec.WebLrestServerUser.Secret.SecretName,
-				},
-			},
-		}
-
-		WebPasObj := &unstructured.Unstructured{
-			Object: map[string]interface{}{
-				"secret": map[string]interface{}{
-					"key":        lrest.Spec.WebLrestServerPwd.Secret.Key,
-					"secretName": lrest.Spec.WebLrestServerPwd.Secret.SecretName,
-				},
-			},
-		}
-	*/
 
 	CdbPrvKeyObj := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -1649,9 +1596,6 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 	}
 
 	TotSzStr := fmt.Sprintf("%f", dbinfo[idx].(map[string]interface{})["total_size"].(float64))
-
-	//log.Info("secretName:" + lrest.Spec.WebLrestServerUser.Secret.SecretName)
-	//log.Info("secretName:" + lrest.Spec.WebLrestServerPwd.Secret.SecretName)
 	log.Info("DEBUGSIZE::" + TotSzStr)
 
 	var NamesSpaceAutoDiscover string
@@ -1701,7 +1645,7 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 				//	"adminpdbPass":            placeholder,
 				"fileNameConversions":     "NONE",
 				"imperativeLrpdbDeletion": true,
-				"resetstate":              PDBAUT,
+				"resetstate":              lrestutil.PDBAUT,
 				"pdbState":                "RESET",
 			},
 		},
@@ -1739,8 +1683,8 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 		return err
 	}
 
-	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBAUT)
-	lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+	lrpdb.Status.PDBBitMask = lrestutil.Bis(lrpdb.Status.PDBBitMask, lrestutil.PDBAUT)
+	lrpdb.Status.PDBBitMaskStr = lrestutil.Bitmaskprint(lrpdb.Status.PDBBitMask)
 
 	err = r.Status().Update(context.Background(), &lrpdb)
 	if err != nil {
@@ -1804,7 +1748,7 @@ func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request,
 		log.Info("PDB:" + name)
 		if name != "PDB$SEED" {
 			InTheList := SearchElementInDBList(name, pdbNameList)
-			if InTheList == false {
+			if !InTheList {
 				log.Info("Orphan PDB:[" + name + "]")
 				/*** Final check ***/
 				listOpts01 := []client.ListOption{client.MatchingFields{"spec.pdbName": strings.ToLower(name)}}
@@ -1833,10 +1777,10 @@ func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request,
 		if pdbitem.Spec.CDBName == lrest.Spec.LRESTName &&
 			pdbitem.Spec.CDBNamespace == lrest.Namespace &&
 			pdbitem.Spec.CDBResName == lrest.Name &&
-			Bit(pdbitem.Status.PDBBitMask, PDBCRT) {
+			lrestutil.Bit(pdbitem.Status.PDBBitMask, lrestutil.PDBCRT) {
 			InTheList := SearchElementInDBList2(pdbitem.Spec.LRPDBName, ndata)
 			log.Info("PDB " + pdbitem.Spec.LRPDBName + " Checkng  CRD existence")
-			if InTheList == false {
+			if !InTheList {
 				log.Info("PDB " + pdbitem.Spec.LRPDBName + " has been dropped manually dropping the CRD")
 				err := r.DeleteCRDPdb(ctx, req, &pdbitem, lrest)
 				log.Error(err, "Cannot delete crd ")
@@ -1850,28 +1794,100 @@ func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request,
 
 func (r *LRESTReconciler) lrestHealthCheck(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) {
 	log := r.Log.WithValues("lrestHealthCheck", req.NamespacedName)
-
-	//* Check port status *//
-
-	//      lrestHealthy      = "Healthy"
-	//      lrestUnHealthy    = "Unhealthy"
+	var sqlcode int
+	var sqlbuff string
 
 	log.Info("starting lrest health check")
-	lrest.Status.Msg = lrestHealthy
+	//lrest.Status.Msg = lrestHealthy
 	RestPort := lrest.Spec.LRESTPort
 	RestName := lrest.Name + "-lrest"
 	RestNmsp := lrest.Namespace
 	IP := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
-	_, err := net.DialTimeout("tcp", IP, time.Duration(300)*time.Millisecond)
+	OCIPingError := map[int]struct{}{3113: {}, 3114: {}, 12541: {}, 12514: {}, 12170: {}, 1033: {}}
 
+	// OCIPing Errors list
+	// ===================
+	//  ORA-03113:end-of-file on communication channel
+	//  ORA-03114:not connected to ORACLE
+	//  ORA-12514:Cannot connect to database. Service %s is not registered with the listener at %s. (CONNECTION_ID=%s)
+	//  ORA-12541:Cannot connect. No listener at %s.
+	//  ORA-12170:Cannot connect. %s timeout of %s for %s. (CONNECTION_ID=%s)
+	//  ORA-01033:ORACLE initialization or shutdown in progress
+
+	//* Check rdbms availability *//
+	log.Info("Call OCIPing(" + strconv.Itoa(lrest.Status.SQLcode) + ")")
+
+	if _, okerr := OCIPingError[lrest.Status.SQLcode]; okerr {
+		time.Sleep(15 * time.Second)
+		log.Info(" Waiting 15 sec before next ping")
+	}
+
+	url := "https://" + IP + "/database/lrest/ping/"
+	Rsp, err := NewCallAPISQL(ctx, r, req, lrest, url, nil, "GET")
 	if err != nil {
-		log.Error(err, "net.DialTimeout", "err", err.Error())
-		if lrest.Status.Msg == lrestHealthy {
-			// Sent event only if we go from Healthy to unHealthy
-			r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "net.DialTimeout ", "lrest=%s", lrest.Name+"."+lrest.Namespace)
+		log.Info("NewCallAPISQL Error")
+		lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSRBT)
+		lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+		lrest.Status.SQLcode = -1
+		lrest.Status.Msg = lrestUnHealthy + ":OCIPing(error)"
+		if err := r.Status().Update(ctx, lrest); err != nil {
+			log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
+		}
+		// avoid err during server reboot
+		if _, okerr := OCIPingError[lrest.Status.SQLcode]; okerr {
+			return
 		}
 
-		lrest.Status.Msg = lrestUnHealthy
+	}
+
+	if err = lrestutil.GetSQLCode02(Rsp, &lrest.Status.SQLcode, 0x00); err != nil {
+		log.Info("Canno get sqlcode")
+	}
+
+	if lrest.Status.SQLcode != 0 {
+		if err := lrestutil.GetSQLbuffer02(Rsp, &sqlbuff, 0x00); err != nil {
+			log.Error(err, "Failed to parse LREST SQL error buffer")
+			sqlbuff = "<unavailable>"
+		}
+
+		// If we get an OCIPing oerr in an health state
+		// than send the info logger
+		if lrest.Status.Msg == lrestHealthy {
+			r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "RDBMS issue ", "lrest=%s sqlbuff=%s", lrest.Name+"."+lrest.Namespace, sqlbuff)
+		}
+
+		if lrest.Status.SQLcode == -1 {
+			lrest.Status.Msg = lrestUnHealthy + ":OCIPing(Error)"
+		} else {
+			lrest.Status.Msg = lrestUnHealthy + ":ORA-" + strconv.Itoa(lrest.Status.SQLcode)
+			log.Info("ORA-" + strconv.Itoa(lrest.Status.SQLcode))
+		}
+
+		// Restart LRESET server
+		if !lrestutil.Bit(lrest.Status.LRESTBitMask, lrestutil.LRSRBT) {
+			log.Info("::RESTARTING REST SERVER::")
+			url = "https://" + IP + "/database/lrest/StopRestServer/"
+			values := map[string]string{"action": "SHUTDOWN"}
+			r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "Restarting server",
+				"lrest=%s", lrest.Name+"."+lrest.Namespace)
+			lrest.Status.LRESTBitMask = lrestutil.Bis(lrest.Status.LRESTBitMask, lrestutil.LRSRBT)
+			lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+			if _, err := NewCallAPISQL(ctx, r, req, lrest, url, values, "POST"); err != nil {
+				log.Error(err, "Failed to stop LREST server")
+			}
+			if err := r.Status().Update(ctx, lrest); err != nil {
+				log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
+			}
+			return
+		}
+
+	}
+
+	if lrest.Status.SQLcode == 0 && lrest.Status.Msg != lrestHealthy {
+		lrest.Status.Msg = lrestHealthy
+		lrest.Status.LRESTBitMask = lrestutil.Bid(lrest.Status.LRESTBitMask, lrestutil.LRSRBT)
+		lrest.Status.LRESTBitMaskStr = lrestutil.Bitmaskprint2(lrest.Status.LRESTBitMask)
+		r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "OCIPing [OK] Server up and running", "lrest=%s", lrest.Name+"."+lrest.Namespace)
 
 	}
 
@@ -1879,52 +1895,64 @@ func (r *LRESTReconciler) lrestHealthCheck(ctx context.Context, req ctrl.Request
 	//  We can check the pdb$seed status to verify that cdb is aliave
 	//  in the future we can expose a rest call for OCIPing
 
-	url := "https://" + IP + "/database/pdbs/PDB$SEED/status/"
-	_, err = NewCallAPISQL(ctx, r, req, lrest, url, nil, "GET")
-	if err != nil {
-		log.Info("NewCallAPISQL Error")
-		if lrest.Status.Msg == lrestHealthy {
-			// Sent event only if we go from Healthy to unHealthy
-			r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "RDBMS issue ", "lrest=%s", lrest.Name+"."+lrest.Namespace)
-		}
+	/*
+		url := "https://" + IP + "/database/pdbs/PDB$SEED/status/"
+		Rsp, err = NewCallAPISQL(ctx, r, req, lrest, url, nil, "GET")
+		if err != nil {
+			log.Info("NewCallAPISQL Error")
+			if lrest.Status.Msg == lrestHealthy {
+				r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "RDBMS issue ", "lrest=%s", lrest.Name+"."+lrest.Namespace)
+			}
 
-		lrest.Status.Msg = lrestUnHealthy
-	}
+		}
+	*/
 
 	//Get the tnsstring from the rest server
-	url = "https://" + IP + "/database/lrest/ConnectString/"
-	ConnectioInfo, err := NewCallAPISQL(ctx, r, req, lrest, url, nil, "GET")
-	if err != nil {
-		log.Info(" NewcallAPISQL err : cannot get tns string information from rest server")
-		if lrest.Status.Msg == lrestHealthy {
-			// Sent event only if we go from Healthy to unHealthy
-			r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "RDBMS issue ", "lrest=%s", lrest.Name+"."+lrest.Namespace)
+	if sqlcode == 0 && lrest.Spec.DBTnsurl == "" {
+		url = "https://" + IP + "/database/lrest/ConnectString/"
+		ConnectioInfo, err := NewCallAPISQL(ctx, r, req, lrest, url, nil, "GET")
+		if err != nil {
+			log.Info(" NewcallAPISQL err : cannot get tns string information from rest server")
+			if lrest.Status.Msg == lrestHealthy {
+				// Sent event only if we go from Healthy to unHealthy
+				r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "RDBMS issue ", "lrest=%s", lrest.Name+"."+lrest.Namespace)
+			}
+
+			lrest.Status.Msg = lrestUnHealthy + ":GetConnectStringFailure"
+
 		}
 
-		lrest.Status.Msg = lrestUnHealthy
+		var objmap map[string]interface{}
+		if err := json.Unmarshal([]byte(ConnectioInfo), &objmap); err != nil {
+			log.Error(err, "Cannot Unamarshal tnsstring connection info")
+			lrest.Status.TNSstringGetAttr = "[missing]"
+		} else {
+			lrest.Status.TNSstringGetAttr = objmap["tnsstring"].(string)
+		}
 
-	}
+		// Attention: lrest.Spec.DBTnsurl and lrest.Status.TNSstringGetAttr are two
+		// different logical entities.
+		// DBTnsurl is a variable with the tnsstring which can be used to connect to the cdb.
+		// If the connection is established using the tnsalias then the tnsstring is defined in tnsnames.ora
+		// available on the pod and variable DBTnsurl is unsed.
+		// In this case the tnsstring is a session attribute published via rest calls.
+		if lrest.Spec.DBTnsurl == "" {
+			orgcp := lrest.DeepCopy()
+			lrest.Spec.DBTnsurl = objmap["tnsstring"].(string)
+			if err := r.Patch(ctx, lrest, client.MergeFrom(orgcp)); err != nil {
+				log.Info("Resource patch failure")
 
-	var objmap map[string]interface{}
-	if err := json.Unmarshal([]byte(ConnectioInfo), &objmap); err != nil {
-		log.Error(err, "Cannot Unamarshal tnsstring connection info")
-		lrest.Status.TNSstringGetAttr = "[missing]"
-	} else {
-		lrest.Status.TNSstringGetAttr = objmap["tnsstring"].(string)
-	}
+			}
+		}
 
-	// Attention: lrest.Spec.DBTnsurl and lrest.Status.TNSstringGetAttr are two
-	// different logical entities.
-	// DBTnsurl is a variable with the tnsstring which can be used to connect to the cdb.
-	// If the connection is established using the tnsalias then the tnsstring is defined in tnsnames.ora
-	// available on the pod and variable DBTnsurl is unsed.
-	// In this case the tnsstring is a session attribute published via rest calls.
-	if lrest.Spec.DBTnsurl == "" {
-		orgcp := lrest.DeepCopy()
-		lrest.Spec.DBTnsurl = objmap["tnsstring"].(string)
-		if err := r.Patch(ctx, lrest, client.MergeFrom(orgcp)); err != nil {
-			log.Info("Resource patch failure")
-
+		_, err = net.DialTimeout("tcp", IP, time.Duration(300)*time.Millisecond)
+		if err != nil {
+			log.Error(err, "net.DialTimeout", "err", err.Error())
+			if lrest.Status.Msg == lrestHealthy {
+				// Sent event only if we go from Healthy to unHealthy
+				r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "net.DialTimeout ", "lrest=%s", lrest.Name+"."+lrest.Namespace)
+			}
+			lrest.Status.Msg = lrestUnHealthy + "net.DialTimeout"
 		}
 	}
 
@@ -1940,15 +1968,8 @@ func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request,
 
 	log.Info("Rest cdb admin credentail ")
 
-	/* Reset parameter whatever the exit status */
-	orgcp := lrest.DeepCopy()
-	lrest.Spec.ResetDBPassword = false
-	if err := r.Patch(ctx, lrest, client.MergeFrom(orgcp)); err != nil {
-		log.Info("Resource patch failure")
-	}
-
 	var Dbuser string
-	var Passwd string
+	var Qbttxc string
 	RestPort := lrest.Spec.LRESTPort
 	RestName := lrest.Name + "-lrest"
 	RestNmsp := lrest.Namespace
@@ -1967,23 +1988,44 @@ func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request,
 	if len(podList.Items) == 0 {
 		log.Info("No pods found for: "+RestName, "Namespace", req.Namespace)
 		lrest.Status.Msg = "Waiting for LREST Pod(s) to start"
-		return errors.New("Waiting for LREST pods to start")
+		return errors.New("waiting for LREST pods to start")
 	}
 
 	/* retriev passwd and send to the  rest server */
 
-	if lrest.Spec.LRESTAdminUser.Secret.SecretName != "" {
-		Dbuser, _ = getGenericSecret3(ctx, r, req, lrest,
-			lrest.Spec.LRESTAdminUser.Secret.SecretName, lrest.Spec.LRESTAdminUser.Secret.Key,
-			lrest.Spec.LRESTPriKey.Secret.SecretName, lrest.Spec.LRESTPriKey.Secret.Key,
-			NULL, NULL, true)
+	if lrest.Spec.LRESTAdminUser.Secret.SecretName == "" || lrest.Spec.LRESTAdminUser.Secret.Key == "" {
+		return errors.New("lrest cdb admin user secret name and key must be specified")
+	}
+	Dbuser, err = getGenericSecret3(ctx, r, req, lrest,
+		lrest.Spec.LRESTAdminUser.Secret.SecretName, lrest.Spec.LRESTAdminUser.Secret.Key,
+		lrest.Spec.LRESTPriKey.Secret.SecretName, lrest.Spec.LRESTPriKey.Secret.Key,
+		lrestutil.NULL, lrestutil.NULL, true)
+	if err != nil {
+		return fmt.Errorf("get lrest cdb admin user secret: %w", err)
+	}
+	if Dbuser == "" {
+		return errors.New("lrest cdb admin user secret value is empty")
 	}
 
-	if lrest.Spec.LRESTAdminPwd.Secret.SecretName != "" {
-		Passwd, _ = getGenericSecret3(ctx, r, req, lrest,
-			lrest.Spec.LRESTAdminPwd.Secret.SecretName, lrest.Spec.LRESTAdminPwd.Secret.Key,
-			lrest.Spec.LRESTPriKey.Secret.SecretName, lrest.Spec.LRESTPriKey.Secret.Key,
-			NULL, NULL, true)
+	if lrest.Spec.LRESTAdminPwd.Secret.SecretName == "" || lrest.Spec.LRESTAdminPwd.Secret.Key == "" {
+		return errors.New("lrest cdb admin password secret name and key must be specified")
+	}
+	Qbttxc, err = getGenericSecret3(ctx, r, req, lrest,
+		lrest.Spec.LRESTAdminPwd.Secret.SecretName, lrest.Spec.LRESTAdminPwd.Secret.Key,
+		lrest.Spec.LRESTPriKey.Secret.SecretName, lrest.Spec.LRESTPriKey.Secret.Key,
+		lrestutil.NULL, lrestutil.NULL, true)
+	if err != nil {
+		return fmt.Errorf("get lrest cdb admin password secret: %w", err)
+	}
+	if Qbttxc == "" {
+		return errors.New("lrest cdb admin password secret value is empty")
+	}
+
+	/* Reset parameter whatever the exit status after credentials are validated. */
+	orgcp := lrest.DeepCopy()
+	lrest.Spec.ResetDBPassword = false
+	if err := r.Patch(ctx, lrest, client.MergeFrom(orgcp)); err != nil {
+		log.Info("Resource patch failure")
 	}
 
 	/*
@@ -2012,7 +2054,7 @@ func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request,
 	values := map[string]string{
 		"action":       "resetcred",
 		"cdbAdminUser": Dbuser,
-		"cdbAdminPwd":  Passwd,
+		"cdbAdminPwd":  Qbttxc,
 		"webusr":       string(secret.Data[consR3]),
 		"webpwd":       string(secret.Data[consR4]),
 	}
@@ -2040,34 +2082,6 @@ func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request,
 	log.Info("Rest credential retcode: " + retcode)
 	log.Info("Rest credential message: " + retmsg)
 
-	/* DECOMISSIONINING REMOVE THIS SECTION BEFORE RELEASING 2.2
-	RestCommand := "unset INITFILE ;/opt/oracle/lrest/main --initfile=/opt/oracle/lrest/initdev.rst "
-	readyPods := 0
-
-	if lrest.Spec.LRESTAdminUser.Secret.SecretName != "" {
-		Dbuser, _ = getGenericSecret3(ctx, r, req, lrest,
-			lrest.Spec.LRESTAdminUser.Secret.SecretName, lrest.Spec.LRESTAdminUser.Secret.Key,
-			lrest.Spec.LRESTPriKey.Secret.SecretName, lrest.Spec.LRESTPriKey.Secret.Key,
-			NULL, NULL, true)
-		RestCommand = RestCommand + " --resetcdbusr=" + Dbuser
-	}
-	if lrest.Spec.LRESTAdminPwd.Secret.SecretName != "" {
-		Passwd, _ = getGenericSecret3(ctx, r, req, lrest,
-			lrest.Spec.LRESTAdminPwd.Secret.SecretName, lrest.Spec.LRESTAdminPwd.Secret.Key,
-			lrest.Spec.LRESTPriKey.Secret.SecretName, lrest.Spec.LRESTPriKey.Secret.Key,
-			NULL, NULL, true)
-		RestCommand = RestCommand + " --resetcdbpwd=" + Passwd
-	}
-
-	for _, pod := range podList.Items {
-		if pod.Status.Phase == corev1.PodRunning {
-			readyPods++
-			out, _ := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, true, "bash", "-c", RestCommand)
-			log.Info(out)
-		}
-	}
-	END OF DECOMISSIONING */
-
 	/* Restart lrest */
 	log.Info("=== RESTARTING REST SERVET ===")
 	url = "https://" + IP + "/database/lrest/StopRestServer/"
@@ -2076,7 +2090,7 @@ func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request,
 	}
 
 	_, err = NewCallAPISQL(ctx, r, req, lrest, url, values, "POST")
-	if CheckErr(ctx, err, r, req, lrest, nil) == true {
+	if CheckErr(ctx, err, r, req, lrest, nil) {
 		return err
 	}
 
@@ -2140,12 +2154,12 @@ func getGenericSecret3(ctx context.Context, intr interface{},
 		Trclvl = lrest.Spec.Trclvl
 	}
 
-	if Bit(Trclvl, TRCSEC&TRCSTK) == true {
-		Backtrace()
+	if lrestutil.Bit(Trclvl, lrestutil.TRCSEC&lrestutil.TRCSTK) {
+		lrestutil.Backtrace()
 	}
 
 	if Secnm != "" {
-		if Bit(Trclvl, TRCSEC) == true {
+		if lrestutil.Bit(Trclvl, lrestutil.TRCSEC) {
 			fmt.Printf("TRCSEC: getGenericSecret3  [Secretname=%s][namespace=%s]\n", Secnm, Nms)
 		}
 
@@ -2157,7 +2171,7 @@ func getGenericSecret3(ctx context.Context, intr interface{},
 
 		/* Get base64 secrets */
 		if PassProtection == "NATIVE" || PassProtection == "ORAPKI" {
-			if Bit(Trclvl, TRCSEC) == true {
+			if lrestutil.Bit(Trclvl, lrestutil.TRCSEC) {
 				fmt.Printf("TRCSEC: PassProtection=NATIVE\n")
 			}
 			RerturnSecValue = string(secret01.Data[Secky])
@@ -2166,7 +2180,7 @@ func getGenericSecret3(ctx context.Context, intr interface{},
 
 		/* Get Encrypted secrets */
 		if PassProtection == "OPENSSL3" {
-			if Bit(Trclvl, TRCSEC) == true {
+			if lrestutil.Bit(Trclvl, lrestutil.TRCSEC) {
 				fmt.Printf("TRCSEC: PassProtection=OPENSSL3\n")
 			}
 			err = c.Get(ctx, types.NamespacedName{Name: DecPKSecnm, Namespace: Nms}, secret02)
@@ -2179,7 +2193,7 @@ func getGenericSecret3(ctx context.Context, intr interface{},
 
 			block, _ := pem.Decode([]byte(OpenSSLkey))
 
-			if IsKeyPriv == true {
+			if IsKeyPriv {
 				pkcs8, err = x509.ParsePKCS8PrivateKey(block.Bytes)
 			} else {
 				pkcs8, err = x509.ParsePKIXPublicKey(block.Bytes)
@@ -2211,7 +2225,7 @@ func getGenericSecret3(ctx context.Context, intr interface{},
 
 	/* Get a generic certificate from secret */
 	if Cernm != "" {
-		if Bit(Trclvl, TRCSEC) == true {
+		if lrestutil.Bit(Trclvl, lrestutil.TRCSEC) {
 			fmt.Printf("TRCSEC: Get Cert/Key %s\n", Cernm)
 		}
 		err = c.Get(ctx, types.NamespacedName{Name: Cernm, Namespace: Nms}, secret03)
@@ -2226,7 +2240,7 @@ func getGenericSecret3(ctx context.Context, intr interface{},
 }
 
 // CheckErr reads error
-func CheckErr(ctx context.Context, err error, intr interface{}, req ctrl.Request, lrcrd interface{}, spare interface{}) bool {
+func CheckErr(_ context.Context, err error, intr interface{}, req ctrl.Request, lrcrd interface{}, _ interface{}) bool {
 
 	var r logr.Logger
 	var e record.EventRecorder
@@ -2265,9 +2279,9 @@ func CheckErr(ctx context.Context, err error, intr interface{}, req ctrl.Request
 			e.Event(lrest, corev1.EventTypeWarning, "CheckErr", err.Error())
 		}
 
-		if Bit(Trclvl, TRCSTK) == true {
+		if lrestutil.Bit(Trclvl, lrestutil.TRCSTK) {
 			log.Error(err, ErrorMsg)
-			Backtrace()
+			lrestutil.Backtrace()
 		}
 
 		return true
@@ -2295,9 +2309,13 @@ func (r *LRESTReconciler) ensureTLSSecret(ctx context.Context, lrest *dbapi.LRES
 		Namespace: lrest.Namespace,
 	}, found)
 	if err == nil {
-		if _, ok := found.Data[lrestCAPinSecretKey]; !ok {
-			return fmt.Errorf("operator-managed CA Secret %s/%s is missing %s",
-				lrest.Namespace, secretName, lrestCAPinSecretKey)
+		if serverCertPEM, ok := found.Data[tlsServerCrt]; !ok || len(serverCertPEM) == 0 {
+			return fmt.Errorf("operator-managed TLS Secret %s/%s is missing %s",
+				lrest.Namespace, secretName, tlsServerCrt)
+		}
+		if serverKeyPEM, ok := found.Data[tlsServerKey]; !ok || len(serverKeyPEM) == 0 {
+			return fmt.Errorf("operator-managed TLS Secret %s/%s is missing %s",
+				lrest.Namespace, secretName, tlsServerKey)
 		}
 		return nil
 	}
@@ -2325,6 +2343,9 @@ func (r *LRESTReconciler) ensureTLSSecret(ctx context.Context, lrest *dbapi.LRES
 
 	/*  ... */
 	serverCertPEM, serverKeyPEM, err := generateLRESTServerCert(lrest.Name, lrest.Namespace, caPEM, caPEMKEY)
+	if err != nil {
+		return err
+	}
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -2386,8 +2407,8 @@ func (r *LRESTReconciler) ensureLRESTCAPinSecret(ctx context.Context, lrest *dba
 		Data: map[string][]byte{
 			lrestCAPinSecretKey:     caCertPEM,
 			lrestCAPinPrivateKeyKey: caKeyPEM,
-			consR3:                  Gnrn(),
-			consR4:                  Gnrn(),
+			consR3:                  lrestutil.Gnrn(),
+			consR4:                  lrestutil.Gnrn(),
 		},
 	}
 
@@ -2398,7 +2419,7 @@ func (r *LRESTReconciler) ensureLRESTCAPinSecret(ctx context.Context, lrest *dba
 	return r.Create(ctx, secret)
 }
 
-func generateLRESTCA(lrestName string, lrestNamespace string) ([]byte, []byte, error) {
+func generateLRESTCA(lrestName string, _ string) ([]byte, []byte, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return nil, nil, err

@@ -8,7 +8,7 @@ spec:
   ociSecret: "oci-privatekey"
   dbSystem:
     availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+    compartmentId: "ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>"
     dbAdminPaswordSecret: "admin-password"
     dbBackupConfig:
       autoBackupEnabled: True
@@ -30,7 +30,7 @@ spec:
     sshPublicKeys:
       - "oci-publickey"
     storageManagement: "ASM"
-    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
+    subnetId: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"
     tags:
       "TEST": "test_case_provision"
       "CreatedBy": "MAA_TEAM"
@@ -148,7 +148,7 @@ Name:         dbcssystem-create
 Namespace:    default
 Labels:       <none>
 Annotations:  lastSuccessfulSpec:
-                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a","availabilityDomain":"O...
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>","availabilityDomain":"O...
 API Version:  database.oracle.com/v4
 Kind:         DbcsSystem
 Metadata:
@@ -159,7 +159,7 @@ Metadata:
 Spec:
   Db System:
     Availability Domain:      OLou:AP-MUMBAI-1-AD-1
-    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
+    Compartment Id:           ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>
     Db Admin Pasword Secret:  admin-password
     Db Backup Config:
       Auto Backup Enabled:            true
@@ -181,13 +181,13 @@ Spec:
     Ssh Public Keys:
       oci-publickey
     Storage Management:  ASM
-    Subnet Id:           ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+    Subnet Id:           ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
     Tags:
       Created By:                MAA_TEAM
       TEST:                      test_case_provision
     Tde Wallet Password Secret:  tde-password
     Time Zone:                   Europe/Berlin
-  Id:                            ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyap33onviyojoimevpazf4wtbnfsi5v5izah2s365wmyka
+  Id:                            ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Kms Config:
   Oci Config Map:  oci-cred-mumbai
   Oci Secret:      oci-privatekey
@@ -201,13 +201,13 @@ Status:
     Host Name:          
   Db Edition:           ENTERPRISE_EDITION_HIGH_PERFORMANCE
   Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.ap-mumbai-1.anrg6ljrqlb5nxiav4nm27oy6tfbqqyukvcgba7nalyozrgwfvkt5f25fazq
+    Db Home Id:      ocid1.dbhome.oc1..<REPLACE_WITH_DB_HOME_OCID>
     Db Name:         cdb12
     Db Unique Name:  cdb12_z4b_bom
     Db Workload:     OLTP
-    Id:              ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyanuajzgrh6u5qtvlui4e7jtfwbcnx7lcplw36dy4u4fza
+    Id:              ocid1.database.oc1..<REPLACE_WITH_DATABASE_OCID>
   Display Name:      dbsys123
-  Id:                ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyap33onviyojoimevpazf4wtbnfsi5v5izah2s365wmyka
+  Id:                ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Kms Details Status:
   License Model:  BRING_YOUR_OWN_LICENSE
   Network:
@@ -225,15 +225,15 @@ Status:
         TEST:                 test_case_provision
       Pdb Name:               PDB0123
       Pdb State:              AVAILABLE
-      Pluggable Database Id:  ocid1.pluggabledatabase.oc1.ap-mumbai-1.anrg6ljrabf7htya6wvrskrlk2fazy4pa25jcbinks7vsjdv4kxf5t6nxcxq
+      Pluggable Database Id:  ocid1.pluggabledatabase.oc1..<REPLACE_WITH_PLUGGABLEDATABASE_OCID>
   Reco Storage Size In GB:    256
   Shape:                      VM.Standard.E5.Flex
   State:                      AVAILABLE
   Storage Management:         ASM
-  Subnet Id:                  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Subnet Id:                  ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Time Zone:                  UTC
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrq63rk37tfqyu64lwason4rczllxmd5nk5iovdzbqkkk2d4nwp5ka
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create DB System
     Percent Complete:  100
     Time Accepted:     2024-12-09 09:42:14.521 +0000 UTC

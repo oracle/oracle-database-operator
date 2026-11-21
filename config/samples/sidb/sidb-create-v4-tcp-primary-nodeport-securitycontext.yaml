@@ -1,0 +1,74 @@
+# SIDB primary with TCP NodePort and Oracle kernel sysctls.
+# Replace the namespace, image, storage class, secrets, and NodePort before use.
+# The worker kubelet must allow these unsafe sysctls:
+# kernel.sh*,kernel.sem
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: default
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  createAs: primary
+  edition: enterprise
+  archiveLog: true
+  flashBack: true
+  forceLog: true
+
+  securityContext:
+    sysctls:
+      - name: kernel.shmall
+        value: "3932160"
+      - name: kernel.sem
+        value: "250 32000 100 128"
+      - name: kernel.shmmax
+        value: "16106127360"
+      - name: kernel.shmmni
+        value: "4096"
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: IfNotPresent
+  initParams:
+    sgaTarget: 14336
+    pgaAggregateTarget: 2048
+    processes: 800
+
+  resources:
+    requests:
+      memory: "24Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    setWritePermissions: true
+
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        tcp:
+          enabled: true
+          nodePort: 32330
+
+  replicas: 1

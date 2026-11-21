@@ -1,23 +1,30 @@
-# Deploying Oracle PrivateAI Container using Public LoadBalancer and with multiple replica
+# Deploy Oracle Private AI with a Public Load Balancer and Multiple Replicas
 
-Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In this example, the deployment uses the YAML file based on `OCI OKE` cluster and there are multiple replica created during the provisioning using the parameter `replicas`.
+Deploy Oracle Private AI on an OCI Kubernetes Engine (OKE) cluster with a public Load Balancer. This example configures three replicas in the `PrivateAi` resource.
 
-**IMPORTANT:** Complete [Before You Begin](./README.md#before-you-begin) before using Oracle PrivateAI Controller.
+**Important:** Complete [Before You Begin](./README.md#before-you-begin) before using the Oracle Private AI Controller.
 
-**NOTE:** Modify the file `pai_sample_publiclb_multi_replica.yaml` with the actual Reserved Public IP before deployment.
+**Note:** Before deployment, update `pai_sample_publiclb_multi_replica.yaml` with the reserved public IP address. Ensure that the TLS certificate includes this IP address in its Subject Alternative Name (SAN).
 
-Use the file: [pai_sample_publiclb_multi_replica.yaml](./provisioning/pai_sample_publiclb_multi_replica.yaml) for this use case as below:
+1. Start with [pai_sample_publiclb_multi_replica.yaml](./provisioning/pai_sample_publiclb_multi_replica.yaml). Confirm that `spec.runtime.replicas` is set to `3`.
 
-1. Deploy the `pai_sample_publiclb_multi_replica.yaml` file:
-    ```sh
-    kubectl apply -f pai_sample_publiclb_multi_replica.yaml
-    ```
-2. Check the status of the deployment. You will see multiple Pods are created according to the value of the parameter `replicas` uses in the above YAML file:
-    ```sh
-    # Check the status of the Kubernetes Pods:
-    kubectl get all -n pai
+2. From the repository root, apply the manifest and wait for the `PrivateAi` resource to become healthy:
 
-    # Check the logs of a particular pod. For example, to check status of pod "pai-sample-b669d7897-nkkhz":
-    kubectl logs pod/pai-sample-b669d7897-nkkhz -n pai
-    ```
-  
+   ```sh
+   kubectl apply -f docs/privateai/provisioning/pai_sample_publiclb_multi_replica.yaml
+   kubectl wait --for=jsonpath='{.status.status}'=Healthy pai/pai-sample \
+     -n pai --timeout=15m
+   kubectl rollout status deployment/pai-sample -n pai --timeout=15m
+   ```
+
+3. Verify the `PrivateAi` status, replica count, Load Balancer address, Pods, and Services:
+
+   ```sh
+   kubectl get pai pai-sample -n pai \
+     -o jsonpath='status={.status.status} replicas={.status.replicas} publicLoadBalancerService={.status.publicLoadBalancerService} loadBalancerIP={.status.loadBalancerIP}{"\n"}'
+   kubectl get deployment pai-sample -n pai
+   kubectl get pods -n pai -l app.kubernetes.io/name=pai-sample -o wide
+   kubectl get services -n pai -o wide
+   ```
+
+Confirm that the resource is `Healthy`, the Deployment has three ready replicas, all three Pods are Ready, and the public Load Balancer Service has an address.

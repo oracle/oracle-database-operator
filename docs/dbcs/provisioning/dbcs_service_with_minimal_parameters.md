@@ -9,7 +9,7 @@ This example uses `dbcs_service_with_minimal_parameters.yaml` to deploy a Single
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
 - Availability Domain for the OBDS VMDB as `OLou:AP-MUMBAI-1-AD-1`
-- Compartment OCID as `cid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`
+- Compartment OCID as `ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>`
 - Database Admin Credential as `admin-password`  
 - Database Name as `dbsystem1234`  
 - Oracle Database Software Image Version as `19c`  
@@ -18,7 +18,7 @@ This example uses `dbcs_service_with_minimal_parameters.yaml` to deploy a Single
 - Oracle VMDB Shape as `VM.Standard2.1`  
 - SSH Public key for the OBDS system being deployed as `oci-publickey`  
 - domain `vcndns.oraclevcn.com`
-- OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`
+- OCID of the Subnet as `ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>`
 
 
 **NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md). 

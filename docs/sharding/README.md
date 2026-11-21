@@ -1,4 +1,4 @@
-# Deploy Oracle Globally Distributed Database on Kubernetes with Oracle Database Operator
+# Deploy Oracle Globally Distributed Database on Kubernetes with Oracle AI Database Operator
 
 Oracle Globally Distributed Database distributes segments of a data set across many databases (shards) on different computers, either on-premises or in the cloud. This feature enables globally distributed, linearly scalable, multimodel databases. It requires no specialized hardware or software. Oracle Globally Distributed Database does all this while providing strong consistency, full power of SQL, support for structured and unstructured data, and the Oracle Database ecosystem. It meets data sovereignty requirements and supports applications that require low latency and high availability.
 
@@ -6,7 +6,7 @@ All of the shards together make up a single logical database, which is referred 
 
 Kubernetes provides infrastructure building blocks, such as compute, storage, and networks. Kubernetes makes the infrastructure available as code. It enables rapid provisioning of multi-node topologies. Additionally, Kubernetes also provides StatefulSets, which are the workload API objects that are used to manage stateful applications. This provides us lifecycle management elasticity for databases as a stateful application for various database topologies, such as Oracle Globally Distributed Database, Oracle Real Application Clusters (Oracle RAC), single-instance Oracle Database, and other Oracle features and configurations.
 
-The Sharding Controller in Oracle Database Operator deploys and manages Oracle Globally Distributed Database topology as a StatefulSets in the Kubernetes clusters, using Oracle Database and Global Data Services container images. Oracle Database Operator Sharding Controller manages the typical lifecycle of Oracle Globally Distributed Database topology in the Kubernetes cluster, as shown below:
+The Sharding Controller in Oracle AI Database Operator deploys and manages Oracle Globally Distributed Database topology as a StatefulSets in the Kubernetes clusters, using Oracle Database and Global Data Services container images. Oracle AI Database Operator Sharding Controller manages the typical lifecycle of Oracle Globally Distributed Database topology in the Kubernetes cluster, as shown below:
 
 * Create primary StatefulSets shards
 * Create master and standby Global Data Services StatefulSets
@@ -20,20 +20,20 @@ The Sharding Controller in Oracle Database Operator deploys and manages Oracle G
   * Shard scale up and scale down
 * Shard topology cleanup
 
-Oracle Database Operator Sharding Controller provides end-to-end automation of Oracle Globally Distributed Database topology deployment in Kubernetes clusters.
+Oracle AI Database Operator Sharding Controller provides end-to-end automation of Oracle Globally Distributed Database topology deployment in Kubernetes clusters.
 
 For API migration guidance, see [ShardingDatabase v4 Migration Strategy and FAQ](./SHARDINGDATABASE_V4_MIGRATION_FAQ.md).
 
-## Getting Started with Oracle Database Operator Sharding Controller
+## Getting Started with Oracle AI Database Operator Sharding Controller
 
-The following sections describe how to deploy Oracle Globally Distributed Database using the Oracle Database Operator Sharding Controller for different use cases. Choose the deployment scenario that matches your Oracle GDD topology. Complete the prerequisites before starting any deployment.
+The following sections describe how to deploy Oracle Globally Distributed Database using the Oracle AI Database Operator Sharding Controller for different use cases. Choose the deployment scenario that matches your Oracle GDD topology. Complete the prerequisites before starting any deployment.
 
-- [Deploy Oracle Globally Distributed Database on Kubernetes with Oracle Database Operator](#deploy-oracle-globally-distributed-database-on-kubernetes-with-oracle-database-operator)
-  - [Getting Started with Oracle Database Operator Sharding Controller](#getting-started-with-oracle-database-operator-sharding-controller)
-  - [Prerequisites for running Oracle Database Operator Sharding Controller](#prerequisites-for-running-oracle-database-operator-sharding-controller)
+- [Deploy Oracle Globally Distributed Database on Kubernetes with Oracle AI Database Operator](#deploy-oracle-globally-distributed-database-on-kubernetes-with-oracle-ai-database-operator)
+  - [Getting Started with Oracle AI Database Operator Sharding Controller](#getting-started-with-oracle-ai-database-operator-sharding-controller)
+  - [Prerequisites for running Oracle AI Database Operator Sharding Controller](#prerequisites-for-running-oracle-ai-database-operator-sharding-controller)
     - [Kubernetes cluster](#kubernetes-cluster)
     - [Required Kubernetes Roles and Privileges](#required-kubernetes-roles-and-privileges)
-    - [Deploy Oracle Database Operator](#deploy-oracle-database-operator)
+    - [Deploy Oracle AI Database Operator](#deploy-oracle-ai-database-operator)
     - [Oracle Database and Global Data Services container images](#oracle-database-and-global-data-services-container-images)
     - [Create the Oracle GDD Namespace](#create-the-oracle-gdd-namespace)
     - [Create a Kubernetes secret for the database installation owner for the Oracle Globally Distributed Database topology deployment](#create-a-kubernetes-secret-for-the-database-installation-owner-for-the-oracle-globally-distributed-database-topology-deployment)
@@ -47,6 +47,11 @@ The following sections describe how to deploy Oracle Globally Distributed Databa
   - [Deployment Scenarios for Composite Sharding with Data Guard Replication](#deployment-scenarios-for-composite-sharding-with-data-guard-replication)
   - [Deployment Scenarios for Composite Sharding with Native (Raft) Replication](#deployment-scenarios-for-composite-sharding-with-native-raft-replication)
   - [Additional Oracle GDD Deployment Scenarios](#additional-oracle-gdd-deployment-scenarios)
+  - [GDD Deployment on OpenShift](#gdd-deployment-on-openshift)
+    - [Create and Bind the SCC](#create-and-bind-the-scc)
+    - [Configure the StatefulSet Controller Finalizer Permission](#configure-the-statefulset-controller-finalizer-permission)
+    - [Reference the ServiceAccount in the GDD Manifest](#reference-the-serviceaccount-in-the-gdd-manifest)
+    - [Deploy and Verify](#deploy-and-verify)
   - [Connecting to Oracle Globally Distributed Database](#connecting-to-oracle-globally-distributed-database)
   - [Frequently Asked Questions](#frequently-asked-questions)
   - [Debugging and Troubleshooting](#debugging-and-troubleshooting)
@@ -54,22 +59,22 @@ The following sections describe how to deploy Oracle Globally Distributed Databa
 
 **Note:** Complete each prerequisite that applies to your environment before continuing.
 
-## Prerequisites for running Oracle Database Operator Sharding Controller
+## Prerequisites for running Oracle AI Database Operator Sharding Controller
 
 **IMPORTANT:** You must make the changes specified in this section before you proceed to the next section.
 
 ### Kubernetes cluster
 
-To deploy Oracle Database Operator Sharding Controller, you need a Kubernetes cluster that uses one of the following environments:
+To deploy Oracle AI Database Operator Sharding Controller, you need a Kubernetes cluster that uses one of the following environments:
 
 * A cloud-based Kubernetes cluster, such as [OCI on Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) or  
 * An on-premises Kubernetes Cluster, such as [Oracle Linux Cloud Native Environment (OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) cluster.
 
-To use Oracle Database Operator Sharding Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Release Status Section](../../README.md#release-status).
+To use Oracle AI Database Operator Sharding Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Oracle AI Database Operator releases](https://github.com/oracle/oracle-database-operator/releases).
 
 ### Required Kubernetes Roles and Privileges
 
-  The Oracle Database Operator Sharding Controller requires access to the following Kubernetes resources:
+  The Oracle AI Database Operator Sharding Controller requires access to the following Kubernetes resources:
 
   | Resource | Required verbs |
   | --- | --- |
@@ -80,11 +85,9 @@ To use Oracle Database Operator Sharding Controller, ensure that your system is 
   | Secrets | `create`, `delete`, `get`, `list`, `patch`, `update`, `watch` |
   | Events | `create`, `patch` |  
 
-### Deploy Oracle Database Operator
+### Deploy Oracle AI Database Operator
 
-Follow [Install Oracle DB Operator](../../README.md#install-oracle-db-operator) to deploy the operator. If the operator is already installed, continue to the next section.
-
-**IMPORTANT:** Before installing the operator, also complete the [Role Binding for access management](../../README.md#role-binding-for-access-management).
+Follow [Install Oracle AI Database Operator](../../README.md#install-the-operator) to deploy the operator. If the operator is already installed, continue to the next section.
 
 ### Oracle Database and Global Data Services container images
 
@@ -92,7 +95,7 @@ Choose one of the following deployment options:
 
   **Use Oracle-Supplied container images:**
 
-  Oracle Database Operator Sharding Controller uses Oracle Global Data Services and Oracle Database images to provision the sharding topology.
+  Oracle AI Database Operator Sharding Controller uses Oracle Global Data Services and Oracle Database images to provision the sharding topology.
 
   You can download the pre-built Oracle Global Data Services and Oracle Database images from [Oracle Container Registry](https://container-registry.oracle.com). These images have been functionally tested for various Oracle GDD deployment scenarios on OKE and OLCNE. You can refer to [Oracle Container Registry Images for Oracle Globally Distributed Database Deployment](https://github.com/oracle/db-sharding/blob/master/container-based-sharding-deployment/README.md#oracle-container-registry-images-for-oracle-globally-distributed-database-deployment)
   
@@ -170,7 +173,7 @@ The complete Oracle GDD YAML template, including the available configuration opt
 
 For more information, see the [Oracle AI Database 26ai Free documentation](https://www.oracle.com/database/free/get-started/).
 
-When using Oracle AI Database 26ai Free images for the database and GSM with the Oracle Database Operator Sharding Controller, note the following:
+When using Oracle AI Database 26ai Free images for the database and GSM with the Oracle AI Database Operator Sharding Controller, note the following:
 
 * Add the parameter `dbEdition: "free"` to the YAML manifest.
 * See [Sample Oracle Globally Distributed Database deployment using Oracle AI Database 26ai Free and GSM images](./provisioning/free/sharding_provisioning_with_free_images.md) for an example.
@@ -259,6 +262,217 @@ The sample YAML manifests are based on an OCI Container Engine for Kubernetes (O
 | Shared mount point | Deploy Oracle GDD using a [shared mount point](./provisioning/system_sharding/ssharding_provisioning_shared_mount_point.md) |
 | Node selection | Deploy Oracle GDD with [node selection](./provisioning/system_sharding/ssharding_provisioning_with_node_selection.md) for pod placement |
 
+## GDD Deployment on OpenShift
+
+Deploy Oracle Globally Distributed Database (GDD) on OpenShift by creating
+an SCC, binding it to the database Pod ServiceAccount, and configuring the
+StatefulSet controller permission described below.
+
+Complete the standard operator, image, registry, storage, and database
+Secret prerequisites first.
+
+This example uses the tested System-Managed Sharding configuration:
+
+| Setting | Value |
+| --- | --- |
+| Namespace | `shns` |
+| ShardingDatabase resource | `sdb-system` |
+| Database Pod ServiceAccount | `shns-sa` |
+| SCC | `shns-oracle-user-scc` |
+| Components | `catalog`, `gsm1`, `gsm2`, `pshard1`, and `pshard2` |
+
+Run the commands from the GDD provisioning directory using an OpenShift
+cluster administrator or an identity authorized to create the SCC and
+grant the required RBAC permissions.
+
+The examples assume that the namespace already exists:
+
+```sh
+NS=shns
+GDD=sdb-system
+
+oc get namespace "$NS"
+```
+
+If using another namespace or ShardingDatabase name, update the matching
+values in the following manifests. Keep the StatefulSet controller
+ServiceAccount namespace as `kube-system` for the controller identity
+used in this example.
+
+### Create and Bind the SCC
+
+This example deployment uses a non-root SCC with UID `54321`, an `fsGroup`
+of `54321`, and supplemental groups restricted to `54321`.
+
+The SCC permits the capabilities requested by the database and GSM containers:
+
+| Components | Requested capabilities |
+| --- | --- |
+| Catalog and shard databases | `NET_ADMIN`, `SYS_NICE` |
+| GSM instances | `NET_RAW` |
+
+The SCC drops default capabilities and permits the containers to
+explicitly request the listed capabilities. It does not permit privileged
+containers.
+
+Apply the manifest: [openshift_gdd_rbac_scc.yaml](./provisioning/openshift/openshift_gdd_rbac_scc.yaml)
+
+```sh
+oc apply -f openshift_gdd_rbac_scc.yaml
+```
+
+Verify that the database Pod ServiceAccount can use the SCC:
+
+```sh
+oc auth can-i use securitycontextconstraints/shns-oracle-user-scc \
+  --as="system:serviceaccount:${NS}:shns-sa" \
+  -n "$NS"
+```
+
+Expected result: `yes`.
+
+The RoleBinding authorizes Pods using `shns-sa` to use this SCC within
+`shns`. It does not grant database access or general Kubernetes API
+permissions.
+
+### Configure the StatefulSet Controller Finalizer Permission
+
+The operator configuration also requires a separate RBAC rule for
+the StatefulSet controller.
+
+The StatefulSet controller needs a separate RBAC rule to update
+`shardingdatabases/finalizers`. Without this permission, it cannot create
+PVCs that reference the `ShardingDatabase` with `blockOwnerDeletion: true`.
+
+The permission must be granted to the identity creating the PVC (
+  `system:serviceaccount:kube-system:statefulset-controller` in this case). Granting the
+permission only to the database operator or `shns-sa` does not address
+this admission failure.
+
+Confirm the StatefulSet controller identity:
+
+```sh
+oc get clusterrolebinding system:controller:statefulset-controller \
+  -o jsonpath='{range .subjects[*]}{.kind}{" "}{.namespace}{"/"}{.name}{"\n"}{end}'
+```
+
+Expected output for the tested cluster:
+
+```text
+ServiceAccount kube-system/statefulset-controller
+```
+
+Use the manifest [openshift_gdd_finalizer_rbac.yaml](./provisioning/openshift/openshift_gdd_finalizer_rbac.yaml).
+If the cluster uses a different controller identity, adjust the RoleBinding subject accordingly.
+
+Apply the manifest before creating the ShardingDatabase:
+
+```sh
+oc apply -f openshift_gdd_finalizer_rbac.yaml
+```
+
+Verify permission for the specific ShardingDatabase name:
+
+```sh
+oc auth can-i update "shardingdatabases.database.oracle.com/$GDD" \
+  --subresource=finalizers \
+  --as=system:serviceaccount:kube-system:statefulset-controller \
+  -n "$NS"
+```
+
+Expected result: `yes`.
+
+The Role grants only `update` on the `finalizers` subresource of
+`shns/sdb-system`. Include the resource name in the verification command;
+a permission check without a name can return `no` because this Role is
+restricted by `resourceNames`.
+
+This configuration grants an RBAC permission. It does not require
+removing or changing finalizers on the ShardingDatabase or its storage
+resources.
+
+### Reference the ServiceAccount in the GDD Manifest
+
+Add `spec.serviceAccountName: shns-sa` to the standard ShardingDatabase
+manifest. Keep the existing database, GSM, shard, storage, and Secret
+configuration.
+
+The following fragment shows the required placement:
+
+```yaml
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: sdb-system
+  namespace: shns
+spec:
+  serviceAccountName: shns-sa
+
+  # Keep the remaining GDD configuration here.
+```
+
+`serviceAccountName` is a top-level field under `spec`, alongside fields
+such as `dbImage`, `gsmImage`, and `storageClass`.
+
+### Deploy and Verify
+
+After applying both RBAC manifests, deploy the ShardingDatabase. The tested
+deployment manifest was:
+
+```sh
+oc apply -f system_sharding/ssharding_shard_prov_sa.yaml
+```
+
+Verify that the generated StatefulSets use the intended ServiceAccount:
+
+```sh
+oc get statefulsets -n "$NS" \
+  -o custom-columns='NAME:.metadata.name,SERVICEACCOUNT:.spec.template.spec.serviceAccountName'
+```
+
+For this example, `catalog`, `gsm1`, `gsm2`, `pshard1`, and `pshard2` should
+all show `shns-sa`.
+
+Check the Pods, PVCs, and selected SCC:
+
+```sh
+oc get pods,pvc -n "$NS"
+
+oc get pods -n "$NS" \
+  -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,SA:.spec.serviceAccountName,SCC:.metadata.annotations.openshift\.io/scc'
+```
+
+The expected ServiceAccount is `shns-sa`, and the expected SCC for the
+tested configuration is `shns-oracle-user-scc`.
+
+Watch provisioning progress:
+
+```sh
+oc get pods -n "$NS" -w
+```
+
+Press Ctrl+C to stop watching. Pod creation confirms that admission has
+progressed; continue the standard GDD workflow to verify database and
+sharding topology readiness.
+
+If Pods or PVCs are not created, inspect the StatefulSet events:
+
+```sh
+oc describe statefulset catalog -n "$NS"
+
+oc get events -n "$NS" --sort-by=.metadata.creationTimestamp
+```
+
+For SCC capability errors, verify the SCC capability list, its RoleBinding,
+and the StatefulSet ServiceAccount. For the `blockOwnerDeletion` error,
+verify the StatefulSet controller's permission for the exact
+ShardingDatabase name.
+
+If an existing deployment is blocked by either permission issue, apply
+the corresponding RBAC correction and allow the StatefulSet controller
+to retry. Deleting the ShardingDatabase or restarting the operator is not
+required for these permission corrections.
+
 ## Connecting to Oracle Globally Distributed Database
 
 After provisioning the topology, follow [Database Connectivity](./provisioning/database_connection.md) to connect through GSM or directly to an individual shard database.
@@ -271,15 +485,15 @@ Oracle Globally Distributed Database (GDD) is a distributed database architectur
 
 ---
 
-**What is the Oracle Database Operator Sharding Controller?**
+**What is the Oracle AI Database Operator Sharding Controller?**
 
-The Oracle Database Operator Sharding Controller automates the deployment and lifecycle management of Oracle Globally Distributed Database topologies on Kubernetes. It provisions catalog databases, shard databases, Global Service Managers (GSM), networking, storage, and supports scaling operations.
+The Oracle AI Database Operator Sharding Controller automates the deployment and lifecycle management of Oracle Globally Distributed Database topologies on Kubernetes. It provisions catalog databases, shard databases, Global Service Managers (GSM), networking, storage, and supports scaling operations.
 
 ---
 
 **Which sharding types are supported?**
 
-The Oracle Database Operator supports the following sharding types:
+The Oracle AI Database Operator supports the following sharding types:
 
 - System-Managed Sharding
 - User-Defined Sharding
@@ -333,7 +547,7 @@ When using Oracle AI Database 26ai Free:
 
 Yes.
 
-The Oracle Database Operator supports both:
+The Oracle AI Database Operator supports both:
 
 - Scale-out by adding new shards
 - Scale-in by deleting existing shards
@@ -386,7 +600,7 @@ See the **Debugging and Troubleshooting** section for common diagnostic procedur
 
 ## Debugging and Troubleshooting
 
-To debug the Oracle Globally Distributed Database topology provisioned using the Oracle Database Operator Sharding Controller, follow this document: [Debug Oracle GDD deployments](./provisioning/debugging.md)
+To debug the Oracle Globally Distributed Database topology provisioned using the Oracle AI Database Operator Sharding Controller, follow this document: [Debug Oracle GDD deployments](./provisioning/debugging.md)
 
 ## Known Issues
 

@@ -41,9 +41,9 @@ spec:
   ## Database image details.
   ## Use an image compatible with the primary database major version.
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
     imagePullPolicy: IfNotPresent
-    pullSecrets: oracle-container-registry-secret
 
   ## Database storage details.
   persistence:

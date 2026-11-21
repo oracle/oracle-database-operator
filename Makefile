@@ -23,7 +23,7 @@
 # ==============================================================================
 
 # Operator version
-VERSION ?= 2.2
+VERSION ?= 2.3.0
 
 # Primary controller image reference used by deploy/image-build/image-push
 IMG ?= controller:v$(VERSION)
@@ -39,7 +39,7 @@ DOCKER ?= podman
 PULL_POLICY ?= missing
 
 # Go toolchain version used for image builds
-GOLANG_VERSION ?= 1.26.5
+GOLANG_VERSION ?= 1.27.4
 
 # Toggle: BUILD_INTERNAL=true downloads Go in Dockerfile and uses oraclelinux builder
 BUILD_INTERNAL ?= false
@@ -50,7 +50,7 @@ BUILD_MANIFEST ?= false
 # Debug image support:
 #   DEBUG=false -> builds Dockerfile target "prod"
 #   DEBUG=true  -> builds Dockerfile target "debug" (expected to include dlv, debug flags, etc.)
-DEBUG ?= true
+DEBUG ?= false
 
 # Explicit Dockerfile target override (optional):
 #   TARGET=prod|debug
@@ -61,7 +61,7 @@ TARGET ?=
 CRD_OPTIONS ?= "crd:maxDescLen=0,allowDangerousTypes=true"
 
 # envtest Kubernetes assets version
-ENVTEST_K8S_VERSION ?= 1.36.3
+ENVTEST_K8S_VERSION ?= 1.36.2
 #kustomize veriosn
 KUSTOMIZE_VERSION ?= v5.8.1
 
@@ -100,8 +100,8 @@ GOBIN := $(shell go env GOBIN)
 endif
 
 # Bundle channels/default channel options
-BUNDLE_CHANNELS :=
-BUNDLE_DEFAULT_CHANNEL :=
+BUNDLE_CHANNELS := --channels=stable
+BUNDLE_DEFAULT_CHANNEL := --default-channel=stable
 ifneq ($(origin CHANNELS), undefined)
 BUNDLE_CHANNELS := --channels=$(CHANNELS)
 endif
@@ -116,10 +116,8 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 
-# DatabaseObserver v1alpha1 is retained for source compatibility but is no
-# longer served by admission webhooks. Keep the webhook generator scoped to
-# supported observability API versions while preserving the other API groups.
-WEBHOOK_PATHS ?= {./apis/database/...,./apis/network/...,./apis/observability/v1,./apis/observability/v4,./apis/privateai/...}
+# Keep the webhook generator scoped to supported observability API versions while preserving the other API groups.
+WEBHOOK_PATHS ?= {./apis/database/...,./apis/network/...,./apis/observability/v4,./apis/privateai/...}
 
 # Derive Dockerfile target from DEBUG, unless TARGET explicitly provided
 ifeq ($(TARGET),)
@@ -142,7 +140,7 @@ endif
 # Multi-arch manifest build toggle
 PUSH_ARGS =
 ifeq ($(BUILD_MANIFEST),true)
-BUILD_ARGS_PLATFORM := --platform=linux/arm64,linux/amd64 --jobs=2 --manifest
+BUILD_ARGS_PLATFORM := --platform=linux/arm64,linux/amd64 --jobs=1 --manifest
 PUSH_ARGS := manifest
 else
 BUILD_ARGS_PLATFORM := --platform=linux/amd64 --tag
@@ -237,7 +235,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
+	$(KUSTOMIZE) build config/operator | kubectl apply -f -
 
 minikube-deploy: minikube-operator-yaml minikube-push
 	kubectl apply -f $(OPERATOR_YAML)
@@ -251,7 +249,7 @@ operator-yaml: manifests kustomize
 	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "$(OPERATOR_SYSTEM_YAML)"
 	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_SYSTEM_YAML).bak") >> "$(OPERATOR_SYSTEM_YAML)"
 	rm "$(OPERATOR_SYSTEM_YAML).bak"
-	$(KUSTOMIZE) build config/default > "$(OPERATOR_YAML)"
+	$(KUSTOMIZE) build config/operator > "$(OPERATOR_YAML)"
 	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "$(OPERATOR_YAML)"
 	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_YAML).bak") >> "$(OPERATOR_YAML)"
 	rm "$(OPERATOR_YAML).bak"
@@ -261,7 +259,7 @@ minikube-operator-yaml: operator-yaml
 	rm "$(OPERATOR_YAML).bak"
 
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/default | kubectl delete -f -
+	$(KUSTOMIZE) build config/operator | kubectl delete -f -
 
 
 # ==============================================================================
@@ -315,7 +313,7 @@ $(ENVTEST): | $(LOCALBIN)
 
 ##@ Bundle
 bundle: manifests kustomize ## Generate bundle manifests/metadata, then validate.
-	operator-sdk generate kustomize manifests -q
+	operator-sdk generate kustomize manifests --apis-dir=apis -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
 	operator-sdk bundle validate ./bundle

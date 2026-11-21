@@ -148,7 +148,7 @@ spec:
 #    pvMatchLabels:
 #      "failure-domain.beta.kubernetes.io/zone": "PHX-AD-3"
 #    pvAnnotations:
-#      volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1.phx.a......msuwn57ula
+#      volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1..<REPLACE_WITH_VOLUME_OCID>msuwn57ula
 
   ## Global Service Manager (GSM) configuration.
   gsmInfo:

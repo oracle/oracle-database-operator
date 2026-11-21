@@ -17,7 +17,7 @@ This example uses `dbcs_service_with_pdb.yaml` to deploy a Single Instance OBDS 
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
 - Availability Domain for the OBDS VMDB as `OLou:US-ASHBURN-AD-1`
-- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`
+- Compartment OCID as `ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>`
 - Database Admin Credential as `admin-password`  
 - Database Name as `dbsystem24`  
 - Oracle Database Software Image Version as `21c`  
@@ -27,8 +27,8 @@ This example uses `dbcs_service_with_pdb.yaml` to deploy a Single Instance OBDS 
 - Oracle VMDB Shape as `VM.Standard2.1`  
 - SSH Public key for the OBDS system being deployed as `oci-publickey`  
 - domain `subd215df3e6.k8stest.oraclevcn.com`
-- OCID of the Subnet as `ocid1.subnet.oc1.iad.aaaaaaaa3lmmxwsykn2jc2vphzpq6eoyoqtte3dpwg6s5fzfkti22ibol2ua`
-- PDB Name as `pdb_sauahuja_11`
+- OCID of the Subnet as `ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>`
+- PDB Name as `pdb_example_11`
 - TDE Wallet Password as `tde-password`
 - PDB Admin Password as `pdb-password`
 

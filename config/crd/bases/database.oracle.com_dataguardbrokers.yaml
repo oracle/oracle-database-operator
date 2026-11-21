@@ -198,6 +198,7 @@ spec:
                         enum:
                         - MaxPerformance
                         - MaxAvailability
+                        - MaxProtection
                         type: string
                       requestId:
                         type: string
@@ -225,6 +226,7 @@ spec:
                 enum:
                 - MaxPerformance
                 - MaxAvailability
+                - MaxProtection
                 type: string
               serviceAnnotations:
                 additionalProperties:

@@ -1,0 +1,83 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Cross-cluster Data Guard primary for the CMAN path.
+# Pair with:
+#   singleinstancedatabase_standby_cross_cluster_cman.yaml
+#   connectionmanager_cman_primary_cross_cluster_dg.yaml
+#   connectionmanager_cman_standby_cross_cluster_dg.yaml
+#   dataguardbroker_cross_cluster_cman.yaml
+# See docs/sidb/dataguard/DATAGUARD_CROSS_CLUSTER_CMAN.md.
+#
+# standbySources points at the remote (standby-cluster) CMAN NodePort.
+# Local SIDB still exposes a NodePort for direct access/diagnostics.
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: <operator-watched-namespace>
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  createAs: primary
+  edition: enterprise
+  archiveLog: true
+  flashBack: true
+  forceLog: true
+
+  dataguard:
+    prereqs:
+      enabled: true
+    standbySources:
+      - dbUniqueName: ORCLSTBY
+        host: "<standby-cman-node-ip>"
+        tcpPort: 30189
+        tcpsEnabled: false
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: IfNotPresent
+  initParams:
+    sgaTarget: 14336
+    pgaAggregateTarget: 2048
+    processes: 800
+
+  resources:
+    requests:
+      memory: "24Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+    setWritePermissions: true
+
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        tcp:
+          enabled: true
+          nodePort: 32330
+
+  replicas: 1

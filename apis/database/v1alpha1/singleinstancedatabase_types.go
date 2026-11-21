@@ -92,7 +92,7 @@ type SingleInstanceDatabaseSpec struct {
 	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
 	Resources     SingleInstanceDatabaseResources     `json:"resources,omitempty"`
 
-	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
+	ConvertToSnapshotStandby *bool `json:"convertToSnapshotStandby,omitempty"`
 }
 
 type SingleInstanceDatabaseResource struct {

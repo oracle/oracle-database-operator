@@ -1,3 +1,4 @@
+
 #
 # Copyright (c) 2023, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
@@ -13,18 +14,17 @@ metadata:
 spec:
   ## Use only alphanumeric characters for sid.
   sid: ORCLS
+  edition: enterprise
 
   ## Intended type of database.
   createAs: standby
 
-  ## Use connectString when the primary is reached through a service name,
-  ## DNS name, IP address, or a different cluster/network path.
-  ## Set exactly one of primarySource.databaseRef, primarySource.connectString, or primarySource.details.
-  ##
-  ## For example: In current case
-  ## connectString: "sidb-sample.default:1521/ORCL1"
+  ## Primary TCP endpoint for standby bootstrap; TCPS uses the separate port below.
+  ## Pair with singleinstancedatabase_dataguard_primary_tde_tcps.yaml.
+  ## Set exactly one source selector; databaseRef is shown only as an alternative.
   primarySource:
-    connectString: "<primary-host-or-service>:1521/<primary-service-or-sid>"
+    # databaseRef: sidb-sample
+    connectString: "sidb-sample.default.svc.cluster.local:1521/ORCL1"
 
   ## Grouped security settings.
   ## For standby, use the source primary database admin secret.
@@ -34,16 +34,29 @@ spec:
         secretName: db-admin-secret
         secretKey: oracle_pwd
         keepSecret: true
+
+      ## TDE wallet exported from the primary; create this Secret before applying.
+      ## See docs/sidb/README.md#data-guard-setup-with-tde-and-tcps.
+      ## Match the primary's reachable host and TCPS port above to your environment.
+      ## For Oracle Database 19c, omit secretKey (walletZipFileKey only).
+      ## For Oracle Database 23ai and later, secretKey is required.
+      ## The operator validating webhook rejects secretKey on 19c standby images.
+      tde:
+        secretName: sidb-standby-tde-wallet
+        # secretKey: tde_wallet_pwd   # enable for 23ai+ only
+        walletZipFileKey: wallet.zip
+        walletRoot: /opt/oracle/oradata/ORCLS/tdewallet
+
     tcps:
       enabled: true
-      tlsSecret: standby-db-tcps-secret
+      tlsSecret: sidb-standby-tcps-tls
 
   ## Database image details.
   ## Use an image compatible with the primary database major version.
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
     imagePullPolicy: IfNotPresent
-    pullSecrets: oracle-container-registry-secret
 
   ## Database storage details.
   persistence:
@@ -51,22 +64,5 @@ spec:
       size: 100Gi
       storageClass: oci-bv
       accessMode: ReadWriteOnce
-
-  ## Optional service endpoint configuration.
-  ## Enable tcps only when spec.security.tcps.enabled is true.
-  services:
-    endpoints:
-      - name: nodeport
-        type: NodePort
-        tcp:
-          enabled: true
-        tcps:
-          enabled: true
-
-  ## Optional Data Guard prerequisite setup.
-  ## Enable this only when preparing this database for Data Guard workflows.
-  # dataguard:
-  #   prereqs:
-  #     enabled: true
 
   replicas: 1

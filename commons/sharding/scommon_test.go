@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -285,5 +286,147 @@ func TestGetShardSpaceAddCmdQuotesEnvValueForShell(t *testing.T) {
 	}
 	if strings.Contains(cmd[2], `ADD_SSPACE_PARAMS="`) {
 		t.Fatalf("expected env assignment not to use double-quoted shell word, got %q", cmd[2])
+	}
+}
+
+func TestMainContainerAllowPrivilegeEscalationDefaultAndOverride(t *testing.T) {
+	instance := &databasev4.ShardingDatabase{
+		Spec: databasev4.ShardingDatabaseSpec{
+			DbImage:  "db-image",
+			GsmImage: "gsm-image",
+			Gsm:      []databasev4.GsmSpec{{Name: "gsm1"}},
+			DbSecret: &databasev4.SecretDetails{Name: "db-secret"},
+		},
+	}
+
+	allowFalse := false
+	allowTrue := true
+	catalog := databasev4.CatalogSpec{Name: "catalog1"}
+	shard := databasev4.ShardSpec{Name: "shard1"}
+	gsm := databasev4.GsmSpec{Name: "gsm1"}
+
+	testCases := []struct {
+		name  string
+		build func(*bool) []corev1.Container
+	}{
+		{
+			name: "catalog",
+			build: func(value *bool) []corev1.Container {
+				spec := catalog
+				spec.AllowPrivilegeEscalation = value
+				return buildContainerSpecForCatalog(instance, spec)
+			},
+		},
+		{
+			name: "shard",
+			build: func(value *bool) []corev1.Container {
+				spec := shard
+				spec.AllowPrivilegeEscalation = value
+				return buildContainerSpecForShard(instance, spec)
+			},
+		},
+		{
+			name: "gsm",
+			build: func(value *bool) []corev1.Container {
+				spec := gsm
+				spec.AllowPrivilegeEscalation = value
+				return buildContainerSpecForGsm(instance, spec)
+			},
+		},
+	}
+
+	values := []struct {
+		name  string
+		value *bool
+		want  bool
+	}{
+		{name: "default", want: false},
+		{name: "explicit false", value: &allowFalse, want: false},
+		{name: "explicit true", value: &allowTrue, want: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			for _, value := range values {
+				containers := testCase.build(value.value)
+				if len(containers) != 1 || containers[0].SecurityContext == nil || containers[0].SecurityContext.AllowPrivilegeEscalation == nil {
+					t.Fatalf("expected one main container with AllowPrivilegeEscalation set for %s", value.name)
+				}
+				if got := *containers[0].SecurityContext.AllowPrivilegeEscalation; got != value.want {
+					t.Errorf("%s: expected AllowPrivilegeEscalation=%t, got %t", value.name, value.want, got)
+				}
+			}
+		})
+	}
+}
+
+func TestScriptInitContainersAreUnprivileged(t *testing.T) {
+	instance := &databasev4.ShardingDatabase{
+		Spec: databasev4.ShardingDatabaseSpec{
+			DbImage:  "db-image",
+			GsmImage: "gsm-image",
+			DbSecret: &databasev4.SecretDetails{Name: "db-secret"},
+		},
+	}
+
+	testCases := []struct {
+		name  string
+		build func() []corev1.Container
+	}{
+		{
+			name: "catalog",
+			build: func() []corev1.Container {
+				return buildInitContainerSpecForCatalog(instance, databasev4.CatalogSpec{Name: "catalog1"})
+			},
+		},
+		{
+			name: "shard",
+			build: func() []corev1.Container {
+				return buildInitContainerSpecForShard(instance, databasev4.ShardSpec{Name: "shard1"})
+			},
+		},
+		{
+			name: "gsm",
+			build: func() []corev1.Container {
+				return buildInitContainerSpecForGsm(instance, databasev4.GsmSpec{Name: "gsm1"})
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			containers := testCase.build()
+			if len(containers) != 1 || containers[0].SecurityContext == nil {
+				t.Fatal("expected one init container with a security context")
+			}
+			securityContext := containers[0].SecurityContext
+			if securityContext.Privileged == nil || *securityContext.Privileged {
+				t.Error("expected init container to be unprivileged")
+			}
+			if securityContext.AllowPrivilegeEscalation == nil || *securityContext.AllowPrivilegeEscalation {
+				t.Error("expected init container to disallow privilege escalation")
+			}
+			if securityContext.RunAsNonRoot == nil || !*securityContext.RunAsNonRoot {
+				t.Error("expected init container to require a non-root user")
+			}
+		})
+	}
+}
+
+func TestScriptInitCommandsDoNotRequireChown(t *testing.T) {
+	commands := []struct {
+		name    string
+		command string
+	}{
+		{name: "database", command: getInitContainerCmd("WEB", "test")},
+		{name: "gsm", command: getGsmInitContainerCmd("WEB", "test")},
+	}
+
+	for _, testCase := range commands {
+		t.Run(testCase.name, func(t *testing.T) {
+			if strings.Contains(testCase.command, "chown") {
+				t.Fatalf("expected rootless init command, got %q", testCase.command)
+			}
+		})
 	}
 }

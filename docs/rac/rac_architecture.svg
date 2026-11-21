@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 980" width="1400" height="980" role="img" aria-labelledby="title desc">
+  <title id="title">Oracle RAC on Kubernetes architecture</title>
+  <desc id="desc">One RacDatabase CR drives StatefulSets, headless VIP and SCAN services, optional NodePorts and CMAN, Multus private networking, and shared ASM storage.</desc>
+
+  <defs>
+    <style type="text/css">
+      .bg { fill: #f8fafc; }
+      .panel { fill: #ffffff; stroke: #64748b; stroke-width: 2; rx: 12; }
+      .panel-soft { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.5; rx: 10; }
+      .panel-ops { fill: #eff6ff; stroke: #3b82f6; stroke-width: 2; rx: 12; }
+      .panel-client { fill: #fff7ed; stroke: #ea580c; stroke-width: 2; rx: 12; }
+      .panel-net { fill: #ecfdf5; stroke: #059669; stroke-width: 2; rx: 12; }
+      .panel-store { fill: #faf5ff; stroke: #7c3aed; stroke-width: 2; rx: 12; }
+      .panel-cman { fill: #fef3c7; stroke: #d97706; stroke-width: 2; rx: 12; }
+      .box { fill: #ffffff; stroke: #334155; stroke-width: 1.5; rx: 8; }
+      .box-pod { fill: #dbeafe; stroke: #1d4ed8; stroke-width: 1.5; rx: 8; }
+      .box-svc { fill: #e2e8f0; stroke: #475569; stroke-width: 1.5; rx: 8; }
+      .box-np { fill: #ffedd5; stroke: #c2410c; stroke-width: 1.5; rx: 8; }
+      .title { font: 700 28px "Segoe UI", Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 16px "Segoe UI", Arial, sans-serif; fill: #334155; }
+      .h { font: 700 18px "Segoe UI", Arial, sans-serif; fill: #0f172a; }
+      .t { font: 600 15px "Segoe UI", Arial, sans-serif; fill: #0f172a; }
+      .s { font: 400 13px "Segoe UI", Arial, sans-serif; fill: #334155; }
+      .tiny { font: 400 12px "Segoe UI", Arial, sans-serif; fill: #475569; }
+      .arrow { stroke: #334155; stroke-width: 2; fill: none; marker-end: url(#arrowHead); }
+      .arrow-soft { stroke: #64748b; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowHeadSoft); }
+      .arrow-orange { stroke: #c2410c; stroke-width: 2.2; fill: none; marker-end: url(#arrowHeadOrange); }
+      .arrow-amber { stroke: #b45309; stroke-width: 2.2; fill: none; marker-end: url(#arrowHeadAmber); }
+      .arrow-blue { stroke: #1d4ed8; stroke-width: 2; fill: none; marker-end: url(#arrowHeadBlue); }
+      .legend { font: 400 13px "Segoe UI", Arial, sans-serif; fill: #334155; }
+    </style>
+    <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#334155"/>
+    </marker>
+    <marker id="arrowHeadSoft" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#64748b"/>
+    </marker>
+    <marker id="arrowHeadOrange" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#c2410c"/>
+    </marker>
+    <marker id="arrowHeadAmber" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#b45309"/>
+    </marker>
+    <marker id="arrowHeadBlue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#1d4ed8"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1400" height="980"/>
+  <text class="title" x="40" y="48">Oracle RAC on Kubernetes — Architecture</text>
+  <text class="subtitle" x="40" y="76">Example: 2-node cluster (racnode1 / racnode2) in namespace rac · one RacDatabase CR owns the topology</text>
+
+  <!-- Clients -->
+  <rect class="panel-client" x="40" y="100" width="820" height="110"/>
+  <text class="h" x="60" y="130">1. Clients</text>
+  <rect class="box" x="60" y="145" width="240" height="48"/>
+  <text class="t" x="78" y="175">External SQL*Net clients</text>
+  <rect class="box" x="330" y="145" width="240" height="48"/>
+  <text class="t" x="360" y="175">In-cluster applications</text>
+  <rect class="box" x="600" y="145" width="230" height="48"/>
+  <text class="t" x="640" y="175">Optional admin / ONS</text>
+
+  <!-- Access paths -->
+  <rect class="panel" x="40" y="240" width="820" height="150"/>
+  <text class="h" x="60" y="270">2. How clients reach RAC</text>
+
+  <rect class="box-np" x="60" y="290" width="230" height="78"/>
+  <text class="t" x="85" y="320">NodePort SCAN</text>
+  <text class="s" x="78" y="342">racnode-scan-lsnr</text>
+  <text class="tiny" x="78" y="360">worker-ip : NodePort → 1521</text>
+
+  <rect class="panel-cman" x="320" y="290" width="250" height="78"/>
+  <text class="t" x="355" y="320">Optional CMAN</text>
+  <text class="s" x="340" y="342">TrafficManager CR</text>
+  <text class="tiny" x="340" y="360">LoadBalancer → next_hop / register</text>
+
+  <rect class="box-svc" x="600" y="290" width="230" height="78"/>
+  <text class="t" x="640" y="320">In-cluster SCAN DNS</text>
+  <text class="s" x="620" y="342">racnode-scan.&lt;ns&gt;.svc...</text>
+  <text class="tiny" x="620" y="360">port 1521 / service name</text>
+
+  <!-- arrows clients to access -->
+  <path class="arrow-orange" d="M180 193 V240"/>
+  <path class="arrow-amber" d="M450 193 V240"/>
+  <path class="arrow-blue" d="M450 193 V220 H715 V240"/>
+
+  <!-- Operator -->
+  <rect class="panel-ops" x="900" y="100" width="460" height="290"/>
+  <text class="h" x="920" y="130">Operator control plane</text>
+  <rect class="box" x="930" y="150" width="400" height="70"/>
+  <text class="t" x="960" y="178">RacDatabase CR</text>
+  <text class="s" x="960" y="200">database.oracle.com/v4</text>
+  <path class="arrow" d="M1130 220 V250"/>
+  <rect class="box" x="930" y="250" width="400" height="70"/>
+  <text class="t" x="960" y="278">RacDatabaseReconciler</text>
+  <text class="s" x="960" y="300">creates / updates / cleans resources</text>
+  <text class="tiny" x="930" y="350">Creates everything in the namespace panel below</text>
+  <text class="tiny" x="930" y="370">(StatefulSets, Services, ConfigMaps, PV/PVC)</text>
+
+  <!-- arrow from operator into namespace -->
+  <path class="arrow-blue" d="M1130 390 V430"/>
+
+  <!-- Namespace / cluster resources -->
+  <rect class="panel" x="40" y="430" width="1320" height="500"/>
+  <text class="h" x="60" y="460">3. Kubernetes namespace (example: rac) — resources owned for the RAC cluster</text>
+
+  <!-- Headless -->
+  <rect class="panel-soft" x="60" y="480" width="1280" height="100"/>
+  <text class="t" x="80" y="508">Headless Services (ClusterIP: None) — stable DNS for Oracle host / VIP / SCAN names</text>
+  <rect class="box-svc" x="80" y="525" width="150" height="40"/>
+  <text class="s" x="100" y="550">racnode1-0</text>
+  <rect class="box-svc" x="250" y="525" width="170" height="40"/>
+  <text class="s" x="265" y="550">racnode1-0-vip</text>
+  <rect class="box-svc" x="440" y="525" width="150" height="40"/>
+  <text class="s" x="460" y="550">racnode2-0</text>
+  <rect class="box-svc" x="610" y="525" width="170" height="40"/>
+  <text class="s" x="625" y="550">racnode2-0-vip</text>
+  <rect class="box-svc" x="810" y="525" width="200" height="40"/>
+  <text class="s" x="845" y="550">racnode-scan</text>
+  <rect class="box-np" x="1040" y="525" width="270" height="40"/>
+  <text class="s" x="1055" y="550">NodePorts: *-lsnr / *-ons</text>
+
+  <!-- arrows from access to SCAN -->
+  <path class="arrow-orange" d="M175 390 V430"/>
+  <path class="arrow-amber" d="M445 390 V430"/>
+  <path class="arrow-blue" d="M715 390 V430"/>
+  <text class="tiny" x="185" y="420">to SCAN / listeners</text>
+
+  <!-- Workloads -->
+  <rect class="panel-soft" x="60" y="600" width="620" height="200"/>
+  <text class="t" x="80" y="628">Workloads — one StatefulSet per RAC node (not one multi-replica STS)</text>
+
+  <rect class="box" x="90" y="645" width="270" height="130"/>
+  <text class="t" x="115" y="675">StatefulSet racnode1</text>
+  <rect class="box-pod" x="110" y="690" width="230" height="65"/>
+  <text class="t" x="145" y="718">Pod racnode1-0</text>
+  <text class="tiny" x="130" y="738">GI + ASM + DB instance</text>
+
+  <rect class="box" x="380" y="645" width="270" height="130"/>
+  <text class="t" x="405" y="675">StatefulSet racnode2</text>
+  <rect class="box-pod" x="400" y="690" width="230" height="65"/>
+  <text class="t" x="435" y="718">Pod racnode2-0</text>
+  <text class="tiny" x="420" y="738">GI + ASM + DB instance</text>
+
+  <!-- Storage + Network -->
+  <rect class="panel-store" x="700" y="600" width="300" height="200"/>
+  <text class="t" x="720" y="630">Shared / local storage</text>
+  <rect class="box" x="720" y="650" width="260" height="55"/>
+  <text class="s" x="740" y="672">ASM PV / PVC</text>
+  <text class="tiny" x="740" y="690">raw disks or StorageClass</text>
+  <rect class="box" x="720" y="720" width="260" height="55"/>
+  <text class="s" x="740" y="742">Software /u01</text>
+  <text class="tiny" x="740" y="760">hostPath or PVC + staging</text>
+
+  <rect class="panel-net" x="1020" y="600" width="320" height="200"/>
+  <text class="t" x="1040" y="630">Pod networking</text>
+  <rect class="box" x="1040" y="650" width="280" height="55"/>
+  <text class="s" x="1060" y="672">Public: Flannel eth0</text>
+  <text class="tiny" x="1060" y="690">SQL*Net / client path</text>
+  <rect class="box" x="1040" y="720" width="280" height="55"/>
+  <text class="s" x="1060" y="742">Private: Multus eth1/eth2</text>
+  <text class="tiny" x="1060" y="760">CSS / Cache Fusion / ASM</text>
+
+  <!-- links headless to pods (conceptual) -->
+  <path class="arrow-soft" d="M155 565 V600"/>
+  <path class="arrow-soft" d="M335 565 V600"/>
+  <path class="arrow-soft" d="M515 565 V600"/>
+  <path class="arrow-soft" d="M695 565 V600"/>
+  <path class="arrow-soft" d="M910 565 V580 H225 V600"/>
+
+  <!-- storage/net attach -->
+  <path class="arrow-soft" d="M690 700 H660"/>
+  <path class="arrow-soft" d="M1020 700 H960"/>
+
+  <!-- ConfigMaps note -->
+  <text class="legend" x="60" y="835">Also per node: ConfigMap (install params) · Secrets (SSH / DB / TDE) · optional ServiceAccount · disk-check DaemonSet for raw ASM</text>
+  <text class="legend" x="60" y="860">CMAN is optional and owned by a separate TrafficManager CR; RacDatabase does not create CMAN.</text>
+  <text class="legend" x="60" y="900">Read left → right and top → bottom: clients choose an access path → DNS/NodePort/CMAN → RAC pods → shared ASM and Multus private interconnect.</text>
+</svg>

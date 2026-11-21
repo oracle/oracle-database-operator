@@ -1,4 +1,4 @@
-# PrivateAI Auth Secret
+# Private AI Auth Secret
 
 Use this helper to create, update, and manage the auth secret used by:
 
@@ -13,14 +13,14 @@ The auth secret in this flow is auth-only. It does not generate TLS files.
 
 ## Secret Keys
 
-The script writes these secret entries:
+The script always writes these entries to the Kubernetes Secret:
 
 - `api-key`
 - `privateai-ssl-pwd`
 
-`api-key` remains the canonical key expected by the current PrivateAI operator status checks. If you provide multiple API keys with repeated `--api-key` flags, the script writes them into the same `api-key` file, one per line.
+`api-key` remains the canonical key expected by the current Private AI controller status checks. If you provide multiple API keys with repeated `--api-key` flags, the script writes them into the same `api-key` file, one per line.
 
-If your PrivateAI image expects a different file format for multiple keys, prepare that file yourself and pass it with `--api-keys-file`.
+If your Private AI image expects a different file format for multiple keys, prepare that file yourself and pass it with `--api-keys-file`.
 
 For structured key management, the script can also maintain `api-keys.json` in the same Secret. The JSON entry stores key metadata such as `key_id`, `alias`, and `active`. Whenever JSON keys are changed, the script regenerates the compatibility `api-key` file from the keys where `active` is `true`.
 
@@ -48,7 +48,7 @@ cd oracle-database-operator/docs/privateai/auth-secret
   --namespace pai \
   --secret-name paisecret \
   --generate-api-key \
-  --ssl-pwd-value '<PASSWORD>'
+  --ssl-pwd-value '<PASSWORD>' \
   --list-secret
 ```
 
@@ -94,7 +94,24 @@ cd oracle-database-operator/docs/privateai/auth-secret
   --list-secret
 ```
 
-## Wire It to PrivateAI
+The `--generate-api-key` option generates exactly one API key for that command. To
+add another generated key, run `add-key` after the Secret has been created:
+
+```bash
+./create_auth_secret.sh add-key \
+  --namespace pai \
+  --secret-name paisecret \
+  --generate-api-key \
+  --key-id client2 \
+  --alias ServiceB \
+  --active true
+```
+
+This updates the same Secret and preserves the first key. Because both keys are
+active, both are written to the canonical `api-key` entry. For key rotation, add
+the replacement key first, verify it, and then deactivate or delete the old key.
+
+## Wire It to Private AI
 
 ```yaml
 spec:
@@ -108,11 +125,11 @@ spec:
       mountLocation: /privateai/ssl
 ```
 
-If `mountLocation` is omitted for `spec.security.secret` or `spec.security.tls`, the PrivateAI controller defaults it to `/privateai/ssl`.
+If `mountLocation` is omitted for `spec.security.secret` or `spec.security.tls`, the Private AI controller defaults it to `/privateai/ssl`.
 
 ## Update an Existing Secret
 
-The script uses `kubectl apply`, so rerun it with the same secret name to update the existing secret in place. The PrivateAI controller watches the secret resource version and rolls the deployment when the auth secret changes.
+The script uses `kubectl apply`, so rerun it with the same secret name to update the existing secret in place. The Private AI controller watches the secret resource version and rolls the deployment when the auth secret changes.
 
 Example:
 

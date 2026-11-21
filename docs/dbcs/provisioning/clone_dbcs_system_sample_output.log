@@ -82,7 +82,7 @@ Spec:
     License Model:            BRING_YOUR_OWN_LICENSE
     Ssh Public Keys:
       oci-publickey
-    Subnet Id:  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+    Subnet Id:  ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Db System:
     Availability Domain:      
     Compartment Id:           
@@ -92,7 +92,7 @@ Spec:
     Kms Config:
     Shape:      
     Subnet Id:  
-  Id:           ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Id:           ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Kms Config:
   Oci Config Map:    oci-cred-mumbai
   Oci Secret:        oci-privatekey
@@ -104,7 +104,7 @@ Status:
   Data Storage Size In G Bs:  512
   Db Edition:                 ENTERPRISE_EDITION_HIGH_PERFORMANCE
   Display Name:               dbsystem1234
-  Id:                         ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Id:                         ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   License Model:              BRING_YOUR_OWN_LICENSE
   Network:
     Client Subnet:          oke-nodesubnet-quick-cluster1-2bebe95db-regional
@@ -118,6 +118,6 @@ Status:
   Shape:                    VM.Standard2.1
   State:                    AVAILABLE
   Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Subnet Id:                ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Time Zone:                UTC
 Events:                     <none>

@@ -68,17 +68,18 @@ const (
 )
 
 type dataguardBrokerDesiredSpec struct {
-	Path                    dataguardBrokerReconcilePath
-	PrimaryDatabaseRef      string
-	StandbyDatabaseRefs     []string
-	ProtectionMode          string
-	FastStartFailover       bool
-	LoadBalancer            bool
-	ServiceAnnotations      map[string]string
-	TopologyHash            string
-	ResolvedMembers         []dbapi.DataguardResolvedMemberStatus
-	SupportsLegacyExecution bool
-	CompatibilityMessage    string
+	Path                     dataguardBrokerReconcilePath
+	PrimaryDatabaseRef       string
+	StandbyDatabaseRefs      []string
+	ProtectionMode           string
+	FastStartFailover        bool
+	FastStartFailoverManaged bool
+	LoadBalancer             bool
+	ServiceAnnotations       map[string]string
+	TopologyHash             string
+	ResolvedMembers          []dbapi.DataguardResolvedMemberStatus
+	SupportsLegacyExecution  bool
+	CompatibilityMessage     string
 }
 
 type dataguardBrokerExecutionRuntime struct {
@@ -389,7 +390,10 @@ func resolveDataguardBrokerDesiredSpec(broker *dbapi.DataguardBroker) dataguardB
 	}
 	if broker.Spec.Topology.Policy != nil {
 		desired.ProtectionMode = strings.TrimSpace(broker.Spec.Topology.Policy.ProtectionMode)
-		desired.FastStartFailover = broker.Spec.Topology.Policy.FastStartFailover
+		if broker.Spec.Topology.Policy.FastStartFailover != nil {
+			desired.FastStartFailover = *broker.Spec.Topology.Policy.FastStartFailover
+			desired.FastStartFailoverManaged = true
+		}
 	}
 
 	memberByName := make(map[string]dbapi.DataguardTopologyMember, len(broker.Spec.Topology.Members))
@@ -480,6 +484,9 @@ func formatDataguardEndpointConnectString(endpoint *dbapi.DataguardEndpointSpec)
 	if host == "" || service == "" || endpoint.Port <= 0 {
 		return ""
 	}
+	// DGMGRL expects Easy Connect identifiers in host:port/service form.
+	// A leading "//" is accepted by some Oracle clients but is parsed by
+	// DGMGRL as an empty hostname and can produce ORA-12262.
 	return fmt.Sprintf("%s:%d/%s", host, endpoint.Port, service)
 }
 
@@ -1128,12 +1135,15 @@ func ensureDataguardBrokerRunnerPod(ctx context.Context, r *DataguardBrokerRecon
 	}
 	switch existing.Status.Phase {
 	case corev1.PodRunning:
+		if !dataguardBrokerRunnerPodReady(&existing) {
+			return false, dataguardBrokerRunnerPendingMessage(&existing, podName), nil
+		}
 		if err := cleanupStaleDataguardBrokerRunnerPods(ctx, r, broker, podName, runtimeHash); err != nil {
 			return false, "", err
 		}
 		return true, fmt.Sprintf("topology execution runner pod %s is ready", podName), nil
 	case corev1.PodPending:
-		return false, fmt.Sprintf("topology execution runner pod %s is pending", podName), nil
+		return false, dataguardBrokerRunnerPendingMessage(&existing, podName), nil
 	case corev1.PodFailed:
 		if err := clientIgnoreNotFound(r.Delete(ctx, &existing)); err != nil {
 			return false, "", err
@@ -1142,6 +1152,71 @@ func ensureDataguardBrokerRunnerPod(ctx context.Context, r *DataguardBrokerRecon
 	default:
 		return false, fmt.Sprintf("topology execution runner pod %s is in phase %s", podName, existing.Status.Phase), nil
 	}
+}
+
+// dataguardBrokerRunnerPodReady is deliberately stricter than PodRunning.
+// Kubernetes can report a pod as Running while the runner container is still
+// starting. Executing broker commands in that window can block the reconcile
+// worker and leave the Broker status stuck at RunnerPending.
+func dataguardBrokerRunnerPodReady(pod *corev1.Pod) bool {
+	if pod == nil || pod.Status.Phase != corev1.PodRunning {
+		return false
+	}
+	for _, status := range pod.Status.InitContainerStatuses {
+		// A successfully completed init container is expected to be terminated.
+		// Only an init container that is still waiting prevents the pod from
+		// becoming ready; a failed init container is reflected by the pod phase
+		// and/or PodReady condition.
+		if status.State.Waiting != nil {
+			return false
+		}
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name != dataguardBrokerRunnerContainerName {
+			continue
+		}
+		// The runner's readiness probe is not required for the broker exec
+		// path. A running container is sufficient; requiring status.Ready can
+		// leave the Broker pending on a probe that is unrelated to exec.
+		return status.State.Running != nil && status.State.Waiting == nil && status.State.Terminated == nil
+	}
+	// PodRunning can appear before containerStatuses are populated. Treat that
+	// window as not ready so reconcile does not exec into a container that is
+	// still starting and block the worker indefinitely.
+	return false
+}
+
+// dataguardBrokerRunnerPendingMessage preserves the Kubernetes reason for a
+// pending runner. The generic RunnerPending condition is otherwise unable to
+// distinguish scheduling, image-pull, volume-mount, and container-startup
+// failures, which makes E2E failures unnecessarily opaque.
+func dataguardBrokerRunnerPendingMessage(pod *corev1.Pod, podName string) string {
+	message := fmt.Sprintf("topology execution runner pod %s is pending", podName)
+	if pod == nil {
+		return message
+	}
+	if reason := strings.TrimSpace(pod.Status.Reason); reason != "" {
+		message += fmt.Sprintf(" (reason=%s)", reason)
+	}
+	if detail := strings.TrimSpace(pod.Status.Message); detail != "" {
+		message += ": " + detail
+	}
+	for _, condition := range pod.Status.Conditions {
+		if condition.Status == corev1.ConditionFalse && strings.TrimSpace(condition.Message) != "" {
+			message += fmt.Sprintf("; %s=%s", condition.Type, strings.TrimSpace(condition.Message))
+		}
+	}
+	for _, status := range pod.Status.InitContainerStatuses {
+		if status.State.Waiting != nil {
+			message += fmt.Sprintf("; init/%s waiting: %s", status.Name, firstNonEmptyString(status.State.Waiting.Reason, status.State.Waiting.Message))
+		}
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.State.Waiting != nil {
+			message += fmt.Sprintf("; %s waiting: %s", status.Name, firstNonEmptyString(status.State.Waiting.Reason, status.State.Waiting.Message))
+		}
+	}
+	return message
 }
 
 func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *dataguardBrokerExecutionRuntime, runtimeHash string) *corev1.Pod {
@@ -1240,9 +1315,11 @@ func buildDataguardBrokerRunnerPod(broker *dbapi.DataguardBroker, runtime *datag
 			},
 			Volumes: volumes,
 			Containers: []corev1.Container{{
-				Name:            dataguardBrokerRunnerContainerName,
-				Image:           runtime.Image,
-				ImagePullPolicy: corev1.PullIfNotPresent,
+				Name:  dataguardBrokerRunnerContainerName,
+				Image: runtime.Image,
+				// Match SIDB E2E image pulls so a node without a cached enterprise
+				// layer does not leave the runner Pending under IfNotPresent.
+				ImagePullPolicy: corev1.PullAlways,
 				Command:         []string{"/bin/sh", "-c", "trap : TERM INT; sleep 3600d & wait"},
 				Env: []corev1.EnvVar{{
 					Name:  "TNS_ADMIN",

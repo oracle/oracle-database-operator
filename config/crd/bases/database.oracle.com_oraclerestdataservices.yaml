@@ -35,6 +35,9 @@ spec:
     - jsonPath: .status.mongoDbApiAccessUrl
       name: MongoDbApi Access URL
       type: string
+    deprecated: true
+    deprecationWarning: OracleRestDataService is deprecated; use the OrdsSrvs controller
+      instead. See https://github.com/oracle/oracle-database-operator/blob/main/docs/ordsservices/README.md.
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -214,6 +217,9 @@ spec:
     - jsonPath: .status.mongoDbApiAccessUrl
       name: MongoDbApi Access URL
       type: string
+    deprecated: true
+    deprecationWarning: OracleRestDataService is deprecated; use the OrdsSrvs controller
+      instead. See https://github.com/oracle/oracle-database-operator/blob/main/docs/ordsservices/README.md.
     name: v4
     schema:
       openAPIV3Schema:

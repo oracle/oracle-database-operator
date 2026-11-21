@@ -19,9 +19,9 @@ spec:
       jsonPath: .spec.cdbName
       name: CDB NAME
       type: string
-    - description: Status of the LREST Resource
+    - description: Creation phases
       jsonPath: .status.phase
-      name: STATUS
+      name: OP
       type: string
     - description: Error message if any
       jsonPath: .status.msg
@@ -126,6 +126,26 @@ spec:
                 type: string
               deletePdbCascade:
                 type: boolean
+              livenessProbe:
+                default:
+                  failureThreshold: 4
+                  initialDelaySeconds: 20
+                  periodSeconds: 15
+                  timeoutSeconds: 9
+                properties:
+                  failureThreshold:
+                    format: int32
+                    type: integer
+                  initialDelaySeconds:
+                    format: int32
+                    type: integer
+                  periodSeconds:
+                    format: int32
+                    type: integer
+                  timeoutSeconds:
+                    format: int32
+                    type: integer
+                type: object
               loadBalancer:
                 default: false
                 type: boolean
@@ -179,6 +199,26 @@ spec:
                 - OPENSSL3
                 - ORAPKI
                 type: string
+              readinessProbe:
+                default:
+                  failureThreshold: 4
+                  initialDelaySeconds: 60
+                  periodSeconds: 1600
+                  timeoutSeconds: 9
+                properties:
+                  failureThreshold:
+                    format: int32
+                    type: integer
+                  initialDelaySeconds:
+                    format: int32
+                    type: integer
+                  periodSeconds:
+                    format: int32
+                    type: integer
+                  timeoutSeconds:
+                    format: int32
+                    type: integer
+                type: object
               replicas:
                 type: integer
               resetDbpassword:
@@ -211,11 +251,17 @@ spec:
                 type: integer
               tracelevel:
                 type: integer
+              tracelrest:
+                type: integer
             required:
             - passwordProtection
             type: object
           status:
             properties:
+              lreststate:
+                type: integer
+              lreststrstate:
+                type: string
               msg:
                 type: string
               ncrds:
@@ -226,13 +272,12 @@ spec:
                 type: string
               phase:
                 type: string
-              status:
-                type: boolean
+              sqlcode:
+                type: integer
               tnsstring:
                 type: string
             required:
             - phase
-            - status
             type: object
         type: object
     served: true

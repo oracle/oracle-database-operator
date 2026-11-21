@@ -3,11 +3,11 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-existing
 spec:
-  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq"
+  id: "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dataGuard:
-    primaryDatabaseId: "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htya2mo5an5blhlvx5euyqnazi45hli7zqs5uig7juzgme5a"
+    primaryDatabaseId: "ocid1.database.oc1..<REPLACE_WITH_DATABASE_OCID>"
     dbAdminPasswordSecret: "admin-password"
     protectionMode: "MAXIMUM_PERFORMANCE"
     transportType: "ASYNC"
@@ -15,6 +15,6 @@ spec:
     displayName: "standbydbsystem2"
     availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
     shape: "VM.Standard2.1"
-    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaaklvzufcgma65ibn4al7xukjmyfz7nnrpaewfzbffz5zrnz3htweq"
+    subnetId: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"
     hostName: "shost1234"
 

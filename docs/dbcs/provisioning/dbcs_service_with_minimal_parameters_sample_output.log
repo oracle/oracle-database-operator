@@ -3,7 +3,7 @@ Name:         dbcssystem-create
 Namespace:    default
 Labels:       <none>
 Annotations:  lastSuccessfulSpec:
-                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a","availabilityDomain":"O...
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>","availabilityDomain":"O...
 API Version:  database.oracle.com/v4
 Kind:         DbcsSystem
 Metadata:
@@ -14,7 +14,7 @@ Metadata:
 Spec:
   Db System:
     Availability Domain:      OLou:AP-MUMBAI-1-AD-1
-    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
+    Compartment Id:           ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>
     Db Admin Pasword Secret:  admin-password
     Db Backup Config:
     Db Edition:    ENTERPRISE_EDITION_HIGH_PERFORMANCE
@@ -29,8 +29,8 @@ Spec:
     Shape:          VM.Standard2.1
     Ssh Public Keys:
       oci-publickey
-    Subnet Id:  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
-  Id:           ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+    Subnet Id:  ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
+  Id:           ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Kms Config:
   Oci Config Map:  oci-cred-mumbai
   Oci Secret:      oci-privatekey
@@ -44,13 +44,13 @@ Status:
     Host Name:          
   Db Edition:           ENTERPRISE_EDITION_HIGH_PERFORMANCE
   Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.ap-mumbai-1.anrg6ljrqlb5nxiaoqqlaxhx4urdwmefw4il5efzekneuru4bpfv57i7iy6a
+    Db Home Id:      ocid1.dbhome.oc1..<REPLACE_WITH_DB_HOME_OCID>
     Db Name:         cdb1
     Db Unique Name:  cdb1_tkf_bom
     Db Workload:     OLTP
-    Id:              ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyalxin4xpiggjh4nxlta6o6iq56hjrlh4of2cq6c4qgrqa
+    Id:              ocid1.database.oc1..<REPLACE_WITH_DATABASE_OCID>
   Display Name:      dbsystem1234
-  Id:                ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Id:                ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Kms Details Status:
   License Model:  BRING_YOUR_OWN_LICENSE
   Network:
@@ -65,15 +65,15 @@ Status:
     Pdb Config Status:
       Pdb Name:               cdb1_pdb1
       Pdb State:              AVAILABLE
-      Pluggable Database Id:  ocid1.pluggabledatabase.oc1.ap-mumbai-1.anrg6ljrabf7htyakgj4wuabus6z5kmalvob6r6b7vivkbsmmh7bjprzbuwa
+      Pluggable Database Id:  ocid1.pluggabledatabase.oc1..<REPLACE_WITH_PLUGGABLEDATABASE_OCID>
   Reco Storage Size In GB:    256
   Shape:                      VM.Standard2.1
   State:                      AVAILABLE
   Storage Management:         ASM
-  Subnet Id:                  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Subnet Id:                  ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Time Zone:                  UTC
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrk2efvqjda2t7k5iaerahw7wcyz5dq2zev2k55gmq2gvsjkui7hxq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create DB System
     Percent Complete:  100
     Time Accepted:     2024-12-10 05:19:52.499 +0000 UTC

@@ -1,0 +1,57 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# DataguardBroker for cross-cluster CMAN topology.
+# Member endpoints should use each cluster's CMAN NodePort so Broker static
+# connect identifiers (SERVICE_NAME=<DB>_DGMGRL) stay reachable through CMAN
+# file-mode next_hop during switchover.
+# Prefer generating from status, then editing hosts/ports to CMAN NodePorts.
+# See docs/sidb/dataguard/DATAGUARD_CROSS_CLUSTER_CMAN.md.
+
+apiVersion: database.oracle.com/v4
+kind: DataguardBroker
+metadata:
+  name: sidb-standby-dg
+  namespace: <operator-watched-namespace>
+spec:
+  execution:
+    authWallet:
+      enabled: true
+    image: container-registry.oracle.com/database/enterprise_ru:latest
+  topology:
+    defaults:
+      adminSecretRef:
+        secretKey: oracle_pwd
+        secretName: db-admin-secret
+    members:
+      - dbUniqueName: ORCLPRD
+        endpoints:
+          - host: "<primary-cman-node-ip>"
+            name: tcp
+            port: 30189
+            protocol: TCP
+            serviceName: ORCLPRD
+        name: primary-cman
+        role: PRIMARY
+      - dbUniqueName: ORCLSTBY
+        endpoints:
+          - host: "<standby-cman-node-ip>"
+            name: tcp
+            port: 30189
+            protocol: TCP
+            serviceName: ORCLSTBY
+        localRef:
+          apiVersion: database.oracle.com/v4
+          kind: SingleInstanceDatabase
+          name: sidb-standby
+          namespace: <operator-watched-namespace>
+        name: sidb-standby
+        role: PHYSICAL_STANDBY
+    sourceKind: SingleInstanceDatabase
+    sourceRef:
+      apiVersion: database.oracle.com/v4
+      kind: SingleInstanceDatabase
+      name: sidb-standby
+      namespace: <operator-watched-namespace>
