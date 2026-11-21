@@ -58,6 +58,8 @@ import (
 // log is for logging in this package.
 var oraclerestdataservicelog = logf.Log.WithName("oraclerestdataservice-resource")
 
+const oracleRestDataServiceDeprecationWarning = "OracleRestDataService is deprecated; use the OrdsSrvs controller instead. See https://github.com/oracle/oracle-database-operator/blob/main/docs/ordsservices/README.md."
+
 func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewWebhookManagedBy[*OracleRestDataService](mgr, r).
@@ -101,7 +103,7 @@ func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj *OracleR
 // ValidateUpdate implements admission.Validator[*OracleRestDataService]
 func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldObj, newObj *OracleRestDataService) (admission.Warnings, error) {
 	oraclerestdataservicelog.Info("ValidateUpdate for OracleRestDataService", "name", newObj.Name)
-	warnings, err := validateOracleRestDataService(ctx, newObj)
+	warnings, err := validateOracleRestDataServiceForUpdate(ctx, newObj)
 	if err != nil {
 		return warnings, err
 	}
@@ -130,8 +132,20 @@ func (r *OracleRestDataService) ValidateDelete(ctx context.Context, obj *OracleR
 }
 
 func validateOracleRestDataService(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	return validateOracleRestDataServiceWithResourceWarning(ctx, obj, true)
+}
+
+func validateOracleRestDataServiceForUpdate(ctx context.Context, obj *OracleRestDataService) (admission.Warnings, error) {
+	return validateOracleRestDataServiceWithResourceWarning(ctx, obj, false)
+}
+
+func validateOracleRestDataServiceWithResourceWarning(ctx context.Context, obj *OracleRestDataService, includeResourceWarning bool) (admission.Warnings, error) {
 	_ = ctx
-	warnings := oracleRestDataServiceDeprecatedFieldWarnings(obj)
+	var warnings admission.Warnings
+	if includeResourceWarning {
+		warnings = admission.Warnings{oracleRestDataServiceDeprecationWarning}
+	}
+	warnings = append(warnings, oracleRestDataServiceDeprecatedFieldWarnings(obj)...)
 	var allErrs field.ErrorList
 
 	namespaces := dbcommons.GetWatchNamespaces()

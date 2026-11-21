@@ -25,13 +25,13 @@ Below proceeding further create PDB Admin Password which is going to used as nam
 
 This example uses `dbcs_service_with_kms.yaml` to create KMS Vault to existing DBCS VMDB using Oracle DB Operator DBCS Controller with:
 
-- OCID of existing VMDB as `ocid1.dbsystem.oc1.iad.anuwcljsabf7htyag4akvoakzw4qk7cae55qyp7hlffbouozvyl5ngoputza`
+- OCID of existing VMDB as `ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>`
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`
 - Existing `dbSystem` used before to create DBCS system.
 - kmsConfig - vaultName as "basdbvault" as an example.
 - kmsConfig - keyName as "dbvaultkey" as an example.
-- kmsConfig - compartmentId as "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a" as an example.
+- kmsConfig - compartmentId as "ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>" as an example.
 **NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md).
 
 Use the file: [dbcs_service_with_kms.yaml](./dbcs_service_with_kms.yaml) for this use case as below:

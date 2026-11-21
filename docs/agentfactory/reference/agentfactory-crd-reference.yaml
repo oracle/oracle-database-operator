@@ -1,0 +1,454 @@
+# Oracle AI Database Private Agent Factory Services - annotated resource reference
+#
+# Documentation reference only. Do not apply this file unchanged. Replace all
+# placeholders, remove unused alternatives, and review the constraints before
+# creating an AgentFactory resource.
+#
+# The generated CRD and Go API types are authoritative:
+#   config/crd/bases/privateai.oracle.com_agentfactories.yaml
+#   apis/privateai/v4/agentfactory_types.go
+#
+# This file shows the user-configurable spec fields. The status section at the
+# end is controller-owned and is included only as a read-only field reference.
+
+apiVersion: privateai.oracle.com/v4
+kind: AgentFactory
+metadata:
+  # Required Kubernetes object name. It must be unique in the namespace and
+  # must satisfy Kubernetes DNS-name rules.
+  name: agentfactory-sample
+  # Required deployment namespace. Referenced Secrets, PVCs, ConfigMaps, and
+  # the generated workload are resolved in this namespace.
+  namespace: paf
+
+spec:
+  # All top-level spec groups are optional in the CRD, but the controller
+  # requires runtime.image.name, configuration, database, and security.secret
+  # for a usable AgentFactory deployment.
+
+  runtime:
+    # Runtime image settings. image.name is required by the controller.
+    image:
+      # Required image reference. The registry must be reachable by the
+      # cluster and credentials must be supplied through pullSecret when needed.
+      name: container-registry.oracle.com/database/applied-ai:latest
+      # Kubernetes values: Always, IfNotPresent, or Never.
+      # Defaulting follows Kubernetes image-pull behavior when omitted.
+      pullPolicy: IfNotPresent
+      # Name of a docker-registry Secret in metadata.namespace. The Secret is
+      # referenced, not created or deleted, by the AgentFactory controller.
+      pullSecret: oracle-container-registry-secret
+
+    # Desired runtime replica count. Use a positive value for a running
+    # workload. When workerNodes contains multiple eligible hosts, the
+    # controller uses best-effort spreading; this does not guarantee one Pod
+    # per node when replicas or scheduling capacity are insufficient.
+    replicas: 1
+
+    # Kubernetes resource requests and limits. Values are standard Kubernetes
+    # resource quantities. The optional claims list uses Kubernetes resource
+    # claim references.
+    resources:
+      requests:
+        cpu: "2"
+        memory: 8Gi
+      limits:
+        cpu: "4"
+        memory: 16Gi
+      # claims:
+      # - name: "<resource-claim-reference>"
+      #   request: "<claim-request-name>"
+
+    # Additional environment variables passed to the Agent Factory container.
+    # Each name must be unique and each name/value pair is applied
+    # declaratively. Controller-managed configuration variables should not be
+    # overridden here.
+    env:
+    - name: "<C_IDENTIFIER>"
+      value: "<value>"
+
+    # Eligible Kubernetes node hostnames. This is a placement allow-list, not
+    # a request to schedule every replica on the first listed node. The
+    # controller adds best-effort ScheduleAnyway spreading for the entries.
+    # Mutually exclusive with workerNodeSelector.
+    workerNodes:
+    - "<worker-node-hostname>"
+
+    # Durable placement policy based on node labels. All entries are ANDed, so
+    # every scheduled node must carry every key/value pair. New nodes that
+    # inherit these labels remain eligible without changing this CR.
+    # Mutually exclusive with workerNodes.
+    workerNodeSelector:
+      "<node-label-key>": "<node-label-value>"
+
+    # Optional ServiceAccount used by generated Pods. If omitted, Kubernetes
+    # uses the namespace default ServiceAccount. On OpenShift, authorize this
+    # ServiceAccount to use the approved SCC separately.
+    serviceAccountName: agentfactory-sa
+
+    # User annotations for the generated workload and Pod template. These are
+    # merged into controller-generated metadata; controller-owned annotations
+    # must not be relied on as user configuration.
+    annotations:
+      workload:
+        "example.com/workload": "<value>"
+      pod:
+        "example.com/pod": "<value>"
+
+  configuration:
+    # Image-based Agent Factory deployments support prod only. Default: prod.
+    mode: prod
+    # Default: true. The controller rejects false for image-based deployments.
+    silentInstall: true
+    # Required application UI administrator email address.
+    uiAdminUsername: admin@example.com
+    # Default: 0.0.0.0. This is the application bind address, not a TLS
+    # certificate identity.
+    bindHost: 0.0.0.0
+    # Optional certificate identity used by the Agent Factory application.
+    # certFqdn and certIpAddress are not mutually exclusive: set each identity
+    # that clients will use. certIpAddress must be a single IPv4/IPv6 literal,
+    # without CIDR, brackets, port, hostname, or list notation.
+    certFqdn: "<agentfactory.example.com>"
+    certIpAddress: "<load-balancer-ip>"
+    # Default: false. Enable only when Swagger is required.
+    enableSwagger: false
+    # Positive application timing values in seconds. Controller defaults are
+    # 5, 600, 1800, and 600 respectively when omitted.
+    statePollIntervalSeconds: 5
+    apiReadyTimeoutSeconds: 600
+    installTimeoutSeconds: 1800
+    readyTimeoutSeconds: 600
+
+    # Proxy values must be absolute http:// or https:// URIs without embedded
+    # credentials. If any proxy is set, noProxy must include localhost,
+    # 127.0.0.1, and ::1.
+    httpProxy: "<http://proxy.example.com:8080>"
+    httpsProxy: "<https://proxy.example.com:8443>"
+    noProxy: "localhost,127.0.0.1,::1,<cluster-domain>"
+    # Optional NGINX bind host used by the application image.
+    nginxBindHost: "<bind-address>"
+
+    # Optional LLM configuration. Set provider to one supported value and
+    # populate only the matching provider block. Provider-specific blocks are
+    # mutually exclusive by application contract even though the CRD schema
+    # represents them as optional fields.
+    llm:
+      # Supported normalized provider values include: oci, vllm, openai,
+      # openai_compatible, private_ai_services, ollama, and google.
+      provider: private_ai_services
+      # Optional model catalog entry name. Default: llm_model_entry.
+      name: llm_model_entry
+
+      privateAiServices:
+        modelId: "<model-id>"
+        baseUrl: "<https://private-ai-services.example.com>"
+        # Optional path to the API-key file in the runtime Secret mount.
+        apiKeyFile: "<api-key-file>"
+
+      # Alternative provider blocks. Do not configure these together with the
+      # selected provider block.
+      # oci:
+      #   modelId: "<model-id>"
+      #   serviceEndpoint: "<https://inference.generativeai.<region>.oci.oraclecloud.com>"
+      #   compartmentId: "<compartment-ocid>"
+      #   userOcid: "<user-ocid>"
+      #   fingerprintFile: "<fingerprint-file>"
+      #   tenancyOcid: "<tenancy-ocid>"
+      #   region: "<region>"
+      #   privateKeyFile: "<private-key-file>"
+      # vllm:
+      #   modelId: "<model-id>"
+      #   host: "<vllm-host>"
+      #   port: 8000
+      #   apiKeyFile: "<api-key-file>"
+      # openai:
+      #   modelId: "<model-id>"
+      #   apiKeyFile: "<api-key-file>"
+      # openaiCompatible:
+      #   modelId: "<model-id>"
+      #   baseUrl: "<https://endpoint.example.com>"
+      #   apiKeyFile: "<api-key-file>"
+      # ollama:
+      #   modelId: "<model-id>"
+      #   host: "<ollama-host>"
+      #   port: 11434
+      # google:
+      #   modelId: "<model-id>"
+      #   credentialsType: API_KEY
+      #   apiKeyFile: "<api-key-file>"
+      #   region: "<region>"
+      #   serviceAccountFile: "<service-account-file>"
+
+  database:
+    # Required. Select exactly one connection mode: Wallet or Details.
+    # Details requires database.details; Wallet requires database.wallet.
+    connectionType: Details
+    # Runtime schema user. The runtime Secret's db password key must contain
+    # this user's password. Automatic setup creates or validates this user.
+    username: paf_user
+    # Required boolean. Wallet mode must use false; Details mode may use the
+    # deployment's supported air-gapped behavior.
+    airGapped: false
+
+    # Required only when connectionType is Wallet. The selected alias must be
+    # present in the wallet archive stored in the runtime Secret.
+    # wallet:
+    #   selectedTnsAlias: ORCLPDB1_TCPS
+    #   hasOciCertificates: false
+
+    # Required only when connectionType is Details.
+    details:
+      # Allowed values: TCP or TCPS.
+      protocol: TCP
+      host: "<database-service-or-host>"
+      # Must be between 1 and 65535.
+      port: 1521
+      # PDB service name, not CDB$ROOT.
+      serviceName: "<pdb-service-name>"
+
+    # Optional one-time database setup. When enabled, the controller creates a
+    # setup Job using the administrator Secret and creates or validates the
+    # runtime PAF user, AAI_RO_<runtime-user>, and required grants.
+    bootstrap:
+      # Default: false. Set true only when the controller should provision the
+      # database accounts. If false or omitted, users and grants must already
+      # exist and adminCredentials must not be supplied.
+      enabled: true
+      adminCredentials:
+        # Required when bootstrap.enabled=true. Secret is namespaced and is
+        # used only by the setup Job.
+        secretName: db-admin-secret
+        # Defaults are implementation-defined Secret key fallbacks; set them
+        # explicitly when using non-standard Secret keys.
+        usernameKey: sys
+        passwordKey: password
+        # Allowed values: NORMAL or SYSDBA. Keep SYS as username and express
+        # SYS AS SYSDBA through privilege: SYSDBA.
+        privilege: SYSDBA
+      # Allowed values: Retain or DeleteOnSuccess. Default: Retain.
+      # DeleteOnSuccess removes only the Kubernetes bootstrap Secret after a
+      # successful setup; it does not revoke the database account or delete an
+      # OCI Vault secret.
+      cleanupPolicy: Retain
+      # Default: false. Preserve a failed setup Job/Pod for diagnostics.
+      preserveFailedJob: false
+      # Optional setup image. When omitted, the runtime image is used with the
+      # controller-provided setup script mounted at /usr/local/bin/paf-db-setup.
+      image: container-registry.oracle.com/database/applied-ai:latest
+
+  security:
+    # Runtime Secret mounted into the Agent Factory Pod. This Secret is always
+    # required. It is user-owned and is not deleted by AgentFactory cleanup.
+    secret:
+      name: agentfactory-runtime-secret
+      # Default: /run/secrets. Must be an absolute path.
+      mountLocation: /run/secrets
+      # Defaults: agent_factory_admin_password and
+      # agent_factory_db_password. These keys must contain the UI password and
+      # runtime database password.
+      uiAdminPasswordKey: paf_ui_admin_password
+      dbPasswordKey: paf_db_password
+      # Required for Wallet connectionType; default: db_wallet.zip.
+      walletZipKey: db_wallet.zip
+      # Optional for Wallet mode when db_wallet.zip contains an encrypted
+      # private key such as ewallet.pem. This is the Secret data key; the
+      # controller maps it to the fixed file name
+      # agent_factory_db_wallet_password in the mounted runtime Secret directory.
+      # The password is not emitted in runtime.env or command arguments.
+      walletPasswordKey: wallet-password-prod
+
+    # Optional inbound HTTPS certificate and private key. The Secret must be
+    # in metadata.namespace and must contain a matching X.509 certificate/key
+    # pair. The controller mounts it read-only into every AgentFactory Pod.
+    inboundTLS:
+      # Required Secret name. Standard tls Secrets use tls.crt and tls.key.
+      secretName: agentfactory-inbound-tls
+      # Defaults: /run/agentfactory/inbound-tls, tls.crt, and tls.key.
+      mountLocation: /run/agentfactory/inbound-tls
+      certificateKey: tls.crt
+      privateKeyKey: tls.key
+      # Secret data changes are imported with aaictl and followed by a
+      # Deployment Pod restart. Secret data is never stored in status.
+
+    # Optional outbound trust configuration. The referenced Secret key must
+    # contain one or more PEM-encoded CA certificates. It must not contain a
+    # private key. Secret changes are watched and can trigger CA import and a
+    # workload rollout according to the controller's SecretChangePolicy.
+    outboundTLS:
+      caBundle:
+        # Required. Secret must be in metadata.namespace.
+        secretName: privateai-outbound-ca
+        # Defaults to ca.crt. This is a Secret data key, not a filesystem path.
+        key: ca.crt
+
+  storage:
+    # Each volume requires a unique name and mountPath. Source selection is
+    # mutually exclusive: set exactly one of existingPVC, pvc, or emptyDir.
+    # A volume mounted at /mount is mandatory. Duplicate names or mount paths
+    # are rejected. User-provided existingPVC claims are not deleted.
+    volumes:
+    - name: app-mount
+      mountPath: /mount
+      source:
+        # Controller-created PVC. size is required. deletePvcOnDelete defaults
+        # to false and may be changed to true when deletion is explicitly
+        # desired for this controller-created claim.
+        pvc:
+          storageClass: oci-bv
+          size: 100Gi
+          accessModes:
+          - ReadWriteMany
+          deletePvcOnDelete: false
+
+        # Alternatives; remove pvc before using one of these.
+        # existingPVC:
+        #   claimName: "<user-managed-pvc>"
+        # volumeClaimTemplate:
+        #   storageClass: oci-bv
+        #   size: 100Gi
+        #   accessModes:
+        #   - ReadWriteMany
+        #   deletePvcOnDelete: false
+        # NOTE: volumeClaimTemplate is present in the schema but is not
+        # supported by the AgentFactory Deployment controller.
+        # emptyDir:
+        #   sizeLimit: 10Gi
+        # NOTE: emptyDir is Pod-local and cannot be used for /mount.
+
+  networking:
+    listeners:
+      # Listener blocks are optional. Set the enabled flag and port required by
+      # the application. HTTPS requires the application/TLS configuration used
+      # by the Agent Factory image; a LoadBalancer does not create a certificate.
+      http:
+        enabled: false
+        port: 8080
+      https:
+        enabled: true
+        port: 8443
+
+    service:
+      # Service port mappings require port and targetPort. Protocol is normally
+      # TCP. These entries control generated Service ports.
+      ports:
+      - name: https
+        port: 443
+        targetPort: 8443
+        protocol: TCP
+
+      # Default: enabled=true. ClusterIP access is required for in-cluster
+      # access and port-forwarding unless the deployment is intentionally
+      # configured otherwise.
+      cluster:
+        enabled: true
+        annotations:
+          "example.com/service": "<value>"
+
+      # Default: disabled. Public and private LoadBalancers may be enabled
+      # independently. The IP is a reserved address when supplied; annotations
+      # are provider-specific. externalTrafficPolicy is Local or Cluster and
+      # defaults to Cluster.
+      publicLoadBalancer:
+        enabled: false
+        ip: "<reserved-public-load-balancer-ip>"
+        externalTrafficPolicy: Cluster
+        annotations:
+          "service.beta.kubernetes.io/oci-load-balancer-subnet1": "<subnet-ocid>"
+      privateLoadBalancer:
+        enabled: false
+        ip: "<reserved-private-load-balancer-ip>"
+        externalTrafficPolicy: Cluster
+        annotations:
+          "service.beta.kubernetes.io/oci-load-balancer-subnet1": "<subnet-ocid>"
+
+  logging:
+    # These fields are retained by the current API for compatibility, but the
+    # AgentFactory controller does not consume them. Setting enabled to true
+    # does not create a sidecar, ConfigMap mount, log volume, or log redirect.
+    # Agent Factory logs remain available from the main container stdout/stderr.
+    enabled: false
+    path: "<application-log-path>"
+
+  upgrade:
+    # Allowed values: RollingUpdate, Recreate, or ImageUpgrade. Default: RollingUpdate.
+    strategy: RollingUpdate
+    # Used only with strategy: RollingUpdate. Each value accepts either an
+    # absolute number or a percentage. Defaults: maxSurge 25%, maxUnavailable 0.
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+    # Time in seconds allowed for graceful Pod termination during a rollout.
+    # Default: 3600 (one hour).
+    terminationGracePeriodSeconds: 3600
+    # Allowed values: Rollout or NoRestart. Default: Rollout.
+    configChangePolicy: Rollout
+    # Allowed values: Rollout or NoRestart. Default: Rollout. NoRestart can
+    # leave a running Pod with old Secret content and should be used only when
+    # the application can reload the changed Secret itself.
+    secretChangePolicy: Rollout
+    # Used only with strategy: ImageUpgrade. The controller runs the new image
+    # in a dedicated Pod with the fixed `upgrade` argument before restoring
+    # the normal Deployment.
+    imageUpgrade:
+      activeDeadlineSeconds: 3600
+      preserveFailedPod: true
+
+# status is controller-owned output and must not be configured by users.
+# It is shown here for reference only:
+#
+# status:
+#   phase: Pending|Running|Ready|Error
+#   replicas: 1
+#   readyReplicas: 1
+#   image: "<resolved-image>"
+#   appState: "<application-state>"
+#   workloadType: Deployment
+#   localService: "<cluster-service-name>"
+#   publicLoadBalancerService: "<public-service-name>"
+#   privateLoadBalancerService: "<private-service-name>"
+#   loadBalancerIP: "<observed-ip>"
+#   runtimeConfig:
+#     name: "<generated-configmap>"
+#     resourceVersion: "<resource-version>"
+#   secret:
+#     name: agentfactory-runtime-secret
+#     resourceVersion: "<resource-version>"
+#     hasUiAdminPassword: true
+#     hasDbPassword: true
+#     hasWalletZip: false
+#     hasWalletPassword: false
+#   database:
+#     phase: Ready|Pending|Failed
+#     bootstrapJobName: "<setup-job-name>"
+#     pafUser: paf_user
+#     message: "<database-status-message>"
+#   inboundTLS:
+#     secretName: agentfactory-inbound-tls
+#     resourceVersion: "<resource-version>"
+#     importedResourceVersion: "<imported-resource-version>"
+#   imageUpgrade:
+#     phase: Succeeded|Stopping|Running|Failed
+#     sourceImage: "<previous-image>"
+#     targetImage: "<target-image>"
+#     podName: "<upgrade-pod-name>"
+#     replicas: 3
+#     observedGeneration: 1
+#     message: "<image-upgrade-status-message>"
+#   outboundTLS:
+#     caBundleSecretName: privateai-outbound-ca
+#     caBundleResourceVersion: "<resource-version>"
+#     caBundleImportedResourceVersion: "<imported-resource-version>"
+#   storage:
+#   - name: app-mount
+#     mountPath: /mount
+#     claimName: "<pvc-name>"
+#     managed: true
+#     perReplica: false
+#   conditions:
+#   - type: DatabaseReady|WorkloadReady|InboundTLSReady|ImageUpgradeReady|ReconcileComplete|ReconcileError
+#     status: "True"|"False"|Unknown
+#     observedGeneration: 1
+#     lastTransitionTime: "<RFC3339-time>"
+#     reason: "<reason>"
+#     message: "<human-readable-message>"

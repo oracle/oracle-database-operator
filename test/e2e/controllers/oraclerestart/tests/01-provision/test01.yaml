@@ -1,0 +1,66 @@
+apiVersion: database.oracle.com/v4
+kind: OracleRestart
+metadata:
+  name: __ORESTART_NAME__
+  namespace: __ORESTART_NAMESPACE__
+  labels:
+    e2e.oracle.com/owner: operator-e2e
+    e2e.oracle.com/controller: oraclerestart
+    e2e.oracle.com/test-id: 01-provision
+spec:
+  instDetails:
+    name: __ORESTART_INSTANCE_NAME__
+    hostSwLocation: __ORESTART_HOST_SW_LOCATION__
+    workerNode:
+      - __ORESTART_WORKER_NODE__
+    envVars:
+      - name: IGNORE_CRS_PREREQS
+        value: "true"
+      - name: IGNORE_DB_PREREQS
+        value: "true"
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/asm-disk1
+        - /dev/asm-disk2
+  crsDgStorageClass: oci-bv
+  asmStorageSizeInGb: 50
+  sshKeySecret:
+    name: __ORESTART_SSH_SECRET_NAME__
+    privKeySecretName: ssh-privkey
+    pubKeySecretName: ssh-pubkey
+  dbSecret:
+    name: __ORESTART_DB_SECRET_NAME__
+    keyFileName: key.pem
+    pwdFileName: pwdfile.enc
+  tdeWalletSecret:
+    name: __ORESTART_TDE_SECRET_NAME__
+    keyFileName: key.pem
+    pwdFileName: pwdfile.enc
+  image: __ORESTART_IMAGE__
+  imagePullPolicy: IfNotPresent
+  serviceDetails:
+    name: __ORESTART_SERVICE_NAME__
+  resources:
+    requests:
+      memory: "16Gi"
+      cpu: "4"
+    limits:
+      memory: "16Gi"
+      cpu: "4"
+  configParams:
+    gridHome: /u01/app/19c/grid
+    gridBase: /u01/app/grid
+    dbHome: /u01/app/oracle/product/19c/dbhome_1
+    dbBase: /u01/app/oracle
+    inventory: /u01/app/oraInventory
+    gridSwZipFile: grid_home.zip
+    dbSwZipFile: db_home.zip
+    sgaSize: 8G
+    pgaSize: 4G
+    processes: 2000
+    cpuCount: 4
+    dbName: __ORESTART_DB_NAME__
+    hostSwStageLocation: __ORESTART_HOST_SW_STAGE_LOCATION__

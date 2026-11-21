@@ -3,7 +3,7 @@ Name:         dbcssystem-existing
 Namespace:    default
 Labels:       <none>
 Annotations:  lastSuccessfulSpec:
-                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya","availabilityDomain":"O...
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>","availabilityDomain":"O...
 API Version:  database.oracle.com/v4
 Kind:         DbcsSystem
 Metadata:
@@ -88,15 +88,15 @@ Metadata:
 Spec:
   Db System:
     Availability Domain:      OLou:PHX-AD-1
-    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya
+    Compartment Id:           ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>
     Db Admin Pasword Secret:  admin-password
     Host Name:                host0130
     License Model:            BRING_YOUR_OWN_LICENSE
     Shape:                    VM.Standard2.1
     Ssh Public Keys:
       oci-publickey
-    Subnet Id:     ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
-  Id:              ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa
+    Subnet Id:     ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
+  Id:              ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Oci Config Map:  oci-cred
   Oci Secret:      oci-privatekey
 Status:
@@ -106,13 +106,13 @@ Status:
   Data Storage Size In G Bs:  512
   Db Edition:                 ENTERPRISE_EDITION
   Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.phx.anyhqljr5gy3jhqat52milqwt3gq6lwohhacwg5yi4mtzq7c7hag53lrkugq
+    Db Home Id:      ocid1.dbhome.oc1..<REPLACE_WITH_DB_HOME_OCID>
     Db Name:         db0130
     Db Unique Name:  db0130_phx1zn
     Db Workload:     OLTP
-    Id:              ocid1.database.oc1.phx.anyhqljrabf7htyackgmsaqjfexoqgrzuuk33ju2q25z2al43tnd5mhhvkra
+    Id:              ocid1.database.oc1..<REPLACE_WITH_DATABASE_OCID>
   Display Name:      dbsystem20220308221302
-  Id:                ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa
+  Id:                ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   License Model:     BRING_YOUR_OWN_LICENSE
   Network:
     Client Subnet:          k8test-pubvcn
@@ -126,34 +126,34 @@ Status:
   Shape:                    VM.Standard2.1
   State:                    AVAILABLE
   Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
+  Subnet Id:                ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Time Zone:                UTC
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrxivzvgzel47zuoyke5yk36o7mrgjl27vscd5z3bqptmyh3rxwbqq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create DB System
     Percent Complete:  100
     Time Accepted:     2022-03-08 22:13:02.999 +0000 UTC
     Time Finished:     2022-03-08 23:11:50.46 +0000 UTC
     Time Started:      2022-03-08 22:13:16.995 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrc3fx6kwq4yxerk3ngztdbbngm7w4dnlddcdhxqxjn6e4kcyux5ca
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Update Shape
     Percent Complete:  100
     Time Accepted:     2022-03-08 23:33:42.807 +0000 UTC
     Time Finished:     2022-03-08 23:46:21.126 +0000 UTC
     Time Started:      2022-03-08 23:33:52.109 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljr5sveun3f6k3zuz23py7mm7jncmpq5vwyajbo5ezhc765347defwq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Update Shape
     Percent Complete:  100
     Time Accepted:     2022-03-09 00:25:03.644 +0000 UTC
     Time Finished:     2022-03-09 00:38:59.526 +0000 UTC
     Time Started:      2022-03-09 00:25:15.578 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrbaqah6qktukvdlnx66fp2hlevegryfuppsshkqemfcdjtwfwaq3q
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Scale Storage
     Percent Complete:  100
     Time Accepted:     2022-03-09 00:48:54.849 +0000 UTC
     Time Finished:     2022-03-09 01:03:10.885 +0000 UTC
     Time Started:      2022-03-09 00:49:05.911 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrvhcpme5ijlsxup22kuumjuzn367vdxwhblv2nxpwshfwnig5au7a
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Update DB System License Type
     Percent Complete:  100
     Time Accepted:     2022-03-09 01:16:16.991 +0000 UTC
@@ -170,7 +170,7 @@ metadata:
   name: dbcssystem-terminate
 spec:
   hardLink: True
-  id: "ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa"
+  id: "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
 [root@docker-test-server test]#

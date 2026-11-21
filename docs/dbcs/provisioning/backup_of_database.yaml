@@ -3,7 +3,7 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-backup
 spec:
-  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyaezbusohovqidnjud2w5wmeisqydsmkqlzcghctvrscfq"
+  id: "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   enableBackup: true

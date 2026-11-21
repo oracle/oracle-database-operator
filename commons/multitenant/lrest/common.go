@@ -51,13 +51,16 @@ import (
 	"fmt"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-func CommonDecryptWithPrivKey2(Key string, Buffer string, req ctrl.Request) (string, error) {
+// CommonDecryptWithPrivKey2 decrypts a base64-encoded buffer using an RSA private key.
+func CommonDecryptWithPrivKey2(Key string, Buffer string, _ ctrl.Request) (string, error) {
 
 	Trclvl := 0
 	block, restb := pem.Decode([]byte(Key))
@@ -104,14 +107,15 @@ func CommonDecryptWithPrivKey2(Key string, Buffer string, req ctrl.Request) (str
 
 }
 
+// ParseConfigMapData parses ConfigMap data values into parameter tokens.
 func ParseConfigMapData(cfgmap *corev1.ConfigMap, Trclvl int) []string {
 
 	var tokens []string
 	for Key, Value := range cfgmap.Data {
-		if Bit(Trclvl, TRCCFM) == true {
+		if Bit(Trclvl, TRCCFM) {
 			fmt.Printf("TRCCFM: (parse) key:[%s]\n", Key)
 		}
-		re0 := regexp.MustCompile("\\n")
+		re0 := regexp.MustCompile(`\n`)
 		re1 := regexp.MustCompile(";")
 		re2 := regexp.MustCompile(",") /* Additional separator for future use */
 
@@ -133,11 +137,35 @@ func ParseConfigMapData(cfgmap *corev1.ConfigMap, Trclvl int) []string {
 
 }
 
+// NULL represents an empty optional value.
 const (
 	NULL = ""
 )
 
-// * STATE TABLE *//
+// LREST SERVER TRACE LEVEL //
+const (
+	SRVMEM = 0x00000001 /* Print used to read v$ views  */
+	SRVTOP = 0x00000002 /* Print cpu/mem/sys used by program */
+	SRVMTX = 0x00000004 /* Print mutex calls */
+	SRVMTW = 0x00000008 /* Print mutex wait statistics*/
+)
+
+// * LREST STATE TABLE *//
+const (
+	LRSRBT = 0x00000001 /* Rebotting rest server */
+	LRSCMP = 0x00000002 /* Lrest setup complete  */
+	LRSINI = 0x00000004 /* Init phase */
+	LRSINE = 0x00000008 /* Init phase wait */
+	LRSPOD = 0x00000010 /* Pod creation */
+	LRSPDE = 0x00000020 /* Pod creation wait */
+	LRSPVD = 0x00000040 /* Pod validation */
+	LRSPVE = 0x00000080 /* Pod validation wait */
+	LRSSVC = 0x00000100 /* Svc creation */
+	LRSSVE = 0x00000200 /* Svc creation wait */
+
+)
+
+// * LRPDB STATE TABLE *//
 const (
 	PDBCRT = 0x00000001 /* Create pdb */
 	PDBOPN = 0x00000002 /* Open pdb read write */
@@ -198,8 +226,7 @@ const (
 	TRCUSR = 0x00020000 /* Trace User Creation */
 )
 
-// DiscardableError: we use this function in order to avoid
-// bitset PDBCRE PDBOPE PDBCLE
+// DiscardableError reports whether an Oracle error is safe to ignore.
 func DiscardableError(oerr int) bool {
 	// ora error white list
 	// ORA-65019 pdb already open
@@ -217,7 +244,7 @@ func DiscardableError(oerr int) bool {
 	return exists
 }
 
-// ParseStrStatus: function used to implement reset status with tokes
+// ParseStrStatus converts a delimited status string into its bitmask value.
 func ParseStrStatus(state string) int {
 
 	wordToNumber := map[string]int{
@@ -257,17 +284,18 @@ func ParseStrStatus(state string) int {
 	return retbt
 }
 
+// ParseTnsAlias2 replaces the service name in a TNS alias with the LRPDB service.
 func ParseTnsAlias2(tns *string, lrpdbsrv *string) {
 	fmt.Printf("Analyzing string [%s]\n", *tns)
 	fmt.Printf("Relacing  srv [%s]\n", *lrpdbsrv)
 	var swaptns string
 
-	if strings.Contains(strings.ToUpper(*tns), "SERVICE_NAME") == false {
+	if !strings.Contains(strings.ToUpper(*tns), "SERVICE_NAME") {
 		fmt.Print("Cannot generate tns alias for pdb")
 		return
 	}
 
-	if strings.Contains(strings.ToUpper(*tns), "ORACLE_SID") == true {
+	if strings.Contains(strings.ToUpper(*tns), "ORACLE_SID") {
 		fmt.Print("Cannot generate tns alias for pdb")
 		return
 	}
@@ -282,24 +310,62 @@ func ParseTnsAlias2(tns *string, lrpdbsrv *string) {
 
 }
 
+// Bid clears bitval from bitmask.
 func Bid(bitmask int, bitval int) int {
 	bitmask ^= ((bitval) & (bitmask))
 	return bitmask
 }
 
+// Bit reports whether bitval is set in bitmask.
 func Bit(bitmask int, bitval int) bool {
-	if ((bitmask) & (bitval)) != 0 {
-		return true
-	} else {
-		return false
-	}
+	return ((bitmask) & (bitval)) != 0
 }
 
+// Bis sets bitval in bitmask.
 func Bis(bitmask int, bitval int) int {
 	bitmask = ((bitmask) | (bitval))
 	return bitmask
 }
 
+// Bitmaskprint2 returns a readable representation of an LREST server bitmask.
+func Bitmaskprint2(bitmask int) string {
+	BitRead := "|"
+	if Bit(bitmask, LRSRBT) {
+		BitRead = strings.Join([]string{BitRead, "LRSRBT|"}, "")
+	}
+	if Bit(bitmask, LRSCMP) {
+		BitRead = strings.Join([]string{BitRead, "LRSCMP|"}, "")
+	}
+	if Bit(bitmask, LRSINI) {
+		BitRead = strings.Join([]string{BitRead, "LRSINI|"}, "")
+	}
+	if Bit(bitmask, LRSINE) {
+		BitRead = strings.Join([]string{BitRead, "LRSINE|"}, "")
+	}
+	if Bit(bitmask, LRSPOD) {
+		BitRead = strings.Join([]string{BitRead, "LRSPOD|"}, "")
+	}
+	if Bit(bitmask, LRSPDE) {
+		BitRead = strings.Join([]string{BitRead, "LRSPDE|"}, "")
+	}
+	if Bit(bitmask, LRSPVD) {
+		BitRead = strings.Join([]string{BitRead, "LRSPVD|"}, "")
+	}
+	if Bit(bitmask, LRSPVE) {
+		BitRead = strings.Join([]string{BitRead, "LRSPVE|"}, "")
+	}
+	if Bit(bitmask, LRSSVC) {
+		BitRead = strings.Join([]string{BitRead, "LRSSVC|"}, "")
+	}
+	if Bit(bitmask, LRSSVE) {
+		BitRead = strings.Join([]string{BitRead, "LRSSVE|"}, "")
+	}
+
+	BitRead = fmt.Sprintf("[%d]%s", bitmask, BitRead)
+	return BitRead
+}
+
+// Bitmaskprint returns a readable representation of an LRPDB bitmask.
 func Bitmaskprint(bitmask int) string {
 	BitRead := "|"
 	if Bit(bitmask, PDBCRT) {
@@ -374,6 +440,7 @@ func Bitmaskprint(bitmask int) string {
 	return BitRead
 }
 
+// CMBitmaskprint returns a readable representation of a ConfigMap bitmask.
 func CMBitmaskprint(bitmask int) string {
 
 	BitRead := "|"
@@ -404,6 +471,29 @@ func CMBitmaskprint(bitmask int) string {
 	return BitRead
 }
 
+// SrvTrcprint returns a readable representation of server trace flags.
+func SrvTrcprint(bitmask int) string {
+
+	BitRead := "|"
+	/*** Bit mask for config map ***/
+	if Bit(bitmask, SRVMEM) {
+		BitRead = strings.Join([]string{BitRead, "SRVMEM|"}, "")
+	}
+	if Bit(bitmask, SRVTOP) {
+		BitRead = strings.Join([]string{BitRead, "SRVTOP|"}, "")
+	}
+	if Bit(bitmask, SRVMTX) {
+		BitRead = strings.Join([]string{BitRead, "SRVMTX|"}, "")
+	}
+	if Bit(bitmask, SRVMTW) {
+		BitRead = strings.Join([]string{BitRead, "SRVMTW|"}, "")
+	}
+
+	BitRead = fmt.Sprintf("[%d]%s", bitmask, BitRead)
+	return BitRead
+}
+
+// Backtrace prints the current goroutine stack trace.
 func Backtrace() {
 
 	pc := make([]uintptr, 10)
@@ -433,6 +523,7 @@ func Backtrace() {
 	}
 }
 
+// HashStr returns the selected range of the SHA-256 hash of hnm.
 func HashStr(hnm interface{}, Beg int, End int) string {
 	byteArray, err := json.Marshal(hnm)
 	if err != nil {
@@ -451,6 +542,7 @@ func HashStr(hnm interface{}, Beg int, End int) string {
 
 }
 
+// GenHash returns the requested user or password hash derived from url.
 func GenHash(url string, Check string) string {
 
 	var hsh string
@@ -464,6 +556,7 @@ func GenHash(url string, Check string) string {
 	return hsh
 }
 
+// GetBaseName returns the host component of a database REST URL.
 func GetBaseName(url string) string {
 
 	// IN     https://cdb-dev-lrest.cdbnamespace:8888/database/pdbs/"
@@ -484,10 +577,88 @@ func GetBaseName(url string) string {
 
 }
 
+// Gnrn returns a random hexadecimal nonce.
 func Gnrn() []byte {
 	brn := make([]byte, 17)
 	if _, err := rand.Read(brn); err != nil {
 		return []byte("00000")
 	}
 	return []byte(hex.EncodeToString(brn))
+}
+
+// GetSQLCode02 reads the SQL code from a REST response into sqlcode.
+func GetSQLCode02(rsp string, sqlcode *int, tracelevel int) error {
+
+	if Bit(tracelevel, TRCSQL) {
+		fmt.Printf("TRCSQL :Begin call\n")
+	}
+
+	var objmap map[string]interface{}
+	if err := json.Unmarshal([]byte(rsp), &objmap); err != nil {
+		fmt.Printf("failed to get respData from callAPI %s", err.Error())
+		return err
+	}
+
+	*sqlcode = int(objmap["sqlcode"].(float64))
+	if Bit(tracelevel, TRCSQL) {
+		fmt.Printf("TRCSQL :sqlcode.......:ora-%s\n", strconv.Itoa(*sqlcode))
+	}
+
+	if *sqlcode != 0 {
+		// Check the white list
+		if DiscardableError(*sqlcode) {
+			fmt.Printf("Discardable error: ora-%s \n", strconv.Itoa(*sqlcode))
+			return nil
+		}
+		err := fmt.Errorf("%v", sqlcode)
+		return err
+	}
+	return nil
+}
+
+// GetSQLbuffer02 extracts the SQL error buffer from a REST response.
+func GetSQLbuffer02(rsp string, sqlmsg *string, tracelevel int) error {
+
+	if sqlmsg == nil {
+		return errors.New("sqlmsg must not be nil")
+	}
+
+	if Bit(tracelevel, TRCSQL) {
+		fmt.Printf("TRCSQL :Begin call\n")
+	}
+
+	var objmap map[string]interface{}
+	if err := json.Unmarshal([]byte(rsp), &objmap); err != nil {
+		fmt.Printf("failed to get respData from callAPI %s", err.Error())
+		return err
+	}
+
+	errbuffer, ok := objmap["errbuffer"].(string)
+	if !ok {
+		return errors.New("response is missing string errbuffer")
+	}
+	*sqlmsg = errbuffer
+
+	if Bit(tracelevel, TRCSQL) {
+		fmt.Printf("TRCSQL :errbuffer.......:%s\n", *sqlmsg)
+	}
+
+	return nil
+}
+
+// HTTPProbe creates an HTTPS probe for an LREST endpoint.
+func HTTPProbe(path string, portNum int, initialDelaySeconds, periodSeconds, timeoutSeconds, failureThreshold int32) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Scheme: corev1.URISchemeHTTPS,
+				Path:   path,
+				Port:   intstr.FromInt(portNum),
+			},
+		},
+		InitialDelaySeconds: initialDelaySeconds,
+		PeriodSeconds:       periodSeconds,
+		TimeoutSeconds:      timeoutSeconds,
+		FailureThreshold:    failureThreshold,
+	}
 }

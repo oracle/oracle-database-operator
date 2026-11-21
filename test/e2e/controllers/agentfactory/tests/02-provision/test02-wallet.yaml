@@ -1,0 +1,59 @@
+apiVersion: privateai.oracle.com/v4
+kind: AgentFactory
+metadata:
+  name: "__AGENTFACTORY_NAME__"
+  labels:
+    e2e.oracle.com/owner: "operator-e2e"
+    e2e.oracle.com/controller: "agentfactory"
+    e2e.oracle.com/test-id: "test02"
+    e2e.oracle.com/pipeline: "__AGENTFACTORY_CASE_PIPELINE__"
+spec:
+  runtime:
+    image:
+      name: "__AGENTFACTORY_IMAGE__"
+      pullSecret: "__AGENTFACTORY_PULL_SECRET__"
+      pullPolicy: "__AGENTFACTORY_IMAGE_PULL_POLICY__"
+  configuration:
+    # certIpAddress uses AGENTFACTORY_PUBLIC_LB_IP. Empty optional values are
+    # omitted from the rendered AgentFactory resource.
+    certFqdn: "__AGENTFACTORY_CERT_FQDN__"
+    certIpAddress: "__AGENTFACTORY_PUBLIC_LB_IP__"
+    uiAdminUsername: "__AGENTFACTORY_UI_ADMIN_USERNAME__"
+  database:
+    connectionType: Wallet
+    username: "__AGENTFACTORY_DB_USERNAME__"
+    airGapped: __AGENTFACTORY_DB_AIR_GAPPED__
+    wallet:
+      selectedTnsAlias: "__AGENTFACTORY_DB_SELECTED_TNS_ALIAS__"
+      hasOciCertificates: __AGENTFACTORY_DB_HAS_OCI_CERTIFICATES__
+    healthPath: "__AGENTFACTORY_DB_HEALTH_PATH__"
+    bootstrap:
+      enabled: __AGENTFACTORY_BOOTSTRAP_ENABLED__
+      cleanupPolicy: "__AGENTFACTORY_BOOTSTRAP_CLEANUP_POLICY__"
+      preserveFailedJob: __AGENTFACTORY_BOOTSTRAP_PRESERVE_FAILED_JOB__
+      adminCredentials:
+        secretName: "__AGENTFACTORY_BOOTSTRAP_SECRET__"
+        usernameKey: "__AGENTFACTORY_BOOTSTRAP_USERNAME_KEY__"
+        passwordKey: "__AGENTFACTORY_BOOTSTRAP_PASSWORD_KEY__"
+        privilege: "__AGENTFACTORY_BOOTSTRAP_PRIVILEGE__"
+  security:
+    secret:
+      name: "__AGENTFACTORY_RUNTIME_SECRET__"
+      uiAdminPasswordKey: "__AGENTFACTORY_UI_ADMIN_PASSWORD_KEY__"
+      dbPasswordKey: "__AGENTFACTORY_DB_PASSWORD_KEY__"
+      walletZipKey: "__AGENTFACTORY_WALLET_ZIP_KEY__"
+  storage:
+    volumes:
+    - name: "__AGENTFACTORY_STORAGE_VOLUME_NAME__"
+      mountPath: "__AGENTFACTORY_STORAGE_MOUNT_PATH__"
+      source:
+        existingPVC:
+          claimName: "__AGENTFACTORY_PVC_NAME__"
+  networking:
+    service:
+      publicLoadBalancer:
+        enabled: __AGENTFACTORY_PUBLIC_LB_ENABLED__
+        ip: "__AGENTFACTORY_PUBLIC_LB_IP__"
+        externalTrafficPolicy: "__AGENTFACTORY_PUBLIC_LB_EXTERNAL_TRAFFIC_POLICY__"
+        annotations:
+          service.beta.kubernetes.io/oci-load-balancer-subnet1: "__AGENTFACTORY_PUBLIC_LB_SUBNET__"

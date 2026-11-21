@@ -100,6 +100,17 @@ func TestOracleRestDataServiceValidateCreateWarnsForLegacySecrets(t *testing.T) 
 	assertOracleRestDataServiceWarning(t, warnings, "spec.ordsPassword is deprecated; use spec.security.secrets.ordsPublicUser")
 }
 
+func TestOracleRestDataServiceValidateCreateWarnsResourceDeprecated(t *testing.T) {
+	t.Setenv("WATCH_NAMESPACE", "")
+	ords := validOracleRestDataServiceForWebhookTest()
+
+	warnings, err := (&OracleRestDataService{}).ValidateCreate(context.Background(), ords)
+	if err != nil {
+		t.Fatalf("ValidateCreate() error = %v", err)
+	}
+	assertOracleRestDataServiceWarning(t, warnings, "OracleRestDataService is deprecated; use the OrdsSrvs controller instead")
+}
+
 func TestOracleRestDataServiceValidateCreateWarnsGroupedSecretsTakePrecedence(t *testing.T) {
 	t.Setenv("WATCH_NAMESPACE", "")
 	ords := validOracleRestDataServiceForWebhookTest()
@@ -150,6 +161,22 @@ func TestOracleRestDataServiceValidateUpdateReturnsWarningsWithErrors(t *testing
 	}
 	assertOracleRestDataServiceWarning(t, warnings, "spec.adminPassword is deprecated; use spec.security.secrets.databaseAdmin")
 	assertOracleRestDataServiceWarning(t, warnings, "spec.ordsPassword is deprecated; use spec.security.secrets.ordsPublicUser")
+}
+
+func TestOracleRestDataServiceValidateUpdateOmitsResourceDeprecationWarning(t *testing.T) {
+	t.Setenv("WATCH_NAMESPACE", "")
+	oldOrds := validOracleRestDataServiceForWebhookTest()
+	newOrds := validOracleRestDataServiceForWebhookTest()
+
+	warnings, err := (&OracleRestDataService{}).ValidateUpdate(context.Background(), oldOrds, newOrds)
+	if err != nil {
+		t.Fatalf("ValidateUpdate() error = %v", err)
+	}
+	for _, warning := range warnings {
+		if strings.Contains(warning, "OracleRestDataService is deprecated; use the OrdsSrvs controller instead") {
+			t.Fatalf("unexpected resource deprecation warning: %q", warning)
+		}
+	}
 }
 
 func TestOracleRestDataServiceValidateRejectsInvalidHTTPPort(t *testing.T) {

@@ -15,6 +15,11 @@
 #           files. Edit parameters.txt with your enviroment 
 #           informartion and execute the following steps
 #
+#           For more information read:
+#           - https://github.com/oracle/oracle-database-operator/blob/main/docs/multitenant/usecase/README.md
+#           - https://github.com/oracle/oracle-database-operator/blob/main/docs/multitenant/usecase/PARAMETERS.md
+#           - https://github.com/oracle/oracle-database-operator/blob/main/docs/multitenant/usecase/QUICK_SETUP.md
+#
 #         1) make opsetup
 #            it configures the operator yaml files with the 
 #            watch namelist required by the multitenant controllers
@@ -27,46 +32,47 @@
 #            It automatically creates all the yaml files based on the 
 #            information available in the parameters file 
 #            
-#            LIST OF GENERAED YAML FILE
+#               LIST OF GENERAED YAML/SQL FILE
 #
-#               -----------------------------       ----------------------------------
-# 		oracle-database-operator.yaml     : oracle database operator
-# 		lrestnamespace_binding.yaml       : role binding for lrestnamespace
-# 		pdbnamespace_binding.yaml         : role binding for pdbnamespace
-# 		create_lrest_secret.yaml          : create secrets for rest server pod
-# 		create_lrpdb_secret.yaml          : create secrets for pluggable database
-# 		create_lrest_pod.yaml             : create rest server pod
-# 		create_pdb1_resource.yaml         : create first pluggable database
-# 		create_pdb2_resource.yaml         : create second pluggable database
-# 		open_pdb1_resource.yaml           : open first pluggable database
-# 		open_pdb2_resource.yaml           : open second pluggable database
-# 		close_pdb1_resource.yaml          : close first pluggable database
-# 		close_pdb2_resource.yaml          : close second pluggable database
-# 		clone_lrpdb_resource.yaml         : clone thrid pluggable database
-# 		clone_pdb2_resource.yaml          : clone 4th pluggable database
-# 		delete_pdb1_resource.yaml         : delete first pluggable database
-# 		delete_pdb2_resource.yaml         : delete sencond pluggable database
-# 		delete_pdb3_resource.yaml         : delete thrid pluggable database
-# 		unplug_pdb1_resource.yaml         : unplug first pluggable database
-# 		plug_pdb1_resource.yaml           : plug first pluggable database
-# 		map_pdb1_resource.yaml            : map the first pluggable database
-# 		config_map.yam                    : pdb parameters array
-# 		altersystem_pdb1_resource.yaml    : chage cpu_count count parameter for the first pdb
-# 		config_map_plsql.yaml             : plsql code 
+#               -----------------------------             ----------------------------------
+# 		oracle-database-operator-system.yaml     : oracle database operator
+# 		oracle-database-operator-rbac.yaml       : rbac
+# 		sidb.yaml                                : single instance db creation
+# 		create_lrest_secret.yaml                 : create secrets for rest server pod
+# 		create_lrpdb_secret.yaml                 : create secrets for pluggable database
+# 		create_lrest_pod.yaml                    : create rest server pod
+# 		create_pdb1_resource.yaml                : create first pluggable database
+# 		create_pdb2_resource.yaml                : create second pluggable database
+# 		open_pdb1_resource.yaml                  : open first pluggable database
+# 		open_pdb2_resource.yaml                  : open second pluggable database
+# 		close_pdb1_resource.yaml                 : close first pluggable database
+# 		close_pdb2_resource.yaml                 : close second pluggable database
+# 		clone_lrpdb_resource.yaml                : clone thrid pluggable database
+# 		clone_pdb2_resource.yaml                 : clone 4th pluggable database
+# 		delete_pdb1_resource.yaml                : delete first pluggable database
+# 		delete_pdb2_resource.yaml                : delete sencond pluggable database
+# 		delete_pdb3_resource.yaml                : delete thrid pluggable database
+# 		unplug_pdb1_resource.yaml                : unplug first pluggable database
+# 		plug_pdb1_resource.yaml                  : plug first pluggable database
+# 		map_pdb1_resource.yaml                   : map the first pluggable database
+# 		config_map.yam                           : pdb parameters array
+# 		altersystem_pdb1_resource.yaml           : chage cpu_count count parameter for the first pdb
+# 		config_map_plsql.yaml                    : plsql code 
+# 		tnsnames.ora                             : list of tnsalias=tnsstrings
+# 		resetdba.sql                             : create rest dba user on cdb
 #
 #[BEGIN TABLE]
 #               
 # TARGETS DEPENDENCIES                                  
-#          
+#   
 #|level 1         |level 2         |level 3        |description                          |
 #|----------------|----------------|---------------|-------------------------------------|
 #|**opsetup**     |                |               |install the operator                 |
 #|                | prsyaml        |               |configure the watch list             |
 #|                | crtmgrappl     |               |apply the certmanager                |
 #|                | nscrt          |               |namespace creation                   |
-#|                | bndappl        |               |role binding                         |
-#|                | opapply        |               |apply operator yaml file             |
 #|                | rbacap         |               |apply rbac                           |
+#|                | opapply        |               |apply operator yaml file             |
 #+----------------+----------------+---------------+-------------------------------------+
 #|**secrets**     |                |               |create certificates and secrets      |
 #|                | delsecres      |               |cleanup existing secrets             |
@@ -76,8 +82,13 @@
 #+----------------+----------------+---------------+-------------------------------------+
 #
 # OTHER TARGETS
-#
-#|target          | description                                                          |
+#|Target          | description                                                          |
+#+----------------+----------------------------------------------------------------------+
+#|createsidb      | create sidb (to use database running on k8s)                         |
+#+----------------+----------------------------------------------------------------------+
+#|stopsidb        | shutdown sidb instance                                               |
+#+----------------+----------------------------------------------------------------------+
+#|startsidb       | startup sidb instance                                                |
 #+----------------+----------------------------------------------------------------------+
 #|tkapplyinit     | config map creation                                                  |
 #+----------------+----------------------------------------------------------------------+
@@ -106,6 +117,8 @@
 #|dumplrest       | dump lrest                                                           |
 #+----------------+----------------------------------------------------------------------+
 #|dumpoperator    | dump operator logs                                                   |
+#+----------------+----------------------------------------------------------------------+
+#|currimg         | show operator image used                                             |
 #+----------------+----------------------------------------------------------------------+
 #|check           | print parameters value                                               |
 #+----------------+----------------------------------------------------------------------+
@@ -171,6 +184,8 @@
 #+----------------+----------------------------------------------------------------------+
 #|cleanlrest      | drop lrest resource                                                  |
 #+----------------+----------------------------------------------------------------------+
+#|probetest       | test liveness                                                        |
+#+----------------+----------------------------------------------------------------------+
 
 
 #[END TABLE]
@@ -182,16 +197,21 @@ DATE  := `date "+%y%m%d%H%M%S"`
 ######################
    
 export PARAMETERS=parameters.txt
-#export TNSSTRING=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSSTRING|cut -d :  -f 2)
-export TNSTOPOLOGY=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSTOPOLOGY|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
-export TNSALIAS=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSALIAS|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
-export TNSSTRING=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSSTRING|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
-export DBUSER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep DBUSER|cut -d :  -f 2)
-export DBPASS=$(shell cat $(PARAMETERS)|grep -v ^\#|grep DBPASS|cut -d :  -f 2)
-export PDBUSR=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PDBUSR|cut -d :  -f 2)
-export PDBPWD=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PDBPWD|cut -d :  -f 2)
 export PDBNAMESPACE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PDBNAMESPACE|cut -d :  -f 2)
 export LRSNAMESPACE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRSNAMESPACE|cut -d :  -f 2)
+export SIDNAMESPACE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep SIDNAMESPACE|cut -d :  -f 2)
+export USESIDB=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep USESIDB|cut -d :  -f 2)
+export TNSTOPOLOGY=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSTOPOLOGY|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
+export TNSALIAS=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSALIAS|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
+ifeq ($(USESIDB),TRUE)
+export TNSSTRING=sidb-sample.$(SIDNAMESPACE):1521/ORCL1
+else
+export TNSSTRING=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSSTRING|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
+endif
+export DBUSER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep DBUSER|cut -d :  -f 2)
+export DBPASS=$(shell cat $(PARAMETERS)|grep -v ^\#|grep DBPASS|cut -d :  -f 2)
+export PDBUSR=$(shell awk -F ':' '$$1 == "PDBUSR" { sub(/^[^:]*:/, ""); print; exit }' $(PARAMETERS))
+export PDBPWD=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PDBPWD|cut -d :  -f 2)
 export LRESTIMG=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRESTIMG|cut -d : -f 2,3)
 export OPRIMG=$(shell cat $(PARAMETERS)|grep -v ^\#|grep OPRIMG|cut -d : -f 2,3)
 export COMPANY=$(shell cat $(PARAMETERS)|grep -v ^\#|grep COMPANY|cut -d : -f 2)
@@ -201,7 +221,8 @@ export OPENSHIFT=$(shell cat $(PARAMETERS)|grep -v ^\#|grep OPENSHIFT|cut -d : -
 export PLSQLMAP=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PLSQLMAP|cut -d : -f 2)
 export OPRNAMESPACE=oracle-database-operator-system
 export CODE_TREE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep CODE_TREE|cut -d : -f 2)
-export ORACLE_OPERATOR_YAML=$(CODE_TREE)/oracle-database-operator.yaml
+export ORACLE_OPERATOR_YAML=oracle-database-operator-system.yaml
+export ORACLE_OPERATOR_RBAC=oracle-database-operator-rbac.yaml
 export AUTODISCOVER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep AUTODISCOVER|cut -d : -f 2)
 export CERT_MANAGER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep CERT_MANAGER| awk -F ':' '{$$1="" ;\
 	if ($$2 == "https" ) {printf("%s:%s",$$2,$$3) } else {printf ("%s",$$2)}}')
@@ -209,6 +230,10 @@ export PASSPROTECTION=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PASSPROTECTION|
 export LRPDBTRC=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRPDBTRC|cut -d : -f 2)
 export LRESTTRC=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRESTTRC|cut -d : -f 2)
 export FILENAMECONVERSION=$(shell cat $(PARAMETERS)|grep -v ^\#|grep FILENAMECONVERSION|cut -d : -f 2)
+export LRESTSRV=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRESTSRV|cut -d : -f 2)
+export OCRU=$(shell cat $(PARAMETERS)|grep -v ^\#|grep OCRU|cut -d : -f 2)
+export OCRP=$(shell cat $(PARAMETERS)|grep -v ^\#|grep OCRP|cut -d : -f 2)
+export WORKDIR=$(shell pwd)
 
 export TEST_EXEC_TIMEOUT=3m
 export WALLET_DIR=./orapkidir
@@ -267,14 +292,17 @@ export LRPDBMAP2=map_pdb2_resource.yaml
 export LRPDBMAP3=map_pdb3_resource.yaml
 
 export SECURITYCTX=security_context.yaml
-export NODE_RBAC=node_rbac.yaml
 
 export ALTERSYSTEMYAML=altersystem_pdb1_resource.yaml
 export CONFIG_MAP=config_map_pdb.yaml
 export CONFIG_MAP_SQL=config_map_plsql.yaml
 
+export SINGLEINSTANCE=sidb.yaml
+export RESTDBA=resetdba.sql
+
 export PWD1=$(shell tr -dc 'A-Za-z' < /dev/urandom | head -c 13 ; echo)
 export PWD2=$(shell tr -dc 'A-Za-z' < /dev/urandom | head -c 13 ; echo)
+export PWD3=$(shell tr -dc 'A-Za-z' < /dev/urandom | head -c 13 ; echo)
 
 ##BINARIES AND SQLSCRIPT
 export KUBECTL=/usr/bin/kubectl
@@ -299,6 +327,7 @@ CAT=/usr/bin/cat
 
 check:
 	@printf "TNSTOPOLOGY............:%s\n" $(TNSTOPOLOGY)
+	@printf "USESIDB................:%s\n" $(USESIDB)
 	@printf "LRESTIMG...............:%s\n" $(LRESTIMG)
 	@printf "OPRIMG.................:%s\n" $(OPRIMG)
 	@printf "TNSSTRING..............:%.60s....\n" $(TNSSTRING)
@@ -309,19 +338,24 @@ check:
 	@printf "PDBPWD.................:%s\n" $(PDBPWD)
 	@printf "PDBNAMESPACE...........:%s\n" $(PDBNAMESPACE)
 	@printf "LRSNAMESPACE...........:%s\n" $(LRSNAMESPACE)
+	@printf "SIDNAMESPACE...........:%s\n" $(SIDNAMESPACE)
 	@printf "COMPANY................:%s\n" $(COMPANY)
 	@printf "SERVICENAMEACCOUNT.....:%s\n" $(SERVICENAM)
 	@printf "APIVERSION.............:%s\n" $(APIVERSION)
 	@printf "PLSQLMAP...............:%s\n" $(PLSQLMAP)
 	@printf "AUTODISCOVER...........:%s\n" $(AUTODISCOVER)
 	@printf "ORACLE_OPERATOR_YAML...:%s\n" $(ORACLE_OPERATOR_YAML)
+	@printf "ORACLE_OPERATOR_RBAC...:%s\n" $(ORACLE_OPERATOR_RBAC)
 	@printf "CODE_TREE..............:%s\n" $(CODE_TREE)
 	@printf "CERT_MANAGER...........:%s\n" $(CERT_MANAGER)
 	@printf "OPENSHIFT..............:%s\n" $(OPENSHIFT)
 	@printf "PASSPROTECTION.........:%s\n" $(PASSPROTECTION)
 	@printf "LRESTTRC...............:%s\n" $(LRESTTRC)
 	@printf "LRPDBTRC...............:%s\n" $(LRPDBTRC)
+	@printf "LRESTSRV...............:%s\n" $(LRESTSRV)
 	@printf "FILENAMECONVERSION.....:%s\n" $(FILENAMECONVERSION)
+	@printf "OCRU...................:%s\n" $(OCRU)
+	@printf "OCRP...................:%s\n" $(OCRP)
 
 define msg
 @printf "\033[31;7m%s\033[0m\r" ".....................................................................................]"
@@ -360,16 +394,12 @@ docs:
 #	#$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey $(PRVKEY) -CAcreateserial -out $(SCRT)
 
 
-genkeys:
-	$(call msg,"PRIVATE AND PUBLIC KEY")
-	$(OPENSSL) genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > $(PRVKEY)
-	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
+#genkeys:
+#	$(call msg,"PRIVATE AND PUBLIC KEY")
+#	$(OPENSSL) genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > $(PRVKEY)
+#	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
 
-secrets: delsecrets genkeys
-	$(call msg,"CREATING ENCRYPTED SECRETS (OPENSSL)")
-	$(KUBECTL) create secret generic pubkey --from-file=publicKey=$(PUBKEY) -n $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic prvkey --from-file=privateKey=$(PRVKEY)  -n $(LRSNAMESPACE)
-	$(KUBECTL) create secret generic prvkey --from-file=privateKey="$(PRVKEY)" -n $(PDBNAMESPACE)
+secrets: delsecrets 
 	$(KUBECTL) create secret generic appusersecret \
 	       	--from-literal=usr01='db_admin01' \
 	      	--from-literal=pwd01='contmasc' \
@@ -381,6 +411,13 @@ secrets: delsecrets genkeys
 	       	--from-literal=pwd03='archmelan' \
        	--from-literal=grt03='connect' -n  $(PDBNAMESPACE)
    ifeq ($(PASSPROTECTION),OPENSSL3)
+	$(call msg,"PRIVATE AND PUBLIC KEY")
+	$(OPENSSL) genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > $(PRVKEY)
+	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
+	$(call msg,"CREATING SECRETS KEYS (OPENSSL3 ENCRYPTION)")
+	$(KUBECTL) create secret generic pubkey --from-file=publicKey=$(PUBKEY) -n $(LRSNAMESPACE)
+	$(KUBECTL) create secret generic prvkey --from-file=privateKey=$(PRVKEY)  -n $(LRSNAMESPACE)
+	$(KUBECTL) create secret generic prvkey --from-file=privateKey="$(PRVKEY)" -n $(PDBNAMESPACE)
 	$(call msg,"CREATING NEW CREDENTIAL SECRETS (OPENSSL3 ENCRYPTION)")
 	@$(ECHO) $(DBUSER) > $(DBUSERFILE)
 	@$(ECHO) $(DBPASS) > $(DBPASSFILE)
@@ -427,73 +464,79 @@ delsecrets:
 	@[ "${SECRETSL}" ] && ( \
 	       	printf "Deleteing secrets in namespace -n $(LRSNAMESPACE)\n") &&\
 	        ($(KUBECTL) delete secret  $(SECRETSL) -n $(LRSNAMESPACE))\
-	        || ( echo "No screts in namespace $(PDBNAMESPACE)")
+	        || ( echo "No screts in namespace $(LRSNAMESPACE)")
 
 cleanCert:
 	$(RM)    $(PRVKEY) $(PUBKEY) server.csr extfile.txt ca.srl \
 		$(DBUSERFILE) $(DBPASSFILE) $(PDBUSRFILE) $(PDBPWDFILE)\
 		e_$(DBUSERFILE) e_$(DBPASSFILE) e_$(PDBUSRFILE) e_$(PDBPWDFILE)
 
+sidbsecrets:
+	$(eval SECRETSS:=$(shell kubectl get secrets -n $(SIDNAMESPACE) -o custom-columns=":metadata.name" --no-headers) )	
+	@[ "${SECRETSS}" ] && ( \
+	       	printf "Deleteing secrets in namespace -n $(SIDNAMESPACE)\n") &&\
+	        ($(KUBECTL) delete secret  $(SECRETSS) -n $(SIDNAMESPACE))\
+	        || ( echo "No screts in namespace $(SIDNAMESPACE)")
+	- $(KUBECTL) create secret docker-registry oracle-container-registry-secret \
+  --docker-server=container-registry.oracle.com \
+  --docker-username='$(OCRU)' \
+  --docker-password='$(OCRP)' \
+  --docker-email='$(OCRU)' -n $(SIDNAMESPACE) 
+	- $(KUBECTL) create secret generic db-admin-secret \
+  --from-literal=oracle_pwd='$(PWD3)' -n ${SIDNAMESPACE}
+
+
 ### YAML FILE SECTION ###
 define _opr
 
-
-export OPBASENAME=`basename ${ORACLE_OPERATOR_YAML}`
-echo "code path..........: ${ORACLE_OPERATOR_YAML}"
-echo "basename...........: ${OPBASENAME}"
-
-if [[ ${CODE_TREE:-"OFF"} == "OFF" ]] ; then
-echo "code tree not available"
-if [[ ! -f ${OPBASENAME} ]]; then 
-    echo "ERROR: oracle-database-operator.yaml not available"
-    exit 1
-    fi 
-cp ${OPBASENAME} ${OPBASENAME}.ORIG
-else
-echo "code tree..........: ${CODE_TREE}"
-cp ${ORACLE_OPERATOR_YAML} .
-cp ${OPBASENAME} ${OPBASENAME}.ORIG
-fi
-
-#sed -i  's/value: ""/value: '${OPRNAMESPACE}','${PDBNAMESPACE}','${LRSNAMESPACE}'/g'   `basename ${ORACLE_OPERATOR_YAML}` 
-
-
-if [[ ${OPRIMG:-"OFF"} != "OFF" ]] ; then 
-	export IMG=`cat ${OPBASENAME}| awk '( $1 == "image:" ) && ( NF == 2)    { printf("%s",$2); }'`
-	echo "ORIGINALIMG........: ${IMG}"
-        echo "NEWIMAG............: ${OPRIMG}"
-	sed -i 's!image: '${IMG}'!image: '${OPRIMG}'!g' ${OPBASENAME}
-fi
-
-diff ${OPBASENAME} ${OPBASENAME}.ORIG||true
+echo "codetree...........: ${CODE_TREE}"
+${CODE_TREE}/scripts/generate-namespace-install.sh ${OPRNAMESPACE},${PDBNAMESPACE},${LRSNAMESPACE},${SIDNAMESPACE}  --output-dir ${WORKDIR}
+ls -ltr ${WORKDIR}/${ORACLE_OPERATOR_YAML}
+ls -ltr ${WORKDIR}/${ORACLE_OPERATOR_RBAC}
 endef
 
 export opr = $(value _opr)
 
-opsetup: prsyaml crtmgrappl nscrt  bndappl opapply rbacap
+opsetup: prsyaml crtmgrappl nscrt rbacap opapply 
+opclean: opdelete rbacdl crtmgrdel nsdel
 
-#opclean: rbacdl opdelete bnddel crtmgrdel
-opclean: rbacdl bnddel crtmgrdel opdelete
+### parse operator and rbac yamlfile
+prsyaml:
+	@eval "$$opr"	
+	echo $(opr)
 
+### rbac apply 
+rbacap:
+	@$(call msg," ClusterRole and ClusterRoleBinding for NodePort services")
+	- $(KUBECTL) apply -f ${ORACLE_OPERATOR_RBAC}
+
+### rbac delete
+rbacdl:
+	@$(call msg," Clean $(ORACLE_OPERATOR_RBAC)")
+	- $(KUBECTL) delete -f ${ORACLE_OPERATOR_RBAC}
+
+### operator apply
 opapply:
 	@$(call msg,"Applying operator yaml file")
 	$(call msg,"Applying ${ORACLE_OPERATOR_YAML}" )
-	$(KUBECTL) apply -f `basename ${ORACLE_OPERATOR_YAML}`
+	$(KUBECTL) apply -f ${ORACLE_OPERATOR_YAML}
 	$(KUBECTL) wait --for=condition=Available deployment/oracle-database-operator-controller-manager \
         -n oracle-database-operator-system --timeout=300s
 	$(call msg,"updateing WATCH_NAMESPACE" )
-	$(KUBECTL) set env deployment/oracle-database-operator-controller-manager \
-		-n oracle-database-operator-system  WATCH_NAMESPACE="$(PDBNAMESPACE),$(LRSNAMESPACE)"
+	#$(KUBECTL) set env deployment/oracle-database-operator-controller-manager \
+	#	-n oracle-database-operator-system  WATCH_NAMESPACE="$(PDBNAMESPACE),$(LRSNAMESPACE)"
 	$(call msg,"manager restart" )
 	$(KUBECTL) rollout restart -n $(OPRNAMESPACE) deployment oracle-database-operator-controller-manager
 	$(KUBECTL) wait --for=condition=Available deployment/oracle-database-operator-controller-manager \
         -n oracle-database-operator-system --timeout=300s
+	$(KUBECTL) get deployment oracle-database-operator-controller-manager -n $(OPRNAMESPACE) \
+	       	-o jsonpath='{.spec.template.spec.containers[*].image}{"\n"}'
+	$(KUBECTL) get pods -n $(OPRNAMESPACE)
 
+### operator delete 
 opdelete:
-	- $(KUBECTL) delete -f `basename ${ORACLE_OPERATOR_YAML}`
+	- $(KUBECTL) delete -f ${ORACLE_OPERATOR_YAML}
 	
-prsyaml:
-	@ eval "$$opr"	
 
 ### Certmanager ###
 crtmgrappl:
@@ -512,34 +555,14 @@ nscrt:
 	@$(call msg,"Namespace scope: creating namespace")
 	- $(KUBECTL) create namespace $(LRSNAMESPACE)
 	- $(KUBECTL) create namespace $(PDBNAMESPACE)
+	- $(KUBECTL) create namespace $(SIDNAMESPACE)
 
 ### Namespace deletion  ###
 nsdel:
 	@$(call msg,"Deleting namespaces $(LRSNAMESPACE) $(PDBNAMESPACE)")
 	$(KUBECTL) delete namespace $(LRSNAMESPACE)
 	$(KUBECTL) delete namespace $(PDBNAMESPACE)
-
-### Namespace Scoped Deployment ###
-bndappl:
-	@$(call msg," Namespace Scoped Deployment: Binding $(PDBNAMESPACE) $(LRSNAMESPACE)")
-	- $(KUBECTL) apply -f $(PDBNAMESPACE)_binding.yaml
-	- $(KUBECTL) apply -f $(LRSNAMESPACE)_binding.yaml
-
-### Namespace Scope Remove ###
-bnddel:
-	@$(call msg," Namespace Scoped remove $(PDBNAMESPACE) $(LRSNAMESPACE)")
-	- $(KUBECTL) delete -f $(PDBNAMESPACE)_binding.yaml
-	- $(KUBECTL) delete -f $(LRSNAMESPACE)_binding.yaml
-
-### Cluster Role Binfing ###
-rbacap:
-	@$(call msg," ClusterRole and ClusterRoleBinding for NodePort services")
-	- $(KUBECTL) apply -f ${NODE_RBAC}
-
-### Remove Cluster Role Binding ###
-rbacdl:
-	@$(call msg," Clean $(NODE_RBAC)")
-	- $(KUBECTL) delete -f ${NODE_RBAC}
+	$(KUBECTL) delete namespace $(SIDNAMESPACE)
 
 
 define _script00
@@ -604,36 +627,6 @@ subjects:
   namespace: oracle-database-operator-system
 EOF
 
-cat <<EOF > ${NODE_RBAC}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: oracle-database-operator-manager-role-node
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - nodes
-  verbs:
-  - list
-  - watch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: oracle-database-operator-manager-role-node-cluster-role-binding
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: oracle-database-operator-manager-role-node
-subjects:
-- kind: ServiceAccount
-  name: default
-  namespace: oracle-database-operator-system
----
-EOF
-
 endef
 export script00 = $(value _script00)
 secyaml:
@@ -676,6 +669,7 @@ cat <<EOF >> ${LREST_POD}
   clusterIp: false
   loadBalancer: false
   trace_level_client : 0 
+  tracelrest: ${LRESTSRV:-0}
 EOF
 
 if [[ ${OPENSHIFT} == "true" ]];then 
@@ -722,7 +716,6 @@ fi
 
 cat <<EOF > tnsnames.ora
 test=${TNSSTRING}
-
 orapkitag=${TNSSTRING}
 
 EOF
@@ -1238,6 +1231,53 @@ done
 rm authsection.yaml
 endef
 
+define _sidb 
+cat <<EOF >${SINGLEINSTANCE}
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: ${SIDNAMESPACE}
+spec:
+  sid: ORCL1
+  edition: enterprise
+  createAs: primary
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+  charset: AL32UTF8
+  pdbName: orclpdb1
+  archiveLog: true
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
+    pullSecrets: oracle-container-registry-secret
+  persistence:
+    oradata:
+      size: 100Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+  replicas: 1
+EOF
+
+cat <<EOF >${RESTDBA}
+
+alter session set "_oracle_script"=true;
+create user ${DBUSER} identified by ${DBPASS};
+grant create session to ${DBUSER} container=all;
+grant sysdba to ${DBUSER} container=all;
+grant select_catalog_role to ${DBUSER};
+grant set container to ${DBUSER} container=all;
+
+exit;
+
+EOF
+
+
+endef
+
 define _script03
 cat <<EOF >${SECURITYCTX}
 #
@@ -1355,6 +1395,7 @@ export PLSQLMAP=${PLSQLMAP}
 export OPRNAMESPACE=oracle-database-operator-system
 export CODE_TREE=${CODE_TREE}
 export ORACLE_OPERATOR_YAML=${ORACLE_OPERATOR_YAML}
+export ORACLE_OPERATOR_RBAC=${ORACLE_OPERATOR_RBAC}
 export AUTODISCOVER=${AUTODISCOVER}
 export CERT_MANAGER=${CERT_MANAGER}
 export TEST_EXEC_TIMEOUT=5m
@@ -1364,6 +1405,7 @@ endef
 export script02 = $(value _script02)
 export script03 = $(value _script03)
 export script04 = $(value _envfile)
+export script05 = $(value _sidb)
 
 
 
@@ -1372,6 +1414,7 @@ genyaml: check secyaml
 	@ eval "$$script02"
 	@ eval "$$script03"
 	@ eval "$$script04"
+	@ eval "$$script05"
 
 cleanyaml:
 	- $(RM) $(LRPDBMAP3) $(LRPDBMAP2) $(LRPDBMAP1) $(LRPDBPLUG1) $(LRPDBUNPLUG1) $(LRPDBDELETE2) $(LRPDBDELETE1) $(LRPDBDELETE3) $(LRPDBCLONE2) $(LRPDBCLONE1) $(LRPDBCLOSE3) $(LRPDBCLOSE2) $(LRPDBCLOSE1) $(LRPDBOPEN3) $(LRPDBOPEN2) $(LRPDBOPEN1) $(LRPDBCRE2) $(LRPDBCRE1) $(LREST_POD) ${ALTERSYSTEMYAML}
@@ -1393,8 +1436,11 @@ pkg:
 ###   diag   ###
 ################
 
-login:
+loginlrest:
 	$(KUBECTL) exec   `$(KUBECTL) get pods -n $(LRSNAMESPACE)|grep rest|cut -d ' ' -f 1` -n $(LRSNAMESPACE) -it -- /bin/bash
+
+loginsidb:
+	$(KUBECTL) exec   `$(KUBECTL) get pods -n $(SIDNAMESPACE)|grep sidb|cut -d ' ' -f 1` -n $(SIDNAMESPACE) -it -- /bin/bash
 
 showpdbs:
 	@$(call msg,"PDB LISTS")
@@ -1424,6 +1470,10 @@ dumpoperator:
 	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPRNAMESPACE)|grep oracle-database-operator-controller|head -1|cut  -d ' ' -f 1` -n $(OPRNAMESPACE) >>$(DIAGFILE)
 	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPRNAMESPACE)|grep oracle-database-operator-controller|head -2|tail -1 | cut -d ' ' -f 1` -n $(OPRNAMESPACE) >>$(DIAGFILE)
 	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPRNAMESPACE)|grep oracle-database-operator-controller|tail -1|cut  -d ' ' -f 1` -n $(OPRNAMESPACE) >>$(DIAGFILE)
+	$(KUBECTL) get deployment oracle-database-operator-controller-manager -n $(OPRNAMESPACE)  -o jsonpath='{.spec.template.spec.containers[*].image}{"\n"}'
+
+currimg:
+	$(KUBECTL) get deployment oracle-database-operator-controller-manager -n $(OPRNAMESPACE)  -o jsonpath='{.spec.template.spec.containers[*].image}{"\n"}'
 
 dumplrest:
 	@$(eval TMPSP := $(shell date "+%y%m%d%H%M%S" ))
@@ -1433,7 +1483,6 @@ dumplrest:
 
 loglrest:
 	$(KUBECTL) logs -f `$(KUBECTL) get pods -o custom-columns=:metadata.name -n $(LRSNAMESPACE) --no-headers ` -n $(LRSNAMESPACE)
-
 
 listimage:
 	 $(KUBECTL) get pods --all-namespaces -o jsonpath="{.items[*].spec['initContainers', 'containers'][*].image}" | tr -s '[[:space:]]' '\n' | sort | uniq -c
@@ -1457,7 +1506,6 @@ AUTODISCMGS="autodiscover:[op completed]"
 CREATEUSR="create users:[op. completed]"
 APPUSERERR="create user:[malformed secrets:0]"
 
-
 cleanlrest:
 	@$(call msg,"lrest deletion")
 	- $(KUBECTL) delete lrest cdb-dev -n $(LRSNAMESPACE)
@@ -1468,11 +1516,10 @@ cleanlrest:
 toplrest:
 	$(KUBECTL) top pod  `$(KUBECTL) get pods -o custom-columns=:metadata.name -n $(LRSNAMESPACE) --no-headers ` -n $(LRSNAMESPACE)
 
-
 run00: cleanlrest
 	@$(call msg,"lrest pod creation")
 	$(KUBECTL) apply -f $(LREST_POD) 
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.phase'}="POD/LREST creation completed" lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"lrest pod completed")
 	$(KUBECTL) get lrest -n  $(LRSNAMESPACE)
 	$(KUBECTL) get pod -n  $(LRSNAMESPACE)
@@ -1509,7 +1556,6 @@ openrestricted:
 	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(OPENMSG) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg, "lrpdb $(LRPDBNAME)  completed")
 	$(KUBECTL) get lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) 
-
 
 close:
 	@$(call msg, "lrpdb $(LRPDBNAME)  close")
@@ -1693,7 +1739,7 @@ tkaudosicov:
 	$(KUBECTL) delete lrpdb pdb1 -n $(PDBNAMESPACE)
 	$(KUBECTL) wait --for=delete lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	 @$(call msg,"checking lrpdb pdb1 recreation")
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" \
+	$(KUBECTL) wait --for jsonpath='{.status.phase'}="POD/LREST creation completed" \
 		lrpdb atd-pdbdev -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	$(MAKE) -f $(MAKEFILE) genyaml ASSERTDELETION=true
 
@@ -1828,8 +1874,6 @@ endif
 	$(KUBECTL) patch lrest cdb-dev -n $(LRSNAMESPACE) -p '{"spec":{"resetDbpassword":true}}'  --type=merge
 	$(MAKE) -f $(MAKEFILE) loglrest
 
-
-
 ## Patch Status
 ## ~~~~~~~~~~~~
 
@@ -1853,20 +1897,16 @@ export FNALAE=00020000
 export PDBUPE=00040000 
 export PDBPLE=00080000
 export PDBPLW=00100000 
+export PDBCNE=00200000
 export PDBAUT=01000000 
 
-
-
 patchstatus:
-	@$(eval L1 := $(shell echo $(BTMSTS)|$(SED) 's/|/\+/g' |$(SED) 's/PDBCRT/00000001/g'| $(SED) 's/PDBOPN/00000002/g'| $(SED) 's/PDBCLS/00000004/g'| $(SED) 's/PDBDIC/00000008/g'| $(SED) 's/OCIHDL/00000010/g'| $(SED) 's/OCICON/00000020/g'| $(SED) 's/FNALAZ/00000040/g'| $(SED) 's/PDBUPL/00000080/g'| $(SED) 's/PDBPLG/00000100/g'|$(SED) 's/APPUSR/00000200/g' | $(SED) 's/PDBCRE/00001000/g'| $(SED) 's/PDBOPE/00002000/g'| $(SED) 's/PDBCLE/00004000/g'| $(SED) 's/OCIHDE/00008000/g'| $(SED) 's/OCICOE/00010000/g'| $(SED) 's/FNALAE/00020000/g'| $(SED) 's/PDBUPE/00040000/g'| $(SED) 's/PDBPLE/00080000/g'| $(SED) 's/PDBPLW/00100000/g'| $(SED) 's/PDBAUT/01000000/g'|$(SED) 's/:/+/g'))
+	@$(eval L1 := $(shell echo $(BTMSTS)|$(SED) 's/|/\+/g' |$(SED) 's/PDBCRT/00000001/g'| $(SED) 's/PDBOPN/00000002/g'| $(SED) 's/PDBCLS/00000004/g'| $(SED) 's/PDBDIC/00000008/g'| $(SED) 's/OCIHDL/00000010/g'| $(SED) 's/OCICON/00000020/g'| $(SED) 's/FNALAZ/00000040/g'| $(SED) 's/PDBUPL/00000080/g'| $(SED) 's/PDBPLG/00000100/g'|$(SED) 's/APPUSR/00000200/g' | $(SED) 's/PDBCRE/00001000/g'| $(SED) 's/PDBOPE/00002000/g'| $(SED) 's/PDBCLE/00004000/g'| $(SED) 's/OCIHDE/00008000/g'| $(SED) 's/OCICOE/00010000/g'| $(SED) 's/FNALAE/00020000/g'| $(SED) 's/PDBUPE/00040000/g'| $(SED) 's/PDBPLE/00080000/g'| $(SED) 's/PDBPLW/00100000/g'| $(SED) 's/PDBAUT/01000000/g'|$(SED) 's/PDBCNE/00200000/g' |$(SED) 's/:/+/g'))
 	@$(eval LEVEL := $(shell echo 'ibase=16 ; $(L1)'|$(BC)  ))
 	@printf "BITMAP..................:%s\n" $(BTMSTS)
 	@printf "BITMAP(DEC).............:%s:%s\n" $(L1) $(LEVEL)
 	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)  -p \
                '{"spec":{"pdbState":"RESET","reststate":$(LEVEL)}}' --type=merge
-
-
-
 
 ## Test trace level 
 ## ~~~~~~~~~~~~~~~~
@@ -1899,7 +1939,6 @@ trace:
 	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
 		'{"spec":{"tracelevel":$(LEVEL)}}' --type=merge
 
-
 ## Check Memory Lrest Memory Utilization
 memcheck:
 	@$(eval POD := $(shell $(KUBECTL) get pods -n $(LRSNAMESPACE) -o json | jq '.items[].metadata|select(.annotations."cdb-dev-lrest"!="true")|.name'|sed 's/"//g'))
@@ -1928,10 +1967,9 @@ memcheck:
 # run08.1     - alter CPU               
 # run09.1     - lrest server recreation 
 
-
 runall01: genyaml tkapplyinit run00 run01.1 run01.2 \
 	  run03.1 run03.2 run04.1 run04.2 run05.1 run06.1 run07.1 run07.2 run07.3 tkautd01 \
-	  run08.1 run09.1
+	  run08.1 run09.1 probetest
 runall02: genyaml tkapplyinit run00 run01.1 openpdb1
 runall03: genyaml tkapplyinit run00 run01.1 run01.2  \
        	run04.1 run04.2 openpdb1 openpdb2 closepdb1 closepdb2 openpdb1rs
@@ -1948,7 +1986,6 @@ runall05: genyaml tkapplyinit run00 run01.1  run03.1
 runall06: run01.1  run03.1
 	$(KUBECTL) apply -f $(LRPDBDELETE3)
 	$(KUBECTL) apply -f $(LRPDBDELETE1)
-
 
 ### Negative test for function CheckErr###
 negative01:
@@ -1989,7 +2026,6 @@ orapki26:
 	@$(KUBECTL) create secret generic orawallet --from-file=./$(WALLET_DIR) -n $(LRSNAMESPACE)
 	@$(KUBECTL) describe secret  orawallet  -n $(LRSNAMESPACE)
 
-
 lrestrecreation: 
 	@$(call msg,"test lrest<-->lrpdb channel after lrest recreation")
 	@$(call msg,"disable delete lrest delete cascade")
@@ -1997,7 +2033,7 @@ lrestrecreation:
 	@$(call msg,"deleteing lrest pod")
 	$(MAKE) -f $(MAKEFILE) cleanlrest
 	$(KUBECTL) apply -f $(LREST_POD) 
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.phase'}="POD/LREST creation completed" lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"lrest pod completed")
 	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)
 
@@ -2017,7 +2053,6 @@ appuserct:
 	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
 		'{"spec":{"pdbappuser":"appusersecret","tracelevel":131072}}' --type=merge
 	@$(call msg,"Users creation completed")
-
 
 appuserct03:
 	@$(call msg,"creating app user on pdb neg. test");
@@ -2053,11 +2088,11 @@ appuserctneg:
 	$(KUBECTL) describe lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)|grep pdbappuser|wc -l
 
 
-#This test case passes a malformed ConfigMap for user creation 
-##to a newly created PDB to verify that a warning message 
-##is raised after command execution. After that, it tests the 
-##RESET status functionality. In addition, it verifies 
-##that incorrect statuses are disregarded.
+## This test case passes a malformed ConfigMap for user creation 
+## to a newly created PDB to verify that a warning message 
+## is raised after command execution. After that, it tests the 
+## RESET status functionality. In addition, it verifies 
+## that incorrect statuses are disregarded.
 
 appuserctneg01: export LRPDBNAME=pdb1
 appuserctneg01:
@@ -2083,7 +2118,6 @@ appuserctneg01:
                 --type=merge
 	$(KUBECTL) get  lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)
 
-#
 appuserctneg02: export LRPDBNAME=pdb1
 appuserctneg02: export APPUSERERR="create users:[USR:TC04_U01 ORA-990]"
 appuserctneg02:
@@ -2099,7 +2133,6 @@ appuserctneg02:
 	@$(call msg,"Users creation completed")
 	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(APPUSERERR) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	$(KUBECTL) get lrpdb -n  $(PDBNAMESPACE)
-
 
 appuserct01:
 	@$(call msg,"creating app user on pdb");
@@ -2149,7 +2182,6 @@ run07.2:
 	$(MAKE) -f $(MAKEFILE) appuserct02 LRPDBNAME=pdb1
 	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)
 
-
 usr2runs:
 	@$(call msg,"==>test fix for bug 39214736<===")
 	$(MAKE) -f $(MAKEFILE) run00 run01.1 run02.1
@@ -2158,13 +2190,11 @@ usr2runs:
 	@$(call msg,"recreating config sql map")
 	$(MAKE) -f $(MAKEFILE) appuserct01 LRPDBNAME=pdb1
 	$(MAKE) -f $(MAKEFILE) appuserct02 LRPDBNAME=pdb1
-	
 
 tnsnames:
 	$(call msg,"tnsnames.ora config map test")
 	-- $(KUBECTL) delete configmap tnscfgmp -n $(LRSNAMESPACE)
 	$(KUBECTL)  create configmap tnscfgmp --from-file=tnsnames.ora   -n $(LRSNAMESPACE)
-	
 
 certverify:
 	$(call msg,"Verify https certificates" )
@@ -2174,7 +2204,6 @@ certverify:
 	$(OPENSSL) x509 -in ca.crt -text -noout
 	$(OPENSSL) verify -CAfile ca.crt tls.crt
 	@$(RM) tls.crt ca.crt
-	
 
 # Check wrong pdbname e.g. with "-" dash 
 pdbcrtneg01:
@@ -2183,4 +2212,68 @@ pdbcrtneg01:
 	-- $(KUBECTL) apply -f $(LRPDBCRE1NEG)
 	$(RM) $(LRPDBCRE1NEG)		
 
+# Monitor lrest creation 
+lrestmon:
+	$(call msg,"monitor lrest creation")
+	-- $(KUBECTL) delete lrest cdb-dev -n $(LRSNAMESPACE)
+	$(KUBECTL) apply -f $(LREST_POD) -n $(LRSNAMESPACE) 
+	#$(KUBECLT) kubectl get lrest cdb-dev -n $(LRSNAMESPACE) --no-headers -o custom-columns='OP:.status.phase,BTMSK:.status.lreststrstate,MSG:.status.msg'  --watch
+	$(KUBECTL) get lrest cdb-dev -n cdbnamespace --no-headers  -o jsonpath='{.status.phase}{"\t"}{.status.lreststrstate}{"\t"}{.status.msg}{"\n"}'  --watch 
 
+## Create sidb 
+
+
+createsidb: genyaml sidbsecrets
+	$(call msg,"creating sidb")
+	$(KUBECTL) apply -f $(SINGLEINSTANCE)
+	$(call msg,"waiting for sidb to be ready")
+	$(KUBECTL) wait --for jsonpath='{.status.status'}='Healthy' singleinstancedatabase sidb-sample -n $(SIDNAMESPACE) --timeout=40m
+	$(KUBECTL) wait --for jsonpath='{.status.phase'}='Running'  pod  -l app=sidb-sample -n $(SIDNAMESPACE)
+
+sidb: createsidb
+	$(eval PODSIDB:=$(shell kubectl get pod -n $(SIDNAMESPACE) -l app=sidb-sample  -o custom-columns=":metadata.name" --no-headers|sed 's/ //g' ))
+	$(call msg,"creating user restdba ")
+	@$(KUBECTL) cp $(RESTDBA) $(PODSIDB):/home/oracle  -n $(SIDNAMESPACE)
+	@$(KUBECTL) exec  $(PODSIDB) -n $(SIDNAMESPACE) -- sqlplus -s '/as sysdba'  @/home/oracle/$(RESTDBA)
+	@$(RM) $(RESTDBA)
+	@$(KUBECTL) exec  $(PODSIDB) -n $(SIDNAMESPACE) -- rm /home/oracle/$(RESTDBA)
+
+delsidb:
+	$(call msg,"deleting sidb")
+	- @$(KUBECTL) delete singleinstancedatabase sidb-sample -n $(SIDNAMESPACE) 
+stopsidb:
+	$(call msg,"shuting down sidb")
+	$(eval PODSIDB:=$(shell kubectl get pod -n $(SIDNAMESPACE) -o custom-columns=":metadata.name" --no-headers|sed 's/ //g' ))
+	@$(KUBECTL) exec  $(PODSIDB) -n $(SIDNAMESPACE) --  /opt/oracle/shutDown.sh abort
+
+startsidb:
+	$(call msg,"starting sidb")
+	$(eval PODSIDB:=$(shell kubectl get pod -n $(SIDNAMESPACE) -o custom-columns=":metadata.name" --no-headers|sed 's/ //g' ))
+	@$(KUBECTL) exec  $(PODSIDB) -n $(SIDNAMESPACE) --  /opt/oracle/startUp.sh
+	$(KUBECTL) wait --for jsonpath='{.status.status'}='Healthy' singleinstancedatabase sidb-sample -n $(SIDNAMESPACE) --timeout=40m
+
+logsidb:
+	$(call msg,"log sidb")
+	$(eval PODSIDB:=$(shell kubectl get pod -n $(SIDNAMESPACE) -o custom-columns=":metadata.name" --no-headers|sed 's/ //g' ))
+	@$(KUBECTL) logs -f  $(PODSIDB) -n $(SIDNAMESPACE) 
+
+probetest: 
+   ifeq ($(USESIDB),TRUE)
+	$(MAKE) -f $(MAKEFILE) stopsidb
+	$(MAKE) -f $(MAKEFILE) checkres
+	$(MAKE) -f $(MAKEFILE) startsidb
+	$(KUBECTL) get lrest cdb-dev -n $(LRSNAMESPACE)
+	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE) 
+	$(KUBECTL) get pod -n $(LRSNAMESPACE) --watch
+ endif
+   ifeq ($(USESIDB),FALSE)
+	$(call msg,"probetest needs sidb ")
+ endif
+
+checkres:
+	$(call msg,"probetest: check resources")
+	- timeout 60s $(KUBECTL) get lrest cdb-dev -n $(LRSNAMESPACE) --watch
+	@echo "============================"
+	- timeout 60s $(KUBECTL) get lrpdb -n $(PDBNAMESPACE) --watch
+	@echo "============================"
+	- timeout 60s $(KUBECTL) get pod -n $(LRSNAMESPACE) --watch

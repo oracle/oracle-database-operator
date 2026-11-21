@@ -1,0 +1,36 @@
+apiVersion: privateai.oracle.com/v4
+kind: PrivateAi
+metadata:
+  name: "__PRIVATEAI_NAME__"
+  labels:
+    e2e.oracle.com/owner: "operator-e2e"
+    e2e.oracle.com/controller: "privateai"
+    e2e.oracle.com/test-id: "test01"
+    e2e.oracle.com/pipeline: "__PRIVATEAI_CASE_PIPELINE__"
+spec:
+  security:
+    authEnabled: true
+    secret:
+      name: "__PRIVATEAI_AUTH_SECRET__"
+      mountLocation: /privateai/ssl
+    tls:
+      secretName: "__PRIVATEAI_TLS_SECRET__"
+      mountLocation: /privateai/ssl
+  runtime:
+    image:
+      name: "__PRIVATEAI_IMAGE__"
+      pullPolicy: "__PRIVATEAI_IMAGE_PULL_POLICY__"
+      pullSecret: "__PRIVATEAI_PULL_SECRET__"
+    replicas: 1
+  # Quick Start intentionally does not configure a model ConfigMap. The
+  # PrivateAI image supplies the default pre-approved models.
+  networking:
+    listeners:
+      https:
+        enabled: true
+        port: 8443
+    service:
+      ports:
+      - port: 8443
+        targetPort: 8443
+        protocol: TCP

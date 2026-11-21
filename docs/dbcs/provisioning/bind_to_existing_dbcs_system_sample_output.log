@@ -4,7 +4,7 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-existing
 spec:
-  id: "ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa"
+  id: "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
 [root@docker-test-server test]#
@@ -71,7 +71,7 @@ Spec:
     Kms Config:
     Shape:      
     Subnet Id:  
-  Id:           ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htya6crmqdnyz5h7ngpi4azbhndm6ssdmyn7yxk2uhbvxala
+  Id:           ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Kms Config:
   Oci Config Map:  oci-cred-mumbai
   Oci Secret:      oci-privatekey
@@ -82,7 +82,7 @@ Status:
   Data Storage Size In G Bs:  256
   Db Edition:                 ENTERPRISE_EDITION_HIGH_PERFORMANCE
   Display Name:               dbsystem1234
-  Id:                         ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htya6crmqdnyz5h7ngpi4azbhndm6ssdmyn7yxk2uhbvxala
+  Id:                         ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   License Model:              BRING_YOUR_OWN_LICENSE
   Network:
     Client Subnet:          oke-nodesubnet-quick-cluster1-2bebe95db-regional
@@ -96,10 +96,10 @@ Status:
   Shape:                    VM.Standard.E5.Flex
   State:                    AVAILABLE
   Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Subnet Id:                ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Time Zone:                UTC
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljro3fhuxevjwxlue5gqq63q7rd7uhub2ru6gd6ay6k35f4hdeqqxkq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create DB System
     Percent Complete:  100
     Time Accepted:     2024-12-06 12:12:04.031 +0000 UTC

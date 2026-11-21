@@ -1,0 +1,58 @@
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: "__TRUECACHE_NAME__"
+  labels:
+    e2e.oracle.com/owner: "operator-e2e"
+    e2e.oracle.com/controller: "truecache"
+    e2e.oracle.com/test-id: "test02"
+    e2e.oracle.com/pipeline: "__TRUECACHE_PIPELINE__"
+spec:
+  sid: "ORCLTCACHE"
+  createAs: truecache
+  edition: "enterprise"
+  primarySource:
+    databaseRef: "__TRUECACHE_PRIMARY_NAME__"
+  trueCache:
+    blobConfigMapRef: "__TRUECACHE_PRIMARY_NAME__-truecache-blob"
+    blobConfigMapKey: tc_config_blob.tar.gz
+    blobMountPath: /stage/tc_config_blob.tar.gz
+    truedbUniqueName: truecache_tc
+    autoTCServiceRegistration: true
+    trueCacheServices:
+      - "ORCLPDB1:tpdb_primary:tpdb_cache"
+  security:
+    tcps:
+      enabled: true
+      tlsSecret: "__TRUECACHE_TCPS_TLS_SECRET__"
+    secrets:
+      admin:
+        secretName: "__TRUECACHE_ADMIN_SECRET__"
+        secretKey: "oracle_pwd"
+        keepSecret: true
+      tde:
+        secretName: "__TRUECACHE_TDE_SECRET__"
+        secretKey: "tde_wallet_pwd"
+  image:
+    pullFrom: "__TRUECACHE_IMAGE__"
+    imagePullPolicy: "__TRUECACHE_IMAGE_PULL_POLICY__"
+    pullSecrets: "__TRUECACHE_PULL_SECRET__"
+  persistence:
+    oradata:
+      size: "60Gi"
+      storageClass: "__TRUECACHE_STORAGE_CLASS__"
+      accessMode: "__TRUECACHE_ACCESS_MODE__"
+    setWritePermissions: true
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "2"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+  initParams:
+    sgaTarget: 3072
+    pgaAggregateTarget: 1024
+    cpuCount: 2
+    processes: 600
+  replicas: 1

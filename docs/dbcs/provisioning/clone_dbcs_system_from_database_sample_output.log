@@ -1,6 +1,6 @@
 2024-09-19T19:23:08Z    INFO    Starting the clone process for Database {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-clone","namespace":"default"}, "namespace": "default", "name": "dbcssystem-clone", "reconcileID": "4c2b2567-052a-4a27-ae96-e18f655577d1", "dbcs": {"apiVersion": "database.oracle.com/v4", "kind": "DbcsSystem", "namespace": "default", "name": "dbcssystem-clone"}}
 2024-09-19T19:23:08Z    INFO    Retrieved passwords from Kubernetes secrets     {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-clone","namespace":"default"}, "namespace": "default", "name": "dbcssystem-clone", "reconcileID": "4c2b2567-052a-4a27-ae96-e18f655577d1"}
-2024-09-19T19:23:09Z    INFO    Retrieved existing Database details from OCI    {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-clone","namespace":"default"}, "namespace": "default", "name": "dbcssystem-clone", "reconcileID": "4c2b2567-052a-4a27-ae96-e18f655577d1", "DatabaseId": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyapxtsgw6hy3kyosmrawefq2csm4kjv4d5au7biuiaabsq"}
+2024-09-19T19:23:09Z    INFO    Retrieved existing Database details from OCI    {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-clone","namespace":"default"}, "namespace": "default", "name": "dbcssystem-clone", "reconcileID": "4c2b2567-052a-4a27-ae96-e18f655577d1", "DatabaseId": "ocid1.database.oc1..<REPLACE_WITH_DATABASE_OCID>"}
 2024-09-20T08:51:45Z    INFO    DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-clone","namespace":"default"}, "namespace": "default", "name": "dbcssystem-clone", "reconcileID": "3ea6b5b1-1196-4279-bf8f-9e663f9a5543"}
 2024-09-20T08:52:46Z    INFO    DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-clone","namespace":"default"}, "namespace": "default", "name": "dbcssystem-clone", "reconcileID": "3ea6b5b1-1196-4279-bf8f-9e663f9a5543"}
 2024-09-20T08:53:46Z    INFO    DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-clone","namespace":"default"}, "namespace": "default", "name": "dbcssystem-clone", "reconcileID": "3ea6b5b1-1196-4279-bf8f-9e663f9a5543"}
@@ -62,7 +62,7 @@ Spec:
     License Model:            BRING_YOUR_OWN_LICENSE
     Ssh Public Keys:
       oci-publickey
-    Subnet Id:  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+    Subnet Id:  ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Db System:
     Availability Domain:      
     Compartment Id:           
@@ -72,7 +72,7 @@ Spec:
     Kms Config:
     Shape:      
     Subnet Id:  
-  Id:           ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Id:           ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Kms Config:
   Oci Config Map:    oci-cred-mumbai
   Oci Secret:        oci-privatekey
@@ -84,7 +84,7 @@ Status:
   Data Storage Size In G Bs:  512
   Db Edition:                 ENTERPRISE_EDITION_HIGH_PERFORMANCE
   Display Name:               dbsystem1234
-  Id:                         ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Id:                         ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   License Model:              BRING_YOUR_OWN_LICENSE
   Network:
     Client Subnet:          oke-nodesubnet-quick-cluster1-2bebe95db-regional
@@ -98,6 +98,6 @@ Status:
   Shape:                    VM.Standard2.1
   State:                    AVAILABLE
   Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Subnet Id:                ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Time Zone:                UTC
 Events:                     <none>

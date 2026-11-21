@@ -1,0 +1,48 @@
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  # Change to your target namespace (AgentFactory Quick Start uses paf).
+  # On OpenShift, the operator WATCH_NAMESPACE list must include this namespace.
+  namespace: default
+spec:
+  sid: ORCL1
+  edition: enterprise
+  createAs: primary
+  # OpenShift: apply ONE SIDB SCC sample, then set serviceAccountName.
+  # AgentFactory OpenShift Quick Start uses write-permissions + setWritePermissions: true.
+  # For setWritePermissions false/omitted, use openshift_rbac.yaml instead.
+  # serviceAccountName: sidb-sa
+  # Do not use anyuid alone; SIDB adds SYS_NICE. See docs/sidb/README.md
+  # "SIDB Deployment on OpenShift" and docs/agentfactory/README.md "OpenShift".
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+  charset: AL32UTF8
+  pdbName: orclpdb1
+  # Optional. AgentFactory 26.10.0+ requires MAX_STRING_SIZE=EXTENDED in the
+  # target PDB. The SIDB controller does not default this value (omit => STANDARD).
+  # Uncomment when this SIDB will back AgentFactory, or when your app needs EXTENDED:
+  # pdbParameters:
+  #   - pdbName: orclpdb1
+  #     name: MAX_STRING_SIZE
+  #     value: EXTENDED
+  archiveLog: true
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    # Keep OCR with ocr-reg-cred, or change both the image and Secret for your registry.
+    pullSecrets: ocr-reg-cred
+  persistence:
+    oradata:
+      size: 100Gi
+      # OKE example. On OpenShift or another distribution, replace with a
+      # supported RWO StorageClass (for example rook-ceph-block).
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    # OpenShift: set true only with openshift_rbac_write_permissions.yaml
+    # (AgentFactory OpenShift Quick Start path). Keep false/omitted with openshift_rbac.yaml.
+    # setWritePermissions: true
+  replicas: 1

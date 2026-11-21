@@ -1,4 +1,4 @@
-# Using Oracle Real Application Cluster with Oracle Database Operator for Kubernetes
+# Using Oracle Real Application Cluster with Oracle AI Database Operator for Kubernetes
 
 Oracle Real Application Clusters (Oracle RAC) is an option to the award-winning Oracle Database Enterprise Edition. Oracle RAC is a cluster database with a shared cache architecture that overcomes the limitations of traditional shared-nothing and shared-disk approaches to provide highly scalable and available database solutions for all business applications. Oracle RAC uses Oracle Clusterware as a portable cluster software that allows clustering of independent servers so that they cooperate as a single system and Oracle Automatic Storage Management (Oracle ASM) to provide simplified storage management that is consistent across all servers and storage platforms. Oracle Clusterware and Oracle ASM are part of the Oracle Grid Infrastructure, which bundles both solutions in an easy to deploy software package.
 
@@ -7,7 +7,7 @@ For more information on Oracle RAC Database 19c refer to the [Oracle Database Do
 
 Kubernetes provides infrastructure building blocks such as compute, storage and networks. Kubernetes makes the infrastructure available as code. It enables rapid provisioning of multi-node topolgies. Additionally, Kubernetes also provides statefulsets, which are the workload API objects that are used to manage stateful applications like Oracle Real Application Clusters (Oracle RAC), Single Instance Oracle Database, and other Oracle features and configurations.
 
-The Oracle Real Application Cluster (RAC) Database Controller in Oracle Database Operator deploys Oracle RAC as a statefulset in the Kubernetes Clusters, using Oracle Real Application Cluster Slim Image. The Oracle RAC Database Controller manages the typical lifecycle of Oracle RAC Database in a Kubernetes cluster, as shown below:
+The Oracle Real Application Cluster (RAC) Database Controller in Oracle AI Database Operator deploys Oracle RAC as a statefulset in the Kubernetes Clusters, using Oracle Real Application Cluster Slim Image. The Oracle RAC Database Controller manages the typical lifecycle of Oracle RAC Database in a Kubernetes cluster, as shown below:
 
 * Create RAC database
   * Install and Configure Oracle Grid Infrastructure
@@ -22,12 +22,21 @@ The Oracle Real Application Cluster (RAC) Database Controller in Oracle Database
 
 The Oracle RAC Database Controller provides end-to-end automation of Oracle RAC Database Deployment in a Kubernetes Cluster.
 
+## Architecture
+
+For how StatefulSets, headless Services (node hostname, VIP, SCAN), NodePort exposure, Multus private interconnect, ASM storage, and optional CMAN (ConnectionManager) fit together, see:
+
+**[Oracle RAC on Kubernetes — Architecture](./architecture.md)**
+
+That page includes topology diagrams, resource naming, client connectivity paths, and the reconcile lifecycle.
+
 ## Using Oracle RAC Database Controller
 
 To create a Oracle database, complete the steps in the following sections:
 
-- [Using Oracle Real Application Cluster with Oracle Database Operator for Kubernetes](#using-oracle-real-application-cluster-with-oracle-database-operator-for-kubernetes)
+- [Using Oracle Real Application Cluster with Oracle AI Database Operator for Kubernetes](#using-oracle-real-application-cluster-with-oracle-ai-database-operator-for-kubernetes)
   - [Using Oracle RAC Database Controller](#using-oracle-rac-database-controller)
+  - [Architecture](#architecture)
   - [Prerequisites for using Oracle RAC Database Controller](#prerequisites-for-using-oracle-rac-database-controller)
   - [QuickStart](#quickstart)
   - [Provisioning Oracle RAC Database using Kubernetes Cluster in an Oracle Cloud Native Environment (OCNE)](#provisioning-oracle-rac-database-using-kubernetes-cluster-in-an-oracle-cloud-native-environment-ocne)
@@ -85,7 +94,7 @@ Deploy Oracle RAC Database YAML files using Kubernetes Cluster on your Oracle Cl
 
 ## Connecting to an Oracle RAC Database provisioned using Oracle RAC Database Controller
 
-After the Oracle RAC Database has been provisioned using the Oracle RAC Database Controller in Oracle Database Operator, you can follow the steps in this document to connect to the Oracle RAC Database: [Database Connectivity](./provisioning/database_connection.md)
+After the Oracle RAC Database has been provisioned using the Oracle RAC Database Controller in Oracle AI Database Operator, you can follow the steps in this document to connect to the Oracle RAC Database: [Database Connectivity](./provisioning/database_connection.md)
 
 ## Environment Variables Explained
 

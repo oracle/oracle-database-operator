@@ -3186,10 +3186,10 @@ func executeDiskGroupCommand(podName string, cmd []string, kubeClient kubernetes
 // within a pod.
 func (r *OracleRestartReconciler) diskGroupExists(podName, diskGroupName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (bool, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	cmd := "python3 /opt/scripts/startup/scripts/main.py --getasmdiskgroup=true"
+	cmd := []string{"python3", "/opt/scripts/startup/scripts/main.py", "--getasmdiskgroup=true"}
 	stdout, _, err := oraclerestartcommon.ExecCommand(
 		podName,
-		[]string{"bash", "-c", cmd},
+		cmd,
 		oraclerestartcommon.NewExecCommandResp(r.kubeClient, r.kubeConfig),
 		instance,
 		reqLogger,
@@ -3228,11 +3228,11 @@ func (r *OracleRestartReconciler) addDisks(ctx context.Context, podList *corev1.
 		}
 
 		for _, disk := range deviceList {
-			cmd := fmt.Sprintf("python3 /opt/scripts/startup/scripts/main.py --updateasmdevices=\"diskname=%s;diskgroup=%s;processtype=addition\"", disk, diskGroupName)
+			cmd := []string{"python3", "/opt/scripts/startup/scripts/main.py", "--updateasmdevices=diskname=" + disk + ";diskgroup=" + diskGroupName + ";processtype=addition"}
 			reqLogger.Info("Executing command to add disk", "Pod.Name", podName, "Command", cmd)
 			stdout, stderr, err := oraclerestartcommon.ExecCommand(
 				podName,
-				[]string{"bash", "-c", cmd},
+				cmd,
 				oraclerestartcommon.NewExecCommandResp(r.kubeClient, r.kubeConfig),
 				instance,
 				reqLogger,

@@ -13,8 +13,10 @@ import (
 const (
 	// DefaultSafetyPct is the default memory safety threshold.
 	DefaultSafetyPct = 0.80
-	// MinContainerMemoryBytes is the minimum supported container memory (16GiB).
-	MinContainerMemoryBytes = int64(16 * 1024 * 1024 * 1024) // 16GiB
+	// MinContainerMemoryBytes is the operator's regular container-memory floor.
+	// Oracle documents 4GB as the boundary for choosing automatic versus
+	// automatic shared memory management; Kubernetes quantities use 4GiB here.
+	MinContainerMemoryBytes = int64(4 * 1024 * 1024 * 1024) // 4GiB
 	pageSizeBytes           = int64(4096)
 	oneGBBytes              = int64(1024 * 1024 * 1024)
 	// DefaultSem is the default sem sysctl value.
@@ -120,6 +122,9 @@ func ValidateSgaPgaSafety(sga, pga, memLimit, hugeMem int64, safetyPct float64) 
 	if memLimit <= 0 {
 		return nil
 	}
+	if memLimit < MinContainerMemoryBytes {
+		return fmt.Errorf("container memory (%dB) is less than minimum supported (%dB)", memLimit, MinContainerMemoryBytes)
+	}
 	sga, pga = resolveEffectiveSgaPga(sga, pga, memLimit)
 
 	if hugeMem > 0 {
@@ -154,63 +159,45 @@ func ValidateHugePagesAtLeastSga(hugeMem, sga int64) error {
 	return nil
 }
 
-// CalculateOracleSysctls computes shmmax/shmall/sem/shmmni values.
+// CalculateOracleSysctls computes shmmax/shmall/sem/shmmni values when the
+// user provides shmmax or HugePages are configured. Regular-memory sizing
+// alone does not cause the operator to add shared-memory sysctls.
 func CalculateOracleSysctls(
 	sgaBytes, pgaBytes, containerMemBytes, hugePagesBytes, userShmmax, userShmall int64,
 ) ([]corev1.Sysctl, error) {
 	if containerMemBytes > 0 && containerMemBytes < MinContainerMemoryBytes {
 		return nil, fmt.Errorf("container memory (%d) is less than minimum required (%d)", containerMemBytes, MinContainerMemoryBytes)
 	}
-	if containerMemBytes == 0 && sgaBytes == 0 && pgaBytes == 0 {
-		return []corev1.Sysctl{}, nil
-	}
 	sgaBytes, pgaBytes = resolveEffectiveSgaPga(sgaBytes, pgaBytes, containerMemBytes)
 
-	if containerMemBytes == 0 {
-		shmmax := sgaBytes + oneGBBytes
-		if userShmmax > 0 {
-			if userShmmax < sgaBytes {
-				return nil, fmt.Errorf("user-provided shmmax (%d) cannot be less than SGA_TARGET (%d)", userShmmax, sgaBytes)
-			}
-			shmmax = userShmmax
+	if containerMemBytes > 0 {
+		if pgaBytes > containerMemBytes {
+			return nil, fmt.Errorf("PGA_TARGET (%d) cannot be greater than container memory (%d)", pgaBytes, containerMemBytes)
 		}
-		shmall := (shmmax + pageSizeBytes - 1) / pageSizeBytes
-		if userShmall > 0 {
-			if userShmall < shmall {
-				return nil, fmt.Errorf("user-provided shmall (%d) is too small; min required=%d pages", userShmall, shmall)
-			}
-			shmall = userShmall
+		if hugePagesBytes == 0 && sgaBytes > containerMemBytes {
+			return nil, fmt.Errorf("SGA_TARGET (%d) cannot be greater than container memory (%d)", sgaBytes, containerMemBytes)
 		}
-		return []corev1.Sysctl{
-			{Name: "kernel.shmmax", Value: fmt.Sprintf("%d", shmmax)},
-			{Name: "kernel.shmall", Value: fmt.Sprintf("%d", shmall)},
-			{Name: "kernel.sem", Value: DefaultSem},
-			{Name: "kernel.shmmni", Value: DefaultShmmni},
-		}, nil
+		if hugePagesBytes > 0 {
+			requiredRegular := pgaBytes + oneGBBytes
+			if containerMemBytes < requiredRegular {
+				return nil, fmt.Errorf(
+					"container regular memory (%d) must be >= PGA_TARGET (%d) + overhead (%d)",
+					containerMemBytes, pgaBytes, oneGBBytes,
+				)
+			}
+		} else {
+			requiredTotal := sgaBytes + pgaBytes + oneGBBytes
+			if containerMemBytes < requiredTotal {
+				return nil, fmt.Errorf(
+					"container memory (%d) must be >= SGA_TARGET (%d) + PGA_TARGET (%d) + overhead (%d)",
+					containerMemBytes, sgaBytes, pgaBytes, oneGBBytes,
+				)
+			}
+		}
 	}
 
-	if pgaBytes > containerMemBytes {
-		return nil, fmt.Errorf("PGA_TARGET (%d) cannot be greater than container memory (%d)", pgaBytes, containerMemBytes)
-	}
-	if sgaBytes > containerMemBytes {
-		return nil, fmt.Errorf("SGA_TARGET (%d) cannot be greater than container memory (%d)", sgaBytes, containerMemBytes)
-	}
-	if hugePagesBytes > 0 {
-		requiredRegular := pgaBytes + oneGBBytes
-		if containerMemBytes < requiredRegular {
-			return nil, fmt.Errorf(
-				"container regular memory (%d) must be >= PGA_TARGET (%d) + overhead (%d)",
-				containerMemBytes, pgaBytes, oneGBBytes,
-			)
-		}
-	} else {
-		requiredTotal := sgaBytes + pgaBytes + oneGBBytes
-		if containerMemBytes < requiredTotal {
-			return nil, fmt.Errorf(
-				"container memory (%d) must be >= SGA_TARGET (%d) + PGA_TARGET (%d) + overhead (%d)",
-				containerMemBytes, sgaBytes, pgaBytes, oneGBBytes,
-			)
-		}
+	if userShmmax == 0 && hugePagesBytes == 0 {
+		return []corev1.Sysctl{}, nil
 	}
 
 	var shmmax int64
@@ -218,26 +205,12 @@ func CalculateOracleSysctls(
 		if userShmmax < sgaBytes {
 			return nil, fmt.Errorf("user-provided shmmax (%d) cannot be less than SGA_TARGET (%d)", userShmmax, sgaBytes)
 		}
-		if hugePagesBytes > 0 && userShmmax < hugePagesBytes {
-			return nil, fmt.Errorf("user-provided shmmax (%d) cannot be less than hugePages memory (%d)", userShmmax, hugePagesBytes)
-		}
-		if userShmmax > containerMemBytes-oneGBBytes {
-			return nil, fmt.Errorf("user-provided shmmax (%d) must be < container memory - 1GB (%d)", userShmmax, containerMemBytes-oneGBBytes)
-		}
 		shmmax = userShmmax
 	} else if hugePagesBytes > 0 {
 		if hugePagesBytes < sgaBytes {
 			return nil, fmt.Errorf("huge pages (%d) must be >= SGA_TARGET (%d)", hugePagesBytes, sgaBytes)
 		}
 		shmmax = hugePagesBytes
-	} else if sgaBytes < (containerMemBytes / 2) {
-		shmmax = containerMemBytes / 2
-	} else {
-		shmmax = sgaBytes + oneGBBytes
-	}
-
-	if shmmax >= containerMemBytes {
-		shmmax = containerMemBytes - oneGBBytes
 	}
 
 	shmall := (shmmax + pageSizeBytes - 1) / pageSizeBytes

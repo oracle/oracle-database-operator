@@ -1,35 +1,5 @@
-# Change the memory and cpu limits for pods for an existing PrivateAI Container Deployment on Kubernetes
+### Change CPU and Memory for an Existing Private AI Deployment
 
-You can change the CPU and memory limits assigned to PrivateAI container pods for an existing deployment that uses the PrivateAI Controller.
+To set or update CPU and memory requests and limits, follow [Set or change CPU and memory](./deploy_privateai_publiclb_mem_cpu_limit.md). Adjust the example values for your workload.
 
-This example assumes the initial deployment occurred on an `OCI OKE` cluster using the PrivateAI container, configured with the example [PrivateAI Container using OCI Public LoadBalancer with memory and cpu limits for pods](./deploy_privateai_publiclb_mem_cpu_limit.md).
-
-By updating the YAML file with new memory and CPU limits, you can assign different resource allocations to pods as needed.
-
-**NOTE:** When you update the limits in this example, Kubernetes creates new pods with the updated limits and recycles the existing pods.
-
-**IMPORTANT:** Complete [Before You Begin](./README.md#before-you-begin) before using Oracle PrivateAI Controller.
-
-**NOTE:** Update the file `pai_sample_publiclb_mem_cpu_limit_changed.yaml` with your actual Reserved Public IP before deployment.
-
-Use the file [pai_sample_publiclb_mem_cpu_limit_changed.yaml](./provisioning/pai_sample_publiclb_mem_cpu_limit_changed.yaml) for this procedure:
-
-1. Deploy the `pai_sample_publiclb_mem_cpu_limit_changed.yaml` file:
-
-    ```sh
-    kubectl apply -f pai_sample_publiclb_mem_cpu_limit_changed.yaml
-    ```
-
-2. Check the status of the deployment:
-
-    ```sh
-    # Check the status of the Kubernetes Pods:
-    kubectl get all -n pai
-
-    # Check the logs of a particular pod. For example, to check status of pod "pai-sample-b669d7897-nkkhz":
-    kubectl logs pod/pai-sample-b669d7897-nkkhz -n pai
-
-    # Check the memory and cpu limits on the Pods by describing them:
-    kubectl describe pod/pai-sample-b669d7897-nkkhz -n pai
-    ```
-    
+This procedure applies whether the deployment is accessed through a ClusterIP Service, a public LoadBalancer, or an internal LoadBalancer. After applying the patch, verify that the Private AI resource is healthy and its replacement Pods are Ready.

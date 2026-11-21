@@ -605,6 +605,8 @@ func buildTrafficManagerDeployment(inst *networkv4.TrafficManager, configChecksu
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: inst.Spec.Runtime.ServiceAccountName,
 		SecurityContext:    inst.Spec.Runtime.PodSecurityContext,
+		NodeSelector:       inst.Spec.Runtime.NodeSelector,
+		Affinity:           inst.Spec.Runtime.Affinity,
 		Containers:         []corev1.Container{container},
 		Volumes:            volumes,
 	}
@@ -659,6 +661,8 @@ func buildCmanTrafficManagerDeployment(inst *networkv4.TrafficManager, configChe
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: inst.Spec.Runtime.ServiceAccountName,
 		SecurityContext:    inst.Spec.Runtime.PodSecurityContext,
+		NodeSelector:       inst.Spec.Runtime.NodeSelector,
+		Affinity:           inst.Spec.Runtime.Affinity,
 		Containers:         []corev1.Container{container},
 		Volumes:            volumes,
 	}
@@ -727,6 +731,14 @@ func syncTrafficManagerDeployment(found, desired *appsv1.Deployment) bool {
 	}
 	if !reflect.DeepEqual(found.Spec.Template.Spec.ImagePullSecrets, desired.Spec.Template.Spec.ImagePullSecrets) {
 		found.Spec.Template.Spec.ImagePullSecrets = desired.Spec.Template.Spec.ImagePullSecrets
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Spec.Template.Spec.NodeSelector, desired.Spec.Template.Spec.NodeSelector) {
+		found.Spec.Template.Spec.NodeSelector = desired.Spec.Template.Spec.NodeSelector
+		updated = true
+	}
+	if !reflect.DeepEqual(found.Spec.Template.Spec.Affinity, desired.Spec.Template.Spec.Affinity) {
+		found.Spec.Template.Spec.Affinity = desired.Spec.Template.Spec.Affinity
 		updated = true
 	}
 	if !reflect.DeepEqual(found.Spec.Template.Spec.Containers, desired.Spec.Template.Spec.Containers) {

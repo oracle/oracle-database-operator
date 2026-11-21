@@ -1,0 +1,85 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Multi-standby Data Guard primary (Cluster 1).
+# Same-cluster standby1 uses ClusterIP; remote standbys use Cluster 2 CMAN NodePorts.
+# See docs/sidb/dataguard/DATAGUARD_MULTI_STANDBY_CMAN.md.
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-primary
+  namespace: <operator-watched-namespace>
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  createAs: primary
+  edition: enterprise
+  archiveLog: true
+  flashBack: true
+  forceLog: true
+
+  dataguard:
+    prereqs:
+      enabled: true
+    standbySources:
+      - dbUniqueName: ORCLSTBY1
+        host: sidb-standby1.default.svc.cluster.local
+        tcpPort: 1521
+        tcpsEnabled: false
+      - dbUniqueName: ORCLSTBY2
+        host: "<cluster2-cman-node-ip>"
+        tcpPort: 30189
+        tcpsEnabled: false
+      - dbUniqueName: ORCLSTBY3
+        host: "<cluster2-cman-node-ip>"
+        tcpPort: 30189
+        tcpsEnabled: false
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: IfNotPresent
+
+  initParams:
+    sgaTarget: 14336
+    pgaAggregateTarget: 2048
+    processes: 800
+
+  resources:
+    requests:
+      memory: "24Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    setWritePermissions: true
+
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        tcp:
+          enabled: true
+          nodePort: 32330
+
+  replicas: 1

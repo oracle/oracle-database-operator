@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,8 +18,52 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 )
+
+type pvcListForbiddenClient struct {
+	client.Client
+}
+
+func (c *pvcListForbiddenClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	if _, ok := list.(*corev1.PersistentVolumeClaimList); ok {
+		return apierrors.NewForbidden(corev1.Resource("persistentvolumeclaims"), "", fmt.Errorf("access denied"))
+	}
+	return c.Client.List(ctx, list, opts...)
+}
+
+func TestShardingUnit_PVCAccessPreflightBlocksCoreResources(t *testing.T) {
+	sch := runtime.NewScheme()
+	if err := databasev4.AddToScheme(sch); err != nil {
+		t.Fatalf("failed adding database scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(sch); err != nil {
+		t.Fatalf("failed adding core scheme: %v", err)
+	}
+	if err := appsv1.AddToScheme(sch); err != nil {
+		t.Fatalf("failed adding apps scheme: %v", err)
+	}
+
+	base := fake.NewClientBuilder().WithScheme(sch).Build()
+	r := &ShardingDatabaseReconciler{
+		Client: &pvcListForbiddenClient{Client: base},
+		Scheme: sch,
+	}
+	result := r.phaseEnsureCoreResources(context.Background(), &databasev4.ShardingDatabase{ObjectMeta: metav1.ObjectMeta{Namespace: "shns"}}, nil, nil)
+	if result.err == nil || result.reason != "PVCAccessPreflightFailed" {
+		t.Fatalf("expected PVC preflight failure, got %#v", result)
+	}
+
+	statefulSets := &appsv1.StatefulSetList{}
+	if err := base.List(context.Background(), statefulSets, client.InNamespace("shns")); err != nil {
+		t.Fatalf("failed listing StatefulSets: %v", err)
+	}
+	if len(statefulSets.Items) != 0 {
+		t.Fatalf("expected no StatefulSets after PVC preflight failure, got %d", len(statefulSets.Items))
+	}
+}
 
 func testShardStatefulSet(name string, cpu string, runAsUser int64, capsAdd []corev1.Capability) *appsv1.StatefulSet {
 	res := corev1.ResourceList{}
@@ -84,6 +130,19 @@ func TestShardingUnit_StatefulSetNeedsNonShapeShardTemplateRecreate(t *testing.T
 			t.Fatalf("expected no non-shape drift for identical templates")
 		}
 	})
+}
+
+func TestShardingUnit_StatefulSetContainerResourcesDrift(t *testing.T) {
+	current := testShardStatefulSet("shard1", "1", 54321, nil)
+	desired := testShardStatefulSet("shard1", "2", 54321, nil)
+	if !statefulSetContainerResourcesDrift(current, desired, "shard1") {
+		t.Fatal("expected resource drift to require a StatefulSet restart")
+	}
+
+	current.Spec.Template.Spec.Containers[0].Resources = desired.Spec.Template.Spec.Containers[0].Resources
+	if statefulSetContainerResourcesDrift(current, desired, "shard1") {
+		t.Fatal("expected identical resources to have no drift")
+	}
 }
 
 func TestShardingUnit_OrderedNonShapeTemplateRollTargets(t *testing.T) {
@@ -1130,5 +1189,65 @@ func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *
 				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestShardingUnit_StatusOnlyUpdateIsFiltered(t *testing.T) {
+	r := &ShardingDatabaseReconciler{}
+	filter := r.eventFilterPredicate()
+	oldInstance := &databasev4.ShardingDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "shdb", Namespace: "shns", ResourceVersion: "1"},
+	}
+	statusUpdate := oldInstance.DeepCopy()
+	statusUpdate.ResourceVersion = "2"
+	statusUpdate.Status.CrdStatus = []metav1.Condition{{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		ObservedGeneration: oldInstance.Generation,
+	}}
+
+	if filter.Update(event.UpdateEvent{ObjectOld: oldInstance, ObjectNew: statusUpdate}) {
+		t.Fatal("expected status-only update to be filtered")
+	}
+
+	specUpdate := oldInstance.DeepCopy()
+	specUpdate.Generation = oldInstance.Generation + 1
+	if !filter.Update(event.UpdateEvent{ObjectOld: oldInstance, ObjectNew: specUpdate}) {
+		t.Fatal("expected generation update to enqueue reconcile")
+	}
+
+	annotationUpdate := oldInstance.DeepCopy()
+	annotationUpdate.Annotations = map[string]string{"database.oracle.com/test": "true"}
+	if !filter.Update(event.UpdateEvent{ObjectOld: oldInstance, ObjectNew: annotationUpdate}) {
+		t.Fatal("expected annotation update to enqueue reconcile")
+	}
+}
+
+func TestShardingUnit_StatusConditionPreservesTransitionTime(t *testing.T) {
+	previousTime := metav1.Now()
+	conditions := []metav1.Condition{{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             "ReconcileComplete",
+		Message:            "ready",
+		ObservedGeneration: 3,
+		LastTransitionTime: previousTime,
+	}}
+
+	setStatusConditionPreservingTransition(&conditions, metav1.Condition{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             "ReconcileComplete",
+		Message:            "ready",
+		ObservedGeneration: 3,
+		LastTransitionTime: metav1.Now(),
+	})
+
+	condition := meta.FindStatusCondition(conditions, "Ready")
+	if condition == nil {
+		t.Fatal("expected Ready condition")
+	}
+	if !condition.LastTransitionTime.Time.Equal(previousTime.Time) {
+		t.Fatalf("expected transition time %v, got %v", previousTime, condition.LastTransitionTime)
 	}
 }

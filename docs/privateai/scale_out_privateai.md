@@ -1,30 +1,45 @@
-# Scale-Out an existing deployment of Oracle PrivateAI Container
+## Scale Out an Existing Private AI Deployment
 
-**IMPORTANT:** This example assumes that you have an existing Oracle PrivateAI Container Deployment with `replicas=1` using the example [PrivateAI Container using OCI Public LoadBalancer](./deploy_privateai_publiclb.md) which uses the file [pai_sample_publiclb.yaml](./provisioning/pai_sample_publiclb.yaml).
+Increase the replica count of an existing `PrivateAi` resource. Before scaling, confirm that the eligible worker nodes have enough capacity and that every replica can access the configured models. If the models are on a PVC, confirm that the volume supports mounting by the additional Pods.
 
-In this example, we will Scale Out an existing deployment with `replicas=1` to `replicas=3`.
+Set the namespace and name of the existing `PrivateAi` resource:
 
-Use the file: [pai_sample_scale_out.yaml](./provisioning/pai_sample_scale_out.yaml) for this use case as below:
+```sh
+export NAMESPACE=pai
+export NAME=pai-sample
+```
 
-1. Check the status of the deployment:
+### Increase the Replica Count
 
-    ```sh
-    # Check the status of the Kubernetes Pods:
-    kubectl get all -n pai
-    ```
+This example increases the desired replica count from one to three. Adjust `3` to the required total:
 
-2. Deploy the `pai_sample_scale_out.yaml` file to scale out:
+```sh
+kubectl patch pai "$NAME" -n "$NAMESPACE" --type=merge \
+  -p '{"spec":{"runtime":{"replicas":3}}}'
+```
 
-    ```sh
-    kubectl apply -f pai_sample_scale_out.yaml
-    ```
+### Check the Result
 
-3. Check the status of the deployment:
+Wait for the Private AI resource to report `Healthy` and for the Deployment rollout to complete:
 
-    ```sh
-    # Check the status of the Kubernetes Pods:
-    kubectl get all -n pai
-    ```
+```sh
+kubectl wait --for=jsonpath='{.status.status}'=Healthy "pai/$NAME" \
+  -n "$NAMESPACE" --timeout=15m
 
-    You should see additional Kubernetes Pods being deployed automatically after the Scale Out is done.
-  
+kubectl rollout status "deployment/$NAME" \
+  -n "$NAMESPACE" --timeout=15m
+```
+
+Check the desired and observed replica counts, then list the Pods for this deployment:
+
+```sh
+kubectl get pai "$NAME" -n "$NAMESPACE" \
+  -o jsonpath='desired={.spec.runtime.replicas}{"\n"}observed={.status.replicas}{"\n"}status={.status.status}{"\n"}'
+
+kubectl get pods -n "$NAMESPACE" \
+  -l "app.kubernetes.io/name=$NAME" -o wide
+```
+
+Confirm that the resource is `Healthy`, the observed replica count matches the desired count, and all listed Pods are Ready.
+
+To reduce the replica count, see [Scale In](./scale_in_privateai.md).

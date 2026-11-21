@@ -3,6 +3,8 @@ package controllers
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -23,6 +25,103 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+func TestShouldPreserveDataGuardWallet(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		createAs string
+		want     bool
+	}{
+		{name: "primary", createAs: "primary", want: true},
+		{name: "standby", createAs: "standby", want: true},
+		{name: "case insensitive", createAs: " StandBy ", want: true},
+		{name: "truecache", createAs: "truecache", want: false},
+		{name: "empty", createAs: "", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := shouldPreserveDataGuardWallet(&dbapi.SingleInstanceDatabase{
+				Spec: dbapi.SingleInstanceDatabaseSpec{CreateAs: test.createAs},
+			})
+			if got != test.want {
+				t.Fatalf("shouldPreserveDataGuardWallet() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestSIDBWalletAdminPasswordUsesPrivateOperatorPath(t *testing.T) {
+	if dbcommons.WalletAdminPasswordFile != "/home/oracle/.operator-tmp/admin.pwd" {
+		t.Fatalf("unexpected wallet admin password path: %q", dbcommons.WalletAdminPasswordFile)
+	}
+	if strings.Contains(dbcommons.WalletEntriesCMD, "/tmp/admin.pwd") {
+		t.Fatalf("wallet entry command still uses the old shared temporary path: %q", dbcommons.WalletEntriesCMD)
+	}
+	if !strings.Contains(dbcommons.WalletEntriesCMD, dbcommons.WalletAdminPasswordFile) {
+		t.Fatalf("wallet entry command does not use the private password path: %q", dbcommons.WalletEntriesCMD)
+	}
+}
+
+func TestScheduleSIDBLiveRoleStatusRequeue(t *testing.T) {
+	tests := []struct {
+		name     string
+		createAs string
+		status   string
+		future   ctrl.Result
+		expect   ctrl.Result
+	}{
+		{
+			name:     "ready primary",
+			createAs: "primary",
+			status:   dbcommons.StatusReady,
+			expect:   ctrl.Result{Requeue: true, RequeueAfter: sidbLiveRoleStatusRequeueAfter},
+		},
+		{
+			name:     "ready standby",
+			createAs: "standby",
+			status:   dbcommons.StatusReady,
+			expect:   ctrl.Result{Requeue: true, RequeueAfter: sidbLiveRoleStatusRequeueAfter},
+		},
+		{
+			name:     "not ready",
+			createAs: "primary",
+			status:   dbcommons.StatusCreating,
+			expect:   ctrl.Result{},
+		},
+		{
+			name:     "truecache",
+			createAs: "truecache",
+			status:   dbcommons.StatusReady,
+			expect:   ctrl.Result{},
+		},
+		{
+			name:     "preserves shorter requeue",
+			createAs: "primary",
+			status:   dbcommons.StatusReady,
+			future:   ctrl.Result{Requeue: true, RequeueAfter: 10 * time.Second},
+			expect:   ctrl.Result{Requeue: true, RequeueAfter: 10 * time.Second},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			phaseCtx := &sidbPhaseContext{
+				singleInstanceDatabase: &dbapi.SingleInstanceDatabase{
+					Spec: dbapi.SingleInstanceDatabaseSpec{CreateAs: tt.createAs},
+					Status: dbapi.SingleInstanceDatabaseStatus{
+						Status: tt.status,
+					},
+				},
+				futureRequeue: tt.future,
+			}
+
+			scheduleSIDBLiveRoleStatusRequeue(phaseCtx)
+
+			if phaseCtx.futureRequeue != tt.expect {
+				t.Fatalf("unexpected requeue: got %#v, want %#v", phaseCtx.futureRequeue, tt.expect)
+			}
+		})
+	}
+}
 
 func TestSIDBUnit_CleanupManagedSingleInstanceDatabasePVCsDeletesManagedClaims(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -85,10 +184,128 @@ func TestSIDBUnit_CleanupManagedSingleInstanceDatabasePVCsDeletesManagedClaims(t
 		if client.IgnoreNotFound(err) != nil {
 			t.Fatalf("failed to get managed oradata pvc after cleanup call: %v", err)
 		}
+	} else if gotOradata.DeletionTimestamp == nil {
+		t.Fatalf("expected managed oradata pvc to have deletion timestamp set when PVC is still present")
+	}
+
+	gotFRA := &corev1.PersistentVolumeClaim{}
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: getFraClaimName(sidb), Namespace: "default"}, gotFRA); err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			t.Fatalf("failed to get managed FRA pvc after cleanup call: %v", err)
+		}
+	} else if gotFRA.DeletionTimestamp == nil {
+		t.Fatalf("expected managed FRA pvc to have deletion timestamp set when PVC is still present")
+	}
+}
+
+func TestSIDBUnit_CleanupManagedSingleInstanceDatabasePVCsRetainsManagedClaims(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "tck8retain", Namespace: "default", UID: types.UID("tck8retain")},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Persistence: dbapi.SingleInstanceDatabasePersistence{
+				RetainOnDelete: true,
+				Oradata: &dbapi.SingleInstanceDatabasePersistenceOradata{
+					Size:         "60Gi",
+					StorageClass: "oci-bv",
+					AccessMode:   "ReadWriteOnce",
+				},
+			},
+		},
+	}
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: sidb.Name, Namespace: sidb.Namespace},
+	}
+	if err := ctrl.SetControllerReference(sidb, pvc, scheme); err != nil {
+		t.Fatalf("failed to set PVC controller reference: %v", err)
+	}
+
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(sidb, pvc).Build(),
+		Log:      logr.Discard(),
+		Scheme:   scheme,
+		Recorder: record.NewFakeRecorder(10),
+	}
+
+	pending, err := reconciler.cleanupManagedSingleInstanceDatabasePVCs(context.Background(), sidb)
+	if err != nil {
+		t.Fatalf("cleanupManagedSingleInstanceDatabasePVCs returned error: %v", err)
+	}
+	if pending {
+		t.Fatalf("expected retained PVC cleanup to complete without requeue")
+	}
+
+	got := &corev1.PersistentVolumeClaim{}
+	if err := reconciler.Get(context.Background(), client.ObjectKeyFromObject(pvc), got); err != nil {
+		t.Fatalf("failed to get retained PVC: %v", err)
+	}
+	if metav1.IsControlledBy(got, sidb) {
+		t.Fatalf("expected retained PVC to have no SIDB controller reference")
+	}
+	if got.Labels["database.oracle.com/retained-on-delete"] != "true" {
+		t.Fatalf("expected retained PVC label, got %v", got.Labels)
+	}
+}
+
+func TestSIDBUnit_CleanupManagedSingleInstanceDatabasePVCsDeletesGeneratedAdditionalClaim(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "tck8additional", Namespace: "default", UID: types.UID("tck8additional")},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Persistence: dbapi.SingleInstanceDatabasePersistence{
+				AdditionalPVCs: []dbapi.AdditionalPVCSpec{{
+					MountPath:       "/backup",
+					StorageSizeInGb: 10,
+					StorageClass:    "oci-bv",
+				}},
+			},
+		},
+	}
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: sidb.Name + "-additional-0", Namespace: sidb.Namespace},
+	}
+	if err := ctrl.SetControllerReference(sidb, pvc, scheme); err != nil {
+		t.Fatalf("failed to set PVC controller reference: %v", err)
+	}
+
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(sidb, pvc).Build(),
+		Log:      logr.Discard(),
+		Scheme:   scheme,
+		Recorder: record.NewFakeRecorder(10),
+	}
+
+	pending, err := reconciler.cleanupManagedSingleInstanceDatabasePVCs(context.Background(), sidb)
+	if err != nil {
+		t.Fatalf("cleanupManagedSingleInstanceDatabasePVCs returned error: %v", err)
+	}
+	if !pending {
+		t.Fatalf("expected generated additional PVC cleanup to be pending")
+	}
+
+	got := &corev1.PersistentVolumeClaim{}
+	if err := reconciler.Get(context.Background(), client.ObjectKeyFromObject(pvc), got); err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			t.Fatalf("failed to get generated additional PVC after cleanup call: %v", err)
+		}
 		return
 	}
-	if gotOradata.DeletionTimestamp == nil {
-		t.Fatalf("expected managed oradata pvc to have deletion timestamp set when PVC is still present")
+	if got.DeletionTimestamp == nil {
+		t.Fatalf("expected generated additional PVC to have deletion timestamp")
 	}
 }
 
@@ -459,6 +676,7 @@ func TestSIDBUnit_GetPrimaryDatabaseCDBConnectStringKeepsRACDomainService(t *tes
 }
 
 func TestSIDBUnit_ShouldPublishNotReadyExternalService(t *testing.T) {
+	flashback := true
 	tests := []struct {
 		name string
 		sidb *dbapi.SingleInstanceDatabase
@@ -479,6 +697,54 @@ func TestSIDBUnit_ShouldPublishNotReadyExternalService(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "dataguard primary publishes not ready endpoints for broker",
+			sidb: &dbapi.SingleInstanceDatabase{
+				Spec: dbapi.SingleInstanceDatabaseSpec{
+					CreateAs: "primary",
+					Dataguard: &dbapi.DataguardProducerSpec{
+						StandbySources: []dbapi.DataguardStandbySourceSpec{{DBUniqueName: "ORCLSTBY1"}},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "primary without dataguard keeps ready-only behavior",
+			sidb: &dbapi.SingleInstanceDatabase{
+				Spec: dbapi.SingleInstanceDatabaseSpec{CreateAs: "primary"},
+			},
+			want: false,
+		},
+		{
+			name: "standby without flashback keeps ready-only when primary is local",
+			sidb: &dbapi.SingleInstanceDatabase{
+				Spec: dbapi.SingleInstanceDatabaseSpec{CreateAs: "standby"},
+			},
+			want: false,
+		},
+		{
+			name: "cross-cluster standby publishes not ready endpoints without flashback",
+			sidb: &dbapi.SingleInstanceDatabase{
+				Spec: dbapi.SingleInstanceDatabaseSpec{
+					CreateAs: "standby",
+					PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+						ConnectString: "10.0.2.240:30189/ORCLHP",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "flashback standby publishes not ready endpoints for broker",
+			sidb: &dbapi.SingleInstanceDatabase{
+				Spec: dbapi.SingleInstanceDatabaseSpec{
+					CreateAs:  "standby",
+					FlashBack: &flashback,
+				},
+			},
+			want: true,
+		},
+		{
 			name: "nil sidb stays disabled",
 			sidb: nil,
 			want: false,
@@ -489,6 +755,27 @@ func TestSIDBUnit_ShouldPublishNotReadyExternalService(t *testing.T) {
 		if got := shouldPublishNotReadyExternalService(tt.sidb); got != tt.want {
 			t.Fatalf("%s: expected %t, got %t", tt.name, tt.want, got)
 		}
+	}
+}
+
+func TestSIDBUnit_EndpointPublishNotReadyOverridesFlashbackCoupling(t *testing.T) {
+	flashback := true
+	publish := false
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs:  "standby",
+			FlashBack: &flashback,
+			Services: &dbapi.SingleInstanceDatabaseServices{Endpoints: []dbapi.SingleInstanceDatabaseServiceEndpoint{{
+				Name:                     dbapi.SingleInstanceDatabaseServiceEndpointNameLoadBalancer,
+				Type:                     dbapi.SingleInstanceDatabaseServiceEndpointTypeLoadBalancer,
+				PublishNotReadyAddresses: &publish,
+			}}},
+		},
+	}
+
+	cfg := resolvedSIDBEndpointConfigForTest(t, sidb, dbapi.SingleInstanceDatabaseServiceEndpointNameLoadBalancer)
+	if cfg.PublishNotReadyAddresses == nil || *cfg.PublishNotReadyAddresses {
+		t.Fatalf("expected explicit publishNotReadyAddresses=false to be preserved")
 	}
 }
 
@@ -543,18 +830,27 @@ func TestSIDBUnit_NormalizeDatabaseRole(t *testing.T) {
 }
 
 func TestSIDBUnit_SnapshotStandbyConversionNeeded(t *testing.T) {
+	enabled := true
+	disabled := false
+
 	tests := []struct {
 		name                 string
-		convertToSnapshot    bool
+		convertToSnapshot    *bool
 		liveRole             string
 		wantConversionNeeded bool
 	}{
-		{name: "physical to snapshot", convertToSnapshot: true, liveRole: "PHYSICAL STANDBY", wantConversionNeeded: true},
-		{name: "snapshot already desired", convertToSnapshot: true, liveRole: "SNAPSHOT_STANDBY", wantConversionNeeded: false},
-		{name: "snapshot to physical", convertToSnapshot: false, liveRole: "SNAPSHOT STANDBY", wantConversionNeeded: true},
-		{name: "physical already desired", convertToSnapshot: false, liveRole: "PHYSICAL_STANDBY", wantConversionNeeded: false},
-		{name: "primary", convertToSnapshot: false, liveRole: "PRIMARY", wantConversionNeeded: false},
+		{name: "physical to snapshot", convertToSnapshot: &enabled, liveRole: "PHYSICAL STANDBY", wantConversionNeeded: true},
+		{name: "snapshot already desired", convertToSnapshot: &enabled, liveRole: "SNAPSHOT_STANDBY", wantConversionNeeded: false},
+		{name: "snapshot to physical", convertToSnapshot: &disabled, liveRole: "SNAPSHOT STANDBY", wantConversionNeeded: true},
+		{name: "physical already desired", convertToSnapshot: &disabled, liveRole: "PHYSICAL_STANDBY", wantConversionNeeded: false},
+		{name: "primary", convertToSnapshot: &disabled, liveRole: "PRIMARY", wantConversionNeeded: false},
+		{name: "primary with snapshot requested", convertToSnapshot: &enabled, liveRole: "PRIMARY", wantConversionNeeded: false},
+		{name: "omitted with physical standby", convertToSnapshot: nil, liveRole: "PHYSICAL STANDBY", wantConversionNeeded: false},
+		{name: "omitted with snapshot standby", convertToSnapshot: nil, liveRole: "SNAPSHOT STANDBY", wantConversionNeeded: false},
+		{name: "omitted with primary", convertToSnapshot: nil, liveRole: "PRIMARY", wantConversionNeeded: false},
+		{name: "normalized snapshot role", convertToSnapshot: &disabled, liveRole: " Snapshot-Standby ", wantConversionNeeded: true},
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if got := snapshotStandbyConversionNeeded(test.convertToSnapshot, test.liveRole); got != test.wantConversionNeeded {
@@ -1074,6 +1370,55 @@ func TestSIDBUnit_CloneAndStandbyExposePasswordFileFromAdminSecret(t *testing.T)
 	}
 }
 
+func TestSIDBUnit_StandbyHostnameUsesIPNodeSelector(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			NodeSelector: map[string]string{"kubernetes.io/hostname": "10.2.1.131"},
+		},
+	}
+
+	env := standbyHostnameEnvVar(sidb)
+	if env.Name != "STANDBY_HOSTNAME" || env.Value != "10.2.1.131" || env.ValueFrom != nil {
+		t.Fatalf("expected literal standby host IP, got %#v", env)
+	}
+}
+
+func TestSIDBUnit_StandbyHostnameFallsBackToHostIPField(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{}
+
+	env := standbyHostnameEnvVar(sidb)
+	if env.Name != "STANDBY_HOSTNAME" || env.Value != "" || env.ValueFrom == nil || env.ValueFrom.FieldRef == nil || env.ValueFrom.FieldRef.FieldPath != "status.hostIP" {
+		t.Fatalf("expected status.hostIP fallback, got %#v", env)
+	}
+}
+
+func TestSIDBUnit_CrossClusterStandbyUsesExternalEndpointOnlyForIPSource(t *testing.T) {
+	newStandby := func(connectString string) *dbapi.SingleInstanceDatabase {
+		return &dbapi.SingleInstanceDatabase{
+			Spec: dbapi.SingleInstanceDatabaseSpec{
+				CreateAs: "standby",
+				PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+					ConnectString: connectString,
+				},
+				Services: &dbapi.SingleInstanceDatabaseServices{
+					Endpoints: []dbapi.SingleInstanceDatabaseServiceEndpoint{{
+						Name: dbapi.SingleInstanceDatabaseServiceEndpointNameNodePort,
+						Type: dbapi.SingleInstanceDatabaseServiceEndpointTypeNodePort,
+						TCP:  &dbapi.SingleInstanceDatabaseServiceEndpointPort{Enabled: true, NodePort: 30282},
+					}},
+				},
+			},
+		}
+	}
+
+	if !isCrossClusterStandby(newStandby("10.2.1.240:32331/ORCLPRD")) {
+		t.Fatal("expected IP-based NodePort source to use external standby endpoint")
+	}
+	if isCrossClusterStandby(newStandby("sidb-primary.default.svc.cluster.local:1521/ORCLPRD")) {
+		t.Fatal("expected service-DNS source to preserve in-cluster behavior")
+	}
+}
+
 func TestSIDBUnit_SIDBPodContainerRunningRequiresRunningMainContainer(t *testing.T) {
 	pod := corev1.Pod{
 		Spec: corev1.PodSpec{
@@ -1205,6 +1550,44 @@ func TestSIDBUnit_WalletAlreadySeeded(t *testing.T) {
 	}
 }
 
+func TestSIDBUnit_CrossClusterStandbyEndpointEnvironment(t *testing.T) {
+	pod := corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+		Name: "sidb-standby",
+		Env: []corev1.EnvVar{
+			{Name: "SVC_HOST", Value: "10.2.1.143"},
+			{Name: "CROSS_CLUSTER_STANDBY", Value: "true"},
+			{Name: "STANDBY_HOSTNAME", Value: "10.2.1.143"},
+			{Name: "STANDBY_LISTENER_PORT", Value: "1521"},
+		},
+	}}}}
+
+	if !sidbPodHasCrossClusterStandbyEndpoint(pod, "sidb-standby", "10.2.1.143") {
+		t.Fatalf("expected cross-cluster standby environment to be recognized")
+	}
+	pod.Spec.Containers[0].Env[1].Value = "false"
+	if sidbPodHasCrossClusterStandbyEndpoint(pod, "sidb-standby", "10.2.1.143") {
+		t.Fatalf("expected fallback standby environment to be rejected")
+	}
+}
+
+func TestSIDBUnit_StandbyLoadBalancerGateSkipsNonLoadBalancerEndpoints(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			CreateAs: "standby",
+			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
+				ConnectString: "10.0.2.172:1521/ORCLPRD",
+			},
+			Services: &dbapi.SingleInstanceDatabaseServices{Endpoints: []dbapi.SingleInstanceDatabaseServiceEndpoint{{
+				Name: dbapi.SingleInstanceDatabaseServiceEndpointNameNodePort,
+				Type: dbapi.SingleInstanceDatabaseServiceEndpointTypeNodePort,
+			}}},
+		},
+	}
+	if sidbStandbyUsesLoadBalancer(sidb) {
+		t.Fatalf("expected NodePort standby endpoint to bypass the LoadBalancer gate")
+	}
+}
+
 func TestSIDBUnit_SyncDataguardPreviewStatusForStandby(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		ObjectMeta: metav1.ObjectMeta{Name: "sidb-standby", Namespace: "ns1"},
@@ -1322,7 +1705,8 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryPublishesReadyPreview
 			Dataguard: &dbapi.DataguardProducerSpec{Mode: dbapi.DataguardProducerModePreview},
 		},
 		Status: dbapi.SingleInstanceDatabaseStatus{
-			CreatedAs: "standby",
+			CreatedAs:     "standby",
+			ConnectString: "10.2.1.150:1521/STBY",
 		},
 	}
 
@@ -1369,6 +1753,19 @@ func TestSIDBUnit_SyncDataguardPreviewStatusExternalPrimaryPublishesReadyPreview
 	}
 	if externalPrimary == nil {
 		t.Fatalf("expected primary member in rendered topology, got %#v", members)
+	}
+	var standbyMember *dbapi.DataguardTopologyMember
+	for i := range members {
+		if members[i].Role == "PHYSICAL_STANDBY" {
+			standbyMember = &members[i]
+			break
+		}
+	}
+	if standbyMember == nil || len(standbyMember.Endpoints) == 0 {
+		t.Fatalf("expected standby endpoint in rendered topology, got %#v", standbyMember)
+	}
+	if standbyMember.Endpoints[0].Host != "10.2.1.150" || standbyMember.Endpoints[0].Port != 1521 {
+		t.Fatalf("expected external standby endpoint, got %#v", standbyMember.Endpoints[0])
 	}
 	if externalPrimary.AdminSecretRef != nil {
 		t.Fatalf("expected external primary member to inherit adminSecretRef from topology defaults, got %#v", externalPrimary.AdminSecretRef)
@@ -1609,6 +2006,7 @@ func TestSIDBUnit_BuildAutomaticPrimaryTNSAliases(t *testing.T) {
 			Sid:      "STBYDB",
 			PrimarySource: &dbapi.SingleInstanceDatabasePrimarySource{
 				DatabaseRef: "primary-db",
+				TCPSPort:    32484,
 			},
 			Security: &dbapi.SingleInstanceDatabaseSecurity{
 				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{
@@ -1648,10 +2046,10 @@ func TestSIDBUnit_BuildAutomaticPrimaryTNSAliases(t *testing.T) {
 	if got := aliases["ORCLCDB_DGMGRL"]; got.Host != "primary-db" || got.Port != 1521 || got.ServiceName != "ORCLCDB_DGMGRL" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
 		t.Fatalf("unexpected dgmgrl alias: %#v", got)
 	}
-	if got := aliases["ORCLCDBTCPS"]; got.Host != "primary-db" || got.Port != 2484 || got.ServiceName != "ORCLCDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
+	if got := aliases["ORCLCDBTCPS"]; got.Host != "primary-db" || got.Port != 32484 || got.ServiceName != "ORCLCDB" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
 		t.Fatalf("unexpected tcps alias: %#v", got)
 	}
-	if got := aliases["ORCLCDBTCPS_DGMGRL"]; got.Host != "primary-db" || got.Port != 2484 || got.ServiceName != "ORCLCDB_DGMGRL" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
+	if got := aliases["ORCLCDBTCPS_DGMGRL"]; got.Host != "primary-db" || got.Port != 32484 || got.ServiceName != "ORCLCDB_DGMGRL" || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
 		t.Fatalf("unexpected tcps dgmgrl alias: %#v", got)
 	}
 }
@@ -1889,6 +2287,7 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesForConfiguredStandbySources(t *testi
 						Host:         "stbya.example",
 						TCPSEnabled:  true,
 						TCPPort:      1621,
+						TCPSPort:     1622,
 					},
 					{
 						DBUniqueName: "STBYB",
@@ -1926,7 +2325,7 @@ func TestSIDBUnit_BuildPrimaryPeerTNSAliasesForConfiguredStandbySources(t *testi
 	if got := aliases["STBYA"]; got.Host != "stbya.example" || got.Port != 1621 || got.ServiceName != "STBYA" {
 		t.Fatalf("unexpected STBYA alias: %#v", got)
 	}
-	if got := aliases["STBYATCPS"]; got.Host != "stbya.example" || got.Port != 2484 || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
+	if got := aliases["STBYATCPS"]; got.Host != "stbya.example" || got.Port != 1622 || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCPS {
 		t.Fatalf("unexpected STBYATCPS alias: %#v", got)
 	}
 	if got := aliases["STBYB"]; got.Host != "stbyb.example" || got.Port != 1521 || got.Protocol != dbapi.SingleInstanceDatabaseTNSAliasProtocolTCP {
@@ -2663,6 +3062,29 @@ func TestSIDBUnit_GetTcpsEnabledTreatsLegacyListenerPortAsEnabled(t *testing.T) 
 	}
 }
 
+func TestSIDBUnit_TCPSecurityEnvEnablesImageTCPSSetup(t *testing.T) {
+	sidb := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Security: &dbapi.SingleInstanceDatabaseSecurity{
+				TCPS: &dbapi.SingleInstanceDatabaseSecurityTCPS{Enabled: true},
+			},
+		},
+	}
+
+	envs := buildSIDBSecurityScriptEnvVars(sidb)
+	values := make(map[string]string, len(envs))
+	for _, env := range envs {
+		values[env.Name] = env.Value
+	}
+
+	if values["ENABLE_TCPS"] != "true" {
+		t.Fatalf("expected image TCPS gate ENABLE_TCPS=true, got %q", values["ENABLE_TCPS"])
+	}
+	if values["TCPS_ENABLED"] != "true" {
+		t.Fatalf("expected compatibility TCPS_ENABLED=true, got %q", values["TCPS_ENABLED"])
+	}
+}
+
 func TestSIDBUnit_AllowTrueCacheBlobGenerationWithoutTCPS(t *testing.T) {
 	sidb := &dbapi.SingleInstanceDatabase{
 		Spec: dbapi.SingleInstanceDatabaseSpec{
@@ -3329,6 +3751,76 @@ func TestSIDBUnit_InstantiatePodSpecCopiesHostAliases(t *testing.T) {
 	}
 }
 
+func TestSIDBUnit_InstantiatePodSpecCopiesOptionalTolerations(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+
+	tolerationSeconds := int64(60)
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-tolerations", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "ORCLCDB",
+			Tolerations: []corev1.Toleration{{
+				Key:               "sidb-hugepages",
+				Operator:          corev1.TolerationOpEqual,
+				Value:             "true",
+				Effect:            corev1.TaintEffectNoSchedule,
+				TolerationSeconds: &tolerationSeconds,
+			}},
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+	if !reflect.DeepEqual(pod.Spec.Tolerations, sidb.Spec.Tolerations) {
+		t.Fatalf("expected tolerations to be copied, got %#v", pod.Spec.Tolerations)
+	}
+
+	sidb.Spec.Tolerations[0].Value = "changed"
+	if pod.Spec.Tolerations[0].Value != "true" {
+		t.Fatalf("expected generated Pod tolerations to be independent of the SIDB spec")
+	}
+}
+
+func TestSIDBUnit_InstantiatePodSpecOmitsTolerationsWhenUnset(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-no-tolerations", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "ORCLCDB",
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+	if len(pod.Spec.Tolerations) != 0 {
+		t.Fatalf("did not expect tolerations when spec.tolerations is omitted, got %#v", pod.Spec.Tolerations)
+	}
+}
+
 func TestSIDBUnit_InstantiatePodSpecDefaultsCapabilitiesToSysNice(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := dbapi.AddToScheme(scheme); err != nil {
@@ -3357,6 +3849,95 @@ func TestSIDBUnit_InstantiatePodSpecDefaultsCapabilitiesToSysNice(t *testing.T) 
 	want := &corev1.Capabilities{Add: []corev1.Capability{"SYS_NICE"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected default capabilities %#v, got %#v", want, got)
+	}
+}
+
+func TestSIDBUnit_InstantiatePodSpecAddsOracleMemorySysctlsWithUserHint(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-memory-sysctls", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "ORCLCDB",
+			SecurityContext: &corev1.PodSecurityContext{
+				Sysctls: []corev1.Sysctl{
+					{Name: "kernel.shmmax", Value: "16106127360"},
+				},
+			},
+			InitParams: &dbapi.SingleInstanceDatabaseInitParams{
+				SgaTarget:          14336,
+				PgaAggregateTarget: 2048,
+			},
+			ResourceRequirements: &corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("24Gi"),
+				},
+			},
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+
+	got := map[string]string{}
+	for _, sysctl := range pod.Spec.SecurityContext.Sysctls {
+		got[sysctl.Name] = sysctl.Value
+	}
+	for _, name := range []string{"kernel.shmall", "kernel.sem", "kernel.shmmax", "kernel.shmmni"} {
+		if got[name] == "" {
+			t.Fatalf("expected %s in generated Pod security context, got %#v", name, pod.Spec.SecurityContext.Sysctls)
+		}
+	}
+	if got["kernel.shmmax"] != "16106127360" {
+		t.Fatalf("expected user-provided kernel.shmmax to be preserved, got %q", got["kernel.shmmax"])
+	}
+}
+
+func TestSIDBUnit_InstantiatePodSpecDoesNotAddOracleMemorySysctlsWithoutUserHint(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-memory-no-sysctls", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid: "ORCLCDB",
+			InitParams: &dbapi.SingleInstanceDatabaseInitParams{
+				SgaTarget:          14336,
+				PgaAggregateTarget: 2048,
+			},
+			ResourceRequirements: &corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("24Gi"),
+				},
+			},
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/free:latest",
+			},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+	if len(pod.Spec.SecurityContext.Sysctls) != 0 {
+		t.Fatalf("did not expect generated sysctls without a user hint, got %#v", pod.Spec.SecurityContext.Sysctls)
 	}
 }
 
@@ -3428,6 +4009,42 @@ func TestSIDBUnit_InstantiatePodSpecUsesExplicitShmSize(t *testing.T) {
 		}
 		if volume.EmptyDir == nil || volume.EmptyDir.SizeLimit == nil || volume.EmptyDir.SizeLimit.Cmp(resource.MustParse("8Gi")) != 0 {
 			t.Fatalf("expected explicit shm size 8Gi, got %#v", volume.EmptyDir)
+		}
+		return
+	}
+	t.Fatalf("expected %s volume, got %#v", sidbShmVolumeName, pod.Spec.Volumes)
+}
+
+func TestSIDBUnit_InstantiatePodSpecDerivesShmSizeFromMemoryTarget(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-memory-target", Namespace: "ns1"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Sid:        "ORCLCDB",
+			InitParams: &dbapi.SingleInstanceDatabaseInitParams{MemoryTarget: "20Gi"},
+			Image:      dbapi.SingleInstanceDatabaseImage{PullFrom: "container-registry.oracle.com/database/free:latest"},
+		},
+	}
+
+	pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+	if err != nil {
+		t.Fatalf("instantiatePodSpec returned err: %v", err)
+	}
+	for i := range pod.Spec.Volumes {
+		volume := &pod.Spec.Volumes[i]
+		if volume.Name != sidbShmVolumeName {
+			continue
+		}
+		if volume.EmptyDir == nil || volume.EmptyDir.Medium != corev1.StorageMediumMemory ||
+			volume.EmptyDir.SizeLimit == nil || volume.EmptyDir.SizeLimit.Cmp(resource.MustParse("20Gi")) != 0 {
+			t.Fatalf("expected automatic 20Gi shm volume, got %#v", volume.EmptyDir)
 		}
 		return
 	}
@@ -3888,7 +4505,6 @@ func TestSIDBUnit_InstantiatePodSpecPrefersSeparateNodeFromLocalPrimary(t *testi
 		primary := &dbapi.SingleInstanceDatabase{
 			ObjectMeta: metav1.ObjectMeta{Name: "primary-db", Namespace: "ns1"},
 		}
-
 		pod, err := reconciler.instantiatePodSpec(sidb, nil, primary, false)
 		if err != nil {
 			t.Fatalf("instantiatePodSpec returned err: %v", err)
@@ -3933,7 +4549,6 @@ func TestSIDBUnit_InstantiatePodSpecPrefersSeparateNodeFromLocalPrimary(t *testi
 		primary := &dbapi.SingleInstanceDatabase{
 			ObjectMeta: metav1.ObjectMeta{Name: "primary-db", Namespace: "ns1"},
 		}
-
 		pod, err := reconciler.instantiatePodSpec(sidb, nil, primary, false)
 		if err != nil {
 			t.Fatalf("instantiatePodSpec returned err: %v", err)
@@ -4025,6 +4640,92 @@ func TestSIDBUnit_RunSIDBPhaseTreatsRequeueAfterAsRequeue(t *testing.T) {
 	}
 	if !got.Requeue || got.RequeueAfter != 30*time.Second {
 		t.Fatalf("expected requeue with delay, got %#v", got)
+	}
+}
+
+func TestSIDBUnit_RunSIDBPhaseReturnsErrorWithoutRequeue(t *testing.T) {
+	reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard()}
+
+	got, err := reconciler.runSIDBPhase(context.Background(), ctrl.Request{}, "unit_test_phase", func() (ctrl.Result, error) {
+		return ctrl.Result{Requeue: true}, errors.New("create additional pvc failed")
+	})
+	if err == nil {
+		t.Fatal("expected phase error")
+	}
+	if got != (ctrl.Result{}) {
+		t.Fatalf("expected error without requeue result, got %#v", got)
+	}
+}
+
+func TestSIDBUnit_CreateOrReplacePVCsForAdditionalPVCsCreatesAllManagedClaims(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-additional", Namespace: "default", UID: types.UID("sidb-additional")},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Persistence: dbapi.SingleInstanceDatabasePersistence{
+				AdditionalPVCs: []dbapi.AdditionalPVCSpec{
+					{MountPath: "/mnt/archive", StorageSizeInGb: 100, StorageClass: "oci-bv"},
+					{MountPath: "/mnt/backup", StorageSizeInGb: 50, StorageClass: "oci-fss"},
+				},
+			},
+		},
+	}
+
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(sidb).Build(),
+		Log:      logr.Discard(),
+		Scheme:   scheme,
+		Recorder: record.NewFakeRecorder(10),
+	}
+
+	result, err := reconciler.createOrReplacePVCsForAdditionalPVCs(context.Background(), ctrl.Request{}, sidb)
+	if err != nil {
+		t.Fatalf("createOrReplacePVCsForAdditionalPVCs returned error: %v", err)
+	}
+	if result != (ctrl.Result{}) {
+		t.Fatalf("expected reconciliation to continue after creating managed additional PVCs, got %#v", result)
+	}
+
+	for index, want := range []struct {
+		storageClass string
+		size         string
+	}{
+		{storageClass: "oci-bv", size: "100Gi"},
+		{storageClass: "oci-fss", size: "50Gi"},
+	} {
+		pvc := &corev1.PersistentVolumeClaim{}
+		claimName := fmt.Sprintf("%s-additional-%d", sidb.Name, index)
+		if err := reconciler.Get(context.Background(), types.NamespacedName{Name: claimName, Namespace: sidb.Namespace}, pvc); err != nil {
+			t.Fatalf("failed to get managed additional PVC %q: %v", claimName, err)
+		}
+		if !metav1.IsControlledBy(pvc, sidb) {
+			t.Fatalf("expected SIDB to control managed additional PVC %q", claimName)
+		}
+		if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != want.storageClass {
+			t.Fatalf("managed additional PVC %q storageClass = %v, want %q", claimName, pvc.Spec.StorageClassName, want.storageClass)
+		}
+		if got := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; got.Cmp(resource.MustParse(want.size)) != 0 {
+			t.Fatalf("managed additional PVC %q storage request = %s, want %s", claimName, got.String(), want.size)
+		}
+	}
+
+	result, err = reconciler.createOrReplacePVCsForAdditionalPVCs(context.Background(), ctrl.Request{}, sidb)
+	if err != nil {
+		t.Fatalf("second additional PVC reconciliation returned error: %v", err)
+	}
+	if result != (ctrl.Result{}) {
+		t.Fatalf("expected no requeue after all managed additional PVCs exist, got %#v", result)
+	}
+	condition := meta.FindStatusCondition(sidb.Status.Conditions, "AdditionalPVCsCreated")
+	if condition == nil || condition.Status != metav1.ConditionTrue || condition.Reason != "Created" {
+		t.Fatalf("expected created additional PVC condition, got %#v", condition)
 	}
 }
 
@@ -4203,6 +4904,7 @@ func TestSIDBUnit_CreateOrReplacePodsRollsPodsForAdditionalPVCDrift(t *testing.T
 	reconciler := &SingleInstanceDatabaseReconciler{
 		Client: fake.NewClientBuilder().
 			WithScheme(scheme).
+			WithStatusSubresource(&dbapi.SingleInstanceDatabase{}).
 			WithObjects(sidb, pod).
 			Build(),
 		Log: logr.Discard(),
@@ -4290,6 +4992,7 @@ func TestSIDBUnit_CreateOrReplacePodsRollsPodsForCustomScriptsPVCDrift(t *testin
 	reconciler := &SingleInstanceDatabaseReconciler{
 		Client: fake.NewClientBuilder().
 			WithScheme(scheme).
+			WithStatusSubresource(&dbapi.SingleInstanceDatabase{}).
 			WithObjects(sidb, pod).
 			Build(),
 		Log: logr.Discard(),
@@ -4388,6 +5091,7 @@ func TestSIDBUnit_CreateOrReplacePodsRollsPodsForExplicitScriptsDrift(t *testing
 	reconciler := &SingleInstanceDatabaseReconciler{
 		Client: fake.NewClientBuilder().
 			WithScheme(scheme).
+			WithStatusSubresource(&dbapi.SingleInstanceDatabase{}).
 			WithObjects(sidb, pod).
 			Build(),
 		Log: logr.Discard(),
@@ -4483,6 +5187,7 @@ func TestSIDBUnit_CreateOrReplacePodsRollsPodsForFraDrift(t *testing.T) {
 	reconciler := &SingleInstanceDatabaseReconciler{
 		Client: fake.NewClientBuilder().
 			WithScheme(scheme).
+			WithStatusSubresource(&dbapi.SingleInstanceDatabase{}).
 			WithObjects(sidb, pod).
 			Build(),
 		Log: logr.Discard(),
@@ -4589,6 +5294,86 @@ func TestSIDBUnit_CreateOrReplacePodsWaitsForTerminatingPodBeforeReplacement(t *
 	}
 }
 
+func TestSIDBUnit_CreateOrReplacePodsPersistsDatapatchPendingForImageChange(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-image-update", Namespace: "default"},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Replicas: 1,
+			Image: dbapi.SingleInstanceDatabaseImage{
+				PullFrom: "container-registry.oracle.com/database/enterprise:23.26.4",
+				Version:  "23.26.4",
+			},
+		},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			DatafilesCreated: "true",
+			DatafilesPatched: "true",
+			Replicas:         1,
+		},
+	}
+
+	oldPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sidb-image-update-old",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app":     "sidb-image-update",
+				"version": "23.26.3",
+			},
+		},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name:  "sidb-image-update",
+			Image: "container-registry.oracle.com/database/enterprise:23.26.3",
+		}}},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "sidb-image-update",
+				Ready: true,
+			}},
+		},
+	}
+
+	newPod := oldPod.DeepCopy()
+	newPod.Name = "sidb-image-update-new"
+	newPod.Labels["version"] = "23.26.4"
+	newPod.Spec.Containers[0].Image = "container-registry.oracle.com/database/enterprise:23.26.4"
+
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Client: fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(&dbapi.SingleInstanceDatabase{}).
+			WithObjects(sidb, oldPod, newPod).
+			Build(),
+		Log: logr.Discard(),
+	}
+
+	if _, err := reconciler.createOrReplacePods(
+		sidb,
+		nil,
+		nil,
+		context.Background(),
+		ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "sidb-image-update"}},
+	); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+
+	persistedSIDB := &dbapi.SingleInstanceDatabase{}
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Namespace: "default", Name: "sidb-image-update"}, persistedSIDB); err != nil {
+		t.Fatalf("failed to get SIDB: %v", err)
+	}
+	if got := persistedSIDB.Status.DatafilesPatched; got != "false" {
+		t.Fatalf("DatafilesPatched = %q, want false after image change", got)
+	}
+}
+
 func TestSIDBUnit_CreateOrReplacePVCforCustomScriptsVolDeletesStalePVC(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := dbapi.AddToScheme(scheme); err != nil {
@@ -4652,6 +5437,67 @@ func TestSIDBUnit_CreateOrReplacePVCforCustomScriptsVolDeletesStalePVC(t *testin
 	err = reconciler.Get(context.Background(), types.NamespacedName{Name: stalePVC.Name, Namespace: stalePVC.Namespace}, pvc)
 	if err == nil {
 		t.Fatalf("expected stale scripts PVC to be deleted")
+	}
+}
+
+func TestSIDBUnit_CreateOrReplacePVCforCustomScriptsVolPreservesAdditionalPVC(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add corev1 scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb-additional-cleanup", Namespace: "default", UID: types.UID("sidb-additional-cleanup")},
+		Spec: dbapi.SingleInstanceDatabaseSpec{
+			Persistence: dbapi.SingleInstanceDatabasePersistence{
+				AdditionalPVCs: []dbapi.AdditionalPVCSpec{{
+					MountPath:       "/mnt/archive",
+					StorageSizeInGb: 100,
+					StorageClass:    "oci-bv",
+				}},
+			},
+		},
+	}
+
+	additionalPVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sidb-additional-cleanup-additional-0",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "sidb-additional-cleanup"},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion:         dbapi.GroupVersion.String(),
+				Kind:               "SingleInstanceDatabase",
+				Name:               sidb.Name,
+				UID:                sidb.UID,
+				Controller:         func() *bool { b := true; return &b }(),
+				BlockOwnerDeletion: func() *bool { b := true; return &b }(),
+			}},
+		},
+	}
+
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(sidb, additionalPVC).Build(),
+		Log:    logr.Discard(),
+	}
+
+	result, err := reconciler.createOrReplacePVCforCustomScriptsVol(
+		context.Background(),
+		ctrl.Request{NamespacedName: types.NamespacedName{Namespace: sidb.Namespace, Name: sidb.Name}},
+		sidb,
+	)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if result != (ctrl.Result{}) {
+		t.Fatalf("expected no requeue when additional PVC exists, got %#v", result)
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{}
+	if err := reconciler.Get(context.Background(), types.NamespacedName{Name: additionalPVC.Name, Namespace: additionalPVC.Namespace}, pvc); err != nil {
+		t.Fatalf("additional PVC was deleted: %v", err)
 	}
 }
 
@@ -4847,5 +5693,55 @@ func TestSIDBUnit_ReconcileDeletingSIDBStopsAfterManageDeletion(t *testing.T) {
 	}
 	if len(podList.Items) != 0 {
 		t.Fatalf("expected no pods to be created for deleting SIDB, found %d", len(podList.Items))
+	}
+}
+
+func TestSIDBUnit_InstantiatePodSpecAllowPrivilegeEscalationDefaultAndOverride(t *testing.T) {
+	allowFalse := false
+	allowTrue := true
+	testCases := []struct {
+		name  string
+		value *bool
+		want  bool
+	}{
+		{name: "default", want: false},
+		{name: "explicit false", value: &allowFalse, want: false},
+		{name: "explicit true", value: &allowTrue, want: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			if err := dbapi.AddToScheme(scheme); err != nil {
+				t.Fatalf("failed to add dbapi scheme: %v", err)
+			}
+			if err := corev1.AddToScheme(scheme); err != nil {
+				t.Fatalf("failed to add corev1 scheme: %v", err)
+			}
+
+			sidb := &dbapi.SingleInstanceDatabase{
+				ObjectMeta: metav1.ObjectMeta{Name: "sidb-allow-privilege-escalation", Namespace: "ns1"},
+				Spec: dbapi.SingleInstanceDatabaseSpec{
+					Sid:                      "ORCLCDB",
+					AllowPrivilegeEscalation: testCase.value,
+					Image: dbapi.SingleInstanceDatabaseImage{
+						PullFrom: "container-registry.oracle.com/database/free:latest",
+					},
+				},
+			}
+			reconciler := &SingleInstanceDatabaseReconciler{Log: logr.Discard(), Scheme: scheme}
+
+			pod, err := reconciler.instantiatePodSpec(sidb, nil, nil, false)
+			if err != nil {
+				t.Fatalf("instantiatePodSpec returned err: %v", err)
+			}
+			securityContext := pod.Spec.Containers[0].SecurityContext
+			if securityContext == nil || securityContext.AllowPrivilegeEscalation == nil {
+				t.Fatal("expected main container AllowPrivilegeEscalation to be set")
+			}
+			if got := *securityContext.AllowPrivilegeEscalation; got != testCase.want {
+				t.Fatalf("expected AllowPrivilegeEscalation=%t, got %t", testCase.want, got)
+			}
+		})
 	}
 }

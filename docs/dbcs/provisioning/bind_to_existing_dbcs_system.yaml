@@ -12,7 +12,7 @@ metadata:
 # Specification of the desired state for the DbcsSystem
 spec:
   # The OCID of the existing DB System in OCI that this resource manages
-  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq"
+  id: "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"
 
   # The name of the ConfigMap containing OCI credentials (tenancy, region, etc.)
   ociConfigMap: "oci-cred-mumbai"

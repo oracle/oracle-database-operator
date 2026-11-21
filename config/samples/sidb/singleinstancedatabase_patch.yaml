@@ -24,6 +24,13 @@ spec:
         secretName: db-admin-secret
         secretKey: oracle_pwd
         keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    ## Optional TCPS settings.
+    #  tcps:
+    #    enabled: true
+    #    tlsSecret: sidb-primary-tcps-tls
 
   ## DB character set
   charset: AL32UTF8

@@ -40,6 +40,49 @@ func TestValidateAsmStorageAllowsMixedRawAndStorageClassDGs(t *testing.T) {
 	}
 }
 
+func TestValidateAsmStorageRejectsShellMetacharacters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		group AsmDiskGroupDetails
+	}{
+		{
+			name: "disk group name",
+			group: AsmDiskGroupDetails{
+				Name:               "DATA;touch /tmp/rac-poc",
+				Type:               DbDataDiskDg,
+				Disks:              []string{"data1"},
+				StorageClass:       "fast-sc",
+				AsmStorageSizeInGb: 50,
+			},
+		},
+		{
+			name: "disk name",
+			group: AsmDiskGroupDetails{
+				Name:               "DATA",
+				Type:               DbDataDiskDg,
+				Disks:              []string{"data1;touch /tmp/rac-poc"},
+				StorageClass:       "fast-sc",
+				AsmStorageSizeInGb: 50,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cr := &RacDatabase{Spec: RacDatabaseSpec{
+				ConfigParams:      &RacInitParams{},
+				AsmStorageDetails: []AsmDiskGroupDetails{tt.group},
+			}}
+			if errs := cr.validateAsmStorage(); len(errs) == 0 {
+				t.Fatalf("expected shell metacharacters to be rejected")
+			}
+		})
+	}
+}
+
 func TestValidateAsmStorageRequiresSizeWhenStorageClassConfigured(t *testing.T) {
 	t.Parallel()
 
@@ -339,6 +382,44 @@ func TestValidateUpdateAsmStorageRejectsShrink(t *testing.T) {
 
 	if errs := newCr.validateUpdateAsmStorage(oldCr); len(errs) == 0 {
 		t.Fatalf("expected ASM storage shrink to be rejected")
+	}
+}
+
+func TestValidateUpdateSoftwareStorageRejectsShrink(t *testing.T) {
+	t.Parallel()
+
+	oldCr := &RacDatabase{Spec: RacDatabaseSpec{
+		SwStorageClass:       "rook-ceph-block",
+		SwLocStorageSizeInGb: 90,
+	}}
+	newCr := &RacDatabase{Spec: RacDatabaseSpec{
+		SwStorageClass:       "rook-ceph-block",
+		SwLocStorageSizeInGb: 60,
+	}}
+
+	errs := newCr.validateUpdateSoftwareStorage(oldCr)
+	if len(errs) != 1 {
+		t.Fatalf("expected one software storage shrink error, got: %v", errs)
+	}
+	if !strings.Contains(errs[0].Error(), "cannot be decreased") {
+		t.Fatalf("expected shrink validation error, got: %v", errs)
+	}
+}
+
+func TestValidateUpdateSoftwareStorageAllowsExpansion(t *testing.T) {
+	t.Parallel()
+
+	oldCr := &RacDatabase{Spec: RacDatabaseSpec{
+		SwStorageClass:       "rook-ceph-block",
+		SwLocStorageSizeInGb: 90,
+	}}
+	newCr := &RacDatabase{Spec: RacDatabaseSpec{
+		SwStorageClass:       "rook-ceph-block",
+		SwLocStorageSizeInGb: 100,
+	}}
+
+	if errs := newCr.validateUpdateSoftwareStorage(oldCr); len(errs) != 0 {
+		t.Fatalf("expected software storage expansion to pass, got: %v", errs)
 	}
 }
 

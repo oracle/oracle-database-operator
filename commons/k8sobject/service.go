@@ -158,6 +158,10 @@ func reconcileServiceFields(found, desired *corev1.Service, opts ServiceSyncOpti
 			found.Spec.AllocateLoadBalancerNodePorts = desired.Spec.AllocateLoadBalancerNodePorts
 			updated = true
 		}
+		if found.Spec.LoadBalancerIP != desired.Spec.LoadBalancerIP {
+			found.Spec.LoadBalancerIP = desired.Spec.LoadBalancerIP
+			updated = true
+		}
 		if !reflect.DeepEqual(found.Spec.LoadBalancerClass, desired.Spec.LoadBalancerClass) {
 			found.Spec.LoadBalancerClass = desired.Spec.LoadBalancerClass
 			updated = true

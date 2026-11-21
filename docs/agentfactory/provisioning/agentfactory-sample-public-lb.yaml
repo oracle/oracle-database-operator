@@ -1,0 +1,52 @@
+apiVersion: privateai.oracle.com/v4
+kind: AgentFactory
+metadata:
+  name: agentfactory-sample
+  namespace: paf
+spec:
+  runtime:
+    image:
+      name: container-registry.oracle.com/database/applied-ai:latest
+      pullPolicy: IfNotPresent
+      pullSecret: oracle-container-registry-secret      
+    replicas: 1
+    resources:
+      requests:
+        cpu: "2"
+        memory: 8Gi
+      limits:
+        cpu: "4"
+        memory: 16Gi
+  configuration:
+    uiAdminUsername: admin@example.com
+  database:
+    connectionType: Details
+    username: appuser
+    details:
+      protocol: TCP
+      host: sidb-sample.sidb
+      port: 1521
+      serviceName: prodpdb
+    airGapped: false
+  security:
+    secret:
+      name: agentfactory-runtime-secret
+      uiAdminPasswordKey: paf_ui_admin_password
+      dbPasswordKey: paf_db_password
+  storage:
+    volumes:
+      - name: app-mount
+        mountPath: /mount
+        source:
+          pvc:
+            storageClass: oci-bv
+            size: 100Gi
+            accessModes:
+              - ReadWriteOnce
+            deletePvcOnDelete: false
+  networking:
+    service:
+      publicLoadBalancer:
+        enabled: true
+        ip: xxx.xxx.xxx.xxx
+        externalTrafficPolicy: Cluster

@@ -1,0 +1,14 @@
+apiVersion: database.oracle.com/v4
+kind: DbcsSystem
+metadata:
+  name: __DBCS_TERMINATION_NAME__
+  namespace: __DBCS_NAMESPACE__
+  labels:
+    e2e.oracle.com/owner: operator-e2e
+    e2e.oracle.com/test-id: "__DBCS_CASE_ID__"
+    e2e.oracle.com/pipeline: "__DBCS_CASE_PIPELINE__"
+spec:
+  hardLink: true
+  id: "__DBCS_DB_SYSTEM_ID__"
+  ociConfigMap: "oci-cred"
+  ociSecret: "oci-privatekey"

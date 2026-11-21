@@ -49,6 +49,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -84,6 +85,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
 // SingleInstanceDatabaseReconciler reconciles a SingleInstanceDatabase object.
@@ -104,21 +106,32 @@ type sidbPhaseContext struct {
 }
 
 type sidbResolvedServiceEndpointConfig struct {
-	Name                  dbapi.SingleInstanceDatabaseServiceEndpointName
-	ServiceName           string
-	Defined               bool
-	IsKeep                bool
-	Type                  corev1.ServiceType
-	ExternalTrafficPolicy corev1.ServiceExternalTrafficPolicyType
-	TCPEnabled            bool
-	TCPServicePort        int32
-	TCPNodePort           int32
-	TCPSEnabled           bool
-	TCPSServicePort       int32
-	TCPSNodePort          int32
+	Name                     dbapi.SingleInstanceDatabaseServiceEndpointName
+	ServiceName              string
+	Defined                  bool
+	IsKeep                   bool
+	Type                     corev1.ServiceType
+	ExternalTrafficPolicy    corev1.ServiceExternalTrafficPolicyType
+	PublishNotReadyAddresses *bool
+	TCPEnabled               bool
+	TCPServicePort           int32
+	TCPNodePort              int32
+	TCPSEnabled              bool
+	TCPSServicePort          int32
+	TCPSNodePort             int32
 }
 
 const sidbExternalTCPSTLSSecretRequeueAfter = 5 * time.Minute
+
+const sidbStandbyLoadBalancerRequeueAfter = 30 * time.Second
+
+const sidbLiveRoleStatusRefreshInterval = time.Minute
+
+// A Data Guard switchover is initiated outside the SIDB controller. Reconcile
+// periodically so Status.Role reflects the live database role after that
+// operation, including when the SIDB is the external member of a Broker
+// topology managed in another cluster.
+const sidbLiveRoleStatusRequeueAfter = time.Minute
 
 func copyStringMap(in map[string]string) map[string]string {
 	if len(in) == 0 {
@@ -214,6 +227,8 @@ var requeueN ctrl.Result = ctrl.Result{}
 const singleInstanceDatabaseFinalizer = "database.oracle.com/singleinstancedatabasefinalizer"
 const sidbConditionDataguardPrereqsReady = "DataguardPrereqsReady"
 const sidbConditionTrueCacheServiceRegistration = "TrueCacheServiceRegistration"
+const sidbConditionPlannedPodRestart = "PlannedPodRestart"
+const sidbPlannedPodRestartMarker = "/tmp/.sidb-planned-pod-restart"
 const sidbDataguardPrereqsRerunAnnotation = "database.oracle.com/dataguard-prereqs-rerun-token"
 const externalDNSHostnameAnnotation = "external-dns.alpha.kubernetes.io/hostname"
 
@@ -233,6 +248,8 @@ var ErrFSFOEnabledForDGConfig error = errors.New("database is configured with da
 var ErrAdminPasswordSecretNotFound error = errors.New("Admin password secret for the database not found")
 
 const sidbInitParamUnitBytes = int64(1024 * 1024)
+const sidbPDBManagerScript = "/opt/oracle/scripts/base/managePDB.sh"
+const sidbMaxStringSizeParameter = "MAX_STRING_SIZE"
 
 const (
 	restoreOCIConfigMountDir       = "/opt/oracle/ocienv/config"
@@ -477,11 +494,20 @@ func sidbPodHasDesiredLimits(pod corev1.Pod, m *dbapi.SingleInstanceDatabase) bo
 }
 
 func getSIDBShmSize(m *dbapi.SingleInstanceDatabase) (*resource.Quantity, error) {
-	if m == nil || strings.TrimSpace(m.Spec.ShmSize) == "" {
+	if m == nil {
 		return nil, nil
 	}
 	shmSize := strings.TrimSpace(m.Spec.ShmSize)
+	if shmSize == "" && m.Spec.InitParams != nil {
+		shmSize = strings.TrimSpace(m.Spec.InitParams.MemoryTarget)
+	}
+	if shmSize == "" {
+		return nil, nil
+	}
 	quantity, err := resource.ParseQuantity(shmSize)
+	if m.Spec.ShmSize == "" {
+		quantity, err = sidbMemoryTargetQuantity(shmSize)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("invalid shmSize %q: %w", shmSize, err)
 	}
@@ -489,6 +515,37 @@ func getSIDBShmSize(m *dbapi.SingleInstanceDatabase) (*resource.Quantity, error)
 		return nil, fmt.Errorf("invalid shmSize %q: must be greater than zero", shmSize)
 	}
 	return &quantity, nil
+}
+
+func sidbPodHasDesiredShm(pod corev1.Pod, m *dbapi.SingleInstanceDatabase) (bool, error) {
+	desired, err := getSIDBShmSize(m)
+	if err != nil {
+		return false, err
+	}
+	var actualVolume *corev1.Volume
+	for i := range pod.Spec.Volumes {
+		if pod.Spec.Volumes[i].Name == sidbShmVolumeName {
+			actualVolume = &pod.Spec.Volumes[i]
+			break
+		}
+	}
+	actualMount := false
+	containerIndex := sidbContainerIndex(pod, m.Name)
+	if containerIndex >= 0 {
+		for _, mount := range pod.Spec.Containers[containerIndex].VolumeMounts {
+			if mount.Name == sidbShmVolumeName && mount.MountPath == sidbShmMountPath {
+				actualMount = true
+				break
+			}
+		}
+	}
+	if desired == nil {
+		return actualVolume == nil && !actualMount, nil
+	}
+	if actualVolume == nil || actualVolume.EmptyDir == nil || actualVolume.EmptyDir.Medium != corev1.StorageMediumMemory || actualVolume.EmptyDir.SizeLimit == nil {
+		return false, nil
+	}
+	return actualMount && actualVolume.EmptyDir.SizeLimit.Cmp(*desired) == 0, nil
 }
 
 type sidbDesiredScriptMount struct {
@@ -664,6 +721,39 @@ func sidbInitParamBytes(m *dbapi.SingleInstanceDatabase) (int64, int64) {
 	return sgaBytes, pgaBytes
 }
 
+func sidbMemoryTargetMB(value string) (int, error) {
+	quantity, err := sidbMemoryTargetQuantity(value)
+	if err != nil {
+		return 0, err
+	}
+	return int((quantity.Value() + 1024*1024 - 1) / (1024 * 1024)), nil
+}
+
+func sidbMemoryTargetQuantity(value string) (resource.Quantity, error) {
+	rawValue := strings.TrimSpace(value)
+	normalized := strings.ReplaceAll(rawValue, " ", "")
+	upper := strings.ToUpper(normalized)
+	for _, suffix := range []string{"GIB", "MIB", "KIB", "TIB", "GB", "MB", "KB", "TB"} {
+		if !strings.HasSuffix(upper, suffix) {
+			continue
+		}
+		unit := suffix[:1]
+		if strings.HasSuffix(suffix, "IB") {
+			unit += "i"
+		}
+		normalized = normalized[:len(normalized)-len(suffix)] + unit
+		break
+	}
+	quantity, err := resource.ParseQuantity(normalized)
+	if err != nil || quantity.Sign() <= 0 {
+		if err == nil {
+			err = fmt.Errorf("memory target must be greater than zero")
+		}
+		return resource.Quantity{}, fmt.Errorf("invalid memory target %q: %w", rawValue, err)
+	}
+	return quantity, nil
+}
+
 func parseSIDBUserOracleSysctlOverrides(sysctls []corev1.Sysctl) (int64, int64) {
 	var shmmax int64
 	var shmall int64
@@ -806,6 +896,19 @@ func defaultClusterServiceEndpointConfig(m *dbapi.SingleInstanceDatabase, tcpsEn
 	return cfg
 }
 
+// standbyExternalTCPNodePort returns the externally reachable TCP listener
+// port used by DBCA when a standby is created across peered Kubernetes
+// clusters. NodePort is valid for this path; it does not require a
+// LoadBalancer endpoint.
+func standbyExternalTCPNodePort(m *dbapi.SingleInstanceDatabase) int {
+	for _, cfg := range resolveServiceEndpointConfigs(m) {
+		if cfg.Name == dbapi.SingleInstanceDatabaseServiceEndpointNameNodePort && cfg.TCPEnabled && cfg.TCPNodePort > 0 {
+			return int(cfg.TCPNodePort)
+		}
+	}
+	return 0
+}
+
 func legacyExternalServiceEndpoint(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabaseServiceEndpoint {
 	if m == nil || m.Spec.Services == nil || m.Spec.Services.External == nil {
 		return nil
@@ -822,14 +925,15 @@ func resolveServiceEndpointConfig(m *dbapi.SingleInstanceDatabase, endpoint dbap
 		name = expectedEndpointNameForType(endpoint.Type)
 	}
 	cfg := sidbResolvedServiceEndpointConfig{
-		Name:                  name,
-		ServiceName:           serviceNameForSIDBEndpoint(m.Name, name),
-		Defined:               true,
-		IsKeep:                endpoint.IsKeep,
-		Type:                  serviceTypeForEndpointName(name),
-		ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyCluster,
-		TCPEnabled:            true,
-		TCPServicePort:        dbcommons.CONTAINER_LISTENER_PORT,
+		Name:                     name,
+		ServiceName:              serviceNameForSIDBEndpoint(m.Name, name),
+		Defined:                  true,
+		IsKeep:                   endpoint.IsKeep,
+		Type:                     serviceTypeForEndpointName(name),
+		ExternalTrafficPolicy:    corev1.ServiceExternalTrafficPolicyCluster,
+		PublishNotReadyAddresses: endpoint.PublishNotReadyAddresses,
+		TCPEnabled:               true,
+		TCPServicePort:           dbcommons.CONTAINER_LISTENER_PORT,
 	}
 	if name == dbapi.SingleInstanceDatabaseServiceEndpointNameCluster {
 		cfg.ServiceName = m.Name
@@ -982,6 +1086,76 @@ func loadBalancerIngressAddress(svc *corev1.Service) string {
 		}
 	}
 	return ""
+}
+
+func sidbStandbyUsesLoadBalancer(m *dbapi.SingleInstanceDatabase) bool {
+	if m == nil {
+		return false
+	}
+	for _, cfg := range resolveServiceEndpointConfigs(m) {
+		if cfg.Name == dbapi.SingleInstanceDatabaseServiceEndpointNameLoadBalancer &&
+			cfg.Type == corev1.ServiceTypeLoadBalancer {
+			return true
+		}
+	}
+	return false
+}
+
+// sidbStandbyServiceHost returns the externally reachable standby endpoint
+// used by DBCA during cross-cluster standby creation.  The standby's ClusterIP
+// is only routable inside its Kubernetes cluster; DBCA must advertise the
+// LoadBalancer frontend to the primary database.
+func (r *SingleInstanceDatabaseReconciler) sidbStandbyServiceHost(m *dbapi.SingleInstanceDatabase) string {
+	if r == nil || r.Client == nil || m == nil || !strings.EqualFold(m.Spec.CreateAs, "standby") ||
+		!resolvePrimaryDatabaseSource(m).isExternal() || !sidbStandbyUsesLoadBalancer(m) {
+		return ""
+	}
+
+	svc := &corev1.Service{}
+	if err := r.Get(context.Background(), types.NamespacedName{
+		Name:      serviceNameForSIDBEndpoint(m.Name, dbapi.SingleInstanceDatabaseServiceEndpointNameLoadBalancer),
+		Namespace: m.Namespace,
+	}, svc); err != nil {
+		return ""
+	}
+	return loadBalancerIngressAddress(svc)
+}
+
+// ensureSIDBStandbyLoadBalancerReady creates the standby endpoint service
+// before the standby pod is created and blocks DBCA until the LoadBalancer has
+// an externally reachable ingress address.  A standby in another cluster
+// cannot advertise its ClusterIP or service DNS name to the primary cluster.
+func (r *SingleInstanceDatabaseReconciler) ensureSIDBStandbyLoadBalancerReady(
+	ctx context.Context, req ctrl.Request, m *dbapi.SingleInstanceDatabase,
+) (ctrl.Result, error) {
+	if m == nil || !strings.EqualFold(strings.TrimSpace(m.Spec.CreateAs), "standby") ||
+		!resolvePrimaryDatabaseSource(m).isExternal() || !sidbStandbyUsesLoadBalancer(m) {
+		return requeueN, nil
+	}
+
+	// The normal reconcile order creates services after pods.  For a
+	// cross-cluster standby, create/reconcile the service first so the cloud
+	// controller can provision its frontend before DBCA starts.
+	result, err := r.createOrReplaceSVC(ctx, req, m)
+	if err != nil || result.Requeue || result.RequeueAfter > 0 {
+		if result.RequeueAfter > 0 && !result.Requeue {
+			result.Requeue = true
+		}
+		return result, err
+	}
+
+	if r.sidbStandbyServiceHost(m) == "" {
+		m.Status.Status = dbcommons.StatusPending
+		if r.Recorder != nil {
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, "WaitingForStandbyLoadBalancer",
+				"waiting for standby LoadBalancer ingress before creating the cross-cluster standby pod")
+		}
+		r.Log.Info("Waiting for standby LoadBalancer ingress before creating cross-cluster standby pod",
+			"standby", req.NamespacedName)
+		return ctrl.Result{Requeue: true, RequeueAfter: sidbStandbyLoadBalancerRequeueAfter}, nil
+	}
+
+	return requeueN, nil
 }
 
 func (r *SingleInstanceDatabaseReconciler) getTrueCacheAdvertisedHostname(ctx context.Context, m *dbapi.SingleInstanceDatabase) string {
@@ -1296,6 +1470,307 @@ func shouldRunDataguardPrereqs(m *dbapi.SingleInstanceDatabase) bool {
 	return false
 }
 
+func dataguardBrokerFSFOEnabled(broker *dbapi.DataguardBroker) bool {
+	if broker == nil {
+		return false
+	}
+
+	if broker.Spec.FastStartFailover || strings.EqualFold(strings.TrimSpace(broker.Status.FastStartFailover), "true") {
+		return true
+	}
+
+	return broker.Spec.Topology != nil &&
+		broker.Spec.Topology.Policy != nil &&
+		broker.Spec.Topology.Policy.FastStartFailover != nil &&
+		*broker.Spec.Topology.Policy.FastStartFailover
+}
+
+func dataguardBrokerReferencesSIDB(broker *dbapi.DataguardBroker, sidb *dbapi.SingleInstanceDatabase) bool {
+	if broker == nil || sidb == nil {
+		return false
+	}
+	sidbIdentifiers := []string{sidb.Name, sidb.Spec.Sid, sidb.Status.Sid}
+	matchesSIDB := func(value string) bool {
+		for _, identifier := range sidbIdentifiers {
+			if strings.TrimSpace(identifier) != "" && strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(identifier)) {
+				return true
+			}
+		}
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(broker.Spec.PrimaryDatabaseRef), strings.TrimSpace(sidb.Name)) {
+		return true
+	}
+	for _, ref := range broker.Spec.StandbyDatabaseRefs {
+		if matchesSIDB(ref) {
+			return true
+		}
+	}
+	if broker.Spec.Topology != nil {
+		for _, member := range broker.Spec.Topology.Members {
+			if matchesSIDB(member.Name) || matchesSIDB(member.DBUniqueName) {
+				return true
+			}
+			if member.LocalRef != nil &&
+				matchesSIDB(member.LocalRef.Name) &&
+				(strings.TrimSpace(member.LocalRef.Namespace) == "" || strings.EqualFold(strings.TrimSpace(member.LocalRef.Namespace), strings.TrimSpace(sidb.Namespace))) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// An explicit broker role-conversion request owns its referenced local SIDB
+// until the request is removed or replaced, including after completion.
+func (r *SingleInstanceDatabaseReconciler) shouldDeferSnapshotConversionToBroker(
+	ctx context.Context,
+	sidb *dbapi.SingleInstanceDatabase,
+) (bool, error) {
+	if sidb == nil {
+		return false, nil
+	}
+
+	var brokers dbapi.DataguardBrokerList
+	if err := r.List(ctx, &brokers, client.InNamespace(sidb.Namespace)); err != nil {
+		return false, err
+	}
+
+	for i := range brokers.Items {
+		broker := &brokers.Items[i]
+		if broker.DeletionTimestamp != nil || broker.Namespace != sidb.Namespace ||
+			broker.Spec.Topology == nil || broker.Spec.Operations == nil ||
+			broker.Spec.Operations.RoleConversion == nil {
+			continue
+		}
+
+		op := broker.Spec.Operations.RoleConversion
+		target := strings.TrimSpace(op.Target)
+		role := normalizeDatabaseRole(op.Role)
+		if strings.TrimSpace(op.RequestID) == "" || target == "" ||
+			(role != "SNAPSHOT_STANDBY" && role != "PHYSICAL_STANDBY") {
+			continue
+		}
+
+		for _, member := range broker.Spec.Topology.Members {
+			ref := member.LocalRef
+			if ref == nil || strings.TrimSpace(ref.Name) != sidb.Name {
+				continue
+			}
+			if ns := strings.TrimSpace(ref.Namespace); ns != "" && ns != sidb.Namespace {
+				continue
+			}
+			if kind := strings.TrimSpace(ref.Kind); kind != "" &&
+				!strings.EqualFold(kind, "SingleInstanceDatabase") {
+				continue
+			}
+			if version := strings.TrimSpace(ref.APIVersion); version != "" &&
+				!strings.HasPrefix(version, "database.oracle.com/") {
+				continue
+			}
+
+			if strings.EqualFold(target, strings.TrimSpace(member.Name)) ||
+				(strings.TrimSpace(member.DBUniqueName) != "" &&
+					strings.EqualFold(target, strings.TrimSpace(member.DBUniqueName))) {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+func dataguardBrokerFSFOActive(broker *dbapi.DataguardBroker) bool {
+	return broker != nil && strings.EqualFold(strings.TrimSpace(broker.Status.FastStartFailover), "true")
+}
+
+func dataguardBrokerSIDBIsCurrentPrimary(broker *dbapi.DataguardBroker, sidb *dbapi.SingleInstanceDatabase) bool {
+	if broker == nil || sidb == nil {
+		return false
+	}
+
+	primaryValues := []string{
+		broker.Status.PrimaryDatabase,
+		broker.Status.PrimaryDatabaseRef,
+	}
+	sidbIdentifiers := []string{
+		sidb.Name,
+		sidb.Spec.Sid,
+		sidb.Status.Sid,
+	}
+
+	for _, primaryValue := range primaryValues {
+		primaryValue = strings.TrimSpace(primaryValue)
+		if primaryValue == "" {
+			continue
+		}
+		for _, identifier := range sidbIdentifiers {
+			identifier = strings.TrimSpace(identifier)
+			if identifier != "" && strings.EqualFold(primaryValue, identifier) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (r *SingleInstanceDatabaseReconciler) shouldDeferPrimaryRecoveryForFSFO(
+	m *dbapi.SingleInstanceDatabase, ctx context.Context,
+) (bool, error) {
+	if m == nil {
+		return false, nil
+	}
+
+	shouldDeferForBroker := func(broker *dbapi.DataguardBroker) bool {
+		if !dataguardBrokerReferencesSIDB(broker, m) || !dataguardBrokerFSFOActive(broker) {
+			return false
+		}
+
+		// If FSFO is active but Broker has not published the current primary yet,
+		// fail closed and keep the old primary fenced until Broker resolves the role.
+		if strings.TrimSpace(broker.Status.PrimaryDatabase) == "" &&
+			strings.TrimSpace(broker.Status.PrimaryDatabaseRef) == "" {
+			return true
+		}
+
+		return dataguardBrokerSIDBIsCurrentPrimary(broker, m)
+	}
+
+	if m.Status.DgBroker != nil && strings.TrimSpace(*m.Status.DgBroker) != "" {
+		broker := &dbapi.DataguardBroker{}
+		err := r.Get(ctx, types.NamespacedName{
+			Namespace: m.Namespace,
+			Name:      strings.TrimSpace(*m.Status.DgBroker),
+		}, broker)
+		if err == nil {
+			if dataguardBrokerReferencesSIDB(broker, m) {
+				return shouldDeferForBroker(broker), nil
+			}
+		} else if !apierrors.IsNotFound(err) {
+			return false, err
+		}
+	}
+
+	var brokers dbapi.DataguardBrokerList
+	if err := r.List(ctx, &brokers, client.InNamespace(m.Namespace)); err != nil {
+		return false, err
+	}
+	for i := range brokers.Items {
+		broker := &brokers.Items[i]
+		if shouldDeferForBroker(broker) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func isSIDBPlannedPodRestart(m *dbapi.SingleInstanceDatabase) bool {
+	if m == nil {
+		return false
+	}
+	condition := meta.FindStatusCondition(m.Status.Conditions, sidbConditionPlannedPodRestart)
+	return condition != nil && condition.Status == metav1.ConditionTrue
+}
+
+func (r *SingleInstanceDatabaseReconciler) setSIDBPlannedPodRestartCondition(
+	ctx context.Context, req ctrl.Request, m *dbapi.SingleInstanceDatabase, planned bool, reason string,
+) error {
+	if m == nil {
+		return nil
+	}
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var latest dbapi.SingleInstanceDatabase
+		if err := r.Get(ctx, types.NamespacedName{Name: m.Name, Namespace: m.Namespace}, &latest); err != nil {
+			return err
+		}
+
+		if planned {
+			meta.SetStatusCondition(&latest.Status.Conditions, metav1.Condition{
+				Type:               sidbConditionPlannedPodRestart,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				ObservedGeneration: latest.Generation,
+				Reason:             reason,
+				Message:            "Operator initiated database pod restart",
+			})
+		} else {
+			meta.RemoveStatusCondition(&latest.Status.Conditions, sidbConditionPlannedPodRestart)
+		}
+
+		return r.Status().Update(ctx, &latest)
+	})
+}
+
+func (r *SingleInstanceDatabaseReconciler) markSIDBPodForPlannedRestart(
+	ctx context.Context, req ctrl.Request, m *dbapi.SingleInstanceDatabase, pod *corev1.Pod,
+) error {
+	if m == nil || pod == nil || pod.Name == "" || !sidbPodContainerRunning(*pod, m.Name) {
+		return nil
+	}
+
+	out, err := dbcommons.ExecCommand(
+		r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false,
+		"/bin/sh", "-c", "touch "+shellSingleQuote(sidbPlannedPodRestartMarker),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to mark pod %s for planned restart: %w: %s", pod.Name, err, strings.TrimSpace(out))
+	}
+
+	return nil
+}
+
+func (r *SingleInstanceDatabaseReconciler) clearSIDBPodPlannedRestartMarker(
+	ctx context.Context, req ctrl.Request, m *dbapi.SingleInstanceDatabase, pod *corev1.Pod,
+) {
+	if m == nil || pod == nil || pod.Name == "" || !sidbPodContainerRunning(*pod, m.Name) {
+		return
+	}
+
+	if _, err := dbcommons.ExecCommand(
+		r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false,
+		"/bin/sh", "-c", "rm -f "+shellSingleQuote(sidbPlannedPodRestartMarker),
+	); err != nil {
+		r.Log.Error(err, "Failed to clear planned restart marker from pod", "pod", pod.Name)
+	}
+}
+
+func (r *SingleInstanceDatabaseReconciler) shouldSkipDataguardPrereqsForFSFO(
+	m *dbapi.SingleInstanceDatabase, ctx context.Context,
+) (bool, error) {
+	if m == nil {
+		return false, nil
+	}
+
+	if m.Status.DgBroker != nil && strings.TrimSpace(*m.Status.DgBroker) != "" {
+		broker := &dbapi.DataguardBroker{}
+		err := r.Get(ctx, types.NamespacedName{
+			Namespace: m.Namespace,
+			Name:      strings.TrimSpace(*m.Status.DgBroker),
+		}, broker)
+		if err == nil && dataguardBrokerFSFOEnabled(broker) {
+			return true, nil
+		}
+		if err != nil && !apierrors.IsNotFound(err) {
+			return false, err
+		}
+	}
+
+	var brokers dbapi.DataguardBrokerList
+	if err := r.List(ctx, &brokers, client.InNamespace(m.Namespace)); err != nil {
+		return false, err
+	}
+	for i := range brokers.Items {
+		broker := &brokers.Items[i]
+		if dataguardBrokerReferencesSIDB(broker, m) && dataguardBrokerFSFOEnabled(broker) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func isGeneratedDataguardClientWalletSecret(m *dbapi.SingleInstanceDatabase) bool {
 	return m != nil && getTcpsClientWalletSecretOverride(m) == ""
 }
@@ -1578,13 +2053,13 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	result, err = r.runSIDBPhase(ctx, req, "manage_deletion", func() (ctrl.Result, error) {
 		return r.manageSingleInstanceDatabaseDeletion(req, ctx, phaseCtx.singleInstanceDatabase)
 	})
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
 	if err != nil {
-		r.Log.Error(err, err.Error())
+		r.Log.Error(err, "SIDB deletion phase failed")
 		return result, err
+	}
+	if result.Requeue {
+		r.Log.Info("Reconcile queued after SIDB deletion step", "requeueAfter", result.RequeueAfter)
+		return result, nil
 	}
 	if phaseCtx.singleInstanceDatabase.GetDeletionTimestamp() != nil {
 		r.Log.Info("Deletion reconcile complete")
@@ -1740,6 +2215,16 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
+	result, err = r.runSIDBPhase(ctx, req, "sync_live_role", func() (ctrl.Result, error) {
+		return r.phaseSyncLiveRole(ctx, req, phaseCtx)
+	})
+	if result.Requeue {
+		return result, nil
+	}
+	if err != nil {
+		return result, err
+	}
+
 	result, err = r.runSIDBPhase(ctx, req, "mode_post_ready", func() (ctrl.Result, error) {
 		return r.phaseModePostReady(ctx, req, phaseCtx)
 	})
@@ -1753,11 +2238,25 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	// manage snapshot database creation
 	result, err = r.runSIDBPhase(ctx, req, "snapshot_conversion", func() (ctrl.Result, error) {
+		deferToBroker, ownershipErr := r.shouldDeferSnapshotConversionToBroker(ctx, phaseCtx.singleInstanceDatabase)
+		if ownershipErr != nil {
+			return requeueY, ownershipErr
+		}
+		if deferToBroker {
+			r.Log.Info("Skipping legacy SIDB snapshot conversion: role is managed by DataguardBroker")
+			return requeueN, nil
+		}
+
+		desiredSnapshot := phaseCtx.singleInstanceDatabase.Spec.ConvertToSnapshotStandby
+		if desiredSnapshot == nil {
+			return requeueN, nil
+		}
+
 		liveRole, roleErr := dbcommons.GetDatabaseRole(phaseCtx.readyPod, r, r.Config, ctx, req)
 		if roleErr != nil {
 			return requeueY, roleErr
 		}
-		if snapshotStandbyConversionNeeded(phaseCtx.singleInstanceDatabase.Spec.ConvertToSnapshotStandby, liveRole) {
+		if snapshotStandbyConversionNeeded(desiredSnapshot, liveRole) {
 			res, e := r.manageConvPhysicalToSnapshot(ctx, req)
 			if e != nil {
 				return requeueN, e
@@ -1765,8 +2264,8 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 			if res.Requeue {
 				return requeueY, nil
 			}
-		} else if phaseCtx.singleInstanceDatabase.Status.ConvertToSnapshotStandby != phaseCtx.singleInstanceDatabase.Spec.ConvertToSnapshotStandby {
-			phaseCtx.singleInstanceDatabase.Status.ConvertToSnapshotStandby = phaseCtx.singleInstanceDatabase.Spec.ConvertToSnapshotStandby
+		} else if phaseCtx.singleInstanceDatabase.Status.ConvertToSnapshotStandby != *desiredSnapshot {
+			phaseCtx.singleInstanceDatabase.Status.ConvertToSnapshotStandby = *desiredSnapshot
 			phaseCtx.singleInstanceDatabase.Status.Role = liveRole
 			if phaseCtx.singleInstanceDatabase.Status.Status == dbcommons.StatusError || phaseCtx.singleInstanceDatabase.Status.Status == dbcommons.StatusUpdating {
 				phaseCtx.singleInstanceDatabase.Status.Status = dbcommons.StatusReady
@@ -1860,7 +2359,7 @@ func (r *SingleInstanceDatabaseReconciler) runSIDBPhase(ctx context.Context, req
 	result, err := fn()
 	if err != nil {
 		log.Error(err, "Phase failed")
-		return result, err
+		return ctrl.Result{}, err
 	}
 	if result.RequeueAfter > 0 && !result.Requeue {
 		result.Requeue = true
@@ -1888,7 +2387,11 @@ func (r *SingleInstanceDatabaseReconciler) phaseInitializeStatus(ctx context.Con
 	singleInstanceDatabase.Status.ConnectString = dbcommons.ValueUnavailable
 	singleInstanceDatabase.Status.PdbConnectString = dbcommons.ValueUnavailable
 	singleInstanceDatabase.Status.TcpsConnectString = dbcommons.ValueUnavailable
-	singleInstanceDatabase.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	if isSIDBOEMExpressUnsupportedVersion(singleInstanceDatabase) {
+		singleInstanceDatabase.Status.OemExpressUrl = sidbOEMExpressNotSupported
+	} else {
+		singleInstanceDatabase.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	}
 	singleInstanceDatabase.Status.ReleaseUpdate = dbcommons.ValueUnavailable
 	return r.Status().Update(ctx, singleInstanceDatabase)
 }
@@ -1901,6 +2404,10 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 	result, err := r.ensureDatabaseCreationComplete(sidb, readyPod, ctx, req)
 	if result.Requeue || err != nil {
 		return result, err
+	}
+
+	if err := repairSIDBListenerHostInPod(r, sidb, readyPod, ctx, req); err != nil {
+		return requeueY, err
 	}
 
 	if sidb.Status.DatafilesCreated == "true" {
@@ -1924,7 +2431,11 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		if result.Requeue || err != nil {
 			return result, err
 		}
-		result, err = r.configDataguardPrereqs(sidb, readyPod, ctx, req)
+		result, err = r.reconcilePDBParameters(sidb, readyPod, ctx, req)
+		if result.Requeue || err != nil {
+			return result, err
+		}
+		result, err = r.configDataguardPrereqs(sidb, readyPod, referredPrimaryDatabase, ctx, req)
 		if result.Requeue || err != nil {
 			return result, err
 		}
@@ -1941,9 +2452,6 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		if err := syncConfiguredTNSAliasesInPod(r, sidb, referredPrimaryDatabase, readyPod, ctx, req); err != nil {
 			return requeueY, err
 		}
-		if err := reconcilePrimaryDataguardTNSAliasesInPod(r, sidb, readyPod, ctx, req); err != nil {
-			return requeueY, err
-		}
 		return requeueN, nil
 	}
 
@@ -1954,7 +2462,7 @@ func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx contex
 		}
 	}
 
-	result, err = r.configDataguardPrereqs(sidb, readyPod, ctx, req)
+	result, err = r.configDataguardPrereqs(sidb, readyPod, referredPrimaryDatabase, ctx, req)
 	if result.Requeue || err != nil {
 		return result, err
 	}
@@ -2036,12 +2544,16 @@ func normalizeDatabaseRole(role string) string {
 	return strings.Join(strings.Fields(normalized), "_")
 }
 
-func snapshotStandbyConversionNeeded(convertToSnapshotStandby bool, liveRole string) bool {
+func snapshotStandbyConversionNeeded(convertToSnapshotStandby *bool, liveRole string) bool {
+	if convertToSnapshotStandby == nil {
+		return false
+	}
+
 	switch normalizeDatabaseRole(liveRole) {
 	case "PHYSICAL_STANDBY":
-		return convertToSnapshotStandby
+		return *convertToSnapshotStandby
 	case "SNAPSHOT_STANDBY":
-		return !convertToSnapshotStandby
+		return !*convertToSnapshotStandby
 	default:
 		return false
 	}
@@ -2141,6 +2653,53 @@ func unresolvedSIDBTCPSConnectStringValue(tcpsExposed bool) string {
 	return dbcommons.ValueNotEnabled
 }
 
+const sidbOEMExpressNotSupported = "Not supported"
+
+func isSIDBOEMExpressUnsupportedVersion(
+	sidb *dbapi.SingleInstanceDatabase,
+) bool {
+	if sidb == nil {
+		return false
+	}
+
+	parseVersion := func(version string) (int, int, bool) {
+		var major, release int
+		if _, err := fmt.Sscanf(
+			strings.TrimSpace(version),
+			"%d.%d",
+			&major,
+			&release,
+		); err != nil {
+			return 0, 0, false
+		}
+		return major, release, true
+	}
+
+	major, release, ok := parseVersion(sidb.Status.ReleaseUpdate)
+
+	if !ok {
+		major, release, ok = parseVersion(sidb.Spec.Image.Version)
+	}
+
+	if !ok {
+		pullFrom := strings.TrimSpace(sidb.Spec.Image.PullFrom)
+
+		lastSlash := strings.LastIndex(pullFrom, "/")
+		lastColon := strings.LastIndex(pullFrom, ":")
+
+		if lastColon > lastSlash {
+			imageTag := pullFrom[lastColon+1:]
+			major, release, ok = parseVersion(imageTag)
+		}
+	}
+
+	if !ok {
+		return false
+	}
+
+	return major > 23 || (major == 23 && release >= 26)
+}
+
 func shouldResolveSIDBOEMExpressURL(sidb *dbapi.SingleInstanceDatabase) bool {
 	if sidb == nil {
 		return true
@@ -2187,10 +2746,16 @@ func (r *SingleInstanceDatabaseReconciler) resolveSIDBOEMExpressURL(
 	ctx context.Context,
 	req ctrl.Request,
 ) (string, error) {
+	if isSIDBOEMExpressUnsupportedVersion(sidb) {
+		return sidbOEMExpressNotSupported, nil
+	}
+
 	if !shouldResolveSIDBOEMExpressURL(sidb) {
 		return dbcommons.ValueUnavailable, nil
 	}
 
+	// Validate that OEM Express/XDB is actually usable in the database
+	// before publishing any external or internal endpoint.
 	out, err := dbcommons.ExecCommand(
 		r,
 		r.Config,
@@ -2207,8 +2772,9 @@ func (r *SingleInstanceDatabaseReconciler) resolveSIDBOEMExpressURL(
 	if err != nil {
 		return dbcommons.ValueUnavailable, err
 	}
+
 	if strings.Contains(out, "ORA-") || strings.Contains(out, "no rows selected") {
-		return dbcommons.ValueUnavailable, fmt.Errorf("could not determine OEM Express HTTPS port: %s", strings.TrimSpace(out))
+		return dbcommons.ValueUnavailable, nil
 	}
 
 	httpsPort, err := parseSQLPlusSingleInt(out)
@@ -2216,33 +2782,46 @@ func (r *SingleInstanceDatabaseReconciler) resolveSIDBOEMExpressURL(
 		return dbcommons.ValueUnavailable, nil
 	}
 
+	// XDB/OEM is usable. Prefer an externally exposed endpoint.
 	for _, cfg := range resolveServiceEndpointConfigs(sidb) {
 		if cfg.Name == dbapi.SingleInstanceDatabaseServiceEndpointNameCluster {
 			continue
 		}
+
 		svc := &corev1.Service{}
-		if err := r.Get(ctx, types.NamespacedName{Name: cfg.ServiceName, Namespace: sidb.Namespace}, svc); err != nil {
+		if err := r.Get(ctx, types.NamespacedName{
+			Name:      cfg.ServiceName,
+			Namespace: sidb.Namespace,
+		}, svc); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
 			return dbcommons.ValueUnavailable, err
 		}
+
 		xmldbPort := servicePortByName(svc.Spec.Ports, "xmldb")
 		if xmldbPort == nil {
 			continue
 		}
+
 		if cfg.Type == corev1.ServiceTypeLoadBalancer {
 			if host := loadBalancerIngressAddress(svc); host != "" {
 				return buildSIDBOEMExpressURL(host, int(xmldbPort.Port)), nil
 			}
 			continue
 		}
+
 		nodeip := dbcommons.GetNodeIp(r, ctx, req)
 		if nodeip != "" && xmldbPort.NodePort != 0 {
 			return buildSIDBOEMExpressURL(nodeip, int(xmldbPort.NodePort)), nil
 		}
 	}
-	return buildSIDBOEMExpressURL(sidbServiceDNSName(sidb.Name, sidb.Namespace), httpsPort), nil
+
+	// No external endpoint available; use the cluster service.
+	return buildSIDBOEMExpressURL(
+		sidbServiceDNSName(sidb.Name, sidb.Namespace),
+		httpsPort,
+	), nil
 }
 
 func (r *SingleInstanceDatabaseReconciler) phaseUpdateFinalStatus(ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
@@ -2254,7 +2833,38 @@ func (r *SingleInstanceDatabaseReconciler) phaseUpdateFinalStatus(ctx context.Co
 	return requeueN, nil
 }
 
+func (r *SingleInstanceDatabaseReconciler) phaseSyncLiveRole(ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
+	if phaseCtx == nil || phaseCtx.singleInstanceDatabase == nil {
+		return requeueN, nil
+	}
+
+	liveRole, err := dbcommons.GetDatabaseRole(phaseCtx.readyPod, r, r.Config, ctx, req)
+	if err != nil {
+		return requeueY, err
+	}
+
+	sidb := phaseCtx.singleInstanceDatabase
+	if normalizeDatabaseRole(sidb.Status.Role) == normalizeDatabaseRole(liveRole) {
+		return requeueN, nil
+	}
+
+	r.Log.Info(
+		"Refreshing SIDB status role from live database before role-dependent phases",
+		"database", sidb.Name,
+		"previousRole", sidb.Status.Role,
+		"liveRole", liveRole,
+	)
+	sidb.Status.Role = liveRole
+	if err := r.Status().Update(ctx, sidb); err != nil {
+		return requeueY, err
+	}
+
+	return requeueN, nil
+}
+
 func (r *SingleInstanceDatabaseReconciler) phaseScheduleFutureRequeue(phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
+	scheduleSIDBLiveRoleStatusRequeue(phaseCtx)
+
 	// Scheduling a reconcile for certificate renewal, if TCPS is enabled.
 	if phaseCtx.futureRequeue != requeueN {
 		r.Log.Info("Scheduling Reconcile for cert renewal", "Duration(Hours)", phaseCtx.futureRequeue.RequeueAfter.Hours())
@@ -2263,6 +2873,120 @@ func (r *SingleInstanceDatabaseReconciler) phaseScheduleFutureRequeue(phaseCtx *
 		return copyFutureRequeue, nil
 	}
 	return requeueN, nil
+}
+
+// liveRoleStatusRefreshLoop updates only SIDB status. It deliberately does
+// not enqueue the full reconcile path because that path performs database
+// setup work that must not run merely because an external Data Guard
+// switchover changed the live role.
+func (r *SingleInstanceDatabaseReconciler) liveRoleStatusRefreshLoop(ctx context.Context) error {
+	ticker := time.NewTicker(sidbLiveRoleStatusRefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			r.refreshLiveRoleStatuses(ctx)
+		}
+	}
+}
+
+func (r *SingleInstanceDatabaseReconciler) refreshLiveRoleStatuses(ctx context.Context) {
+	var sidbs dbapi.SingleInstanceDatabaseList
+	if err := r.List(ctx, &sidbs); err != nil {
+		r.Log.Error(err, "Failed to list SIDBs for live role status refresh")
+		return
+	}
+
+	for i := range sidbs.Items {
+		sidb := &sidbs.Items[i]
+		createAs := strings.ToLower(strings.TrimSpace(sidb.Spec.CreateAs))
+		if sidb.Status.Status != dbcommons.StatusReady || (createAs != "primary" && createAs != "standby") {
+			continue
+		}
+
+		req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: sidb.Namespace, Name: sidb.Name}}
+		readyPod, err := GetDatabaseReadyPod(r, sidb, ctx, req)
+		if err != nil || readyPod.Name == "" {
+			if err != nil {
+				r.Log.Error(err, "Failed to find SIDB pod for live role status refresh", "sidb", sidb.Name)
+			}
+			continue
+		}
+
+		liveRole, err := dbcommons.GetDatabaseRole(readyPod, r, r.Config, ctx, req)
+		if err != nil {
+			r.Log.Error(err, "Failed to read live SIDB role", "sidb", sidb.Name)
+			continue
+		}
+
+		roleChanged := normalizeDatabaseRole(sidb.Status.Role) != normalizeDatabaseRole(liveRole)
+
+		if roleChanged {
+			r.Log.Info(
+				"Refreshing SIDB status role from live database",
+				"sidb", sidb.Name,
+				"previousRole", sidb.Status.Role,
+				"liveRole", liveRole,
+			)
+			sidb.Status.Role = liveRole
+		}
+
+		oemExpressURL, oemErr := r.resolveSIDBOEMExpressURL(sidb, readyPod, ctx, req)
+		if oemErr != nil {
+			r.Log.Info(
+				"Unable to refresh SIDB OEM Express URL",
+				"sidb", sidb.Name,
+				"reason", oemErr.Error(),
+			)
+			oemExpressURL = sidb.Status.OemExpressUrl
+		}
+
+		oemChanged := sidb.Status.OemExpressUrl != oemExpressURL
+
+		if oemChanged {
+			r.Log.Info(
+				"Refreshing SIDB OEM Express URL from live database",
+				"sidb", sidb.Name,
+				"previousOEMExpressURL", sidb.Status.OemExpressUrl,
+				"oemExpressURL", oemExpressURL,
+			)
+			sidb.Status.OemExpressUrl = oemExpressURL
+		}
+
+		if !roleChanged && !oemChanged {
+			continue
+		}
+
+		if err := r.Status().Update(ctx, sidb); err != nil {
+			r.Log.Error(err, "Failed to update SIDB live status", "sidb", sidb.Name)
+		}
+	}
+}
+
+func scheduleSIDBLiveRoleStatusRequeue(phaseCtx *sidbPhaseContext) {
+	if phaseCtx == nil || phaseCtx.singleInstanceDatabase == nil {
+		return
+	}
+
+	sidb := phaseCtx.singleInstanceDatabase
+	if sidb.Status.Status != dbcommons.StatusReady {
+		return
+	}
+
+	createAs := strings.ToLower(strings.TrimSpace(sidb.Spec.CreateAs))
+	if createAs != "primary" && createAs != "standby" {
+		return
+	}
+
+	desired := ctrl.Result{Requeue: true, RequeueAfter: sidbLiveRoleStatusRequeueAfter}
+	if !phaseCtx.futureRequeue.Requeue ||
+		phaseCtx.futureRequeue.RequeueAfter <= 0 ||
+		phaseCtx.futureRequeue.RequeueAfter > desired.RequeueAfter {
+		phaseCtx.futureRequeue = desired
+	}
 }
 
 func (r *SingleInstanceDatabaseReconciler) ensureTrueCacheBlob(
@@ -2636,21 +3360,21 @@ func (r *SingleInstanceDatabaseReconciler) updateReconcileStatus(m *dbapi.Single
 			Message:            errMsg,
 			Status:             metav1.ConditionTrue,
 		}
-	} else if result.Requeue {
-		condition = metav1.Condition{
-			Type:               dbcommons.ReconcileQueued,
-			LastTransitionTime: metav1.Now(),
-			ObservedGeneration: m.GetGeneration(),
-			Reason:             dbcommons.ReconcileQueuedReason,
-			Message:            errMsg,
-			Status:             metav1.ConditionTrue,
-		}
 	} else if *err != nil {
 		condition = metav1.Condition{
 			Type:               dbcommons.ReconcileError,
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: m.GetGeneration(),
 			Reason:             dbcommons.ReconcileErrorReason,
+			Message:            errMsg,
+			Status:             metav1.ConditionTrue,
+		}
+	} else if result.Requeue {
+		condition = metav1.Condition{
+			Type:               dbcommons.ReconcileQueued,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: m.GetGeneration(),
+			Reason:             dbcommons.ReconcileQueuedReason,
 			Message:            errMsg,
 			Status:             metav1.ConditionTrue,
 		}
@@ -3209,36 +3933,38 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 						}
 					}(),
-				}, {
-					Name: "tls-secret-vol",
-					VolumeSource: func() corev1.VolumeSource {
-						tcpsTLSSecret := getTcpsTLSSecret(m)
-						if tcpsTLSSecret == "" {
-							return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
-						}
-						/* tls-secret is specified */
-						return corev1.VolumeSource{
-							Secret: &corev1.SecretVolumeSource{
-								SecretName: tcpsTLSSecret,
-								Optional:   func() *bool { i := true; return &i }(),
-							},
-						}
-					}(),
-				}, {
-					Name: "custom-scripts-vol",
-					VolumeSource: func() corev1.VolumeSource {
-						desiredClaimName := desiredCustomScriptsPVCName(m)
-						if desiredClaimName == "" {
-							return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
-						}
-						return corev1.VolumeSource{
-							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: desiredClaimName,
-								ReadOnly:  false,
-							},
-						}
-					}(),
-				}}
+				},
+					{
+						Name: "tls-secret-vol",
+						VolumeSource: func() corev1.VolumeSource {
+							tcpsTLSSecret := getTcpsTLSSecret(m)
+							if tcpsTLSSecret == "" {
+								return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+							}
+							/* tls-secret is specified */
+							return corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: tcpsTLSSecret,
+									Optional:   func() *bool { i := true; return &i }(),
+								},
+							}
+						}(),
+					},
+					{
+						Name: "custom-scripts-vol",
+						VolumeSource: func() corev1.VolumeSource {
+							desiredClaimName := desiredCustomScriptsPVCName(m)
+							if desiredClaimName == "" {
+								return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+							}
+							return corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: desiredClaimName,
+									ReadOnly:  false,
+								},
+							}
+						}(),
+					}}
 				if shmSize != nil {
 					volumes = append(volumes, corev1.Volume{
 						Name: sidbShmVolumeName,
@@ -3566,8 +4292,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				Image:           m.Spec.Image.PullFrom,
 				ImagePullPolicy: getSIDBImagePullPolicy(m),
 				SecurityContext: &corev1.SecurityContext{
-					AllowPrivilegeEscalation: func() *bool { i := false; return &i }(),
-					Capabilities:             buildSIDBContainerCapabilities(m),
+					AllowPrivilegeEscalation: func() *bool {
+						if m.Spec.AllowPrivilegeEscalation != nil {
+							return m.Spec.AllowPrivilegeEscalation
+						}
+						i := false
+						return &i
+					}(),
+					Capabilities: buildSIDBContainerCapabilities(m),
 				},
 				Lifecycle: &corev1.Lifecycle{
 					PostStart: func() *corev1.LifecycleHandler {
@@ -3585,17 +4317,37 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Command: func() []string {
 								// For patching use cases shutdown immediate is needed especially for standby databases
 								shutdownMode := "immediate"
+
 								if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
 									// express/free do not support patching
 									// To terminate any zombie instances left over due to forced termination
 									shutdownMode = "abort"
 								}
-								return []string{"/bin/sh", "-c", "/bin/echo -en 'shutdown " + shutdownMode + ";\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"}
+
+								shutdownCommand := "/bin/echo -en 'shutdown " + shutdownMode +
+									";\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"
+
+								if shutdownMode != "abort" {
+									shutdownCommand =
+										"shutdownMode=immediate; " +
+											"if [ ! -f " + shellSingleQuote(sidbPlannedPodRestartMarker) + " ]; then " +
+											"dbRole=$(/bin/echo -en 'set heading off feedback off pages 0\nselect database_role from v$database;\nexit;\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba | xargs); " +
+											"if [ \"$dbRole\" = \"PRIMARY\" ]; then shutdownMode=abort; fi; " +
+											"fi; " +
+											"/bin/echo -en \"shutdown ${shutdownMode};\\n\" | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"
+								}
+
+								return []string{
+									"/bin/sh",
+									"-c",
+									shutdownCommand,
+								}
 							}(),
 						},
 					},
 				},
-				Ports: []corev1.ContainerPort{{ContainerPort: dbcommons.CONTAINER_LISTENER_PORT}, {ContainerPort: 5500}},
+				Ports: []corev1.ContainerPort{{ContainerPort: dbcommons.CONTAINER_LISTENER_PORT},
+					{ContainerPort: 5500}},
 
 				ReadinessProbe: func() *corev1.Probe {
 					if m.Spec.CreateAs == "primary" {
@@ -3845,7 +4597,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Name:  "PRIMARY_DB_CONN_STR",
 								Value: GetPrimaryDatabaseConnectString(m, n),
 							},
-							CreateOracleHostnameEnvVarObj(m, n),
+							CreateCloneOracleHostnameEnvVarObj(m, n),
 							{
 								Name:  "CLONE_DB",
 								Value: "true",
@@ -3857,10 +4609,15 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						})
 
 					} else if m.Spec.CreateAs == "standby" {
+						standbyServiceHost := m.Name
+						standbyExternalHost := r.sidbStandbyServiceHost(m)
+						if standbyExternalHost != "" {
+							standbyServiceHost = standbyExternalHost
+						}
 						standbyEnv := []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
-								Value: m.Name,
+								Value: standbyServiceHost,
 							},
 							{
 								Name:  "SVC_PORT",
@@ -3910,14 +4667,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Name:  "CREATE_PDB",
 								Value: ShouldCreatePDBFromPrimary(m, rp),
 							},
-							{
-								Name: "ORACLE_HOSTNAME",
-								ValueFrom: &corev1.EnvVarSource{
-									FieldRef: &corev1.ObjectFieldSelector{
-										FieldPath: "status.podIP",
-									},
-								},
-							},
+							CreateOracleHostnameEnvVarObj(m, rp, context.Background(), r),
 							{
 								Name:  "STANDBY_DB",
 								Value: "true",
@@ -3926,6 +4676,12 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Name:  "SKIP_DATAPATCH",
 								Value: "true",
 							},
+						}
+						if isCrossClusterStandby(m) {
+							standbyEnv = append(standbyEnv, corev1.EnvVar{
+								Name:  "CROSS_CLUSTER_STANDBY",
+								Value: "true",
+							})
 						}
 						if walletSecretName := GetStandbyWalletSecretRef(m); walletSecretName != "" {
 							standbyEnv = append(standbyEnv,
@@ -3938,6 +4694,31 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 									Name:  "STANDBY_TDE_WALLET_ZIP_PATH",
 									Value: strings.TrimRight(GetStandbyWalletMountPath(m), "/") + "/standby-wallet.zip",
 								})
+							}
+						}
+						if standbyExternalHost != "" {
+							standbyEnv = append(standbyEnv,
+								corev1.EnvVar{Name: "CROSS_CLUSTER_STANDBY", Value: "true"},
+								corev1.EnvVar{Name: "STANDBY_HOSTNAME", Value: standbyExternalHost},
+								corev1.EnvVar{Name: "STANDBY_LISTENER_PORT", Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT))},
+							)
+						} else if resolvePrimaryDatabaseSource(m).isExternal() {
+							// For peered-VCN NodePort setups, advertise the node IP
+							// selected for this pod and the configured NodePort.
+							// shouldPublishNotReadyExternalService keeps
+							// publishNotReadyAddresses true for cross-cluster
+							// standby even when flashBack is unset, so the
+							// NodePort backend stays available while the
+							// auxiliary listener starts (avoids ORA-12541).
+							if standbyNodePort := standbyExternalTCPNodePort(m); standbyNodePort > 0 {
+								standbyEnv = append(standbyEnv,
+									corev1.EnvVar{Name: "CROSS_CLUSTER_STANDBY", Value: "true"},
+									corev1.EnvVar{
+										Name:      "STANDBY_HOSTNAME",
+										ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"}},
+									},
+									corev1.EnvVar{Name: "STANDBY_LISTENER_PORT", Value: strconv.Itoa(standbyNodePort)},
+								)
 							}
 						}
 						return mergeSIDBEnvVarsWithSecurity(m, standbyEnv)
@@ -4034,6 +4815,16 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}
 				return ns
 			}(),
+			Tolerations: func() []corev1.Toleration {
+				if len(m.Spec.Tolerations) == 0 {
+					return nil
+				}
+				tolerations := make([]corev1.Toleration, len(m.Spec.Tolerations))
+				for i := range m.Spec.Tolerations {
+					m.Spec.Tolerations[i].DeepCopyInto(&tolerations[i])
+				}
+				return tolerations
+			}(),
 			HostAliases: func() []corev1.HostAlias {
 				if len(m.Spec.HostAliases) == 0 {
 					return nil
@@ -4064,6 +4855,39 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	}
 	return pod, nil
 
+}
+
+// standbyHostnameEnvVar provides DBCA with a stable, externally reachable
+// standby host when the node selector itself contains an IP address. A
+// downward-API status.hostIP environment value is fixed before scheduling and
+// can therefore be empty for a newly created pod.
+func standbyHostnameEnvVar(sidb *dbapi.SingleInstanceDatabase) corev1.EnvVar {
+	if sidb != nil {
+		if host := strings.TrimSpace(sidb.Spec.NodeSelector["kubernetes.io/hostname"]); net.ParseIP(host) != nil {
+			return corev1.EnvVar{Name: "STANDBY_HOSTNAME", Value: host}
+		}
+	}
+	return corev1.EnvVar{
+		Name: "STANDBY_HOSTNAME",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"},
+		},
+	}
+}
+
+// isCrossClusterStandby identifies the external NodePort standby flow from
+// existing configuration. A service DNS name or local database reference
+// keeps the existing in-cluster behavior; an explicit IP source combined with
+// a configured standby NodePort needs DBCA's external auxiliary endpoint.
+func isCrossClusterStandby(sidb *dbapi.SingleInstanceDatabase) bool {
+	if sidb == nil || isLocalPrimaryDatabaseSource(sidb) {
+		return false
+	}
+	source := resolvePrimaryDatabaseSource(sidb)
+	if source.connectString == "" && source.details == nil {
+		return false
+	}
+	return net.ParseIP(GetPrimaryDatabaseHost(sidb, nil)) != nil && standbyExternalTCPNodePort(sidb) > 0
 }
 
 func sidbAutomountServiceAccountToken(m *dbapi.SingleInstanceDatabase) *bool {
@@ -4143,7 +4967,35 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 }
 
 func shouldPublishNotReadyExternalService(m *dbapi.SingleInstanceDatabase) bool {
-	return m != nil && m.Spec.CreateAs == "truecache"
+	if m == nil {
+		return false
+	}
+
+	// A Data Guard primary must remain reachable through its external/static
+	// listener while it is mounted during Broker failover and reinstatement.
+	// The normal database readiness probe is false in that state, which would
+	// otherwise remove the pod from the NodePort/LoadBalancer endpoints and
+	// make the Broker static connect identifier unusable.
+	if strings.EqualFold(m.Spec.CreateAs, "primary") &&
+		m.Spec.Dataguard != nil && len(m.Spec.Dataguard.StandbySources) > 0 {
+		return true
+	}
+
+	if strings.EqualFold(m.Spec.CreateAs, "standby") {
+		// Broker reinstate / flashback path (pod NotReady while mounted).
+		if m.Spec.FlashBack != nil && *m.Spec.FlashBack {
+			return true
+		}
+		// Cross-cluster Duplicate: RMAN rewrites the auxiliary to the external
+		// NodePort/LoadBalancer while the pod is still NotReady. flashBack may
+		// be unset; without publishNotReadyAddresses kube-proxy drops the
+		// backend and Duplicate fails with ORA-12541.
+		if resolvePrimaryDatabaseSource(m).isExternal() {
+			return true
+		}
+	}
+
+	return strings.EqualFold(m.Spec.CreateAs, "truecache")
 }
 
 // #############################################################################
@@ -4272,7 +5124,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforCustomScriptsVol
 		if !metav1.IsControlledBy(pvc, m) {
 			continue
 		}
-		if pvc.Name == m.Name || pvc.Name == getFraClaimName(m) || pvc.Name == desiredPVCName {
+		if pvc.Name == m.Name || pvc.Name == getFraClaimName(m) || pvc.Name == desiredPVCName || isSIDBAdditionalPVCClaim(m, pvc.Name) {
 			continue
 		}
 		if !strings.HasPrefix(pvc.Name, m.Name+"-") {
@@ -4612,25 +5464,44 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforFRAVol(ctx conte
 
 func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCsForAdditionalPVCs(ctx context.Context, req ctrl.Request,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
+	createdClaims := make([]string, 0)
 	for i := range m.Spec.Persistence.AdditionalPVCs {
 		cfg := m.Spec.Persistence.AdditionalPVCs[i]
-		if strings.TrimSpace(cfg.PvcName) != "" {
+		claimName := strings.TrimSpace(cfg.PvcName)
+		managedClaim := claimName == ""
+		if managedClaim && (cfg.StorageSizeInGb <= 0 || strings.TrimSpace(cfg.StorageClass) == "") {
 			continue
 		}
-		if cfg.StorageSizeInGb <= 0 || strings.TrimSpace(cfg.StorageClass) == "" {
-			continue
+		if managedClaim {
+			claimName = fmt.Sprintf("%s-additional-%d", m.Name, i)
 		}
 
-		claimName := fmt.Sprintf("%s-additional-%d", m.Name, i)
 		pvc := &corev1.PersistentVolumeClaim{}
 		err := r.Get(ctx, types.NamespacedName{Name: claimName, Namespace: m.Namespace}, pvc)
 		if err == nil {
-			if !metav1.IsControlledBy(pvc, m) {
-				return requeueN, fmt.Errorf("managed additional pvc %q already exists but is not controlled by SingleInstanceDatabase %s/%s", claimName, m.Namespace, m.Name)
+			if managedClaim && !metav1.IsControlledBy(pvc, m) {
+				err = fmt.Errorf("managed additional pvc %q already exists but is not controlled by SingleInstanceDatabase %s/%s", claimName, m.Namespace, m.Name)
+				setAdditionalPVCsCreatedCondition(m, metav1.ConditionFalse, "OwnershipConflict", err.Error())
+				if r.Recorder != nil {
+					r.Recorder.Eventf(m, corev1.EventTypeWarning, "AdditionalPVCProvisioningFailed", "%s", err.Error())
+				}
+				return requeueN, err
 			}
 			continue
 		}
 		if !apierrors.IsNotFound(err) {
+			setAdditionalPVCsCreatedCondition(m, metav1.ConditionFalse, "LookupFailed", err.Error())
+			if r.Recorder != nil {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "AdditionalPVCProvisioningFailed", "Failed to get additional PVC %q: %v", claimName, err)
+			}
+			return requeueY, err
+		}
+		if !managedClaim {
+			err = fmt.Errorf("additional pvc %q referenced by SingleInstanceDatabase %s/%s was not found", claimName, m.Namespace, m.Name)
+			setAdditionalPVCsCreatedCondition(m, metav1.ConditionFalse, "MissingPVC", err.Error())
+			if r.Recorder != nil {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "AdditionalPVCProvisioningFailed", "%s", err.Error())
+			}
 			return requeueY, err
 		}
 
@@ -4645,14 +5516,42 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCsForAdditionalPVCs(
 			},
 		}
 		if err := ctrl.SetControllerReference(m, pvc, r.Scheme); err != nil {
+			setAdditionalPVCsCreatedCondition(m, metav1.ConditionFalse, "OwnerReferenceFailed", err.Error())
 			return requeueN, err
 		}
 		if err := r.Create(ctx, pvc); err != nil {
+			setAdditionalPVCsCreatedCondition(m, metav1.ConditionFalse, "CreateFailed", err.Error())
+			if r.Recorder != nil {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "AdditionalPVCProvisioningFailed", "Failed to create additional PVC %q: %v", claimName, err)
+			}
 			return requeueY, err
 		}
-		return requeueY, nil
+		createdClaims = append(createdClaims, claimName)
+		if r.Recorder != nil {
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, "AdditionalPVCCreated", "Created managed additional PVC %q", claimName)
+		}
+	}
+	if len(m.Spec.Persistence.AdditionalPVCs) > 0 {
+		message := "All additional PVCs are present"
+		if len(createdClaims) > 0 {
+			message = fmt.Sprintf("Created managed additional PVCs: %s", strings.Join(createdClaims, ", "))
+		}
+		setAdditionalPVCsCreatedCondition(m, metav1.ConditionTrue, "Created", message)
+	} else {
+		meta.RemoveStatusCondition(&m.Status.Conditions, "AdditionalPVCsCreated")
 	}
 	return requeueN, nil
+}
+
+func setAdditionalPVCsCreatedCondition(m *dbapi.SingleInstanceDatabase, status metav1.ConditionStatus, reason, message string) {
+	meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
+		Type:               "AdditionalPVCsCreated",
+		Status:             status,
+		ObservedGeneration: m.Generation,
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+		Message:            message,
+	})
 }
 
 // #############################################################################
@@ -4668,6 +5567,9 @@ func (r *SingleInstanceDatabaseReconciler) reconcileSIDBEndpointService(
 ) (*corev1.Service, ctrl.Result, error) {
 	desiredPorts := desiredSIDBServiceEndpointPorts(cfg)
 	desiredPublishNotReady := cfg.Name == dbapi.SingleInstanceDatabaseServiceEndpointNameCluster || shouldPublishNotReadyExternalService(m)
+	if cfg.Name != dbapi.SingleInstanceDatabaseServiceEndpointNameCluster && cfg.PublishNotReadyAddresses != nil {
+		desiredPublishNotReady = *cfg.PublishNotReadyAddresses
+	}
 	desiredAnnotations := desiredSIDBServiceAnnotations(m, &cfg)
 	desiredSvc, err := r.instantiateSVCSpec(m, cfg.ServiceName, desiredPorts, cfg.Type, desiredPublishNotReady, desiredAnnotations, cfg.ExternalTrafficPolicy)
 	if err != nil {
@@ -4818,7 +5720,13 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		pdbName,
 	)
 
-	m.Status.OemExpressUrl = buildSIDBOEMExpressURL(clusterHost, 5500)
+	oemExpressUnsupported := isSIDBOEMExpressUnsupportedVersion(m)
+
+	if oemExpressUnsupported {
+		m.Status.OemExpressUrl = sidbOEMExpressNotSupported
+	} else {
+		m.Status.OemExpressUrl = buildSIDBOEMExpressURL(clusterHost, 5500)
+	}
 
 	if clusterCfg.TCPSEnabled {
 		m.Status.TcpsConnectString = buildSIDBConnectString(clusterHost, clusterCfg.TCPSServicePort, sid)
@@ -4837,8 +5745,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	if lbSvc := endpointServices[dbapi.SingleInstanceDatabaseServiceEndpointNameLoadBalancer]; lbSvc != nil {
 		if host := loadBalancerIngressAddress(lbSvc); host != "" {
 			applySIDBEndpointStatus(m, host, lbSvc.Spec.Ports, sid, pdbName, false)
-			if xmldbPort := servicePortByName(lbSvc.Spec.Ports, "xmldb"); xmldbPort != nil {
-				m.Status.OemExpressUrl = buildSIDBOEMExpressURL(host, int(xmldbPort.Port))
+			if !oemExpressUnsupported {
+				if xmldbPort := servicePortByName(lbSvc.Spec.Ports, "xmldb"); xmldbPort != nil {
+					m.Status.OemExpressUrl = buildSIDBOEMExpressURL(host, int(xmldbPort.Port))
+				}
 			}
 		}
 	}
@@ -4856,6 +5766,13 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase,
 	ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("createOrReplacePods", req.NamespacedName)
+
+	if result, err := r.ensureSIDBStandbyLoadBalancerReady(ctx, req, m); err != nil || result.Requeue || result.RequeueAfter > 0 {
+		if result.RequeueAfter > 0 && !result.Requeue {
+			result.Requeue = true
+		}
+		return result, err
+	}
 
 	oldVersion := ""
 	oldImage := ""
@@ -4888,11 +5805,41 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		return requeueY, nil
 	}
 
+	if standbyExternalHost := r.sidbStandbyServiceHost(m); standbyExternalHost != "" {
+		podsToCheck := append([]corev1.Pod{}, allAvailable...)
+		if readyPod.Name != "" {
+			podsToCheck = append(podsToCheck, readyPod)
+		}
+		for i := range podsToCheck {
+			if sidbPodHasCrossClusterStandbyEndpoint(podsToCheck[i], m.Name, standbyExternalHost) {
+				continue
+			}
+			log.Info("Replacing standby pod created before LoadBalancer ingress was available",
+				"pod", podsToCheck[i].Name, "standbyHost", standbyExternalHost)
+			if err := r.Delete(ctx, &podsToCheck[i]); err != nil {
+				return requeueY, err
+			}
+			return requeueY, nil
+		}
+	}
+
 	if readyPod.Name != "" {
 		allAvailable = append(allAvailable, readyPod)
 	}
 
 	for _, pod := range allAvailable {
+		shmMatches, shmErr := sidbPodHasDesiredShm(pod, m)
+		if shmErr != nil {
+			return requeueY, shmErr
+		}
+		if !shmMatches {
+			log.Info("Recreating pods so updated /dev/shm size is applied", "pod", pod.Name)
+			result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
+			if result.Requeue {
+				return result, err
+			}
+			return requeueY, err
+		}
 		if !podHasDesiredSIDBFraMount(pod, m) {
 			log.Info("Recreating pods so updated FRA mount is applied",
 				"pod", pod.Name,
@@ -4959,7 +5906,17 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 					pod.Name,
 				)
 
+				if err := r.setSIDBPlannedPodRestartCondition(ctx, req, m, true, "ResourceLimitsChanged"); err != nil {
+					return requeueY, err
+				}
+				if err := r.markSIDBPodForPlannedRestart(ctx, req, m, pod); err != nil {
+					_ = r.setSIDBPlannedPodRestartCondition(ctx, req, m, false, "")
+					return requeueY, err
+				}
+
 				if err := r.Delete(ctx, pod); err != nil {
+					r.clearSIDBPodPlannedRestartMarker(ctx, req, m, pod)
+					_ = r.setSIDBPlannedPodRestartCondition(ctx, req, m, false, "")
 					log.Error(err, "Failed to delete pod for resource requirements update", "pod", pod.Name)
 					return requeueY, err
 				}
@@ -5024,12 +5981,32 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 			}
 		}
 		if replicasFound == replicasRequired {
+			if isSIDBPlannedPodRestart(m) {
+				if err := r.setSIDBPlannedPodRestartCondition(ctx, req, m, false, ""); err != nil {
+					return requeueY, err
+				}
+			}
 			return requeueN, nil
 		}
 		if replicasFound != 0 && replicasFound < replicasRequired {
 			eventReason = "Scaling out pods"
 			eventMsg = "from " + strconv.Itoa(replicasFound) + " to " + strconv.Itoa(replicasRequired)
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, "%s", eventMsg)
+		}
+		if replicasFound == 0 &&
+			normalizeDatabaseRole(m.Status.Role) == "PRIMARY" &&
+			!isSIDBPlannedPodRestart(m) {
+
+			deferRecovery, err := r.shouldDeferPrimaryRecoveryForFSFO(m, ctx)
+			if err != nil {
+				log.Error(err, "Unable to determine FSFO state; deferring primary pod recreation", "sidb", m.Name)
+				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			}
+
+			if deferRecovery {
+				log.Info("Unexpected primary pod loss while FSFO is active; waiting for Broker role resolution", "sidb", m.Name)
+				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			}
 		}
 		// If version is same , call createPods() with the same version ,  and no of Replicas required
 		return r.createPods(m, n, rp, ctx, req, replicasFound, false)
@@ -5038,7 +6015,13 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	// Version/Image changed
 	// PATCHING START (Only Software Patch)
 	log.Info("Pod image change detected, datapatch to be rerun...")
-	m.Status.DatafilesPatched = "false"
+	if m.Status.DatafilesPatched != "false" {
+		m.Status.DatafilesPatched = "false"
+		if err := r.Status().Update(ctx, m); err != nil {
+			log.Error(err, "failed to mark datapatch pending before image update")
+			return requeueY, err
+		}
+	}
 	// call FindPods() to find pods of older version. Delete all the Pods
 	readyPod, oldReplicasFound, oldAvailable, _, err := dbcommons.FindPods(r, oldVersion,
 		oldImage, m.Name, m.Namespace, ctx, req)
@@ -5119,6 +6102,28 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	}
 	return r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
 	// PATCHING END
+}
+
+func sidbPodHasCrossClusterStandbyEndpoint(pod corev1.Pod, containerName, host string) bool {
+	var env []corev1.EnvVar
+	for _, container := range pod.Spec.Containers {
+		if container.Name == containerName {
+			env = container.Env
+			break
+		}
+	}
+	value := func(name string) string {
+		for _, item := range env {
+			if item.Name == name {
+				return item.Value
+			}
+		}
+		return ""
+	}
+	return value("CROSS_CLUSTER_STANDBY") == "true" &&
+		value("SVC_HOST") == host &&
+		value("STANDBY_HOSTNAME") == host &&
+		value("STANDBY_LISTENER_PORT") == strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT))
 }
 
 // #############################################################################
@@ -5269,12 +6274,34 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 
 	// Execing into the pod and creating the wallet
 	adminPassword := string(secret.Data[GetAdminPasswordSecretFileName(m)])
+	if _, err := dbcommons.ExecCommandWithInput(
+		r,
+		r.Config,
+		pod.Name,
+		pod.Namespace,
+		walletContainer,
+		ctx,
+		req,
+		true,
+		adminPassword,
+		"bash",
+		"-c",
+		"mkdir -p /home/oracle/.operator-tmp && chmod 700 /home/oracle/.operator-tmp && umask 177 && cat > "+dbcommons.WalletAdminPasswordFile+" && umask 022",
+	); err != nil {
+		r.Log.Error(err, "failed to create admin password file")
+		return requeueY, nil
+	}
+	defer func() {
+		if _, cleanupErr := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, walletContainer,
+			ctx, req, true, "bash", "-c", "rm -f -- "+dbcommons.WalletAdminPasswordFile); cleanupErr != nil {
+			r.Log.Error(cleanupErr, "failed to remove admin password file")
+		}
+	}()
 
 	out, err = dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, walletContainer,
-		ctx, req, true, "bash", "-c", fmt.Sprintf("%s && %s && %s && %s && rm -f admin.pwd",
+		ctx, req, true, "bash", "-c", fmt.Sprintf("%s && %s && %s",
 			dbcommons.WalletPwdCMD,
 			dbcommons.WalletCreateCMD,
-			dbcommons.BuildSecureHereDocWriteCommand("admin.pwd", adminPassword),
 			dbcommons.WalletEntriesCMD))
 	if err != nil {
 		r.Log.Error(err, err.Error())
@@ -5407,10 +6434,15 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req ctrl.Request, m *dbapi.SingleInstanceDatabase, available []corev1.Pod,
 	readyPod corev1.Pod, replicasFound int, replicasRequired int) (ctrl.Result, error) {
-	log := r.Log.WithValues("deletePods", req.NamespacedName)
+	log := r.Log.WithValues("deletePods", req.NamespacedName, "deletionStep", "pods")
+	log.Info("SIDB pod deletion step started",
+		"providedPodCount", len(available),
+		"replicasFound", replicasFound,
+		"replicasRequired", replicasRequired)
 
 	var err error
 	if len(available) == 0 {
+		log.Info("Discovering SIDB pods before deletion")
 		// As list of pods not avaiable . fetch them ( len(available) == 0 ; Usecase where deletion of all pods required )
 		var readyPodToBeDeleted corev1.Pod
 		readyPodToBeDeleted, replicasFound, available, _, err = dbcommons.FindPods(r, "",
@@ -5424,6 +6456,7 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 			available = append(available, readyPodToBeDeleted)
 		}
 	}
+	log.Info("SIDB pods selected for deletion", "podCount", len(available))
 
 	// For deleting all pods , call with readyPod as nil ( corev1.Pod{} ) and append readyPod to available while calling deletePods()
 	//  if Found > Required , Delete Extra Pods
@@ -5432,7 +6465,17 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 		available = append(available, readyPod)
 	}
 
+	plannedRestart := replicasRequired == 0 && len(available) > 0
+	if plannedRestart {
+		if err := r.setSIDBPlannedPodRestartCondition(ctx, req, m, true, "OperatorPodDeletion"); err != nil {
+			return requeueY, err
+		}
+	}
+
 	noDeleted := 0
+	successfulDeletions := 0
+	failedDeletions := 0
+	var deletionErr error
 	for _, availablePod := range available {
 		if readyPod.Name == availablePod.Name && m.Spec.Replicas != 0 {
 			continue
@@ -5440,7 +6483,15 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 		if replicasRequired == (len(available) - noDeleted) {
 			break
 		}
-		r.Log.Info("Deleting Pod : ", "POD.NAME", availablePod.Name)
+		log.Info("Requesting SIDB pod deletion", "pod", availablePod.Name, "plannedRestart", plannedRestart)
+		if plannedRestart {
+			if err := r.markSIDBPodForPlannedRestart(ctx, req, m, &availablePod); err != nil {
+				if successfulDeletions == 0 {
+					_ = r.setSIDBPlannedPodRestartCondition(ctx, req, m, false, "")
+				}
+				return requeueY, err
+			}
+		}
 		var delOpts *client.DeleteOptions = &client.DeleteOptions{}
 		if replicasRequired == 0 {
 			var gracePeriodSeconds int64 = 0
@@ -5449,15 +6500,44 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 			delOpts.PropagationPolicy = &policy
 		}
 		err := r.Delete(ctx, &availablePod, delOpts)
-		noDeleted++
 		if err != nil {
-			r.Log.Error(err, "Failed to delete existing POD", "POD.Name", availablePod.Name)
-			// Don't requeue
+			if plannedRestart {
+				r.clearSIDBPodPlannedRestartMarker(ctx, req, m, &availablePod)
+			}
+			if apierrors.IsNotFound(err) {
+				noDeleted++
+				successfulDeletions++
+				log.Info("SIDB pod was already absent", "pod", availablePod.Name)
+				continue
+			}
+			failedDeletions++
+			if deletionErr == nil {
+				deletionErr = err
+			}
+			log.Error(err, "Failed to request SIDB pod deletion", "pod", availablePod.Name)
 		} else {
-			m.Status.Replicas--
+			noDeleted++
+			successfulDeletions++
+			if m.Status.Replicas > 0 {
+				m.Status.Replicas--
+			}
+			log.Info("SIDB pod deletion requested", "pod", availablePod.Name)
 		}
 	}
 
+	if plannedRestart && successfulDeletions == 0 {
+		if err := r.setSIDBPlannedPodRestartCondition(ctx, req, m, false, ""); err != nil {
+			return requeueY, err
+		}
+	}
+
+	log.Info("SIDB pod deletion step completed",
+		"requested", successfulDeletions,
+		"failed", failedDeletions,
+		"remainingCandidates", len(available)-noDeleted)
+	if deletionErr != nil {
+		return requeueY, deletionErr
+	}
 	return requeueN, nil
 }
 
@@ -5565,6 +6645,13 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(sidb *dbapi.Singl
 //
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// Data Guard databases must retain their TDE wallet across restarts and
+	// role transitions. Broker starts the former primary as a standby during
+	// switchover; deleting WALLET_DIR here makes the wallet unavailable and
+	// causes ORA-28365 during managed recovery.
+	if shouldPreserveDataGuardWallet(m) {
+		return requeueN, nil
+	}
 
 	// Wallet not supported for Express/Free Database
 	if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
@@ -5607,6 +6694,14 @@ func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceD
 	}
 	r.Log.Info("Wallet Deleted !!")
 	return requeueN, nil
+}
+
+func shouldPreserveDataGuardWallet(m *dbapi.SingleInstanceDatabase) bool {
+	if m == nil {
+		return false
+	}
+	createAs := strings.ToLower(strings.TrimSpace(m.Spec.CreateAs))
+	return createAs == "primary" || createAs == "standby"
 }
 
 // #############################################################################
@@ -5834,11 +6929,23 @@ func setSIDBDataguardPrereqsCondition(sidb *dbapi.SingleInstanceDatabase, status
 }
 
 func (r *SingleInstanceDatabaseReconciler) configDataguardPrereqs(m *dbapi.SingleInstanceDatabase,
-	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	readyPod corev1.Pod, referredPrimaryDatabase *dbapi.SingleInstanceDatabase,
+	ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	if !getDataguardPrereqsEnabled(m) {
 		return requeueN, nil
 	}
 	if !shouldRunDataguardPrereqs(m) {
+		return requeueN, nil
+	}
+	fsfoEnabled, err := r.shouldSkipDataguardPrereqsForFSFO(m, ctx)
+	if err != nil {
+		// Fail closed. A Broker lookup error must not cause a prerequisite helper
+		// to rewrite Broker-managed state while FSFO may be active.
+		r.Log.Error(err, "Unable to determine Fast-Start Failover state; deferring Data Guard prerequisite configuration", "sidb", m.Name)
+		return requeueY, err
+	}
+	if fsfoEnabled {
+		r.Log.Info("Skipping Data Guard prerequisite mutation while Fast-Start Failover is enabled", "sidb", m.Name)
 		return requeueN, nil
 	}
 
@@ -5861,6 +6968,17 @@ func (r *SingleInstanceDatabaseReconciler) configDataguardPrereqs(m *dbapi.Singl
 	}
 
 	r.Log.Info("configureDataguardPrereqs Output : \n" + out)
+	if primaryConnectString := GetPrimaryDatabaseConnectString(m, referredPrimaryDatabase); primaryConnectString != "" &&
+		(strings.EqualFold(strings.TrimSpace(m.Spec.CreateAs), "standby") || referredPrimaryDatabase != nil) {
+		if err := configureStandbyFALServer(r, readyPod, primaryConnectString, ctx, req); err != nil {
+			r.Log.Error(err, "Error configuring standby FAL_SERVER", "pod", readyPod.Name, "primaryConnectString", primaryConnectString)
+			setSIDBDataguardPrereqsCondition(m, metav1.ConditionFalse, "ConfigureFailed", fmt.Sprintf("failed to configure standby FAL_SERVER: %v", err))
+			if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+				r.Log.Error(updateErr, "failed to update Data Guard prerequisite condition after FAL_SERVER error")
+			}
+			return requeueY, nil
+		}
+	}
 	m.Status.DataguardPrereqsHash = desiredHash
 	m.Status.DataguardPrereqsRerunToken = rerunToken
 	setSIDBDataguardPrereqsCondition(m, metav1.ConditionTrue, "Configured", "database-side Data Guard broker prerequisites are configured")
@@ -5869,6 +6987,43 @@ func (r *SingleInstanceDatabaseReconciler) configDataguardPrereqs(m *dbapi.Singl
 	}
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, "Configuring Data Guard Prerequisites", "Configured Data Guard prerequisites in pod %s", readyPod.Name)
 	return requeueN, nil
+}
+
+func configureStandbyFALServer(r *SingleInstanceDatabaseReconciler, readyPod corev1.Pod,
+	primaryConnectString string, ctx context.Context, req ctrl.Request) error {
+	primaryConnectString = strings.TrimSpace(primaryConnectString)
+	if primaryConnectString == "" {
+		return nil
+	}
+	sql := standbyFALServerSQL(primaryConnectString)
+	command := fmt.Sprintf("printf '%%s\\n' %s | %s", dbcommons.ShellQuote(sql), dbcommons.SQLPlusCLI)
+	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c", command)
+	if err != nil {
+		return err
+	}
+	r.Log.Info("Configured standby FAL_SERVER", "pod", readyPod.Name, "primaryConnectString", primaryConnectString, "output", out)
+	return nil
+}
+
+func standbyFALServerSQL(primaryConnectString string) string {
+	server := strings.ReplaceAll(strings.TrimSpace(primaryConnectString), "'", "''")
+	return fmt.Sprintf("ALTER SYSTEM SET fal_server='%s' SCOPE=BOTH SID='*';", server)
+}
+
+func repairSIDBListenerHostInPod(r *SingleInstanceDatabaseReconciler, sidb *dbapi.SingleInstanceDatabase, pod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+	if sidb == nil || strings.TrimSpace(sidb.Name) == "" {
+		return nil
+	}
+	command := `listener_script="${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/${LISTENER_REPAIR_FILE:-repairListenerConfig.sh}"; if [ -x "$listener_script" ]; then "$listener_script"; fi`
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", command)
+	if err != nil {
+		r.Log.Error(err, "Failed to repair persisted SIDB listener bind address", "sidb", sidb.Name, "pod", pod.Name, "output", out)
+		return fmt.Errorf("failed to repair listener bind address for database %v: %w", sidb.Name, err)
+	}
+	if strings.TrimSpace(out) != "" {
+		r.Log.Info("Repaired persisted SIDB listener bind address", "sidb", sidb.Name, "pod", pod.Name, "output", out)
+	}
+	return nil
 }
 
 func runDataguardPrereqsActionInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, action string) (string, error) {
@@ -5970,16 +7125,19 @@ func isIgnorableTCPSHelperWarning(err error) bool {
 
 // buildTCPSClientWalletSymlinkCommand returns an idempotent command that makes
 // the Data Guard client wallet available at the stable path used by both
-// primary and standby databases. It refuses to replace an unexpected file or
-// an incorrectly-targeted symlink.
+// primary and standby databases. It migrates an
+// incorrectly-targeted symlink but refuses to replace an unexpected file.
 func buildTCPSClientWalletSymlinkCommand() string {
 	return `set -e
 wallet_dir="/opt/oracle/dg-wallet"
-wallet_target="/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.tls-wallet"
+wallet_target="/opt/oracle/oradata/clientWallet/${ORACLE_SID}"
 wallet_link="${wallet_dir}/sidb-standby-dg-client-wallet"
 mkdir -p "$wallet_dir"
 if [ -L "$wallet_link" ]; then
-    [ "$(readlink "$wallet_link")" = "$wallet_target" ]
+    if [ "$(readlink "$wallet_link")" != "$wallet_target" ]; then
+        rm "$wallet_link"
+        ln -s "$wallet_target" "$wallet_link"
+    fi
 elif [ ! -e "$wallet_link" ]; then
     ln -s "$wallet_target" "$wallet_link"
 else
@@ -6293,6 +7451,24 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 		return requeueN, nil
 	}
 
+	oracleHomePatchFingerprint, err := r.getSIDBOracleHomePatchFingerprint(readyPod, ctx, req)
+	if err != nil {
+		return requeueY, err
+	}
+	sqlPatchFingerprint, err := r.getSIDBSQLPatchFingerprint(readyPod, ctx, req)
+	if err != nil {
+		return requeueY, err
+	}
+	if sidbDatapatchIsCurrent(m.Status.Datapatch, oracleHomePatchFingerprint, sqlPatchFingerprint) {
+		m.Status.DatafilesPatched = "true"
+		recordSIDBDatapatchStatus(m, readyPod, oracleHomePatchFingerprint, sqlPatchFingerprint)
+		eventReason := "Datapatch Skipped"
+		eventMsg := "Oracle Home and database SQL patch fingerprints already match"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, "%s", eventMsg)
+		r.Log.Info(eventMsg)
+		return requeueN, nil
+	}
+
 	m.Status.Status = dbcommons.StatusPatching
 	eventReason := "Datapatch Executing"
 	eventMsg := "datapatch begins execution"
@@ -6301,38 +7477,46 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 		return requeueY, err
 	}
 
-	//RUN DATAPATCH
-	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
+	// RUN DATAPATCH
+	datapatchOutput, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 		ctx, req, false, "bash", "-c", dbcommons.RunDatapatchCMD)
 	if err != nil {
 		r.Log.Error(err, err.Error())
 		return requeueY, err
 	}
 	r.Log.Info("Datapatch output")
-	r.Log.Info(out)
+	r.Log.Info(datapatchOutput)
 
 	// Get Sqlpatch Description
-	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
+	descriptionOutput, descriptionErr := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba ", dbcommons.GetSqlpatchDescriptionSQL))
 	releaseUpdate := ""
-	if err == nil {
+	if descriptionErr == nil {
 		r.Log.Info("GetSqlpatchDescriptionSQL Output")
-		r.Log.Info(out)
-		SqlpatchDescriptions, _ := dbcommons.StringToLines(out)
+		r.Log.Info(descriptionOutput)
+		SqlpatchDescriptions, _ := dbcommons.StringToLines(descriptionOutput)
 		if len(SqlpatchDescriptions) > 0 {
 			releaseUpdate = SqlpatchDescriptions[0]
 		}
 	}
 
 	eventReason = "Datapatch Done"
-	if strings.Contains(out, "Datapatch execution has failed.") {
-		eventMsg = "datapatch execution failed"
+	status, versionFrom, versionTo, err := dbcommons.GetSqlpatchStatus(r, r.Config, readyPod, ctx, req)
+	if err != nil {
+		return requeueY, err
+	}
+	if status != "" && !strings.EqualFold(strings.TrimSpace(status), "SUCCESS") {
+		eventMsg = "datapatch completed with SQL patch status " + status
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, "%s", eventMsg)
-		return requeueN, errors.New(eventMsg)
+		return requeueY, errors.New(eventMsg)
+	}
+	updatedSQLPatchFingerprint, err := r.getSIDBSQLPatchFingerprint(readyPod, ctx, req)
+	if err != nil {
+		return requeueY, err
 	}
 
 	m.Status.DatafilesPatched = "true"
-	status, versionFrom, versionTo, _ := dbcommons.GetSqlpatchStatus(r, r.Config, readyPod, ctx, req)
+	recordSIDBDatapatchStatus(m, readyPod, oracleHomePatchFingerprint, updatedSQLPatchFingerprint)
 	if versionTo != "" {
 		eventMsg = "data files patched from release update " + versionFrom + " to " + versionTo + ", " + status + ": " + releaseUpdate
 	} else {
@@ -6357,6 +7541,33 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	}
 	if m.Status.InitParams == *m.Spec.InitParams {
 		return requeueN, nil
+	}
+
+	if m.Spec.InitParams.MemoryTarget != "" {
+		desiredMB, err := sidbMemoryTargetMB(m.Spec.InitParams.MemoryTarget)
+		if err != nil {
+			return requeueN, err
+		}
+		currentMB, _ := sidbMemoryTargetMB(m.Status.InitParams.MemoryTarget)
+		if currentMB != desiredMB {
+			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false,
+				"bash", "-c", fmt.Sprintf(dbcommons.AlterMemoryTargetCMD, desiredMB, desiredMB, dbcommons.SQLPlusCLI, dbcommons.SQLPlusCLI))
+			if err != nil {
+				return requeueY, err
+			}
+			if strings.Contains(out, "ORA-") {
+				return requeueY, fmt.Errorf("unable to change memoryTarget: %s", out)
+			}
+			// The database restart requires a new reconcile, but persist the
+			// value we just applied first. Otherwise every reconcile observes an
+			// empty/stale status value and repeats the restart indefinitely.
+			m.Status.InitParams.MemoryTarget = fmt.Sprintf("%dMi", desiredMB)
+			if err := r.Status().Update(ctx, m); err != nil {
+				return requeueY, err
+			}
+			log.Info("Applied memoryTarget and restarted database", "memory_target_mb", desiredMB)
+			return requeueY, nil
+		}
 	}
 
 	if (m.Spec.InitParams.PgaAggregateTarget != 0 && (m.Spec.InitParams.PgaAggregateTarget != m.Status.InitParams.PgaAggregateTarget)) || (m.Spec.InitParams.SgaTarget != 0 && (m.Spec.InitParams.SgaTarget != m.Status.InitParams.SgaTarget)) {
@@ -6403,7 +7614,108 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 			log.Error(err, err.Error())
 			return requeueY, err
 		}
+		if strings.Contains(out, "ORA-") {
+			return requeueY, fmt.Errorf("unable to change processes: %s", out)
+		}
+		// Altering processes restarts the database. Persist the requested value
+		// before requeueing so the restart is not repeated indefinitely.
+		m.Status.InitParams.Processes = m.Spec.InitParams.Processes
+		if err := r.Status().Update(ctx, m); err != nil {
+			return requeueY, err
+		}
 		log.Info("AlterProcessesCMD Output:" + out)
+	}
+	return requeueN, nil
+}
+
+func normalizeSIDBPDBParameter(parameter dbapi.SingleInstanceDatabasePDBParameter) dbapi.SingleInstanceDatabasePDBParameter {
+	parameter.PdbName = strings.ToUpper(strings.TrimSpace(parameter.PdbName))
+	parameter.Name = strings.ToUpper(strings.TrimSpace(parameter.Name))
+	parameter.Value = strings.ToUpper(strings.TrimSpace(parameter.Value))
+	return parameter
+}
+
+func sidbPDBParameterStatusKey(parameter dbapi.SingleInstanceDatabasePDBParameter) string {
+	parameter = normalizeSIDBPDBParameter(parameter)
+	return parameter.PdbName + "|" + parameter.Name
+}
+
+func upsertSIDBPDBParameterStatus(status []dbapi.SingleInstanceDatabasePDBParameter,
+	parameter dbapi.SingleInstanceDatabasePDBParameter) ([]dbapi.SingleInstanceDatabasePDBParameter, bool) {
+	key := sidbPDBParameterStatusKey(parameter)
+	for i := range status {
+		if sidbPDBParameterStatusKey(status[i]) == key {
+			if reflect.DeepEqual(status[i], parameter) {
+				return status, false
+			}
+			status[i] = parameter
+			return status, true
+		}
+	}
+	return append(status, parameter), true
+}
+
+func (r *SingleInstanceDatabaseReconciler) reconcilePDBParameters(m *dbapi.SingleInstanceDatabase,
+	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if m == nil || len(m.Spec.PDBParameters) == 0 {
+		return requeueN, nil
+	}
+
+	log := r.Log.WithValues("reconcilePDBParameters", req.NamespacedName)
+	observed := make(map[string]dbapi.SingleInstanceDatabasePDBParameter, len(m.Status.PDBParameters))
+	for _, parameter := range m.Status.PDBParameters {
+		normalized := normalizeSIDBPDBParameter(parameter)
+		observed[sidbPDBParameterStatusKey(normalized)] = normalized
+	}
+
+	updatedStatus := append([]dbapi.SingleInstanceDatabasePDBParameter(nil), m.Status.PDBParameters...)
+	statusChanged := false
+	for _, requested := range m.Spec.PDBParameters {
+		parameter := normalizeSIDBPDBParameter(requested)
+		if parameter.PdbName == "" || parameter.Name == "" || parameter.Value == "" {
+			return requeueN, fmt.Errorf("invalid PDB parameter: pdbName, name, and value are required")
+		}
+		if parameter.Name != sidbMaxStringSizeParameter {
+			return requeueN, fmt.Errorf("unsupported PDB parameter %q", parameter.Name)
+		}
+		if parameter.Value != "STANDARD" && parameter.Value != "EXTENDED" {
+			return requeueN, fmt.Errorf("MAX_STRING_SIZE must be STANDARD or EXTENDED")
+		}
+
+		key := sidbPDBParameterStatusKey(parameter)
+		if previous, exists := observed[key]; exists {
+			if previous.Name == sidbMaxStringSizeParameter && previous.Value == "EXTENDED" && parameter.Value != "EXTENDED" {
+				return requeueN, fmt.Errorf("MAX_STRING_SIZE=EXTENDED cannot be reset for PDB %s", parameter.PdbName)
+			}
+			if previous.Value == parameter.Value {
+				continue
+			}
+		}
+
+		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false,
+			sidbPDBManagerScript,
+			"--operation", "apply-parameters",
+			"--pdb", parameter.PdbName,
+			"--parameter", parameter.Name+"="+parameter.Value)
+		if err != nil {
+			return requeueY, fmt.Errorf("failed to apply PDB parameter %s on %s: %w: %s", parameter.Name, parameter.PdbName, err, strings.TrimSpace(out))
+		}
+		if strings.Contains(strings.ToUpper(out), "ORA-") {
+			return requeueY, fmt.Errorf("failed to apply PDB parameter %s on %s: %s", parameter.Name, parameter.PdbName, strings.TrimSpace(out))
+		}
+
+		log.Info("Applied PDB parameter", "pdb", parameter.PdbName, "name", parameter.Name, "value", parameter.Value)
+		observed[key] = parameter
+		var changed bool
+		updatedStatus, changed = upsertSIDBPDBParameterStatus(updatedStatus, parameter)
+		statusChanged = statusChanged || changed
+	}
+
+	if statusChanged {
+		m.Status.PDBParameters = updatedStatus
+		if err := r.Status().Update(ctx, m); err != nil {
+			return requeueY, err
+		}
 	}
 	return requeueN, nil
 }
@@ -6641,11 +7953,27 @@ func (r *SingleInstanceDatabaseReconciler) updateSidbStatus(sidb *dbapi.SingleIn
 	if err != nil {
 		return err
 	}
+	memoryTarget := ""
+	if sidb.Spec.InitParams != nil && sidb.Spec.InitParams.MemoryTarget != "" {
+		rawMemoryTarget, queryErr := dbcommons.CheckDBMemoryTarget(sidbReadyPod, r, r.Config, ctx, req)
+		if queryErr != nil {
+			return queryErr
+		}
+		if !strings.HasPrefix(strings.TrimSpace(rawMemoryTarget), "0") {
+			memoryTargetMB, parseErr := sidbMemoryTargetMB(rawMemoryTarget)
+			if parseErr != nil {
+				return parseErr
+			}
+			memoryTarget = fmt.Sprintf("%dMi", memoryTargetMB)
+		}
+	}
+
 	sidbInitParams := dbapi.SingleInstanceDatabaseInitParams{
 		SgaTarget:          sgaTarget,
 		PgaAggregateTarget: pgaAggregateTarget,
 		Processes:          processes,
 		CpuCount:           cpuCount,
+		MemoryTarget:       memoryTarget,
 	}
 	// log.Info("GetInitParamsSQL Output:" + out)
 
@@ -6706,7 +8034,32 @@ func (r *SingleInstanceDatabaseReconciler) updateSIDBStatusWithRetry(ctx context
 		if err := r.Get(ctx, types.NamespacedName{Name: sidb.Name, Namespace: sidb.Namespace}, &latest); err != nil {
 			return err
 		}
+		// latest broker-owned value instead of restoring a stale SIDB snapshot.
+		brokerRoleMismatch := meta.FindStatusCondition(
+			latest.Status.Conditions,
+			"DataguardRoleMismatch",
+		)
+
 		latest.Status = desiredStatus
+
+		// Remove any stale broker-owned condition copied from desiredStatus.
+		meta.RemoveStatusCondition(
+			&latest.Status.Conditions,
+			"DataguardRoleMismatch",
+		)
+
+		// If Broker currently reports a role mismatch, preserve that condition
+		// and keep the SIDB Unhealthy until Broker observes role convergence.
+		if brokerRoleMismatch != nil {
+			meta.SetStatusCondition(
+				&latest.Status.Conditions,
+				*brokerRoleMismatch,
+			)
+			if brokerRoleMismatch.Status == metav1.ConditionTrue {
+				latest.Status.Status = dbcommons.StatusNotReady
+			}
+		}
+
 		if err := r.Status().Update(ctx, &latest); err != nil {
 			if apierrors.IsConflict(err) {
 				r.Log.Info("SingleInstanceDatabase status update conflicted; retrying with latest resource",
@@ -6754,41 +8107,57 @@ func (r *SingleInstanceDatabaseReconciler) updateORDSStatus(m *dbapi.SingleInsta
 func (r *SingleInstanceDatabaseReconciler) manageSingleInstanceDatabaseDeletion(req ctrl.Request, ctx context.Context,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 	log := r.Log.WithValues("manageSingleInstanceDatabaseDeletion", req.NamespacedName)
+	log.Info("SIDB deletion reconciliation started",
+		"deletionTimestamp", m.GetDeletionTimestamp(),
+		"finalizerPresent", controllerutil.ContainsFinalizer(m, singleInstanceDatabaseFinalizer))
 
 	// Check if the SingleInstanceDatabase instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
 	isSingleInstanceDatabaseMarkedToBeDeleted := m.GetDeletionTimestamp() != nil
 	if isSingleInstanceDatabaseMarkedToBeDeleted {
 		if controllerutil.ContainsFinalizer(m, singleInstanceDatabaseFinalizer) {
+			log.Info("SIDB deletion finalizer cleanup started", "finalizer", singleInstanceDatabaseFinalizer)
 			// Run finalization logic for singleInstanceDatabaseFinalizer. If the
 			// finalization logic fails, don't remove the finalizer so
 			// that we can retry during the next reconciliation.
 			result, err := r.cleanupSingleInstanceDatabase(req, ctx, m)
+			if err != nil {
+				log.Error(err, "SIDB deletion cleanup failed; finalizer will remain")
+				return result, err
+			}
 			if result.Requeue {
+				log.Info("SIDB deletion cleanup is waiting for resources", "requeueAfter", result.RequeueAfter)
 				return result, err
 			}
 
 			// Remove SingleInstanceDatabaseFinalizer. Once all finalizers have been
 			// removed, the object will be deleted.
+			log.Info("SIDB deletion cleanup completed; removing finalizer", "finalizer", singleInstanceDatabaseFinalizer)
 			controllerutil.RemoveFinalizer(m, singleInstanceDatabaseFinalizer)
 			err = r.Update(ctx, m)
 			if err != nil {
-				log.Error(err, err.Error())
+				log.Error(err, "Failed to persist SIDB finalizer removal", "finalizer", singleInstanceDatabaseFinalizer)
 				return requeueY, err
 			}
-			log.Info("Successfully Removed SingleInstanceDatabase Finalizer")
+			log.Info("SIDB deletion finalizer removed", "finalizer", singleInstanceDatabaseFinalizer)
+		} else {
+			log.Info("SIDB is terminating without the operator finalizer")
 		}
 		return requeueN, nil
 	}
 
 	// Add finalizer for this CR
 	if !controllerutil.ContainsFinalizer(m, singleInstanceDatabaseFinalizer) {
+		log.Info("Registering SIDB deletion finalizer", "finalizer", singleInstanceDatabaseFinalizer)
 		controllerutil.AddFinalizer(m, singleInstanceDatabaseFinalizer)
 		err := r.Update(ctx, m)
 		if err != nil {
-			log.Error(err, err.Error())
+			log.Error(err, "Failed to persist SIDB deletion finalizer", "finalizer", singleInstanceDatabaseFinalizer)
 			return requeueY, err
 		}
+		log.Info("SIDB deletion finalizer registered", "finalizer", singleInstanceDatabaseFinalizer)
+	} else {
+		log.Info("SIDB deletion finalizer already registered", "finalizer", singleInstanceDatabaseFinalizer)
 	}
 	return requeueN, nil
 }
@@ -6802,10 +8171,12 @@ func (r *SingleInstanceDatabaseReconciler) cleanupSingleInstanceDatabase(req ctr
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 	log := r.Log.WithValues("cleanupSingleInstanceDatabase", req.NamespacedName)
 	// Cleanup steps that the operator needs to do before the CR can be deleted.
+	log.Info("SIDB deletion cleanup started", "retainOnDelete", m.Spec.Persistence.RetainOnDelete)
 
 	if m.Status.OrdsReference != "" {
 		eventReason := "Cannot cleanup"
 		eventMsg := "uninstall ORDS to clean this SIDB"
+		log.Info("SIDB deletion blocked by ORDS reference", "ords", m.Status.OrdsReference)
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, "%s", eventMsg)
 		m.Status.Status = dbcommons.StatusError
 		return requeueY, nil
@@ -6813,17 +8184,28 @@ func (r *SingleInstanceDatabaseReconciler) cleanupSingleInstanceDatabase(req ctr
 
 	if m.Status.DgBroker != nil {
 		brokerName := strings.TrimSpace(*m.Status.DgBroker)
-		if brokerName != "" {
+		if brokerName == "" {
+			log.Info("Clearing empty Data Guard Broker reference during SIDB deletion")
+			m.Status.DgBroker = nil
+			if updateErr := r.Status().Update(ctx, m); updateErr != nil {
+				log.Error(updateErr, "Failed to clear empty Data Guard Broker reference during SIDB deletion")
+				return requeueY, updateErr
+			}
+			log.Info("Empty Data Guard Broker reference cleared")
+		} else {
+			log.Info("Checking Data Guard Broker reference before SIDB deletion", "dataguardBroker", brokerName)
 			var broker dbapi.DataguardBroker
 			if err := r.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: brokerName}, &broker); err != nil {
 				if apierrors.IsNotFound(err) {
-					log.Info("Clearing stale DataGuard Broker reference during SIDB deletion", "DataguardBroker", brokerName)
+					log.Info("Clearing stale Data Guard Broker reference during SIDB deletion", "dataguardBroker", brokerName)
 					m.Status.DgBroker = nil
 					if updateErr := r.Status().Update(ctx, m); updateErr != nil {
-						log.Error(updateErr, "Failed to clear stale DataGuard Broker reference during SIDB deletion", "DataguardBroker", brokerName)
+						log.Error(updateErr, "Failed to clear stale Data Guard Broker reference during SIDB deletion", "dataguardBroker", brokerName)
 						return requeueY, updateErr
 					}
+					log.Info("Stale Data Guard Broker reference cleared", "dataguardBroker", brokerName)
 				} else {
+					log.Error(err, "Failed to inspect Data Guard Broker before SIDB deletion", "dataguardBroker", brokerName)
 					return requeueY, err
 				}
 			}
@@ -6833,88 +8215,179 @@ func (r *SingleInstanceDatabaseReconciler) cleanupSingleInstanceDatabase(req ctr
 	if m.Status.DgBroker != nil {
 		eventReason := "Cannot Delete"
 		eventMsg := "database cannot be deleted as it is present in a DataGuard Broker configuration"
+		log.Info("SIDB deletion blocked by Data Guard Broker membership", "dataguardBroker", strings.TrimSpace(*m.Status.DgBroker))
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, "%s", eventMsg)
 		return requeueY, errors.New(eventMsg)
 	}
 
+	log.Info("SIDB deletion step started", "step", "pods")
 	// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
 	result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
-	if result.Requeue {
+	if err != nil {
+		log.Error(err, "SIDB pod deletion step failed")
 		return result, err
 	}
+	if result.Requeue {
+		log.Info("SIDB pod deletion step requested a requeue", "requeueAfter", result.RequeueAfter)
+		return result, err
+	}
+	log.Info("SIDB pod deletion requests completed")
 
-	for {
-		podList := &corev1.PodList{}
-		listOpts := []client.ListOption{client.InNamespace(req.Namespace), client.MatchingLabels(dbcommons.GetLabelsForController("", req.Name))}
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{client.InNamespace(req.Namespace), client.MatchingLabels(dbcommons.GetLabelsForController("", req.Name))}
 
-		if err := r.List(ctx, podList, listOpts...); err != nil {
-			log.Error(err, "Failed to list pods of "+req.Name, "Namespace", req.Namespace)
-			return requeueY, err
-		}
-		if len(podList.Items) == 0 {
-			break
-		}
-		var podNames = ""
+	if err := r.List(ctx, podList, listOpts...); err != nil {
+		log.Error(err, "SIDB pod deletion verification failed", "namespace", req.Namespace)
+		return requeueY, err
+	}
+	if len(podList.Items) > 0 {
+		podNames := make([]string, 0, len(podList.Items))
 		for _, pod := range podList.Items {
-			podNames += pod.Name + " "
+			podNames = append(podNames, pod.Name)
 		}
-		log.Info("Waiting for SingleInstanceDatabase pods to be deleted", "PodNames", strings.TrimSpace(podNames), "Count", len(podList.Items))
+		log.Info("SIDB deletion waiting for pods", "podNames", strings.Join(podNames, ","), "count", len(podList.Items))
 		return requeueY, nil
 	}
+	log.Info("SIDB deletion pod step completed", "remainingPods", 0)
 
+	log.Info("SIDB deletion step started", "step", "managed_pvcs")
 	pvcCleanupPending, err := r.cleanupManagedSingleInstanceDatabasePVCs(ctx, m)
 	if err != nil {
+		log.Error(err, "SIDB managed PVC deletion step failed")
 		return requeueY, err
 	}
 	if pvcCleanupPending {
+		log.Info("SIDB deletion waiting for managed PVC cleanup", "requeueAfter", requeueY.RequeueAfter)
 		return requeueY, nil
 	}
+	log.Info("SIDB deletion managed PVC step completed")
 
-	log.Info("Successfully cleaned up SingleInstanceDatabase")
+	log.Info("SIDB deletion cleanup completed; all blocking resources are gone or retained")
 	return requeueN, nil
 }
 
 func (r *SingleInstanceDatabaseReconciler) cleanupManagedSingleInstanceDatabasePVCs(ctx context.Context,
 	m *dbapi.SingleInstanceDatabase) (bool, error) {
-	log := r.Log.WithValues("cleanupManagedSingleInstanceDatabasePVCs", client.ObjectKeyFromObject(m))
+	log := r.Log.WithValues("cleanupManagedSingleInstanceDatabasePVCs", client.ObjectKeyFromObject(m), "deletionStep", "managed_pvcs")
 
-	claimNames := make([]string, 0, 2)
+	claimNames := make([]string, 0, 2+len(m.Spec.Persistence.AdditionalPVCs))
+	seenClaims := make(map[string]struct{}, cap(claimNames))
+	addClaim := func(claimName string) {
+		claimName = strings.TrimSpace(claimName)
+		if claimName == "" {
+			return
+		}
+		if _, seen := seenClaims[claimName]; seen {
+			return
+		}
+		seenClaims[claimName] = struct{}{}
+		claimNames = append(claimNames, claimName)
+	}
+
 	oradataCfg := getOradataPersistenceConfig(m)
 	if strings.TrimSpace(oradataCfg.PvcName) == "" && strings.TrimSpace(oradataCfg.Size) != "" {
-		claimNames = append(claimNames, m.Name)
+		addClaim(m.Name)
 	}
 	if isManagedFraPVC(m) {
-		claimNames = append(claimNames, getFraClaimName(m))
+		addClaim(getFraClaimName(m))
 	}
+	for i := range m.Spec.Persistence.AdditionalPVCs {
+		additionalPVC := m.Spec.Persistence.AdditionalPVCs[i]
+		if strings.TrimSpace(additionalPVC.PvcName) != "" {
+			continue
+		}
+		if claimName := sidbAdditionalPVCClaimName(m, i); claimName != "" {
+			addClaim(claimName)
+		}
+	}
+	log.Info("Managed PVC deletion step started", "candidateCount", len(claimNames), "retainOnDelete", m.Spec.Persistence.RetainOnDelete)
 
+	pending := false
+	deleted := 0
+	retained := 0
+	skipped := 0
+	alreadyGone := 0
 	for _, claimName := range claimNames {
 		pvc := &corev1.PersistentVolumeClaim{}
+		log.Info("Checking managed PVC for SIDB deletion", "pvc", claimName)
 		err := r.Get(ctx, types.NamespacedName{Name: claimName, Namespace: m.Namespace}, pvc)
 		if apierrors.IsNotFound(err) {
+			alreadyGone++
+			log.Info("Managed PVC is already absent", "pvc", claimName)
 			continue
 		}
 		if err != nil {
-			log.Error(err, "Failed to get managed PVC during SIDB deletion", "PVC.Name", claimName)
+			log.Error(err, "Failed to inspect managed PVC during SIDB deletion", "pvc", claimName)
 			return false, err
 		}
 		if !metav1.IsControlledBy(pvc, m) {
-			log.Info("Skipping unmanaged PVC during SIDB cleanup", "PVC.Name", pvc.Name)
+			if m.Spec.Persistence.RetainOnDelete && pvc.Labels["database.oracle.com/retained-on-delete"] == "true" {
+				retained++
+				log.Info("Managed PVC was already detached and retained", "pvc", pvc.Name)
+				continue
+			}
+			skipped++
+			log.Info("Skipping PVC because it is not controlled by this SIDB", "pvc", pvc.Name)
 			continue
 		}
 
-		if pvc.DeletionTimestamp == nil {
-			log.Info("Deleting managed PVC during SIDB cleanup", "PVC.Name", pvc.Name)
-			if err := r.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
-				log.Error(err, "Failed to delete managed PVC during SIDB cleanup", "PVC.Name", pvc.Name)
-				return false, err
+		if m.Spec.Persistence.RetainOnDelete {
+			if pvc.DeletionTimestamp != nil {
+				pending = true
+				log.Info("Managed PVC deletion is already in progress; retention cannot be applied", "pvc", pvc.Name)
+				continue
 			}
+
+			needsUpdate := metav1.IsControlledBy(pvc, m) || pvc.Labels["database.oracle.com/retained-on-delete"] != "true"
+			if needsUpdate {
+				if err := controllerutil.RemoveOwnerReference(m, pvc, r.Scheme); err != nil {
+					log.Error(err, "Failed to remove SIDB owner reference from retained PVC", "pvc", pvc.Name)
+					return false, err
+				}
+				if pvc.Labels == nil {
+					pvc.Labels = map[string]string{}
+				}
+				pvc.Labels["database.oracle.com/retained-on-delete"] = "true"
+				if err := r.Update(ctx, pvc); err != nil {
+					log.Error(err, "Failed to persist retained PVC metadata", "pvc", pvc.Name)
+					return false, err
+				}
+				log.Info("Managed PVC retained and SIDB owner reference removed", "pvc", pvc.Name)
+			} else {
+				log.Info("Managed PVC was already retained", "pvc", pvc.Name)
+			}
+			retained++
+			continue
 		}
 
-		log.Info("Waiting for managed PVC to be deleted", "PVC.Name", pvc.Name)
-		return true, nil
+		if pvc.DeletionTimestamp != nil {
+			pending = true
+			log.Info("Managed PVC deletion is already in progress", "pvc", pvc.Name)
+			continue
+		}
+
+		log.Info("Requesting managed PVC deletion", "pvc", pvc.Name)
+		if err := r.Delete(ctx, pvc); err != nil {
+			if apierrors.IsNotFound(err) {
+				alreadyGone++
+				log.Info("Managed PVC disappeared before deletion completed", "pvc", pvc.Name)
+				continue
+			}
+			log.Error(err, "Failed to request managed PVC deletion", "pvc", pvc.Name)
+			return false, err
+		}
+		deleted++
+		pending = true
+		log.Info("Managed PVC deletion requested", "pvc", pvc.Name)
 	}
 
-	return false, nil
+	log.Info("Managed PVC deletion step completed",
+		"deleted", deleted,
+		"retained", retained,
+		"skipped", skipped,
+		"alreadyGone", alreadyGone,
+		"waiting", pending)
+	return pending, nil
 }
 
 // #############################################################################################
@@ -6935,17 +8408,12 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 		return requeueY, err
 	}
 
-	// The caller may have entered this function using stale reconcile state.
-	// Re-check the latest CR before performing any role conversion.
-	if singleInstanceDatabase.Spec.ConvertToSnapshotStandby ==
-		singleInstanceDatabase.Status.ConvertToSnapshotStandby {
-
-		log.Info(
-			"Snapshot standby conversion no longer requested; skipping",
-			"specConvertToSnapshotStandby", singleInstanceDatabase.Spec.ConvertToSnapshotStandby,
-			"statusConvertToSnapshotStandby", singleInstanceDatabase.Status.ConvertToSnapshotStandby,
-		)
-
+	deferToBroker, ownershipErr := r.shouldDeferSnapshotConversionToBroker(ctx, &singleInstanceDatabase)
+	if ownershipErr != nil {
+		return requeueY, ownershipErr
+	}
+	if deferToBroker {
+		log.Info("Skipping legacy SIDB snapshot conversion: role is managed by DataguardBroker")
 		return requeueN, nil
 	}
 
@@ -6959,7 +8427,28 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 		return requeueY, nil
 	}
 
-	if singleInstanceDatabase.Spec.ConvertToSnapshotStandby {
+	// The caller may have entered this function using stale reconcile state.
+	// Re-check the latest CR and actual database role before performing
+	// any role conversion.
+	liveRole, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
+	if err != nil {
+		return requeueY, err
+	}
+
+	desiredSnapshot := singleInstanceDatabase.Spec.ConvertToSnapshotStandby
+	if !snapshotStandbyConversionNeeded(
+		desiredSnapshot,
+		liveRole,
+	) {
+		log.Info(
+			"Snapshot standby conversion no longer needed; skipping",
+			"specConvertToSnapshotStandby", desiredSnapshot,
+			"liveRole", liveRole,
+		)
+		return requeueN, nil
+	}
+
+	if *desiredSnapshot {
 		// Convert a PHYSICAL_STANDBY -> SNAPSHOT_STANDBY
 		if singleInstanceDatabase.Status.Status != dbcommons.StatusPending {
 			singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
@@ -7206,7 +8695,7 @@ func convertPhysicalStdToSnapshotStdDB(
 
 	var adminPassword string = string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
 
-	if _, err := dbcommons.ExecCommand(
+	if _, err := dbcommons.ExecCommandWithInput(
 		r,
 		r.Config,
 		sidbReadyPod.Name,
@@ -7215,9 +8704,10 @@ func convertPhysicalStdToSnapshotStdDB(
 		ctx,
 		req,
 		true,
+		adminPassword+"\n",
 		"bash",
 		"-c",
-		fmt.Sprintf(dbcommons.CreateAdminPasswordFile, adminPassword),
+		"umask 177; cat > admin.pwd; umask 022",
 	); err != nil {
 		return err
 	}
@@ -7335,7 +8825,7 @@ func convertSnapshotStdToPhysicalStdDB(
 
 	var adminPassword string = string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
 
-	_, err := dbcommons.ExecCommand(
+	_, err := dbcommons.ExecCommandWithInput(
 		r,
 		r.Config,
 		sidbReadyPod.Name,
@@ -7344,9 +8834,10 @@ func convertSnapshotStdToPhysicalStdDB(
 		ctx,
 		req,
 		true,
+		adminPassword+"\n",
 		"bash",
 		"-c",
-		fmt.Sprintf(dbcommons.CreateAdminPasswordFile, adminPassword),
+		"umask 177; cat > admin.pwd; umask 022",
 	)
 	if err != nil {
 		return err
@@ -7442,9 +8933,14 @@ func convertSnapshotStdToPhysicalStdDB(
 // #############################################################################
 // SetupWithManager sets up the SingleInstanceDatabase controller with the manager.
 func (r *SingleInstanceDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.Add(manager.RunnableFunc(r.liveRoleStatusRefreshLoop)); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.SingleInstanceDatabase{}).
 		Owns(&corev1.Pod{}). //Watch for deleted pods of SingleInstanceDatabase Owner
+		Owns(&corev1.PersistentVolumeClaim{}).
 		WithEventFilter(dbcommons.ResourceEventHandler()).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 100}). //ReconcileHandler is never invoked concurrently with the same object.
 		Complete(r)
@@ -7533,11 +9029,7 @@ func ValidatePrimaryDatabaseAdminPassword(
 	// Connect through /nolog so special characters in the password are parsed by SQL*Plus
 	// as part of the password, not as command-line connect string delimiters.
 	escapedPassword := strings.ReplaceAll(adminPassword, `"`, `""`)
-	sqlCmd := fmt.Sprintf(`sqlplus -s /nolog <<'EOF'
-connect sys/"%s" as sysdba
-show user;
-exit;
-EOF`, escapedPassword)
+	sqlInput := fmt.Sprintf("connect sys/\"%s\" as sysdba\nshow user;\nexit;\n", escapedPassword)
 
 	r.Log.Info(
 		"Validating primary database admin password",
@@ -7546,7 +9038,7 @@ EOF`, escapedPassword)
 		"namespace", dbReadyPod.Namespace,
 	)
 
-	out, err := dbcommons.ExecCommand(
+	out, err := dbcommons.ExecCommandWithInput(
 		r,
 		r.Config,
 		dbReadyPod.Name,
@@ -7555,9 +9047,10 @@ EOF`, escapedPassword)
 		ctx,
 		req,
 		true,
+		sqlInput,
 		"bash",
 		"-c",
-		sqlCmd,
+		dbcommons.SQLPlusNoLoginCLI,
 	)
 	if err != nil {
 		r.Log.Error(err, "failed to execute primary database password validation command", "output", out)
@@ -7814,14 +9307,72 @@ func deleteTnsAliasInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ct
 	if alias == "" {
 		return nil
 	}
+
 	args := fmt.Sprintf("--file %q --alias %q --delete", tnsFile, alias)
 	aliasRegex := regexp.QuoteMeta(alias)
 	legacyCmd := fmt.Sprintf("if grep -Eq '^[[:space:]]*%s[[:space:]]*=' %q; then sed -i -E '/^[[:space:]]*%s[[:space:]]*=/{:a;N;/\\n\\)/!ba;d;}' %q; fi",
 		aliasRegex, tnsFile, aliasRegex, tnsFile)
-	cmd := fmt.Sprintf("mkdir -p %q && if [ -x \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/manageTnsAliases.sh\" ]; then \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/manageTnsAliases.sh\" %s; elif [ -x \"$ORACLE_BASE/manageTnsAliases.sh\" ]; then \"$ORACLE_BASE/manageTnsAliases.sh\" %s; else %s; fi", filepath.Dir(tnsFile), args, args, legacyCmd)
+	helperCmd := fmt.Sprintf("mkdir -p %q && if [ -x \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/manageTnsAliases.sh\" ]; then \"${SCRIPT_BASE_DIR:-/opt/oracle/scripts/base}/manageTnsAliases.sh\" %s; elif [ -x \"${ORACLE_BASE:-}/manageTnsAliases.sh\" ]; then \"${ORACLE_BASE:-}/manageTnsAliases.sh\" %s; else %s; fi",
+		filepath.Dir(tnsFile), args, args, legacyCmd)
+
+	beginMarker := "# BEGIN AUTO_TNS_" + alias
+	endMarker := "# END AUTO_TNS_" + alias
+	aliasPattern := "^[[:space:]]*" + aliasRegex + "[[:space:]]*="
+
+	cmd := fmt.Sprintf(`set -eu
+f=%s
+begin=%s
+end=%s
+
+if [ ! -f "$f" ]; then exit 0; fi
+
+if grep -Fqx "$begin" "$f"; then
+  if ! grep -Fqx "$end" "$f"; then
+    echo "missing end marker for TNS alias" >&2
+    exit 1
+  fi
+
+  tmp=$(mktemp)
+  trap 'rm -f "$tmp"' EXIT
+
+  awk -v b="$begin" -v e="$end" '
+    $0 == b { drop=1; next }
+    drop && /^# BEGIN AUTO_TNS_/ { exit 1 }
+    drop && $0 == e { drop=0; next }
+    !drop { print }
+    END { if (drop) exit 1 }
+  ' "$f" > "$tmp"
+
+  cat "$tmp" > "$f"
+
+  # Run the image helper to synchronize the dbconfig TNS copy.
+  %s
+
+elif grep -Fqx "$end" "$f"; then
+  echo "orphan end marker for TNS alias" >&2
+  exit 1
+
+elif grep -Eq %s "$f"; then
+  %s
+fi
+
+if grep -Fqx "$begin" "$f" ||
+   grep -Fqx "$end" "$f" ||
+   grep -Eq %s "$f"; then
+  echo "TNS alias remains after deletion" >&2
+  exit 1
+fi`,
+		shellSingleQuote(tnsFile),
+		shellSingleQuote(beginMarker),
+		shellSingleQuote(endMarker),
+		helperCmd,
+		shellSingleQuote(aliasPattern),
+		helperCmd,
+		shellSingleQuote(aliasPattern))
+
 	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
 	if err != nil {
-		return fmt.Errorf("failed to delete TNS alias %s in %s: %w", alias, tnsFile, err)
+		return fmt.Errorf("failed to delete or verify TNS alias %s in %s: %w", alias, tnsFile, err)
 	}
 	if strings.TrimSpace(out) != "" {
 		r.Log.Info("TNS alias delete output", "alias", alias, "tnsFile", tnsFile, "output", out)
@@ -7835,11 +9386,13 @@ func readManagedTNSAliasesStateInPod(r *SingleInstanceDatabaseReconciler, pod co
 	if err != nil {
 		return nil, err
 	}
-	lines, _ := dbcommons.StringToLines(out)
+
+	lines := strings.Split(out, "\n")
 	aliases := make([]string, 0, len(lines))
 	seen := map[string]struct{}{}
-	for i := range lines {
-		name := strings.ToUpper(strings.TrimSpace(lines[i]))
+
+	for _, line := range lines {
+		name := strings.ToUpper(strings.TrimSpace(line))
 		if name == "" {
 			continue
 		}
@@ -7902,15 +9455,31 @@ func missingTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod,
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify TNS aliases in %s: %w", tnsFile, err)
 	}
-	missing, _ := dbcommons.StringToLines(out)
-	for i := range missing {
-		missing[i] = strings.ToUpper(strings.TrimSpace(missing[i]))
+
+	missing := make([]string, 0)
+	for _, line := range strings.Split(out, "\n") {
+		name := strings.ToUpper(strings.TrimSpace(line))
+		if name != "" {
+			missing = append(missing, name)
+		}
 	}
+
 	sort.Strings(missing)
 	return missing, nil
 }
 
 func syncDesiredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, pod corev1.Pod, ctx context.Context, req ctrl.Request, tnsFile, stateFile string, desired map[string]dbapi.SingleInstanceDatabaseTNSAlias, desiredNames []string) error {
+	previousNames, err := readManagedTNSAliasesStateInPod(r, pod, ctx, req, stateFile)
+	if err != nil {
+		return err
+	}
+
+	r.Log.Info("TNS alias reconciliation state",
+		"tnsFile", tnsFile,
+		"stateFile", stateFile,
+		"previousAliases", previousNames,
+		"desiredAliases", desiredNames)
+
 	for _, alias := range desiredNames {
 		item := desired[alias]
 		port := item.Port
@@ -7934,18 +9503,55 @@ func syncDesiredTNSAliasesInPod(r *SingleInstanceDatabaseReconciler, pod corev1.
 		}
 	}
 
-	previousNames, err := readManagedTNSAliasesStateInPod(r, pod, ctx, req, stateFile)
-	if err != nil {
-		return err
-	}
 	desiredSet := map[string]struct{}{}
 	for _, name := range desiredNames {
 		desiredSet[name] = struct{}{}
 	}
+
 	for _, oldAlias := range previousNames {
 		if _, keep := desiredSet[oldAlias]; keep {
 			continue
 		}
+
+		referencedElsewhere := false
+		for _, suffix := range []string{
+			".operator_aliases",
+			".operator_primary_peer_aliases",
+			".operator_pdb_aliases",
+		} {
+			otherStateFile := tnsFile + suffix
+			if otherStateFile == stateFile {
+				continue
+			}
+
+			otherNames, err := readManagedTNSAliasesStateInPod(r, pod, ctx, req, otherStateFile)
+			if err != nil {
+				return err
+			}
+
+			for _, name := range otherNames {
+				if strings.EqualFold(name, oldAlias) {
+					referencedElsewhere = true
+					break
+				}
+			}
+			if referencedElsewhere {
+				break
+			}
+		}
+
+		if referencedElsewhere {
+			r.Log.Info("Preserving TNS alias referenced by another managed state",
+				"alias", oldAlias,
+				"stateFile", stateFile)
+			continue
+		}
+
+		r.Log.Info("Deleting obsolete managed TNS alias",
+			"alias", oldAlias,
+			"tnsFile", tnsFile,
+			"stateFile", stateFile)
+
 		if err := deleteTnsAliasInPod(r, pod, ctx, req, tnsFile, oldAlias); err != nil {
 			return err
 		}
@@ -8181,6 +9787,7 @@ type sidbPrimaryPeerAliasTarget struct {
 	Host         string
 	TCPPort      int
 	TCPSEnabled  bool
+	TCPSPort     int
 }
 
 func normalizedSIDBDataguardDBUniqueName(m *dbapi.SingleInstanceDatabase) string {
@@ -8198,6 +9805,9 @@ func normalizeSIDBPrimaryPeerAliasTarget(target sidbPrimaryPeerAliasTarget) sidb
 	target.Host = strings.TrimSpace(target.Host)
 	if target.TCPPort <= 0 {
 		target.TCPPort = int(dbcommons.CONTAINER_LISTENER_PORT)
+	}
+	if target.TCPSPort <= 0 {
+		target.TCPSPort = int(dbcommons.CONTAINER_TCPS_PORT)
 	}
 	return target
 }
@@ -8228,6 +9838,7 @@ func configuredSIDBPrimaryPeerAliasTargets(primary *dbapi.SingleInstanceDatabase
 			Host:         standby.Host,
 			TCPPort:      standby.TCPPort,
 			TCPSEnabled:  standby.TCPSEnabled,
+			TCPSPort:     standby.TCPSPort,
 		}, index)
 	}
 	return targets
@@ -8246,6 +9857,7 @@ func legacySIDBPrimaryPeerAliasTarget(standby *dbapi.SingleInstanceDatabase) sid
 		Host:         standby.GetName(),
 		TCPPort:      int(dbcommons.CONTAINER_LISTENER_PORT),
 		TCPSEnabled:  getTcpsEnabled(standby),
+		TCPSPort:     int(dbcommons.CONTAINER_TCPS_PORT),
 	})
 }
 
@@ -8322,7 +9934,7 @@ func buildPrimaryPeerTNSAliasesForTargets(primary *dbapi.SingleInstanceDatabase,
 			standby.TCPSEnabled,
 			includeDGMGRL,
 			standby.TCPPort,
-			int(dbcommons.CONTAINER_TCPS_PORT),
+			standby.TCPSPort,
 		)
 	}
 
@@ -8386,7 +9998,19 @@ func buildAutomaticStandbyPeerTNSAliases(owner *dbapi.SingleInstanceDatabase, pr
 	if primaryAlias == "" || primaryHost == "" {
 		return desired, nil
 	}
-	addAutomaticDataguardNetAliases(desired, primaryAlias, primaryHost, includeTCPS, includeDGMGRL)
+	primaryTCPSPort := int(dbcommons.CONTAINER_TCPS_PORT)
+	if owner.Spec.PrimarySource != nil && owner.Spec.PrimarySource.TCPSPort > 0 {
+		primaryTCPSPort = owner.Spec.PrimarySource.TCPSPort
+	}
+	addAutomaticDataguardNetAliasesWithPorts(
+		desired,
+		primaryAlias,
+		primaryHost,
+		includeTCPS,
+		includeDGMGRL,
+		int(dbcommons.CONTAINER_LISTENER_PORT),
+		primaryTCPSPort,
+	)
 
 	desiredNames := make([]string, 0, len(desired))
 	for name := range desired {
@@ -8738,6 +10362,44 @@ func EnableFlashbackInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod c
 	return nil
 }
 
+func pauseStandbyManagedRecoveryForFlashback(r *SingleInstanceDatabaseReconciler, readyPod corev1.Pod,
+	ctx context.Context, req ctrl.Request) (bool, error) {
+	statusOut, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false,
+		"bash", "-c", "echo -e  \"select process,status from v\\$managed_standby order by process;\"  | sqlplus -s / as sysdba")
+	if err != nil {
+		return false, err
+	}
+	if strings.Contains(statusOut, "ORA-") {
+		return false, fmt.Errorf("failed to inspect standby managed recovery: %s", strings.TrimSpace(statusOut))
+	}
+	if !standbyManagedRecoveryActive(statusOut) {
+		return false, nil
+	}
+
+	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false,
+		"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.CancelManagedRecoverySQL, dbcommons.SQLPlusCLI))
+	if err != nil {
+		return false, err
+	}
+	if strings.Contains(out, "ORA-") {
+		return false, fmt.Errorf("failed to stop standby managed recovery: %s", strings.TrimSpace(out))
+	}
+	return true, nil
+}
+
+func startStandbyManagedRecoveryAfterFlashback(r *SingleInstanceDatabaseReconciler, readyPod corev1.Pod,
+	ctx context.Context, req ctrl.Request) error {
+	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false,
+		"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.StartManagedRecoverySQL, dbcommons.SQLPlusCLI))
+	if err != nil {
+		return err
+	}
+	if strings.Contains(out, "ORA-") {
+		return fmt.Errorf("failed to restart standby managed recovery: %s", strings.TrimSpace(out))
+	}
+	return nil
+}
+
 // #############################################################################
 //
 //	setup standby database
@@ -8812,9 +10474,22 @@ func setupStandbyDatabaseCommon(
 	}
 	if !flashBackStatus {
 		r.Log.Info("Setting up flashback mode in the standby database")
-		err := EnableFlashbackInDatabase(r, stdbyReadyPod, ctx, req)
+		recoveryPaused, err := pauseStandbyManagedRecoveryForFlashback(r, stdbyReadyPod, ctx, req)
 		if err != nil {
 			return err
+		}
+		if err := EnableFlashbackInDatabase(r, stdbyReadyPod, ctx, req); err != nil {
+			if recoveryPaused {
+				if restartErr := startStandbyManagedRecoveryAfterFlashback(r, stdbyReadyPod, ctx, req); restartErr != nil {
+					return fmt.Errorf("enable flashback: %w; restart managed recovery: %v", err, restartErr)
+				}
+			}
+			return err
+		}
+		if recoveryPaused {
+			if err := startStandbyManagedRecoveryAfterFlashback(r, stdbyReadyPod, ctx, req); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -8884,8 +10559,69 @@ func ensureStandbyManagedRecovery(
 //	Create oracle hostname environment variable object to be passed to sidb
 //
 // #############################################################################
-// CreateOracleHostnameEnvVarObj builds ORACLE_HOSTNAME env var based on DB version.
-func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPrimaryDatabase *dbapi.SingleInstanceDatabase) corev1.EnvVar {
+// oracleHostnameFromPodIP returns ORACLE_HOSTNAME bound to the pod IP so the
+// listener can bind on a local address (Service DNS resolves to ClusterIP).
+func oracleHostnameFromPodIP() corev1.EnvVar {
+	return corev1.EnvVar{
+		Name: "ORACLE_HOSTNAME",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{
+				FieldPath: "status.podIP",
+			},
+		},
+	}
+}
+
+// sidbControllerImageLooksLike19c detects 19c images when the primary CR is
+// not on-cluster (cross-cluster LB IP / details).
+func sidbControllerImageLooksLike19c(image dbapi.SingleInstanceDatabaseImage) bool {
+	if v := strings.TrimSpace(image.Version); v != "" {
+		if strings.HasPrefix(v, "19.") || v == "19" {
+			return true
+		}
+		if major := strings.SplitN(v, ".", 2)[0]; major != "" && major != "19" {
+			return false
+		}
+	}
+	pullFrom := strings.TrimSpace(image.PullFrom)
+	if pullFrom == "" {
+		return false
+	}
+	tag := pullFrom
+	if i := strings.LastIndex(pullFrom, ":"); i >= 0 && i+1 < len(pullFrom) {
+		tag = pullFrom[i+1:]
+	}
+	tag = strings.TrimSpace(tag)
+	if tag == "128786" || strings.HasPrefix(tag, "128786-") {
+		return true
+	}
+	return strings.HasPrefix(tag, "19.") || strings.HasPrefix(tag, "19-") || tag == "19"
+}
+
+// CreateOracleHostnameEnvVarObj builds ORACLE_HOSTNAME for standby/clone pods.
+//
+// Always bind to status.podIP so RMAN Duplicate reaches the auxiliary inside
+// the same pod network namespace. That path is CNI-agnostic (Calico, Flannel,
+// OKE VCN-native, Cilium, etc.): traffic never goes through Service ClusterIP
+// or kube-proxy hairpin. Using the SIDB Service name resolves to ClusterIP and
+// can fail with ORA-12541 depending on the network plugin and NotReady
+// endpoint publishing. 19c already used podIP; 23ai/26ai now match.
+// Same-cluster 23ai/26ai images rewrite an IP-valued ORACLE_HOSTNAME to the
+// container hostname before DBCA to avoid the 0.0.0.10 DBCA bug. Cross-cluster
+// flows keep advertising via STANDBY_HOSTNAME.
+func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPrimaryDatabase *dbapi.SingleInstanceDatabase, ctx context.Context, r client.Reader) corev1.EnvVar {
+	if sidb == nil {
+		return corev1.EnvVar{Name: "ORACLE_HOSTNAME"}
+	}
+	// retained for call-site compatibility; version/image detection is no longer
+	// required because every standby/clone uses the pod IP path.
+	_ = referedPrimaryDatabase
+	_ = ctx
+	_ = r
+	return oracleHostnameFromPodIP()
+}
+
+func CreateCloneOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPrimaryDatabase *dbapi.SingleInstanceDatabase) corev1.EnvVar {
 	dbMajorVersion, err := strconv.Atoi(strings.Split(referedPrimaryDatabase.Status.ReleaseUpdate, ".")[0])
 	if err != nil {
 		// r.Log.Error(err, err.Error())
@@ -8915,6 +10651,12 @@ func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPr
 func SetupListenerForDGOnDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	if d != nil && strings.EqualFold(strings.TrimSpace(d.Spec.CreateAs), "truecache") {
+		return nil
+	}
+	if skip, err := r.shouldSkipDataguardPrereqsForFSFO(d, ctx); err != nil {
+		return fmt.Errorf("unable to determine Fast-Start Failover state for database %v: %w", d.Name, err)
+	} else if skip {
+		r.Log.Info("Skipping listener/Data Guard prerequisite mutation while Fast-Start Failover is enabled", "sidb", d.Name)
 		return nil
 	}
 	out, err := runDataguardPrereqsActionInPod(r, dbReadyPod, ctx, req, "configure")
@@ -9613,6 +11355,19 @@ func sidbAdditionalPVCClaimName(m *dbapi.SingleInstanceDatabase, index int) stri
 	return ""
 }
 
+func isSIDBAdditionalPVCClaim(m *dbapi.SingleInstanceDatabase, claimName string) bool {
+	claimName = strings.TrimSpace(claimName)
+	if m == nil || claimName == "" {
+		return false
+	}
+	for index := range m.Spec.Persistence.AdditionalPVCs {
+		if sidbAdditionalPVCClaimName(m, index) == claimName {
+			return true
+		}
+	}
+	return false
+}
+
 type sidbAdditionalPVCMount struct {
 	claimName string
 	mountPath string
@@ -9900,7 +11655,13 @@ func buildSIDBSecurityScriptEnvVars(m *dbapi.SingleInstanceDatabase) []corev1.En
 	envs := make([]corev1.EnvVar, 0)
 
 	if getTcpsEnabled(m) {
-		envs = append(envs, corev1.EnvVar{Name: "TCPS_ENABLED", Value: "true"})
+		// The SIDB image entrypoint uses ENABLE_TCPS to run configTcps.sh.
+		// Keep TCPS_ENABLED as a compatibility alias for consumers that read
+		// the operator-generated environment directly.
+		envs = append(envs,
+			corev1.EnvVar{Name: "ENABLE_TCPS", Value: "true"},
+			corev1.EnvVar{Name: "TCPS_ENABLED", Value: "true"},
+		)
 		tcpsCertsLocation := getTcpsCertsLocation(m)
 		if strings.TrimSpace(tcpsCertsLocation) != "" {
 			envs = append(envs,

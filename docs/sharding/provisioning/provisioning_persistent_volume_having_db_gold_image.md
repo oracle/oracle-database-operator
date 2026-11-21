@@ -12,8 +12,9 @@ This example uses file `oraclesi.yaml` to provision a single instance Oracle Dat
 * Tag `nodeSelector` to deploy the Single Oracle Database in AD `PHX-AD-1`
 
 In this example, we are using pre-built Oracle Database image available on [Oracle Container Registry](https://container-registry.oracle.com/)
-  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the namespace `shns`. Please refer to [this page](./container_reg_secret.md) for the details. 
-  * If you plan to build and use your own images, you need to change `image` tag with the image you have built in your enviornment in file `oraclesi.yaml`. 
+
+* To pull the images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the `shns` namespace. For details, see [Pull Images from Oracle Container Registry](../../../registry/README.md).
+* If you plan to build and use your own images, you need to change `image` tag with the image you have built in your enviornment in file `oraclesi.yaml`.
 
 1. Use this YAML file: [oraclesi.yaml](./oraclesi.yaml) for this use case.
 

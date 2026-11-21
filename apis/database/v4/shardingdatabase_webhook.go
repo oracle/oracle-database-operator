@@ -46,6 +46,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -63,6 +64,16 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
+
+var shardingScriptsLocationPattern = regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`)
+
+func validateShardingScriptsLocation(path *field.Path, value string) field.ErrorList {
+	if strings.TrimSpace(value) == "" || shardingScriptsLocationPattern.MatchString(value) {
+		return nil
+	}
+	return field.ErrorList{field.Invalid(path, value,
+		"scriptsLocation must be an absolute path containing only letters, numbers, '.', '_', '-' and '/'")}
+}
 
 type shardingMode string
 
@@ -677,6 +688,7 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj *ShardingData
 	logger = logger.WithValues("name", cr.Name, "namespace", cr.Namespace)
 	logger.Info("running create validation")
 	validationErr = append(validationErr, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), cr.Spec.Dataguard)...)
+	validationErr = append(validationErr, validateShardingScriptsLocation(field.NewPath("spec").Child("scriptsLocation"), cr.Spec.ScriptsLocation)...)
 
 	//namespaces := db.GetWatchNamespaces()
 	//_, containsNamespace := namespaces[r.Namespace]
@@ -805,6 +817,7 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *S
 	newCR := newObj
 	warnings := deprecatedShardingFieldWarnings(&newCR.Spec)
 	validationErr = append(validationErr, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), newCR.Spec.Dataguard)...)
+	validationErr = append(validationErr, validateShardingScriptsLocation(field.NewPath("spec").Child("scriptsLocation"), newCR.Spec.ScriptsLocation)...)
 
 	oldMode := detectShardingMode(&oldCR.Spec)
 	newMode := detectShardingMode(&newCR.Spec)
@@ -1345,6 +1358,7 @@ func (r *ShardingDatabase) validateAdditionalPVCConfig() field.ErrorList {
 	}
 
 	for i := range r.Spec.Catalog {
+		validationErrs = append(validationErrs, validateStorageSource(r.Spec.Catalog[i].StorageSource, field.NewPath("spec").Child("catalog").Index(i).Child("storageSource"))...)
 		basePath := field.NewPath("spec").Child("catalog").Index(i).Child("additionalPVCs")
 		validationErrs = append(validationErrs, validateAdditionalPVCEntries(r.Spec.Catalog[i].AdditionalPVCs, DefaultOraDataMountPath, DefaultDiagMountPath, basePath)...)
 	}

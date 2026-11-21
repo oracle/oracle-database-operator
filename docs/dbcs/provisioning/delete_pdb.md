@@ -23,10 +23,10 @@ dbcssystem-existing   3m33s
 
 This example uses `deletepdb_in_existing_dbcs_system_list.yaml` to delete PDBs of a Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with the following:
 
-- OCID of existing VMDB as `ocid1.dbsystem.oc1.iad.anuwcljsabf7htyag4akvoakzw4qk7cae55qyp7hlffbouozvyl5ngoputza`
+- OCID of existing VMDB as `ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>`
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`
-- PDB Name to be deleted e.g `pdb_sauahuja_11` and `pdb_sauahuja_12`
+- PDB Name to be deleted e.g `pdb_example_11` and `pdb_example_12`
 **NOTE:** For the details of the parameters to be used in the `.yaml` file, see: [DBCS Controller Parameters](./dbcs_controller_parameters.md).
 
 Use the file: [deletepdb_in_existing_dbcs_system_list.yaml](./deletepdb_in_existing_dbcs_system_list.yaml) for this use case as described in the following steps:

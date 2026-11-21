@@ -1,7 +1,7 @@
 <div align="center">
 <h1 align="center">
   <br>
-  <img src="./DBOperator.svg" alt="Oracle Database Operator">
+  <img src="./DBOperator.svg" alt="Oracle AI Database Operator">
 </h1>
 </div>
 
@@ -9,7 +9,7 @@
 <p align="center">
     <a href="https://github.com/oracle/oracle-database-operator">
     <img src="./oracledatabaseoperator.svg?style=flat-square&logo=github&logoColor=white"
-         alt="Oracle Database Operator">
+         alt="Oracle AI Database Operator">
     </a>
     <a href="https://www.oracle.com/database/kubernetes-for-container-database">
     <img src="./oracledatabaseforcontainersandkubernetes.svg?style=flat-square&logo=github&logoColor=white"
@@ -35,272 +35,132 @@
 </p>
 </div>
 
-# Oracle Database Operator for Kubernetes
+# Oracle AI Database Operator for Kubernetes
 
-The Oracle Database Operator extends the Kubernetes API by introducing custom resources and controllers that enable the provisioning, management, and lifecycle automation of Oracle Database workloads and associated services on Kubernetes.
+The Oracle AI Database Operator, formerly known as the Oracle Database Operator, extends the Kubernetes API with custom resources and controllers for provisioning, managing, and automating the lifecycle of Oracle Database workloads and associated services on Kubernetes.
 
-It simplifies database operations by leveraging Kubernetes-native constructs, allowing teams to manage Oracle databases using declarative configurations and standard tooling. This approach improves consistency, scalability, and operational efficiency across environments.
+It enables database teams, platform engineers, DevOps teams, and GitOps workflows to manage Oracle databases through declarative resources and standard Kubernetes tooling, improving operational consistency across environments.
 
-Use this repository to install and validate the operator, ensure it is running correctly, and then navigate to the relevant guides for managing specific controllers or database workloads. It also provides examples, configuration references, and best practices to help you get started quickly and operate reliably in production environments.
+Use this repository to install and verify the operator, then follow the controller-specific guides to deploy and manage database workloads. The repository also provides examples, configuration references, and operational guidance for development and production environments.
+
+> **Important:**
+>
+> Start with [Prerequisites](#prerequisites), choose one installation method, verify the operator installation, and then follow the guide for the controller or workload you want to deploy.
 
 ## Contents
 
-- [What's New](#whats-new)
-- [Platform Compatibility](#platform-compatibility)
+- [What's new](#whats-new)
+- [Supported releases](#supported-releases)
+- [Platform compatibility](#platform-compatibility)
 - [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Install the Operator](#install-the-operator)
-- [Verify Installation](#verify-installation)
-- [Choose Your Guide](#choose-your-guide)
-- [Uninstall the Operator](#uninstall-the-operator)
+- [Quick start](#quick-start)
+- [Install the operator](#install-the-operator)
+- [Upgrade the operator](#upgrade-the-operator)
+- [Verify installation](#verify-installation)
+- [Choose your guide](#choose-your-guide)
+- [Advanced installation and scope management](#advanced-installation-and-scope-management)
+- [Uninstall the operator](#uninstall-the-operator)
 - [Contributing](#contributing)
 - [Help](#help)
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
-## What's New
+## What's new
 
-### v2.2.0
+### v2.3.0
+Version 2.3.0 focuses on controller lifecycle improvements, Agent Factory support,
+Data Guard and SIDB fixes, observability enhancements, and updated build tooling.
 
-Version 2.2 introduces expanded database lifecycle automation, stronger reconciliation, new networking capabilities, and improved operator security and observability.
-
-| Controller / area | Highlights |
+| Controller / area | 2.3.0 highlights |
 | --- | --- |
-| **AutonomousDatabase** | • OCI lifecycle reconciliation, finalizers, wallet validation and rotation<br>• Backup-resource synchronization and cleanup |
-| **AutonomousContainerDatabase** | • OCI lifecycle-state validation and finalizer-based cleanup<br>• Kubernetes-to-OCI state synchronization |
-| **AutonomousDatabaseBackup / Restore** | • Target validation and owner references<br>• Point-in-time restore and OCI work-request integration |
-| **Multitenant controllers (LREST / LRPDB)** | • Internal comunication protocol improvement and cofiguration simplification - No need to specify https password <br>  • Creating application users on pdb using k8s secrets  <br> • Monitor pdb init parameters with reconciliation loop <br>  • Code optimization  <br> • Reset bitmask status simplification <br> • Load tnsname.ora topology |
-| **OracleRestart** | • Phased reconciliation for validation, storage, workload, and finalization<br>• ASM disk lifecycle with static/dynamic PV/PVC handling |
-| **ORDS Services (OrdsSrvs)** | • HTTP-only edge deployments, HTTP access-log forwarding/persistence, and Instance API bootstrap<br>• Configurable resource limits, metadata, and JVM options |
-| **RacDatabase** | • Expanded RAC and ASM storage lifecycle<br>• Disk/PVC provisioning, and validation |
-| **ShardingDatabase** | • Oracle GDD topology lifecycle and scaling<br>• Catalog/shard management, and status validation |
-| **SingleInstanceDatabase** | • Service endpoints, TCPS, TrueCache, Data Guard prerequisites, clone/restore, and external PVCs<br>• Improved pod security, resource handling, recreation checks, and connection status |
-| **DataguardBroker** | • Topology runtime, authentication wallets, validation/provisioning, FSFO observer management, and operation tracking<br>• Idempotent manual switchover support |
-| **DatabaseObserver** | • Safer child-resource ownership and Server-Side Apply<br>• Improved deployment readiness and status handling |
-| **PrivateAI** | • Phased dependency/workload reconciliation and update-lock status<br>• TLS secret lifecycle, support for vLLM and GPU, and rollout tracking |
-| **TrafficManager** *(new)* *(preview mode)*| • Oracle Connection Manager (CMAN) endpoints<br>• generated rules, `cman.ora` file mode, and endpoint status |
-| **Operator platform** | • New `network.oracle.com/v4` API and TrafficManager CRD<br>• Secure HTTPS metrics, hardened manager security context, expanded RBAC/webhooks, compatibility webhooks, network policy, samples, and test coverage |
+| [**AgentFactory**](./docs/agentfactory/README.md) *(new)* | Introduced the Oracle AI Database Private Agent Factory controller with workload lifecycle management, inbound and outbound TLS handling, certificate rotation, and status tracking. |
+| **DataguardBroker** | Fixes for topology validation, authentication-wallet handling, fast-start failover (FSFO) observer management, operation tracking, and idempotent manual switchover. |
+| [**SingleInstanceDatabase**](./docs/sidb/README.md) | Fixes and improvements for Data Guard prerequisites, TCP with TLS (TCPS) and TrueCache, clone/restore, external PVCs, pod security, resource handling, recreation checks, and connection status. |
+| **Monitoring and Observability** *(preview)* | Enhanced secure operator metrics, DatabaseObserver readiness and ownership handling, observability RBAC, and the [Oracle AI Database Operator Observability Helm chart](./charts/oracle-database-operator-observability/README.md) for Grafana Alloy metrics and logs. |
+| **Oracle Connection Manager (CMAN)** *(preview)* | CMAN endpoints, generated rules, file-mode `cman.ora` configuration, and endpoint status through the `network.oracle.com/v4` API. |
+| **Multitenant controllers (LREST / LRPDB)** | Improved internal communication and configuration handling, application-user creation from Kubernetes Secrets, pluggable database (PDB) initialization monitoring, bitmask status handling, and `tnsnames.ora` topology loading. |
+| **Other database controllers** | Continued lifecycle, storage, networking, reconciliation, and validation improvements across Autonomous Database, ACD, Backup/Restore, Oracle Restart, ORDS Services, RAC, and ShardingDatabase controllers. |
+| **Build and installation tooling** | Updated the build toolchain to Go `1.27.4` and the documented cert-manager installation to `v1.21.2`. |
+| **Operator platform** | Expanded RBAC and webhook coverage, compatibility webhooks, network policy, hardened manager security context, and updated samples and test coverage. |
 
-## Platform Compatibility
+## Supported releases
 
-This production release has been installed and tested on the following platforms:
+Review the [Oracle AI Database Operator releases page](https://github.com/oracle/oracle-database-operator/releases) for the currently supported releases, release-specific features, fixes, support timelines, and upgrade guidance.
+
+The releases page also identifies retired or deprecated releases. Do not start new deployments on a retired or deprecated release. Keep the operator on the current supported release so that you receive the latest controller fixes, security updates, compatibility changes, and support tooling.
+
+Oracle AI Database Operator follows a quarterly release cadence. Each quarterly release provides the maintained operator platform, supported controllers, required webhooks and RBAC updates, installation and upgrade artifacts, documentation, samples, and applicable fixes for the supported release line.
+
+Before installing or upgrading, verify the release notes for the target version and confirm that the required Kubernetes platform, cert-manager version, database images, OCI integrations, and controller-specific prerequisites are compatible. Use version-matched manifests, CRDs, and samples, and consult the documentation for that release.
+
+## Platform compatibility
+
+This production release has been installed and tested on the following platforms. The general minimum Kubernetes version is 1.33; the Oracle RAC exception is described below.
 
 | Platform | Version |
 | --- | --- |
-| [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) | Kubernetes 1.33 or later |
-| [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift) | 4.19 or later |
-| [Oracle Linux Cloud Native Environment (OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) | 1.9 or later |
-| [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs) | Supported |
-| [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/) | Supported |
-| [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/) | Supported |
-| [Red Hat OKD](https://www.okd.io/) | Supported |
-| [Minikube](https://minikube.sigs.k8s.io/docs/) | 1.29.0 or later |
+| [OCI Kubernetes Engine (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) | Supported Kubernetes versions listed by the current release |
+| [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift) | 4.21 or later |
+| [Oracle Linux Cloud Native Environment (OCNE)](https://docs.oracle.com/en/operating-systems/olcne/) | 2.3 or later; the Oracle RAC controller has an OCNE 1.9 compatibility path |
+| [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs) | Supported Kubernetes versions listed by the current release |
+| [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/) | Supported Kubernetes versions listed by the current release |
+| [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/) | Supported Kubernetes versions listed by the current release |
+| [Red Hat OKD](https://www.okd.io/) | Supported Kubernetes versions listed by the current release |
+| [Minikube](https://minikube.sigs.k8s.io/docs/) | v1.39.0 or later |
+
+Always confirm that the Kubernetes version, storage provider, container runtime, and platform-specific security policies are compatible with the operator release you are installing.
 
 ## Prerequisites
 
-Oracle strongly recommends reviewing [PREREQUISITES.md](./PREREQUISITES.md) before installation.
+At a minimum, prepare the following:
+
+- A supported Kubernetes cluster and a configured `kubectl` client
+- Sufficient worker-node CPU, memory, and disk capacity
+- Persistent storage and a usable `StorageClass` when deploying database workloads
+- Access to Oracle Container Registry or a compatible private image registry
+- Required image-pull and database credential secrets
+- A compatible [cert-manager](https://cert-manager.io/) installation
+- RBAC permissions for the selected installation method and controller
 
 ### Install cert-manager
 
-The operator uses webhooks for validating user input before persisting it in `etcd`. Webhooks require TLS certificates that are generated and managed by a certificate manager.
+The operator uses admission webhooks to validate user input before persisting it in `etcd`. Webhooks require TLS certificates that are generated and managed by cert-manager.
 
-> **OCNE note:** Before installing cert-manager on an OCNE cluster, review the [cert-manager supported releases](https://cert-manager.io/docs/releases/) and choose a cert-manager version that supports the Kubernetes version provided by your OCNE release. OCNE 1.9 uses Kubernetes 1.29, so replace the cert-manager version in the example below with a Kubernetes 1.29-compatible release.
-
-```sh
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
-```
-
-### Choose Deployment Scope
-
-The default installation is namespace-scoped. The operator runs in `oracle-database-operator-system` and watches that namespace by default. It does not watch other namespaces unless they are added to `WATCH_NAMESPACE` and the service account is granted access there.
-
-The operator also supports an optional cluster-scoped mode. Apply the base RBAC manifest first so the operator namespace, service account, and packaged manager roles exist before the controller starts.
-
-If you are planning to install the operator through an OKE add-on, OperatorHub.io, or Red Hat OpenShift, use the corresponding instructions under [Install The Operator](#install-the-operator): [Install as an OKE Add-on](#install-as-an-oke-add-on), [Install from OperatorHub.io](#install-from-operatorhubio), or [Install on Red Hat OpenShift](#install-on-red-hat-openshift). Those installation channels manage the deployment manifests and lifecycle, so do not apply the repository YAML scope procedures in addition to the selected platform installation. If you are deploying with repository YAML files, skip to [Default namespace-scoped deployment](#default-namespace-scoped-deployment).
-
-#### Default namespace-scoped deployment
-
-For a namespace-scoped deployment, generate the operator manifests from a comma-separated namespace list. The generated system manifest sets `WATCH_NAMESPACE`, and the generated RBAC manifest adds one manager `RoleBinding` for each watched namespace.
-
-Example:
+Install a cert-manager version compatible with your Kubernetes platform:
 
 ```sh
-scripts/generate-namespace-install.sh oracle-database-operator-system,shns
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.2/cert-manager.yaml
 ```
 
-Then apply the generated manifests:
+> **OCNE note:** Before installing cert-manager on an OCNE cluster, review the [cert-manager supported releases](https://cert-manager.io/docs/releases/) and choose a cert-manager version that supports the Kubernetes version provided by your OCNE release. OCNE 1.9 uses Kubernetes 1.29 and is supported only for the Oracle RAC controller with the OCNE 1.9-compatible RAC configuration described in [the RAC guide](./docs/rac/README.md). All other controllers require the general Kubernetes 1.33 minimum. Replace the cert-manager version in the example above with a Kubernetes 1.29-compatible release when using this RAC exception.
 
-```sh
-kubectl apply -f dist/install/oracle-database-operator-rbac.yaml
-kubectl apply -f dist/install/oracle-database-operator-system.yaml
-```
+## Quick start
 
-The script keeps the operator service account in `oracle-database-operator-system` and grants access only in the namespaces listed in `WATCH_NAMESPACE`. This avoids manually editing `oracle-database-operator-system.yaml`, `oracle-database-operator-rbac.yaml`, and namespace role binding files separately.
+> **Important:**
+>
+> This quick start uses the recommended namespace-scoped YAML installation. Complete [Prerequisites](#prerequisites) before proceeding.
 
-The generated deployment contains the same namespace list:
+1. Install [cert-manager](#install-cert-manager), which provides the webhook TLS certificates.
+2. Generate manifests for the operator namespace and each namespace the operator should watch:
 
-```yaml
-- name: WATCH_NAMESPACE
-  value: "oracle-database-operator-system,shns"
-```
+   ```bash
+   WATCH_NAMESPACE="oracle-database-operator-system,<additional-watched-namespace>"
+   scripts/generate-namespace-install.sh "${WATCH_NAMESPACE}"
+   ```
 
-Verify authorization one namespace at a time. The `-n`/`--namespace` option accepts only one namespace; do not pass the comma-separated `WATCH_NAMESPACE` value to it:
+3. Apply RBAC first, followed by the operator system manifest to create the CRDs, webhooks, services, certificates, network policy, and operator Deployment:
 
-```sh
-for namespace in oracle-database-operator-system shns; do
-  echo "Checking ${namespace}"
-  kubectl auth can-i list lrpdbs.database.oracle.com \
-    --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
-    -n "${namespace}"
-done
-```
+   ```bash
+   kubectl apply -f dist/install/oracle-database-operator-rbac.yaml
+   kubectl apply -f dist/install/oracle-database-operator-system.yaml
+   ```
 
-#### Updating an existing namespace-scoped installation
+4. Verify the operator ServiceAccount permissions in each watched namespace. The `-n`/`--namespace` option accepts one namespace only, so run the check separately for every namespace:
 
-Do not update only `WATCH_NAMESPACE`. Each namespace in the watch list must also have a manager `RoleBinding` for the existing operator ServiceAccount. The ServiceAccount itself does not change.
-
-For the standard installation, use these values:
-
-```sh
-OPERATOR_NS=oracle-database-operator-system
-SERVICE_ACCOUNT=oracle-database-operator-controller-manager
-MANAGER_ROLE=oracle-database-operator-manager-role
-```
-
-To add namespaces, first create or update the RoleBinding in every new namespace:
-
-```sh
-for namespace in shns db-workloads; do
-  kubectl create rolebinding oracle-database-operator-manager-rolebinding \
-    --clusterrole="${MANAGER_ROLE}" \
-    --serviceaccount="${OPERATOR_NS}:${SERVICE_ACCOUNT}" \
-    --namespace="${namespace}" \
-    --dry-run=client -o yaml | kubectl apply -f -
-done
-```
-
-Verify access before changing the Deployment. Check each namespace separately; `kubectl auth can-i -n` does not accept a comma-separated namespace list:
-
-```sh
-for namespace in shns db-workloads; do
-  kubectl auth can-i list singleinstancedatabases.database.oracle.com \
-    --as="system:serviceaccount:${OPERATOR_NS}:${SERVICE_ACCOUNT}" \
-    --namespace="${namespace}"
-done
-```
-
-Then set the complete watch list. This replaces the previous value and triggers a rollout:
-
-```sh
-kubectl set env deployment/oracle-database-operator-controller-manager \
-  -n "${OPERATOR_NS}" \
-  WATCH_NAMESPACE="${OPERATOR_NS},shns,db-workloads"
-
-kubectl rollout status deployment/oracle-database-operator-controller-manager \
-  -n "${OPERATOR_NS}" --timeout=300s
-```
-
-To remove a namespace, first update `WATCH_NAMESPACE` without it and wait for the rollout. Then remove its obsolete RoleBinding:
-
-```sh
-kubectl set env deployment/oracle-database-operator-controller-manager \
-  -n "${OPERATOR_NS}" \
-  WATCH_NAMESPACE="${OPERATOR_NS},shns"
-
-kubectl rollout status deployment/oracle-database-operator-controller-manager \
-  -n "${OPERATOR_NS}" --timeout=300s
-
-kubectl delete rolebinding oracle-database-operator-manager-rolebinding \
-  -n db-workloads --ignore-not-found=true
-```
-
-For a fresh installation, continue using `scripts/generate-namespace-install.sh`; it generates the Deployment value and namespace RoleBindings together. For an existing installation, use the in-place procedure above instead of applying a full generated system manifest from a different operator version.
-
-Before applying or changing the operator configuration, verify that the ServiceAccount can list resources in each watched namespace. For example:
-
-```sh
-kubectl auth can-i list lrpdbs.database.oracle.com \
-  --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
-  -n <watched-namespace>
-```
-
-#### Cluster-scoped deployment
-
-To switch an existing operator from namespace scope to cluster scope, first complete the [Default namespace-scoped deployment](#default-namespace-scoped-deployment) section, including its RBAC, Deployment, and permission checks. After the namespace-scoped installation is healthy, follow the steps below to add the cluster binding and unset `WATCH_NAMESPACE`.
-
-
-Namespace-scoped deployment is preferred because it follows least-privilege practice and limits the operator's access to selected Kubernetes namespaces. Cluster-scoped deployment grants the operator wider access across the cluster and should be used only when your operational requirements require it. If cluster scope is required for your environment, follow the steps below.
-
-The base installation already creates the manager `ClusterRole`, the operator ServiceAccount, and a namespace-scoped manager `RoleBinding`. For an existing installation, do not recreate the ServiceAccount or replace the manager `ClusterRole`. Add a `ClusterRoleBinding` for the existing ServiceAccount, then remove `WATCH_NAMESPACE`. Keep the leader-election `RoleBinding` in `oracle-database-operator-system`.
-
-Apply the cluster binding before changing the Deployment:
-
-```sh
-kubectl apply -f rbac/cluster-role-binding.yaml
-
-kubectl set env deployment/oracle-database-operator-controller-manager \
-  -n oracle-database-operator-system \
-  WATCH_NAMESPACE-
-
-kubectl rollout status deployment/oracle-database-operator-controller-manager \
-  -n oracle-database-operator-system \
-  --timeout=300s
-```
-
-The existing namespace-scoped manager `RoleBinding` may remain, but it is redundant after the `ClusterRoleBinding` is active. For a fresh installation or a full version upgrade, use the matching cluster-scoped manifest generated from that exact operator version; do not apply a cluster overlay from a different version to an existing Deployment.
-
-Verify that it can manage resources outside its installation namespace:
-
-```sh
-kubectl auth can-i list singleinstancedatabases.database.oracle.com \
-  --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
-  -n default
-
-kubectl get pods -n oracle-database-operator-system
-
-kubectl logs -n oracle-database-operator-system \
-  deployment/oracle-database-operator-controller-manager -c manager \
-  | grep 'CLUSTER SCOPED'
-```
-
-### Optional Cluster-Scoped RBAC
-
-Namespace-scoped deployment controls which namespaces the operator watches and where namespace `RoleBinding` objects are created. A namespace `RoleBinding` does not grant access to cluster-scoped Kubernetes resources such as `PersistentVolume`, `StorageClass`, or `Node`. Cluster scope grants the permissions already present in the manager `ClusterRole` across the cluster.
-
-In the packaged manager role, `namespaces`, `persistentvolumes`, and `storageclasses` are already included. `nodes` is not included by default and requires the optional NodePort RBAC when a selected feature needs node access.
-
-Apply the following optional RBAC manifests only when the selected controller feature requires them:
-
-| Feature | Cluster-scoped resource | Apply |
-| --- | --- | --- |
-| NodePort service connect strings | `nodes` | `kubectl apply -f rbac/node-rbac.yaml` |
-| Storage expansion for block volumes | `storageclasses.storage.k8s.io` | `kubectl apply -f rbac/storage-class-rbac.yaml` |
-| SIDB custom scripts with existing PersistentVolumes | `persistentvolumes` read access | `kubectl apply -f rbac/persistent-volume-rbac.yaml` |
-| RAC ASM PersistentVolume lifecycle | `persistentvolumes` create/delete access | `kubectl apply -f docs/rac/rbac/pv-rbac.yaml` |
-
-For example, if you plan to expose services using `NodePort`, apply:
-
-```sh
-kubectl apply -f rbac/node-rbac.yaml
-```
-
-These optional manifests are cluster-scoped. Review them before applying, and avoid granting cluster-scoped PV access unless the workload needs that specific capability.
-
-## Quick Start
-
-Before using this quick start, complete the [prerequisites](#prerequisites):
-
-- Install [cert-manager](#install-cert-manager), which provides the webhook TLS certificates.
-- Use the default namespace-scoped deployment, or explicitly choose [cluster scope](#cluster-scoped-deployment).
-- Apply the required RBAC before starting the operator.
-- For namespace-scoped deployment, use `scripts/generate-namespace-install.sh` so the RBAC and `WATCH_NAMESPACE` values are generated from the same namespace list.
-- Apply `oracle-database-operator-system.yaml` after RBAC to create the CRDs, webhooks, services, certificates, network policy, and operator Deployment.
-
-1. Verify the operator ServiceAccount permissions in each watched namespace. The `-n`/`--namespace` option accepts one namespace only, so run the check separately for every namespace:
-
-   ```sh
-   for namespace in oracle-database-operator-system <additional-watched-namespace>; do
+   ```bash
+   WATCH_NAMESPACE="oracle-database-operator-system,<additional-watched-namespace>"
+   for namespace in $(printf '%s' "${WATCH_NAMESPACE}" | tr ',' ' '); do
      echo "Checking ${namespace}"
      kubectl auth can-i list lrpdbs.database.oracle.com \
        --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
@@ -308,18 +168,17 @@ Before using this quick start, complete the [prerequisites](#prerequisites):
    done
    ```
 
-2. Verify the operator pods are healthy:
+5. [Verify the operator installation](#verify-installation).
+6. Choose a workload from [Supported Controllers and Charts](#supported-controllers-and-charts).
+7. [Apply a Controller Resource](#apply-a-controller-resource) in a namespace watched by the operator.
 
-   ```sh
-   kubectl get pods -n oracle-database-operator-system
-   ```
+> **Warning:**
+>
+> Do not use Quick Start to modify an existing installation or change installation scope. Use [Advanced installation and scope management](#advanced-installation-and-scope-management) instead.
 
-3. [Apply a Controller Resource](#apply-a-controller-resource) in a namespace watched by the operator.
+### Apply a controller resource
 
-
-### Apply a Controller Resource
-
-The operator deployment starts the controllers. To use a specific controller, apply a custom resource for that controller in a namespace the operator watches. Use the guide in the [Supported Controllers](#supported-controllers) table to choose the correct sample and prerequisites.
+The operator deployment starts the controllers. To use a specific controller, apply a custom resource for that controller in a namespace the operator watches. Use the guide in the [Supported Controllers and Charts](#supported-controllers-and-charts) table to choose the correct sample and prerequisites.
 
 For example, after completing the Single Instance Database prerequisites and granting access to the target namespace, apply a Single Instance Database resource:
 
@@ -329,195 +188,156 @@ kubectl apply -f config/samples/sidb/singleinstancedatabase.yaml
 
 Then watch the resource status in that namespace:
 
-```sh
-kubectl get singleinstancedatabase -n <watched-namespace>
+```bash
+WATCH_NAMESPACE="oracle-database-operator-system,<additional-watched-namespace>"
+TARGET_NAMESPACE="<watched-namespace>"
+kubectl get singleinstancedatabase -n "${TARGET_NAMESPACE}"
 ```
 
-## Install The Operator
+## Install the operator
 
-The Oracle Database Operator can be installed in several ways, depending on your platform and operational model. If you already installed the operator by applying the YAML files in the [Quick Start](#quick-start), you can continue directly to [Supported Controllers](#supported-controllers).
+The operator can be installed through YAML manifests, the OKE add-on, OperatorHub.io, or the Red Hat OpenShift catalog.
 
-### Install from YAML Manifests
+Choose one installation method and follow only the instructions for that method. Do not combine repository YAML manifests with an add-on or catalog-based installation.
 
-If you want to deploy the operator with YAML manifests from this repository, first review the [Choose Deployment Scope](#choose-deployment-scope) section. Namespace scope is the default and recommended option: it limits the operator to the namespaces listed in <code>WATCH_NAMESPACE</code>, and generated RBAC grants access only in those namespaces. Cluster scope grants the manager <code>ClusterRole</code> across the cluster and should be used only when that broader access is required.
+If you already installed the operator by applying the YAML files in the [Quick start](#quick-start), you can continue directly to [Supported Controllers and Charts](#supported-controllers-and-charts).
 
-The combined [`oracle-database-operator.yaml`](./oracle-database-operator.yaml) remains available for compatibility. For new installations, follow the [Choose Deployment Scope](#choose-deployment-scope) instructions and use manifests generated for the same operator version.
+### Choose an installation method
 
-#### Optional UID pinning for non-OpenShift clusters
+| Installation method | Recommended for |
+| --- | --- |
+| [YAML manifests](docs/installation/INSTALLATION_METHODS.md#install-from-yaml-manifests) | Standard Kubernetes and GitOps installations |
+| [OKE add-on](docs/installation/INSTALLATION_METHODS.md#install-as-an-oke-add-on) | OKE clusters managed through OCI |
+| [OperatorHub.io](docs/installation/INSTALLATION_METHODS.md#install-from-operatorhubio) | Kubernetes platforms using Operator Lifecycle Manager |
+| [Red Hat OpenShift catalog](docs/installation/INSTALLATION_METHODS.md#install-on-red-hat-openshift) | OpenShift installations using the Red Hat catalog |
+| [Manual build](docs/installation/INSTALLATION_METHODS.md#build-and-deploy-a-custom-operator-image) | Environments requiring a custom operator image |
 
-The operator manifests do not pin the manager container to a fixed UID so that OpenShift Security Context Constraints can assign a namespace-valid UID automatically. On non-OpenShift Kubernetes clusters, if your security policy requires the manager container to run as UID/GID `1002`, use one of these options.
+For the selected method, follow the linked [Installation Methods](docs/installation/INSTALLATION_METHODS.md) guide. It contains the namespace and cluster-scope procedures, channel-specific installation instructions, custom-image guidance, and installation verification steps.
 
-Before first deployment, add `runAsUser` and `runAsGroup` to the manager container security context in the operator YAML you plan to apply:
+| Situation | Recommended path |
+| --- | --- |
+| New namespace-scoped installation | [Quick start](#quick-start) |
+| Existing installation or scope change | [Advanced installation and scope management](#advanced-installation-and-scope-management) |
+| OKE cluster | [OKE add-on installation](docs/installation/INSTALLATION_METHODS.md#install-as-an-oke-add-on) |
+| OpenShift cluster | [Red Hat OpenShift installation](docs/installation/INSTALLATION_METHODS.md#install-on-red-hat-openshift) |
+| Custom operator image | [Manual build guide](docs/installation/INSTALLATION_METHODS.md#build-and-deploy-a-custom-operator-image) |
 
-```yaml
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-    - ALL
-  runAsNonRoot: true
-  runAsUser: 1002
-  runAsGroup: 1002
-```
+## Upgrade the operator
 
-If the operator is already deployed, apply the same setting with a patch:
+For upgrade prerequisites, CRD and controller updates, installation-channel procedures, and validation commands, see [Upgrade the Oracle AI Database Operator](docs/installation/UPGRADE.md).
 
-```sh
-kubectl -n oracle-database-operator-system patch deployment oracle-database-operator-controller-manager \
-  --type='json' \
-  -p='[
-    {"op":"add","path":"/spec/template/spec/containers/0/securityContext/runAsUser","value":1002},
-    {"op":"add","path":"/spec/template/spec/containers/0/securityContext/runAsGroup","value":1002}
-  ]'
-```
+## Verify installation
 
-Do not apply this UID patch on OpenShift. OpenShift assigns a valid UID from the namespace range when `runAsUser` is omitted.
+After installing from the repository YAML manifests, verify that the operator Deployment is available:
 
-The upstream project and pre-built manifest artifacts are available at [oracle/oracle-database-operator](https://github.com/oracle/oracle-database-operator).
-
-### Install as an OKE Add-on
-
-On Oracle Container Engine for Kubernetes (OKE), you can install and manage the Oracle Database Operator as an OKE add-on from the OCI Console or compatible automation flows. This is the recommended path when you want OKE to manage the add-on lifecycle and configuration.
-
-For OKE add-on configuration options, see [Oracle Database Operator for Kubernetes add-on configuration](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/configuration-arguments-db-operator-for-k8s.htm).
-
-### Install from OperatorHub.io
-
-You can also install the operator from [OperatorHub.io](https://operatorhub.io/operator/oracle-database-operator).
-
-1. Open the [Oracle Database Operator page](https://operatorhub.io/operator/oracle-database-operator).
-2. Follow the installation instructions for your Kubernetes platform.
-
-### Install on Red Hat OpenShift
-
-For Red Hat OpenShift environments, use the partner-validated Oracle Database Operator listing and follow the platform-specific guidance for your cluster. This path is useful when you want to install through the Red Hat catalog and align with OpenShift validation and lifecycle practices.
-
-For the partner-validated listing, see [Oracle Database Operator on Red Hat Ecosystem Catalog](https://catalog.redhat.com/en/software/container-stacks/detail/68c4502d45d3fc6d301a9980).
-
-After installation, continue to [Verify Installation](#verify-installation). For OKE add-on, OperatorHub, or OpenShift catalog installations, also review any status and lifecycle checks recommended by that installation channel.
-
-### Build and Deploy DB Operator (Optional)
-
-We highly recommend using the prebuilt Oracle Database Operator container images published in Oracle Container Registry (OCR). These images are versioned, validated, and ready for deployment.
-
-If your organization requires building the operator image manually in your own environment, follow the detailed [Oracle Database Operator Manual Build and Deployment Guide](./docs/installation/OPERATOR_INSTALLATION_README.md), which covers the build prerequisites, image build and tagging steps, registry handling, and deployment configuration.
-
-
-## Verify Installation
-
-Check that the operator pods are running:
-
-```sh
-kubectl get pods -n oracle-database-operator-system
-```
-
-Example output:
-
-```sh
-NAME                                                                 READY   STATUS    RESTARTS   AGE
-oracle-database-operator-controller-manager-78666fdddb-s4xcm         1/1     Running   0          11d
-oracle-database-operator-controller-manager-78666fdddb-5k6n4         1/1     Running   0          11d
-oracle-database-operator-controller-manager-78666fdddb-t6bzb         1/1     Running   0          11d
-```
-
-
-For a complete installation check, run the following commands:
-
-```sh
-# Confirm the Deployment rollout
+```bash
 kubectl rollout status deployment/oracle-database-operator-controller-manager \
   -n oracle-database-operator-system --timeout=300s
 
-# Check replica readiness and pod placement
-kubectl get deployment oracle-database-operator-controller-manager \
-  -n oracle-database-operator-system
-kubectl get pods -n oracle-database-operator-system -o wide
-
-# Verify permissions separately in every watched namespace
-kubectl auth can-i list lrpdbs.database.oracle.com \
-  --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
-  -n <watched-namespace>
-
-# Confirm a representative CRD is installed
-kubectl get crd lrpdbs.database.oracle.com
-
-# Confirm the admission webhooks exist
-kubectl get mutatingwebhookconfiguration mutating-webhook-configuration
-kubectl get validatingwebhookconfiguration validating-webhook-configuration
-
-# Review recent controller logs
-kubectl logs deployment/oracle-database-operator-controller-manager \
-  -n oracle-database-operator-system -c manager --tail=100
-
-# Review recent installation-namespace events when troubleshooting
-kubectl get events -n oracle-database-operator-system --sort-by=.lastTimestamp
+kubectl get pods -n oracle-database-operator-system
 ```
 
-For cluster-scoped installations, repeat the permission check in a namespace outside `oracle-database-operator-system`, such as `default`. These checks validate the operator installation itself; verify workload-specific custom resources separately after you deploy them.
+For complete Deployment, RBAC, CRD, webhook, log, and event checks, see [Verify the installation](./docs/installation/INSTALLATION_METHODS.md#verify-installation).
 
+These checks validate the operator installation. They do not verify the health of a database or other workload. Use the relevant controller guide for workload verification.
 
-## Choose Your Guide
+## Choose your guide
 
 After the operator is installed, continue with the guide for your workload:
 
-### Supported Controllers
+### Supported controllers and charts
 
-| Controller | Primary use case | Common operations | Guide |
-| --- | --- | --- | --- |
-| Autonomous Database | Manage Oracle Autonomous Database resources on OCI | provision, bind, start, stop, scale, backup, restore, failover | [docs/adb/README.md](./docs/adb/README.md) |
-| Autonomous Container Database | Manage the Autonomous Container Database infrastructure | provision, bind, restart, terminate | [docs/adb/ACD.md](./docs/adb/ACD.md) |
-| Single Instance Database and Data Guard | Manage containerized Oracle single instance databases | provision, patch, clone, Data Guard, standby role conversion, ORDS, PDB operations | [docs/sidb/README.md](./docs/sidb/README.md) |
-| Oracle GDD | Manage Oracle globally distributed  databases | provision topology, add shards, remove shards, Raft replication | [docs/sharding/README.md](./docs/sharding/README.md) |
-| Multitenant | Manage CDB/PDB lifecycle | create, plug, unplug, clone, open, close, delete | [docs/multitenant/README.md](./docs/multitenant/README.md) |
-| Oracle Base Database Service | Manage Oracle Base Database Service resources on OCI | provision, scale, clone, backup, restore, patch, Data Guard | [docs/dbcs/README.md](./docs/dbcs/README.md) |
-| ORDS Services | Manage ORDS service deployments | provision, update, delete | [docs/ordsservices/README.md](./docs/ordsservices/README.md) |
-| Oracle RAC | Manage Oracle Real Application Clusters | provision, scale, add or remove ASM disks | [docs/rac/README.md](./docs/rac/README.md) |
-| Oracle Restart | Manage Oracle Restart deployments | provision, ASM disk operations, load balancer support | [docs/oraclerestart/README.md](./docs/oraclerestart/README.md) |
-| Private AI | Manage Oracle Private AI Services Container | deploy, scale, configure networking, manage runtime updates | [docs/privateai/README.md](./docs/privateai/README.md) |
-| Traffic Manager (CMAN) | Route database listener traffic | CMAN for Oracle listener connectivity | [docs/trafficmanager/README.md](./docs/trafficmanager/README.md) |
+**Kubernetes documentation:** [Kubernetes Documentation](https://kubernetes.io/docs/home/)
 
-Traffic Manager (CMAN) works with Single Instance Database or Oracle RAC for CMAN-based listener access. See the [Traffic Manager guide](./docs/trafficmanager/README.md) for CMAN generated and file-mode configuration, and example manifests under [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/).
+| Controller | Primary use case | Common operations | Guide | Supported Documentation |
+| --- | --- | --- | --- | --- |
+| Autonomous Database | Manage Oracle Autonomous AI Database resources on OCI | Provision, bind, start, stop, scale, backup, restore, failover | [docs/adb/README.md](./docs/adb/README.md) | [Autonomous Database](https://docs.oracle.com/iaas/Content/Database/Concepts/adboverview.htm) |
+| Autonomous Container Database | Manage Autonomous Container Database infrastructure | Provision, bind, restart, terminate | [docs/adb/ACD.md](./docs/adb/ACD.md) | [Autonomous Database](https://docs.oracle.com/iaas/Content/Database/Concepts/adboverview.htm) |
+| Single Instance Database and Data Guard | Manage containerized Oracle single instance databases | Provision, patch, clone, Data Guard, standby role conversion, ORDS, PDB operations | [docs/sidb/README.md](./docs/sidb/README.md) | [Oracle Database documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/) · [Data Guard Concepts and Administration](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/) |
+| Oracle Globally Distributed AI Database (GDD) | Manage Oracle Globally Distributed AI Database resources | Provision topology, add shards, remove shards, Raft replication | [docs/sharding/README.md](./docs/sharding/README.md) | [Oracle Sharding documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/shard/) |
+| Multitenant | Manage CDB/PDB lifecycle | Create, plug, unplug, clone, open, close, delete | [docs/multitenant/README.md](./docs/multitenant/README.md) | [Multitenant Administrator's Guide](https://docs.oracle.com/en/database/oracle/oracle-database/26/multi/) |
+| Oracle Base Database Service | Manage Oracle Base Database Service resources on OCI | Provision, scale, clone, backup, restore, patch, Data Guard | [docs/dbcs/README.md](./docs/dbcs/README.md) | [Base Database Service](https://docs.oracle.com/iaas/Content/Database/Concepts/overview.htm) · [OCI CLI documentation](https://docs.oracle.com/iaas/Content/API/SDKDocs/cliinstall.htm) |
+| ORDS Services | Manage ORDS service deployments | Provision, update, delete | [docs/ordsservices/README.md](./docs/ordsservices/README.md) | [Oracle REST Data Services](https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/) · [Kubernetes Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) |
+| Oracle RAC | Manage Oracle Real Application Clusters | Provision, scale, add or remove ASM disks | [docs/rac/README.md](./docs/rac/README.md) | [Oracle RAC documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/racad/) · [Kubernetes Storage](https://kubernetes.io/docs/concepts/storage/) |
+| Oracle Restart | Manage Oracle Restart deployments | Provision, ASM disk operations, load balancer support | [docs/oraclerestart/README.md](./docs/oraclerestart/README.md) | [Oracle Restart documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/adrac/) · [Kubernetes Storage](https://kubernetes.io/docs/concepts/storage/) |
+| Private AI | Manage Oracle Private AI Services Container | Deploy, scale, configure networking, manage runtime updates | [docs/privateai/README.md](./docs/privateai/README.md) | [Oracle Private AI Services Container](https://docs.oracle.com/en/database/oracle/oracle-database/26/prvai/oracle-private-ai-services-container.html) |
+| Oracle AI Database Private Agent Factory | Deploy Oracle AI Database Private Agent Factory services with Oracle Database connectivity | Provision schema, configure database connectivity, manage storage, scale, secure access, and update runtime settings | [docs/agentfactory/README.md](./docs/agentfactory/README.md) | [Kubernetes Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) · [Kubernetes Storage](https://kubernetes.io/docs/concepts/storage/) |
+| Oracle Connection Manager (CMAN) | Route database listener traffic | CMAN for Oracle listener connectivity | [docs/cman/README.md](./docs/cman/README.md) | [Oracle Connection Manager](https://docs.oracle.com/en/database/oracle/oracle-database/26/netag/components-oracle-net-services.html) · [Kubernetes Services](https://kubernetes.io/docs/concepts/services-networking/service/) |
+| Oracle AI Database Operator Observability chart | Collect operator metrics and logs with Grafana Alloy and forward them to customer-managed Prometheus-compatible metrics and Loki log backends | Helm install, TLS, RBAC, backend configuration, and telemetry verification | [Chart README](./charts/oracle-database-operator-observability/README.md) · [Chart details](https://github.com/oracle/oracle-database-operator/tree/main/charts/oracle-database-operator-observability) | [Prometheus](https://prometheus.io/docs/) · [Grafana Alloy](https://grafana.com/docs/alloy/) · [Grafana Loki](https://grafana.com/docs/loki/latest/) · [Helm](https://helm.sh/docs/) · [Kubernetes monitoring](https://kubernetes.io/docs/tasks/debug/debug-cluster/resource-usage-monitoring/) |
 
-### Supporting Services
 
-- [Oracle Database Observability](./docs/observability/README.md)
-- [Oracle Database Operator Metrics](./docs/operator-metrics/README.md)
+### Deploy a controller resource
 
-## Uninstall the Operator
+Installing the operator starts the controller components. A controller begins managing a workload only after its corresponding custom resource is created.
 
-Uninstall the operator in the reverse order of installation. Before removing the operator deployment or CRDs, decide whether you want to keep or delete the database custom resources that the operator manages.
+Review the controller-specific prerequisites and sample manifest before applying a resource.
 
-### 1. Delete Custom Resources
+For example, after completing the Single Instance Database prerequisites:
 
-Delete custom resources before deleting the operator deployment or CRDs. This allows the operator to run finalizers and clean up Kubernetes resources that it created.
+```bash
+WATCH_NAMESPACE="oracle-database-operator-system,<additional-watched-namespace>"
+TARGET_NAMESPACE="<watched-namespace>"
+kubectl apply -f config/samples/sidb/singleinstancedatabase.yaml
+kubectl get singleinstancedatabase -n "${TARGET_NAMESPACE}"
+```
 
-To review Oracle Database Operator resources in a namespace:
+### Supporting services
+
+- [Oracle Database Observability](./docs/observability/README.md) — Database-level monitoring and exporter guidance
+- [Oracle AI Database Operator Metrics with Observability Chart](./charts/oracle-database-operator-observability/README.md) — Operator metrics and logs through Grafana Alloy; see the [chart details](https://github.com/oracle/oracle-database-operator/tree/main/charts/oracle-database-operator-observability)
+
+## Advanced installation and scope management
+
+| Scope-management task | Procedure |
+| --- | --- |
+| Update an existing namespace-scoped installation | [Updating an Existing Namespace-Scoped Installation](./docs/installation/OPERATOR_SCOPE_MANAGEMENT.md#updating-an-existing-namespace-scoped-installation) |
+| Add namespaces to `WATCH_NAMESPACE` | [Adding Namespaces to the Watch List](./docs/installation/OPERATOR_SCOPE_MANAGEMENT.md#adding-namespaces-to-the-watch-list) |
+| Remove namespaces from `WATCH_NAMESPACE` | [Removing Namespaces from the Watch List](./docs/installation/OPERATOR_SCOPE_MANAGEMENT.md#removing-namespaces-from-the-watch-list) |
+| Verify ServiceAccount permissions in watched namespaces | [Verify namespace permissions](./docs/installation/OPERATOR_SCOPE_MANAGEMENT.md#verify-namespace-permissions) |
+| Switch from namespace scope to cluster scope | [Switching to a Cluster-Scoped Installation](./docs/installation/OPERATOR_SCOPE_MANAGEMENT.md#switching-to-a-cluster-scoped-installation) |
+| Verify cluster-scoped access | [Verifying Cluster-Scoped Access](./docs/installation/OPERATOR_SCOPE_MANAGEMENT.md#verifying-cluster-scoped-access) |
+
+> **Important:**
+>
+> Do not update only `WATCH_NAMESPACE`. Every namespace in the watch list must also have a manager `RoleBinding` for the existing operator ServiceAccount. For an existing installation, follow the in-place procedure instead of applying a complete generated manifest from a different operator version.
+
+For an overview of all installation and administration documents, see [Installation Documentation](docs/installation/README.md).
+
+## Uninstall the operator
+
+Uninstall the operator in the reverse order of installation. Before removing the operator Deployment or CRDs, decide whether managed custom resources and database storage should be retained or deleted.
+
+### 1. Delete custom resources
+
+Delete custom resources before deleting the operator Deployment or CRDs so that controller finalizers can run and clean up resources created by the operator.
+
+Review operator resources in a namespace:
 
 ```sh
 kubectl api-resources --verbs=list --namespaced -o name \
   | grep -E 'database.oracle.com|observability.oracle.com|privateai.oracle.com|network.oracle.com'
 ```
 
-Then delete the custom resources you no longer need in each namespace:
+Delete only the resources you no longer need:
 
 ```sh
 kubectl delete <resource-name> --all -n <namespace>
 ```
 
-If you installed the operator in namespace-scoped mode, repeat this step for every namespace listed in `WATCH_NAMESPACE`.
+For namespace-scoped installations, repeat this process in every namespace listed in `WATCH_NAMESPACE`.
 
-### 2. Remove the Operator Installation
+### 2. Remove the operator installation
 
 Use the uninstall method that matches how you installed the operator.
 
 For YAML manifest installations, remove the system manifest first and then remove RBAC:
 
 ```sh
-kubectl delete -f oracle-database-operator-system.yaml --ignore-not-found=true
-kubectl delete -f oracle-database-operator-rbac.yaml --ignore-not-found=true
+kubectl delete -f dist/install/oracle-database-operator-system.yaml --ignore-not-found=true
+kubectl delete -f dist/install/oracle-database-operator-rbac.yaml --ignore-not-found=true
 ```
 
-If you installed with the combined compatibility manifest, use:
+If the combined compatibility manifest was used:
 
 ```sh
 kubectl delete -f oracle-database-operator.yaml --ignore-not-found=true
@@ -525,11 +345,11 @@ kubectl delete -f oracle-database-operator.yaml --ignore-not-found=true
 
 For OKE add-on, OperatorHub, or OpenShift catalog installations, uninstall the operator using the same channel you used to install it. Follow that platform's guidance to remove subscriptions, add-ons, or catalog-managed resources.
 
-### 3. Remove CRDs Only When Appropriate
+### 3. Remove CRDs only when appropriate
 
-Removing CRDs deletes the API definitions for all Oracle Database Operator custom resources. Do this only after all custom resources have been deleted or intentionally preserved elsewhere.
+Removing CRDs deletes the API definitions for all Oracle AI Database Operator custom resources. Do this only after all custom resources have been deleted or intentionally preserved elsewhere.
 
-To list Oracle Database Operator CRDs:
+To list Oracle AI Database Operator CRDs:
 
 ```sh
 kubectl get crd | grep -E 'database.oracle.com|observability.oracle.com|privateai.oracle.com|network.oracle.com'
@@ -543,31 +363,23 @@ kubectl get crd -o name \
   | xargs --no-run-if-empty kubectl delete
 ```
 
-## Documentation for the Supported Oracle Database configurations
-
-- [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
-- [Components of Dedicated Autonomous Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/components.html)
-- [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
-- [Oracle Globally Distributed Database](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
-- [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
-
 ## Contributing
 
 This project welcomes contributions from the community. Before submitting a pull request, please [review our contribution guide](./CONTRIBUTING.md)
 
 ## Help
 
-You can submit a GitHub issue, or submit an issue and then file an [Oracle Support service](https://support.oracle.com/portal/) request. To file an issue or a service request, use the following product ID: 14430.
+You can submit a [GitHub issue](https://github.com/oracle/oracle-database-operator/issues) or submit an Oracle Support request. Use product ID `14430` when filing an Oracle Support request.
 
 ## Security
 
-For information about responsible security vulnerability disclosure, see [Reporting security vulnerabilities](./docs/security/SECURITY.md).
+For responsible security vulnerability disclosure, see [docs/security/SECURITY.md](./docs/security/SECURITY.md).
 
-For operator identity, ServiceAccount, RBAC, token, and pod security posture guidance, see [Oracle Database Operator Security Posture](./docs/security/operator-security-posture.md).
+For operator identity, ServiceAccount, RBAC, token, and pod-security guidance, see [Oracle AI Database Operator Security Posture](./docs/security/operator-security-posture.md).
 
 ## Troubleshooting
 
-For common Oracle Database Operator troubleshooting commands, including pod health, logs, webhook, certificate, RBAC, role binding, CRD, and event checks, see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
+For common troubleshooting commands covering pod health, logs, webhooks, certificates, RBAC, RoleBindings, CRDs, and events, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ## License
 

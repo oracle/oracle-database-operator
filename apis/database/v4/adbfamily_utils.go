@@ -66,7 +66,7 @@ func RemoveUnchangedFields(lastSpec interface{}, curSpec interface{}) (bool, err
 		return false, errors.New("lastSpec should be a struct")
 	}
 
-	if reflect.ValueOf(curSpec).Kind() != reflect.Ptr || reflect.ValueOf(curSpec).Elem().Kind() != reflect.Struct {
+	if reflect.ValueOf(curSpec).Kind() != reflect.Pointer || reflect.ValueOf(curSpec).Elem().Kind() != reflect.Struct {
 		return false, errors.New("curSpec should be a struct pointer")
 	}
 
@@ -149,7 +149,7 @@ func hasChanged(lastField reflect.Value, curField reflect.Value) bool {
 		var lastIntrf interface{}
 		var curIntrf interface{}
 
-		if curField.Kind() == reflect.Ptr {
+		if curField.Kind() == reflect.Pointer {
 			lastIntrf = lastField.Elem().Interface()
 			curIntrf = curField.Elem().Interface()
 		} else {

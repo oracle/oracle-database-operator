@@ -8,6 +8,9 @@ Use HTTP access log forwarding when a log collector is configured to read pod st
 
 ## Enable HTTP Access Logs
 
+The example uses an existing `acclog-pv` PersistentVolume with
+`ReadWriteMany` access and at least `20Gi` capacity.
+
 Enable HTTP access logging with `spec.globalSettings."enable.standalone.access.log"`:
 
 ```yaml
@@ -41,10 +44,12 @@ spec:
       db.customURL: jdbc:oracle:thin:@//dbhost:1521/FREEPDB1
       db.username: ORDS_PUBLIC_USER
       db.secret:
-        secretName: ordssrvs-auth
+        secretName: <secret-name>
         passwordKey: dbAuth
-  serviceAccountName: ordssrvs-sa
 ```
+
+Replace `<secret-name>` with an existing Secret in the resource namespace
+containing the ORDS runtime user password under `dbAuth`.
 
 The controller writes the `standalone.access.log` setting to the global ORDS configuration:
 
@@ -165,7 +170,7 @@ On the PersistentVolume, each Pod object writes into its own directory:
 /mnt/acclog/<pod-name>-<pod-uid>/ords_YYYY_MM_DD.log
 ```
 
-This prevents multiple ORDS pods from writing to the same HTTP access log file on a shared volume. It also gives a recreated Pod object a new directory on the PersistentVolume.
+This prevents multiple OrdsSrvs Pods from writing to the same HTTP access log file on a shared volume. It also gives a recreated Pod object a new directory on the PersistentVolume.
 
 When a Pod object is deleted or replaced, its previous access-log directory remains on the PersistentVolume. The operator does not delete these stale directories automatically because it cannot know whether the logs have already been archived, audited, or are still required for retention or compliance. Cleanup of old pod-specific log directories must be managed outside the operator according to your operational retention policy.
 

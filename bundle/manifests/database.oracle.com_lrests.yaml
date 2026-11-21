@@ -3,7 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.21.0
   creationTimestamp: null
   name: lrests.database.oracle.com
 spec:
@@ -20,25 +20,21 @@ spec:
       jsonPath: .spec.cdbName
       name: CDB NAME
       type: string
-    - description: ' Name of the DB Server'
-      jsonPath: .spec.dbServer
-      name: DB Server
-      type: string
-    - description: DB server port
-      jsonPath: .spec.dbPort
-      name: DB Port
-      type: integer
-    - description: Replicas
-      jsonPath: .spec.replicas
-      name: Replicas
-      type: integer
     - description: Status of the LREST Resource
       jsonPath: .status.phase
-      name: Status
+      name: STATUS
       type: string
     - description: Error message if any
       jsonPath: .status.msg
-      name: Message
+      name: MESSAGE
+      type: string
+    - description: Autodiscover
+      jsonPath: .spec.autodiscover
+      name: AUTODISCOVER
+      type: boolean
+    - description: Number of PDBS
+      jsonPath: .status.npdbscrd
+      name: PDB:CRD
       type: string
     - description: string of the tnsalias
       jsonPath: .spec.dbTnsurl
@@ -56,6 +52,8 @@ spec:
             type: object
           spec:
             properties:
+              autodiscover:
+                type: boolean
               cdbAdminPwd:
                 properties:
                   secret:
@@ -118,36 +116,9 @@ spec:
                 required:
                 - secret
                 type: object
-              cdbTlsCrt:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              cdbTlsKey:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
+              clusterIp:
+                default: false
+                type: boolean
               dbPort:
                 type: integer
               dbServer:
@@ -155,6 +126,9 @@ spec:
               dbTnsurl:
                 type: string
               deletePdbCascade:
+                type: boolean
+              loadBalancer:
+                default: false
                 type: boolean
               lrestImage:
                 type: string
@@ -166,6 +140,7 @@ spec:
               lrestImagePullSecret:
                 type: string
               lrestPort:
+                default: 8888
                 type: integer
               lrestPwd:
                 properties:
@@ -182,12 +157,35 @@ spec:
                 required:
                 - secret
                 type: object
+              namespaceAutoDiscover:
+                type: string
               nodeSelector:
                 additionalProperties:
                   type: string
                 type: object
+              orapki:
+                properties:
+                  secretName:
+                    type: string
+                required:
+                - secretName
+                type: object
+              orapkitag:
+                default: orapkitag
+                type: string
+              passwordProtection:
+                default: NATIVE
+                enum:
+                - NATIVE
+                - OPENSSL3
+                - ORAPKI
+                type: string
               replicas:
                 type: integer
+              resetDbpassword:
+                type: boolean
+              serviceAccountName:
+                type: string
               serviceName:
                 type: string
               sysAdminPwd:
@@ -205,45 +203,34 @@ spec:
                 required:
                 - secret
                 type: object
-              webServerPwd:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              webServerUser:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
+              tnsAlias:
+                type: string
+              tnsNames:
+                type: string
+              trace_level_client:
+                default: 0
+                type: integer
+              tracelevel:
+                type: integer
+            required:
+            - passwordProtection
             type: object
           status:
             properties:
               msg:
                 type: string
+              ncrds:
+                type: integer
+              npdbs:
+                type: integer
+              npdbscrd:
+                type: string
               phase:
                 type: string
               status:
                 type: boolean
+              tnsstring:
+                type: string
             required:
             - phase
             - status

@@ -2218,3 +2218,32 @@ func TestMergeDesiredAndExistingShardsPreservesExistingPrimaryDatabaseRefWhenDes
 		t.Fatalf("expected preserved host pri1.example.com, got %#v", merged[0].PrimaryDatabaseRef)
 	}
 }
+
+func TestValidateShardingScriptsLocation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value string
+		valid bool
+	}{
+		{name: "empty", value: "", valid: true},
+		{name: "documented absolute path", value: "/mnt/stage/sharding/scripts", valid: true},
+		{name: "relative path", value: "scripts", valid: false},
+		{name: "shell separator", value: "/tmp/scripts;touch", valid: false},
+		{name: "command substitution", value: "/tmp/$(id)", valid: false},
+		{name: "space", value: "/tmp/script files", valid: false},
+		{name: "newline", value: "/tmp/scripts\n-touch", valid: false},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			gotErr := validateShardingScriptsLocation(field.NewPath("spec").Child("scriptsLocation"), test.value)
+			if got := len(gotErr) == 0; got != test.valid {
+				t.Fatalf("validateShardingScriptsLocation(%q) valid = %v, want %v; errors: %v", test.value, got, test.valid, gotErr)
+			}
+		})
+	}
+}

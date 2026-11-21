@@ -24,13 +24,15 @@ import (
 )
 
 const (
-	restartAnnotationKey = "kubectl.kubernetes.io/restartedAt"
+	restartAnnotationKey            = "kubectl.kubernetes.io/restartedAt"
 	deploymentRevisionAnnotationKey = "deployment.kubernetes.io/revision"
-	envHTTPEnabled       = "PRIVATE_AI_HTTP_ENABLED"
-	envHTTPSEnabled      = "PRIVATE_AI_HTTPS_ENABLED"
-	envAuthEnabled       = "PRIVATE_AI_AUTHENTICATION_ENABLED"
-	envConfigFile        = "PRIVATE_AI_CONFIG_FILE"
-	envSecretsMount      = "PRIVATE_AI_SECRETS_MOUNTPOINT"
+	envHTTPEnabled                  = "PRIVATE_AI_HTTP_ENABLED"
+	envHTTPSEnabled                 = "PRIVATE_AI_HTTPS_ENABLED"
+	envAuthEnabled                  = "PRIVATE_AI_AUTHENTICATION_ENABLED"
+	envConfigFile                   = "PRIVATE_AI_CONFIG_FILE"
+	envSecretsMount                 = "PRIVATE_AI_SECRETS_MOUNTPOINT"
+	privateAILogSidecarScript       = `while true; do if ls "$1"/* >/dev/null 2>&1; then tail -n+1 -F "$1"/*; else sleep 2; fi; done`
+	privateAIShmMountPath           = "/dev/shm"
 )
 
 func filterPaiUserAnnotations(input map[string]string) map[string]string {
@@ -39,7 +41,7 @@ func filterPaiUserAnnotations(input map[string]string) map[string]string {
 	}
 	output := map[string]string{}
 	for key, value := range input {
-		if strings.HasPrefix(key, "privateai.oracle.com/") {
+		if strings.HasPrefix(key, "agentfactory.oracle.com/") || strings.HasPrefix(key, "privateai.oracle.com/") {
 			continue
 		}
 		output[key] = value
@@ -189,17 +191,14 @@ func maxUnavailableFor(replicas int32) int32 {
 func buildPodSpecForPrivateAI(instance *privateaiv4.PrivateAi) *corev1.PodSpec {
 	effective := privateaiv4.EffectivePrivateAiSpecFromSpec(&instance.Spec)
 	podSpec := &corev1.PodSpec{
-		SecurityContext: &corev1.PodSecurityContext{
-			FSGroup:    int64Ptr(2001),
-			RunAsUser:  int64Ptr(2001),
-			RunAsGroup: int64Ptr(2001),
-		},
-		InitContainers: buildInitContainerSpecForPrivateAI(instance),
-		Containers:     buildContainerSpecForPrivateAI(instance),
-		Volumes:        buildVolumeSpecForPrivateAI(instance),
+		ServiceAccountName: effective.Runtime.ServiceAccountName,
+		SecurityContext:    buildPodSecurityContextForPrivateAI(effective.Runtime.SecurityContext),
+		InitContainers:     buildInitContainerSpecForPrivateAI(instance, effective.Runtime.SecurityContext),
+		Containers:         buildContainerSpecForPrivateAI(instance),
+		Volumes:            buildVolumeSpecForPrivateAI(instance),
 	}
 
-	if len(effective.Runtime.WorkerNodes) > 0 {
+	if len(effective.Runtime.WorkerNodes) > 0 || len(effective.Runtime.WorkerNodeSelector) > 0 {
 		podSpec.Affinity = getNodeAffinity(instance)
 	}
 	podSpec.TopologySpreadConstraints = buildTopologySpreadConstraintsForPrivateAI(instance)
@@ -211,16 +210,37 @@ func buildPodSpecForPrivateAI(instance *privateaiv4.PrivateAi) *corev1.PodSpec {
 	return podSpec
 }
 
-// Init container: run as root, chown all pvcList mount paths
-func buildInitContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Container {
+func buildPodSecurityContextForPrivateAI(config *privateaiv4.PrivateAiPodSecurityContextSpec) *corev1.PodSecurityContext {
+	if config == nil {
+		return nil
+	}
+	securityContext := &corev1.PodSecurityContext{}
+	if config.RunAsUser != nil {
+		value := *config.RunAsUser
+		securityContext.RunAsUser = &value
+	}
+	if config.RunAsGroup != nil {
+		value := *config.RunAsGroup
+		securityContext.RunAsGroup = &value
+	}
+	if config.FSGroup != nil {
+		value := *config.FSGroup
+		securityContext.FSGroup = &value
+	}
+	return securityContext
+}
+
+// Init container: explicit runAsUser/runAsGroup requests legacy PVC ownership.
+// The default path leaves identity selection to the platform and has no init container.
+func buildInitContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi, securityContext *privateaiv4.PrivateAiPodSecurityContextSpec) []corev1.Container {
 	entries := orderedPVCEntries(privateaiv4.EffectivePVCList(&instance.Spec))
-	if len(entries) == 0 {
+	if len(entries) == 0 || securityContext == nil || securityContext.FSGroup != nil || securityContext.RunAsUser == nil || securityContext.RunAsGroup == nil {
 		return nil
 	}
 
-	cmds := make([]string, 0, len(entries))
+	chownArgs := []string{"-R", fmt.Sprintf("%d:%d", *securityContext.RunAsUser, *securityContext.RunAsGroup)}
 	for _, entry := range entries {
-		cmds = append(cmds, fmt.Sprintf("chown -R 2001:2001 %q || true", entry.mountPath))
+		chownArgs = append(chownArgs, entry.mountPath)
 	}
 
 	privileged := true
@@ -236,7 +256,8 @@ func buildInitContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev
 			Name:            fmt.Sprintf("%s-init", instance.Name),
 			Image:           image.Name,
 			ImagePullPolicy: image.PullPolicy,
-			Command:         []string{"/bin/sh", "-c", strings.Join(cmds, " && ")},
+			Command:         []string{"chown"},
+			Args:            chownArgs,
 			SecurityContext: &corev1.SecurityContext{Privileged: &privileged, RunAsUser: &rootUser, RunAsGroup: &rootUser},
 			VolumeMounts:    pvcVolumeMounts(instance, true),
 		},
@@ -460,6 +481,15 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 		})
 	}
 
+	if emptyDir := privateAIShmEmptyDir(instance); emptyDir != nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: privateAIShmVolumeName(instance),
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: emptyDir,
+			},
+		})
+	}
+
 	volumes = append(volumes, corev1.Volume{
 		Name:         privateAiLogVolumeName(instance),
 		VolumeSource: corev1.VolumeSource{EmptyDir: privateAiLogEmptyDir(instance)},
@@ -513,6 +543,13 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 	}
 
 	mounts = append(mounts, pvcVolumeMounts(instance, false)...)
+
+	if privateAIShmEmptyDir(instance) != nil {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      privateAIShmVolumeName(instance),
+			MountPath: privateAIShmMountPath,
+		})
+	}
 
 	mounts = append(mounts, corev1.VolumeMount{
 		Name:      privateAiLogVolumeName(instance),
@@ -669,6 +706,7 @@ func PrivateLoadBalancerEnabledForPrivateAI(instance *privateaiv4.PrivateAi) boo
 
 // LegacyExternalServiceEnabledForPrivateAI reports whether the deprecated single external Service should be created.
 func LegacyExternalServiceEnabledForPrivateAI(instance *privateaiv4.PrivateAi) bool {
+	//nolint:staticcheck // Preserve deprecated field support for existing PrivateAI resources.
 	return boolFromString(instance.Spec.IsExternalSvc)
 }
 
@@ -706,13 +744,19 @@ func resolvePaiLoadBalancerServiceSettings(instance *privateaiv4.PrivateAi, svcT
 
 func resolvePaiExternalServiceSettings(instance *privateaiv4.PrivateAi) paiExternalServiceSettings {
 	settings := defaultPaiLoadBalancerServiceSettings()
+	//nolint:staticcheck // Preserve deprecated field support for existing PrivateAI resources.
 	settings.Enabled = boolFromString(instance.Spec.IsExternalSvc)
+	//nolint:staticcheck // Preserve deprecated field support for existing PrivateAI resources.
 	settings.Port = instance.Spec.PaiLBPort
+	//nolint:staticcheck // Preserve deprecated field support for existing PrivateAI resources.
 	settings.LoadBalancerIP = instance.Spec.PaiLBIP
+	//nolint:staticcheck // Preserve deprecated field support for existing PrivateAI resources.
 	if strings.EqualFold(strings.TrimSpace(instance.Spec.PaiLBExternalTrafficPolicy), "local") {
 		settings.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
 	}
+	//nolint:staticcheck // Preserve deprecated field support for existing PrivateAI resources.
 	settings.Internal = boolFromString(instance.Spec.PaiInternalLB)
+	//nolint:staticcheck // Preserve deprecated field support for existing PrivateAI resources.
 	for k, v := range instance.Spec.PailbAnnotation {
 		settings.Annotations[k] = v
 	}
@@ -836,6 +880,173 @@ func privateAiLogEmptyDir(instance *privateaiv4.PrivateAi) *corev1.EmptyDirVolum
 	return empty
 }
 
+func privateAIShmVolumeName(instance *privateaiv4.PrivateAi) string {
+	return fmt.Sprintf("%s-shm-vol", instance.Name)
+}
+
+func privateAIShmEmptyDir(instance *privateaiv4.PrivateAi) *corev1.EmptyDirVolumeSource {
+	shmSize := privateaiv4.EffectiveShmSize(&instance.Spec)
+	if shmSize == "" {
+		return nil
+	}
+	quantity, err := resource.ParseQuantity(shmSize)
+	if err != nil || quantity.Sign() <= 0 {
+		return nil
+	}
+	return &corev1.EmptyDirVolumeSource{
+		Medium:    corev1.StorageMediumMemory,
+		SizeLimit: &quantity,
+	}
+}
+
+// SyncPrivateAISharedMemory synchronizes the operator-owned /dev/shm volume
+// and mount while preserving other volumes, mounts, and injected containers.
+// A Deployment update caused by this function lets Kubernetes roll out Pods
+// with the new shared-memory size.
+func SyncPrivateAISharedMemory(found, desired *appsv1.Deployment) bool {
+	if found == nil || desired == nil {
+		return false
+	}
+
+	managedVolumeName := fmt.Sprintf("%s-shm-vol", desired.Name)
+	var desiredVolume *corev1.Volume
+	for i := range desired.Spec.Template.Spec.Volumes {
+		volume := &desired.Spec.Template.Spec.Volumes[i]
+		if volume.Name == managedVolumeName {
+			desiredVolume = volume.DeepCopy()
+			break
+		}
+	}
+
+	currentVolumes := found.Spec.Template.Spec.Volumes
+	var updatedVolumes []corev1.Volume
+	if currentVolumes != nil || desiredVolume != nil {
+		updatedVolumes = make([]corev1.Volume, 0, len(currentVolumes)+1)
+	}
+	volumeAdded := false
+	for i := range currentVolumes {
+		volume := currentVolumes[i]
+		if volume.Name == managedVolumeName {
+			if desiredVolume != nil && !volumeAdded {
+				updatedVolumes = append(updatedVolumes, *desiredVolume)
+				volumeAdded = true
+			}
+			continue
+		}
+		updatedVolumes = append(updatedVolumes, volume)
+	}
+	if desiredVolume != nil && !volumeAdded {
+		updatedVolumes = append(updatedVolumes, *desiredVolume)
+	}
+	volumeChanged := !reflect.DeepEqual(currentVolumes, updatedVolumes)
+	if volumeChanged {
+		found.Spec.Template.Spec.Volumes = updatedVolumes
+	}
+
+	return volumeChanged || syncPrivateAIShmContainerMount(found, desired, managedVolumeName)
+}
+
+// SyncPrivateAIWorkload synchronizes operator-owned Deployment pod settings.
+// In particular, workerNodes must be reconciled after the Deployment already
+// exists so that changing spec.runtime.workerNodes causes a new rollout.
+func SyncPrivateAIWorkload(found, desired *appsv1.Deployment) bool {
+	updated := SyncPrivateAISharedMemory(found, desired)
+	if found == nil || desired == nil {
+		return updated
+	}
+	if found.Spec.Template.Spec.ServiceAccountName != desired.Spec.Template.Spec.ServiceAccountName {
+		found.Spec.Template.Spec.ServiceAccountName = desired.Spec.Template.Spec.ServiceAccountName
+		updated = true
+	}
+
+	desiredNodeAffinity := (*corev1.NodeAffinity)(nil)
+	if desired.Spec.Template.Spec.Affinity != nil {
+		desiredNodeAffinity = desired.Spec.Template.Spec.Affinity.NodeAffinity
+	}
+	currentAffinity := found.Spec.Template.Spec.Affinity
+	var currentNodeAffinity *corev1.NodeAffinity
+	if currentAffinity != nil {
+		currentNodeAffinity = currentAffinity.NodeAffinity
+	}
+	if reflect.DeepEqual(currentNodeAffinity, desiredNodeAffinity) {
+		return updated
+	}
+
+	if currentAffinity == nil {
+		currentAffinity = &corev1.Affinity{}
+	} else {
+		currentAffinity = currentAffinity.DeepCopy()
+	}
+	if desiredNodeAffinity == nil {
+		currentAffinity.NodeAffinity = nil
+	} else {
+		currentAffinity.NodeAffinity = desiredNodeAffinity.DeepCopy()
+	}
+	if currentAffinity.NodeAffinity == nil && currentAffinity.PodAffinity == nil && currentAffinity.PodAntiAffinity == nil {
+		found.Spec.Template.Spec.Affinity = nil
+	} else {
+		found.Spec.Template.Spec.Affinity = currentAffinity
+	}
+	return true
+}
+
+func syncPrivateAIShmContainerMount(found, desired *appsv1.Deployment, managedVolumeName string) bool {
+	var desiredMount *corev1.VolumeMount
+	for i := range desired.Spec.Template.Spec.Containers {
+		container := &desired.Spec.Template.Spec.Containers[i]
+		if container.Name != desired.Name {
+			continue
+		}
+		for j := range container.VolumeMounts {
+			mount := &container.VolumeMounts[j]
+			if mount.Name == managedVolumeName && mount.MountPath == privateAIShmMountPath {
+				desiredMount = mount.DeepCopy()
+				break
+			}
+		}
+		break
+	}
+
+	for i := range found.Spec.Template.Spec.Containers {
+		container := &found.Spec.Template.Spec.Containers[i]
+		if container.Name != desired.Name {
+			continue
+		}
+
+		currentMounts := container.VolumeMounts
+		var updatedMounts []corev1.VolumeMount
+		if currentMounts != nil || desiredMount != nil {
+			updatedMounts = make([]corev1.VolumeMount, 0, len(currentMounts)+1)
+		}
+		mountAdded := false
+		for j := range currentMounts {
+			mount := currentMounts[j]
+			remove := mount.Name == managedVolumeName
+			if desiredMount != nil && mount.MountPath == privateAIShmMountPath {
+				remove = true
+			}
+			if remove {
+				if desiredMount != nil && !mountAdded {
+					updatedMounts = append(updatedMounts, *desiredMount)
+					mountAdded = true
+				}
+				continue
+			}
+			updatedMounts = append(updatedMounts, mount)
+		}
+		if desiredMount != nil && !mountAdded {
+			updatedMounts = append(updatedMounts, *desiredMount)
+		}
+		if !reflect.DeepEqual(currentMounts, updatedMounts) {
+			container.VolumeMounts = updatedMounts
+			return true
+		}
+		return false
+	}
+
+	return false
+}
+
 func buildLogSidecarForPrivateAI(instance *privateaiv4.PrivateAi, name string) *corev1.Container {
 	if instance.Spec.Logging == nil || !instance.Spec.Logging.Enabled || strings.TrimSpace(instance.Spec.Logging.SidecarImage) == "" {
 		return nil
@@ -845,11 +1056,9 @@ func buildLogSidecarForPrivateAI(instance *privateaiv4.PrivateAi, name string) *
 		Name:            name,
 		Image:           instance.Spec.Logging.SidecarImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command:         []string{"/bin/sh", "-c"},
-		Args: []string{
-			fmt.Sprintf("while true; do if ls %s/* >/dev/null 2>&1; then tail -n+1 -F %s/*; else sleep 2; fi; done", logPath, logPath),
-		},
-		VolumeMounts: []corev1.VolumeMount{{Name: privateAiLogVolumeName(instance), MountPath: logPath}},
+		Command:         []string{"/bin/sh", "-c", privateAILogSidecarScript, "privateai-log-sidecar"},
+		Args:            []string{logPath},
+		VolumeMounts:    []corev1.VolumeMount{{Name: privateAiLogVolumeName(instance), MountPath: logPath}},
 	}
 }
 
@@ -1118,14 +1327,21 @@ func buildTopologySpreadConstraintsForPrivateAI(instance *privateaiv4.PrivateAi)
 
 func getNodeAffinity(instance *privateaiv4.PrivateAi) *corev1.Affinity {
 	workerNodes := privateaiv4.EffectiveWorkerNodes(&instance.Spec)
-	term := corev1.NodeSelectorTerm{
-		MatchExpressions: []corev1.NodeSelectorRequirement{
-			{
-				Key:      "kubernetes.io/hostname",
-				Operator: corev1.NodeSelectorOpIn,
-				Values:   workerNodes,
-			},
-		},
+	term := corev1.NodeSelectorTerm{}
+	if len(workerNodes) > 0 {
+		term.MatchExpressions = append(term.MatchExpressions, corev1.NodeSelectorRequirement{
+			Key: "kubernetes.io/hostname", Operator: corev1.NodeSelectorOpIn, Values: workerNodes,
+		})
+	}
+	if instance.Spec.Runtime != nil {
+		for key, value := range instance.Spec.Runtime.WorkerNodeSelector {
+			term.MatchExpressions = append(term.MatchExpressions, corev1.NodeSelectorRequirement{
+				Key: key, Operator: corev1.NodeSelectorOpIn, Values: []string{value},
+			})
+		}
+	}
+	if len(term.MatchExpressions) == 0 {
+		return nil
 	}
 
 	return &corev1.Affinity{
@@ -1133,10 +1349,6 @@ func getNodeAffinity(instance *privateaiv4.PrivateAi) *corev1.Affinity {
 			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{NodeSelectorTerms: []corev1.NodeSelectorTerm{term}},
 		},
 	}
-}
-
-func int64Ptr(value int64) *int64 {
-	return &value
 }
 
 func boolFromString(value string) bool {

@@ -3,23 +3,23 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-existing
 spec:
-  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa"
+  id: "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   pdbConfigs:
-    - pdbName: "pdb_sauahuja_sdk_13"
+    - pdbName: "pdb_example_sdk_13"
       tdeWalletPassword: "tde-password"
       pdbAdminPassword: "pdb-password"
       shouldPdbAdminAccountBeLocked: false
       freeformTags:
         Department: "Finance"
-    - pdbName: "pdb_sauahuja_sdk_14"
+    - pdbName: "pdb_example_sdk_14"
       tdeWalletPassword: "tde-password"
       pdbAdminPassword: "pdb-password"
       shouldPdbAdminAccountBeLocked: false
       freeformTags:
         Department: "HR"
-    - pdbName: "pdb_sauahuja_sdk_15"
+    - pdbName: "pdb_example_sdk_15"
       tdeWalletPassword: "tde-password"
       pdbAdminPassword: "pdb-password"
       shouldPdbAdminAccountBeLocked: false

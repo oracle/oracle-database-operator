@@ -1,0 +1,80 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Example DataguardBroker for the two-cluster LB topology.
+# Apply this resource only in the standby cluster. It manages the primary and
+# standby as one Broker configuration; it does not create either database.
+# Prefer generating this file from standby status so it uses current NLB hosts:
+#   config/samples/sidb/render-dg-broker-from-status.sh sidb sidb-standby <namespace>
+# See docs/sidb/dataguard/DATAGUARD_CROSS_CLUSTER_LB.md.
+#
+# Before apply:
+# - Replace the namespace in every marked location.
+# - Use the same admin Secret name/key as both SIDB resources in the standby
+#   cluster. The Secret value must match the primary database password.
+# - Use the same compatible execution image as the SIDB databases.
+# - Replace both member endpoint hosts with the current primary/standby NLB DNS
+#   names (preferred) or IPs. Do not use Pod IPs or Kubernetes ClusterIPs.
+# - Apply this file in the standby cluster; localRef/sourceRef point to the
+#   standby SIDB that exists in that cluster.
+# - SIDB prerequisite configuration sets FAL_SERVER; this Broker CR configures
+#   the complete topology and redo transport.
+
+apiVersion: database.oracle.com/v4
+kind: DataguardBroker
+metadata:
+  name: sidb-standby-dg
+  # Broker configuration name; must match the DGB variable in the runbook.
+  namespace: <operator-watched-namespace>
+spec:
+  execution:
+    # Broker runner uses an authentication wallet to connect to both databases.
+    authWallet:
+      enabled: true
+    # Use an image compatible with the database image and available to the
+    # operator in the standby cluster.
+    image: container-registry.oracle.com/database/enterprise_ru:latest
+  topology:
+    defaults:
+      # This Secret is read in the standby cluster and supplies the Broker
+      # administrator password for both members.
+      adminSecretRef:
+        secretKey: oracle_pwd
+        secretName: db-admin-secret
+    members:
+      # The primary member is remote to this cluster, so it has no localRef.
+      # Its endpoint must be the primary NLB DNS name or IP.
+      - dbUniqueName: ORCLPRD
+        endpoints:
+          - host: "<primary-nlb-ip-or-dns>"
+            name: tcp
+            port: 1521
+            protocol: TCP
+            serviceName: ORCLPRD
+        name: primary-nlb
+        role: PRIMARY
+      - dbUniqueName: ORCLSTBY
+        # The standby member is local to this cluster and therefore has a
+        # localRef pointing to the standby SingleInstanceDatabase resource.
+        endpoints:
+          - host: "<standby-nlb-ip-or-dns>"
+            name: tcp
+            port: 1521
+            protocol: TCP
+            serviceName: ORCLSTBY
+        localRef:
+          apiVersion: database.oracle.com/v4
+          kind: SingleInstanceDatabase
+          name: sidb-standby
+          namespace: <operator-watched-namespace>
+        name: sidb-standby
+        role: PHYSICAL_STANDBY
+    sourceKind: SingleInstanceDatabase
+    # Broker operations are anchored on the local standby SIDB.
+    sourceRef:
+      apiVersion: database.oracle.com/v4
+      kind: SingleInstanceDatabase
+      name: sidb-standby
+      namespace: <operator-watched-namespace>

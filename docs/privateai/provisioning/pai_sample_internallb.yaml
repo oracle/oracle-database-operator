@@ -35,18 +35,9 @@ spec:
         path: keystore
   runtime:
     image:
-      name: container-registry.oracle.com/database/private-ai:latest
+      name: container-registry.oracle.com/database/private-ai:large-cpu-infer-latest
       pullSecret: oracle-container-registry-secret
-    replicas: 3
-    workerNodes:
-    - <<Replace with the worker nodes>>
-    resources:
-      requests:
-        memory: "8Gi"
-        cpu: "2"
-      limits:
-        memory: "8Gi"
-        cpu: "2"
+    replicas: 1
   configuration:
     configFile:
       name: privateaiconfigjson

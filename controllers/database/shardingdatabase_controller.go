@@ -199,7 +199,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	status := inst.Status.DeepCopy()
+	status := &inst.Status
 	// Phase 2: Condition + Status Writer (single-writer pattern)
 	finalCond := newConditionSet(inst.Generation)
 
@@ -309,12 +309,28 @@ func (r *ShardingDatabaseReconciler) flushStatus(
 		if err := r.Get(ctx, key, curr); err != nil {
 			return err
 		}
-		curr.Status = *draft
-		meta.SetStatusCondition(&curr.Status.CrdStatus, conds.ready)
-		meta.SetStatusCondition(&curr.Status.CrdStatus, conds.reconciling)
-		meta.SetStatusCondition(&curr.Status.CrdStatus, conds.degraded)
+		desired := draft.DeepCopy()
+		setStatusConditionPreservingTransition(&desired.CrdStatus, conds.ready)
+		setStatusConditionPreservingTransition(&desired.CrdStatus, conds.reconciling)
+		setStatusConditionPreservingTransition(&desired.CrdStatus, conds.degraded)
+		if reflect.DeepEqual(curr.Status, *desired) {
+			return nil
+		}
+
+		curr.Status = *desired
 		return r.Status().Update(ctx, curr)
 	})
+}
+
+func setStatusConditionPreservingTransition(conditions *[]metav1.Condition, condition metav1.Condition) {
+	if previous := meta.FindStatusCondition(*conditions, condition.Type); previous != nil &&
+		previous.Status == condition.Status &&
+		previous.Reason == condition.Reason &&
+		previous.Message == condition.Message &&
+		previous.ObservedGeneration == condition.ObservedGeneration {
+		condition.LastTransitionTime = previous.LastTransitionTime
+	}
+	meta.SetStatusCondition(conditions, condition)
 }
 
 // Phase 3: Delete
@@ -422,6 +438,14 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 ) phaseResult {
 	_ = st
 	_ = c
+
+	// Verify PVC access before creating any Services or StatefulSets. PVCs for
+	// StatefulSet volumeClaimTemplates are created asynchronously by Kubernetes,
+	// so waiting until after the StatefulSet is created would allow a partial
+	// deployment when the operator's PVC permissions are missing.
+	if err := r.preflightPVCAccess(ctx, inst.Namespace); err != nil {
+		return phaseResult{err: err, reason: "PVCAccessPreflightFailed", message: err.Error()}
+	}
 
 	var i int32
 	externalCatalogMode := r.isExternalCatalogMode(inst)
@@ -580,6 +604,14 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	}
 
 	return phaseResult{}
+}
+
+func (r *ShardingDatabaseReconciler) preflightPVCAccess(ctx context.Context, namespace string) error {
+	pvcs := &corev1.PersistentVolumeClaimList{}
+	if err := r.List(ctx, pvcs, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("cannot access persistentvolumeclaims in namespace %s: %w", namespace, err)
+	}
+	return nil
 }
 
 type pvcResizeSpec struct {
@@ -1051,8 +1083,20 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 		CreateFunc: func(_ event.CreateEvent) bool {
 			return true
 		},
-		UpdateFunc: func(_ event.UpdateEvent) bool {
-			return true
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldInstance, oldOK := e.ObjectOld.(*databasev4.ShardingDatabase)
+			newInstance, newOK := e.ObjectNew.(*databasev4.ShardingDatabase)
+			if !oldOK || !newOK {
+				return true
+			}
+
+			if oldInstance.Generation != newInstance.Generation {
+				return true
+			}
+			return !reflect.DeepEqual(oldInstance.Annotations, newInstance.Annotations) ||
+				!reflect.DeepEqual(oldInstance.Labels, newInstance.Labels) ||
+				!reflect.DeepEqual(oldInstance.Finalizers, newInstance.Finalizers) ||
+				!reflect.DeepEqual(oldInstance.DeletionTimestamp, newInstance.DeletionTimestamp)
 		},
 		DeleteFunc: func(_ event.DeleteEvent) bool {
 			// //instance := &databasev4.ShardingDatabase{}
@@ -2595,9 +2639,6 @@ func (r *ShardingDatabaseReconciler) updateCatalogStatus(instance *databasev4.Sh
 	}
 
 	shardingv1.UpdateCatalogStatusData(instance, specIdx, state, r.kubeConfig, r.Log)
-	if err := r.Status().Update(context.Background(), instance); err != nil {
-		r.logLegacy("DEBUG", "updateCatalogStatus: status update failed", err, instance, r.Log)
-	}
 
 	if eventChanged {
 		r.publishEvents(instance, eventMsg, state)
@@ -2621,9 +2662,6 @@ func (r *ShardingDatabaseReconciler) updateShardStatus(instance *databasev4.Shar
 	}
 
 	shardingv1.UpdateShardStatusData(instance, specIdx, state, r.kubeConfig, r.Log)
-	if err := r.Status().Update(context.Background(), instance); err != nil {
-		r.logLegacy("DEBUG", "updateShardStatus: status update failed", err, instance, r.Log)
-	}
 
 	if eventChanged {
 		r.publishEvents(instance, eventMsg, state)
@@ -2642,9 +2680,6 @@ func (r *ShardingDatabaseReconciler) updateGsmShardStatus(instance *databasev4.S
 
 	if eventChanged {
 		shardingv1.UpdateGsmShardStatus(instance, name, state)
-		if err := r.Status().Update(context.Background(), instance); err != nil {
-			r.logLegacy("DEBUG", "updateGsmShardStatus: status update failed", err, instance, r.Log)
-		}
 		r.publishEvents(instance, eventMsg, state)
 	}
 }
@@ -3698,6 +3733,22 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(
 		return ctrl.Result{}, err
 	}
 
+	// Resource changes must restart the pod. Detect them before the scoped sync
+	// mutates the StatefulSet, otherwise the later drift check sees no change
+	// and an existing pod can continue running with its old limits/requests.
+	current := &appsv1.StatefulSet{}
+	getErr := r.Get(ctx, types.NamespacedName{Name: dep.Name, Namespace: dep.Namespace}, current)
+	if getErr == nil && statefulSetContainerResourcesDrift(current, dep, containerName) {
+		if err := r.Delete(ctx, current); err != nil && !errors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		}
+		r.logLegacy("INFO", "Deleted StatefulSet "+shardingv1.GetFmtStr(dep.Name)+" for resource rollout", nil, instance, r.Log)
+		return ctrl.Result{Requeue: true}, nil
+	}
+	if getErr != nil && !errors.IsNotFound(getErr) {
+		return ctrl.Result{}, getErr
+	}
+
 	result, err := sharedk8sobjects.ReconcileStatefulSet(
 		context.TODO(),
 		r.Client,
@@ -3723,6 +3774,28 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(
 	}
 	r.logLegacy("DEBUG", "StatefulSet "+shardingv1.GetFmtStr(dep.Name)+" already in desired scoped state", nil, instance, r.Log)
 	return ctrl.Result{}, nil
+}
+
+func statefulSetContainerResourcesDrift(current, desired *appsv1.StatefulSet, containerName string) bool {
+	if current == nil || desired == nil {
+		return false
+	}
+	var desiredResources *corev1.ResourceRequirements
+	for i := range desired.Spec.Template.Spec.Containers {
+		if desired.Spec.Template.Spec.Containers[i].Name == containerName {
+			desiredResources = &desired.Spec.Template.Spec.Containers[i].Resources
+			break
+		}
+	}
+	if desiredResources == nil {
+		return false
+	}
+	for i := range current.Spec.Template.Spec.Containers {
+		if current.Spec.Template.Spec.Containers[i].Name == containerName {
+			return !reflect.DeepEqual(current.Spec.Template.Spec.Containers[i].Resources, *desiredResources)
+		}
+	}
+	return false
 }
 
 func syncShardingStatefulSetScopedFields(
@@ -5127,7 +5200,12 @@ func (r *ShardingDatabaseReconciler) updateStatusWithRetry(instance *databasev4.
 		if err := r.Get(context.Background(), key, latest); err != nil {
 			return err
 		}
+		before := latest.Status.DeepCopy()
 		mutate(latest)
+		if reflect.DeepEqual(*before, latest.Status) {
+			instance.Status = latest.Status
+			return nil
+		}
 		if err := r.Status().Update(context.Background(), latest); err != nil {
 			return err
 		}

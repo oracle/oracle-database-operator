@@ -7,7 +7,7 @@ spec:
   ociSecret: "oci-privatekey"
   dbSystem:
     availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+    compartmentId: "ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>"
     dbAdminPasswordSecret: "admin-password"
     dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
     dbName: "kmsdb"
@@ -20,8 +20,8 @@ spec:
     domain: "subdda0b5eaa.cluster1.oraclevcn.com"
     sshPublicKeys:
      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
+    subnetId: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"
   kmsConfig:
     vaultName: "dbvault-local-06"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+    compartmentId: "ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>"
     keyName: "dbkey-local-06"

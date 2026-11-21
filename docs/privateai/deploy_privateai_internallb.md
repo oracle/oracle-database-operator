@@ -1,27 +1,28 @@
-# Deploy PrivateAI in OKE cluster using Internal LB
+# Deploy Oracle Private AI in an OKE Cluster with an Internal Load Balancer
 
-Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In this example, the deployment uses the YAML file based on `OCI OKE` cluster.
+This example deploys the Oracle Private AI container on an OCI OKE cluster using a YAML manifest.
 
-**NOTE:** The option to reserve a Private IP and use that with an OCI Internal LoadBalancer is available from `OCI OKE` cluster with Kubernetes version 1.32 onwards. For details, see the [Configuring Load Balancers and Network Load Balancers documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
+**Note:** OKE supports assigning a reserved private IPv4 address to an internal load balancer on clusters running Kubernetes 1.32 or later. The reserved IP address must belong to the subnet used by the load balancer. For details, see [Configuring Load Balancers and Network Load Balancers](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
 
-**IMPORTANT:** Complete [Before You Begin](./README.md#before-you-begin) before using Oracle PrivateAI Controller. Ensure that you use the Reserved Private IP Address for the Internal LoadBalancer to the parameter `IP_ADDRESS` while creating the certificate for this `PrivateAi` Deployment. Please refer to the [Adding a Reserved IPv4 Address documentation](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/reserved-ipv4-adding.htm) for the steps to reserve an IP in the subnet you want.
+**Important:** Complete [Before You Begin](./README.md#before-you-begin) before deploying the Private AI resource. Use the reserved private IP address as the `IP_ADDRESS` value when creating the certificate. The certificate must be valid for the address clients use to connect. For instructions on reserving a private IP address, see [Adding a Reserved IPv4 Address](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/reserved-ipv4-adding.htm).
 
-**NOTE:** Modify the file `pai_sample_internallb.yaml` with the actual Reserved Private IP before deployment.
+1. Start with [`pai_sample_internallb.yaml`](./provisioning/pai_sample_internallb.yaml).
 
-Use the file: [pai_sample_internallb.yaml](./provisioning/pai_sample_internallb.yaml) for this use case as below:
+2. Replace the reserved private IP placeholder. Ensure the certificate SAN contains the same IP address.
 
-1. Deploy the `pai_sample_internallb.yaml` file:
+3. From the repository root, apply the manifest and wait for the Private AI resource to become healthy:
 
-    ```sh
-    kubectl apply -f pai_sample_internallb.yaml
-    ```
+   ```sh
+   kubectl apply -f docs/privateai/provisioning/pai_sample_internallb.yaml
+   kubectl wait --for=jsonpath='{.status.status}'=Healthy pai/pai-sample \
+     -n pai --timeout=15m
+   ```
 
-2. Check the status of the deployment:
+4. Verify the Private AI resource status, load balancer details, and Pod readiness:
 
-    ```sh
-    # Check the status of the Kubernetes Pods:
-    kubectl get all -n pai
+   ```sh
+   kubectl get pai pai-sample -n pai -o yaml
+   kubectl get pods,services -n pai
+   ```
 
-    # Check the logs of a particular pod. For example, to check status of pod "pai-sample-b669d7897-nkkhz":
-    kubectl logs pod/pai-sample-b669d7897-nkkhz -n pai
-    ```
+Proceed when the resource reports `Healthy`, the private load balancer address matches the reserved IP, and the Pod or Pods are Ready.

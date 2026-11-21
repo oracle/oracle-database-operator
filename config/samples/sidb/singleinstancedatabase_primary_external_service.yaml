@@ -11,7 +11,7 @@ metadata:
   annotations:
     oci.oraclecloud.com/load-balancer-type: "nlb"
     oci-network-load-balancer.oraclecloud.com/internal: "true"
-    oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.replace-me"
+    oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"
     external-dns.alpha.kubernetes.io/hostname: "orcl-production.internal.example.com"
 spec:
   type: LoadBalancer

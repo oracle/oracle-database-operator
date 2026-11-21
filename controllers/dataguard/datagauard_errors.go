@@ -43,10 +43,10 @@ import (
 )
 
 // ErrSidbWithMutipleReplicas indicates DataguardBroker cannot proceed with multi-replica SIDB.
-var ErrSidbWithMutipleReplicas error = errors.New("SingleInstanceDatabase with multiple replicas is not supported")
+var ErrSidbWithMutipleReplicas = errors.New("SingleInstanceDatabase with multiple replicas is not supported")
 
 // ErrCurrentPrimaryDatabaseNotReady indicates the current primary database exists but is not ready.
-var ErrCurrentPrimaryDatabaseNotReady error = errors.New("current primary database not ready")
+var ErrCurrentPrimaryDatabaseNotReady = errors.New("current primary database not ready")
 
 // ErrCurrentPrimaryDatabaseNotFound indicates the current primary database could not be resolved.
-var ErrCurrentPrimaryDatabaseNotFound error = errors.New("current primary database not found")
+var ErrCurrentPrimaryDatabaseNotFound = errors.New("current primary database not found")

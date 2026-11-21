@@ -183,7 +183,7 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "Error retrieving resource")
-		return ctrl.Result{Requeue: true, RequeueAfter: time.Minute}, err
+		return ctrl.Result{}, err
 	}
 
 	rState.specChanged = ordssrvs.Status.ObservedGeneration != ordssrvs.Generation
@@ -310,17 +310,6 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	// Set the Type as Unsynced when a pod restart is required
-	if rState.RestartPods {
-		condition := metav1.Condition{Type: typeUnsyncedORDS,
-			Status:  metav1.ConditionTrue,
-			Reason:  "Unsynced",
-			Message: "Configurations have changed"}
-		if err := r.UpdateStatus(ctx, req, rState, condition); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-
 	// Workloads
 	if err := r.WorkloadReconcile(ctx, req, ordssrvs, rState, ordssrvs.Spec.WorkloadType); err != nil {
 		logger.Error(err, "Error in WorkloadReconcile")
@@ -340,16 +329,22 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		logger.Error(err, "Error in ServiceReconcile")
 		return ctrl.Result{}, err
 	}
-
-	// Set the Type as Available when a pod restart is not required
-	if !rState.RestartPods {
-		condition := metav1.Condition{Type: typeAvailableORDS,
-			Status:  metav1.ConditionTrue,
-			Reason:  "Available",
-			Message: "Workload in Sync"}
-		if err := r.UpdateStatus(ctx, req, rState, condition); err != nil {
-			return ctrl.Result{}, err
-		}
+	unsyncedCondition := metav1.Condition{
+		Type:    typeUnsyncedORDS,
+		Status:  metav1.ConditionFalse,
+		Reason:  "Synced",
+		Message: "Configurations are in sync",
+	}
+	if rState.RestartPods {
+		unsyncedCondition.Status = metav1.ConditionTrue
+		unsyncedCondition.Reason = "Unsynced"
+		unsyncedCondition.Message = "Configurations have changed"
+	}
+	if err := r.UpdateStatus(ctx, req, rState, unsyncedCondition); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.UpdateStatus(ctx, req, rState, r.workloadAvailabilityCondition(ctx, ordssrvs)); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	if err := r.Get(ctx, req.NamespacedName, ordssrvs); err != nil {
@@ -357,7 +352,13 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	requeueAfter, err := r.ReconcilePoolProbes(ctx, req, ordssrvs, rState)
+	if err != nil {
+		logger.Error(err, "Error reconciling pool probes")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
 // PVCReconcile reconciles a PVC used by an OrdsSrvs-managed volume.
@@ -737,6 +738,18 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(
 	if err != nil {
 		return corev1.PodTemplateSpec{}, err
 	}
+	probePortName := targetHTTPPortName
+	probeScheme := corev1.URISchemeHTTP
+	if rState.httpsEnabled {
+		probePortName = targetHTTPSPortName
+		probeScheme = corev1.URISchemeHTTPS
+	}
+	probePath := "/favicon.ico"
+	if ordssrvs.Spec.ContainerProbeSettings.Path != nil {
+		probePath = *ordssrvs.Spec.ContainerProbeSettings.Path
+	}
+	containerProbeSettings := ordsContainerProbeSettingsDefine(ordssrvs.Spec.ContainerProbeSettings)
+	probeHost := ordsProbeHost(ordssrvs, rState)
 
 	podSpecTemplate :=
 		corev1.PodTemplateSpec{
@@ -772,6 +785,12 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(
 				AutomountServiceAccountToken: k8s.BoolOrDefault(ordssrvs.Spec.AutomountServiceAccountToken, false),
 			},
 		}
+	if probePath != "" {
+		mainContainer := &podSpecTemplate.Spec.Containers[0]
+		mainContainer.StartupProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, containerProbeSettings.timeoutSeconds, containerProbeSettings.periodSeconds, containerProbeSettings.startupFailureThreshold)
+		mainContainer.LivenessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, containerProbeSettings.timeoutSeconds, containerProbeSettings.periodSeconds, containerProbeSettings.livenessFailureThreshold)
+		mainContainer.ReadinessProbe = ordsHTTPProbe(probePath, probePortName, probeScheme, probeHost, containerProbeSettings.timeoutSeconds, containerProbeSettings.periodSeconds, containerProbeSettings.readinessFailureThreshold)
+	}
 
 	if ordssrvs.Spec.AccessLogForwarder.Enabled {
 		podSpecTemplate.Spec.Containers = append(
@@ -781,6 +800,65 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(
 	}
 
 	return podSpecTemplate, nil
+}
+
+type ordsContainerProbeSettings struct {
+	timeoutSeconds            int32
+	periodSeconds             int32
+	startupFailureThreshold   int32
+	readinessFailureThreshold int32
+	livenessFailureThreshold  int32
+}
+
+func ordsContainerProbeSettingsDefine(settings dbapi.OrdsSrvsContainerProbeSettings) ordsContainerProbeSettings {
+	containerProbeSettings := ordsContainerProbeSettings{
+		timeoutSeconds:            3,
+		periodSeconds:             10,
+		startupFailureThreshold:   30,
+		readinessFailureThreshold: 3,
+		livenessFailureThreshold:  18,
+	}
+	if settings.TimeoutSeconds != 0 {
+		containerProbeSettings.timeoutSeconds = settings.TimeoutSeconds
+	}
+	if settings.PeriodSeconds != 0 {
+		containerProbeSettings.periodSeconds = settings.PeriodSeconds
+	}
+	if settings.StartupFailureThreshold != 0 {
+		containerProbeSettings.startupFailureThreshold = settings.StartupFailureThreshold
+	}
+	if settings.ReadinessFailureThreshold != 0 {
+		containerProbeSettings.readinessFailureThreshold = settings.ReadinessFailureThreshold
+	}
+	if settings.LivenessFailureThreshold != 0 {
+		containerProbeSettings.livenessFailureThreshold = settings.LivenessFailureThreshold
+	}
+	return containerProbeSettings
+}
+
+// ordsHTTPProbe checks that the local ORDS listener can answer an HTTP request.
+func ordsHTTPProbe(path, portName string, scheme corev1.URIScheme, host string, timeoutSeconds, periodSeconds, failureThreshold int32) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path:        path,
+				Port:        intstr.FromString(portName),
+				Scheme:      scheme,
+				HTTPHeaders: []corev1.HTTPHeader{{Name: "Host", Value: host}},
+			},
+		},
+		TimeoutSeconds:   timeoutSeconds,
+		PeriodSeconds:    periodSeconds,
+		FailureThreshold: failureThreshold,
+	}
+}
+
+// ordsProbeHost returns the Host header used by local ORDS probes.
+func ordsProbeHost(ordssrvs *dbapi.OrdsSrvs, rState *OrdsSrvsReconcileState) string {
+	if rState.httpsEnabled && ordssrvs.Spec.GlobalSettings.StandaloneHTTPSHost != "" {
+		return ordssrvs.Spec.GlobalSettings.StandaloneHTTPSHost
+	}
+	return "localhost"
 }
 
 // accessLogForwarderContainerDefine defines the sidecar that forwards HTTP access logs to stdout.
@@ -1212,8 +1290,6 @@ func (r *OrdsSrvsReconciler) envDefine(ctx context.Context, ordssrvs *dbapi.Ords
 	// init container only
 	if initContainer {
 
-		envVars = addEnvVar(envVars, "download_apex", strconv.FormatBool(ordssrvs.Spec.GlobalSettings.APEXDownload))
-		envVars = addEnvVar(envVars, "download_url_apex", ordssrvs.Spec.GlobalSettings.APEXDownloadURL)
 		envVars = addEnvVar(envVars, "external_apex", strconv.FormatBool(rState.APEXInstallationExternal))
 
 		instanceAPIAdminUser := ordssrvs.Spec.GlobalSettings.InstanceAPIAdminUser
@@ -1314,7 +1390,8 @@ func validatePVCConsistency(ordssrvs *dbapi.OrdsSrvs, pvcName string, pvc *corev
 	}
 
 	expectedVolumeName := persistence.VolumeName
-	if pvc.Spec.VolumeName != expectedVolumeName {
+	// When no volume is requested, Kubernetes selects and records the bound PV.
+	if expectedVolumeName != "" && pvc.Spec.VolumeName != expectedVolumeName {
 		return fmt.Errorf("pvc %s/%s volumeName mismatch: expected %q, found %q", ordssrvs.Namespace, pvcName, expectedVolumeName, pvc.Spec.VolumeName)
 	}
 

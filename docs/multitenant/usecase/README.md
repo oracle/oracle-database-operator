@@ -1,16 +1,16 @@
 <!-- vscode-markdown-toc -->
-* 1. [Prerequisites](#Prerequisites)
-* 1. [Operator setup](#Operatorsetup)
-* 1. [Secrets creation](#Secretscreation)
-* 1. [Yaml file creation](#Yamlfilecreation)
-* 1. [Run testcase](#Runtestcase)
-* 1. [Makefile targets table](#Makefiletargetstable)
-* 1. [Diag commands and troubleshooting](#Diagcommandsandtroubleshooting)
-  * 7.1. [Connect to rest server pod](#Connecttorestserverpod)
-  * 7.2. [Lrest pod log](#Lrestpodlog)
-  * 7.3. [Monitor control plane](#Monitorcontrolplane)
-  * 7.4. [Error decrypting credential](#Errordecryptingcredential)
-  * 7.5. [Crd details](#Crddetails)
+1. [Prerequisites](#Prerequisites)
+2. [Operator setup](#Operatorsetup)
+3. [Secrets creation](#Secretscreation)
+4. [YAML file creation](#Yamlfilecreation)
+5. [Working with single instance database controller](#Workingwithsingleinstancedatabasecontroller)
+6. [Run testcase](#Runtestcase)
+7. [Makefile targets table](#Makefiletargetstable)
+8. [Diag commands and troubleshooting](#Diagcommandsandtroubleshooting)
+   1. [Connect to rest server pod](#Connecttorestserverpod)
+   2. [LREST pod log](#Lrestpodlog)
+   3. [Monitor control plane](#Monitorcontrolplane)
+   4. [CRD details](#Crddetails)
 
 <!-- vscode-markdown-toc-config
 	numbering=true
@@ -22,7 +22,7 @@
 
 # Use case directory
 
-The use case directory includes a Makefile that automates the installation of the Oracle Database Operator using a namespace-scoped configuration and generates the YAML files required to test PDB lifecycle management across two different namespaces (one for the LREST pod and another for the PDB CRD).
+The use case directory includes a Makefile that automates the installation of the Oracle AI Database Operator using a namespace-scoped configuration and generates the YAML files required to test PDB lifecycle management across two different namespaces (one for the LREST pod and another for the PDB CRD).
 
 To simplify and accelerate the setup process, you only need to update the [parameter file](../usecase/parameters.txt) with the details specific to your environment. The Makefile then uses these parameters to automatically generate all the YAML files needed to test the controllers.
 
@@ -33,30 +33,41 @@ After parameters setup there is the operator installation (**make opsetup**) , t
 **parameter file table of contents**
 
 ```text
-                                Check the latest version available<--------------+
-                                                                                 |           
-                                                                              +-----+
-LRESTIMG...............:container-registry.oracle.com/database/operator:lrest-241210-amd64
-OPRIMG.................:[latest image of oracle database operator available on OCR]
-TNSSTRING..............:[Tnsalias do not use quotes and avoid space in the string --> (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELA....]
-TNSTOPOLOGY............:[Possible value:**FULLDESC** **TNSNAMES**]
-TNSALIAS...............:[tns alias]
-DBUSER.................:[CDB admin user]
-DBPASS.................:[CDB admin user password]
-PDBUSR.................:[PDB admin user]
-PDBPWD.................:[PDB admin user password]
+TNSTOPOLOGY............:[FULLDESC|TNSNAMES]
+USESIDB................:[TRUE|FALSE]
+LRESTIMG...............:container-registry.oracle.com/database/operator:lrest_[get the latest]
+OPRIMG.................:container-registry.oracle.com/database/operator:latest
+TNSSTRING..............:[tnsstring E.G. sidb-sample.sidbnamespace:1521/ORCL1....]
+TNSALIAS...............:[tnsalias from tnsnames.ora]
+DBUSER.................:[rest dba user]
+DBPASS.................:[rest dba p.]
+PDBUSR.................:[pdb admin user]
+PDBPWD.................:[pdb admin p.]
 PDBNAMESPACE...........:[pdb namespace]
 LRSNAMESPACE...........:[cdb namespace]
-COMPANY................:[your company name]
-APIVERSION.............:[v4 --> do not edit]
-SERVICENAMEACCOUNT.....:[service account - for openshift ]
-AUTODISCOVER...........:[boolean: check for pdb with no crd ]
-CODE_TREE..............:[Is the path of the directory with the original operator yaml file]
-CERT_MANAGER...........:https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
-OPENSHIFT..............:[boolean]
+SIDNAMESPACE...........:[sidb namespace]
+COMPANY................:oracle
+SERVICENAMEACCOUNT.....:default
+APIVERSION.............:v4 [leave v4 do not edit]
+PLSQLMAP...............:[config map containg plsql]
+AUTODISCOVER...........:[TRUE|FALSE]
+ORACLE_OPERATOR_YAML...:oracle-database-operator-system.yaml
+ORACLE_OPERATOR_RBAC...:oracle-database-operator-rbac.yaml
+CODE_TREE..............:[directory where operatore code is cloned (git clone..)]
+CERT_MANAGER...........:https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
+OPENSHIFT..............:[TRUE|FALSE]
+PASSPROTECTION.........:[NATIVE|OPENSSL3|ORAPKI]
+LRESTTRC...............:1
+LRPDBTRC...............:128
+FILENAMECONVERSION.....:NONE
+OCRU...................:[oracle container registry user]
+OCRP...................:[oracle container registry p.]
+
 ```
 
-Verify parameters using ``make check`` command.
+> Verify parameters using ``make check`` command. Read doc **[MAKE FILE PARAMETERS](./PARAMETERS.md)** for additional details.
+
+> Read file **[QUICK SETUP EXAMPLE](./QUICK_SETUP.md)** to configure multitenant controller environment:
 
 ## 1. <a name='Prerequisites'></a>Prerequisites
 
@@ -107,6 +118,18 @@ make genyaml
 
 **make genyaml** generates the required `yaml` files to work with multitenant controllers.
 
+## 5. <a name='Workingwithsingleinstancedatabasecontroller'></a>Working with single instance database controller
+
+If an external database is not available to test multitenant controller is possible to leverage on **sidb** controller in order to have a single instance database available on the kubernetes cluster. After operator setup execute the following steps to deploy a sidb.
+
+* edit parameter file; set **USESIDB:TRUE**
+* edit parameter file; set **OCRU** and **OCRP** with the [Oracle Container Registry](https://container-registry.oracle.com/) credential. This steps are required to download the Oracle Database Enterprise edition image.  
+* run **make sidb**
+  * regenerate yaml files
+  * create secrets
+  * create sidb container with a running database
+  * create lrest dba user on the database
+
 ## 5. <a name='Runtestcase'></a>Run testcase
 
 ```bash
@@ -122,7 +145,9 @@ You can run **make runall00** to test all the functionality the multitenant cont
 |**opsetup**     | setup the operator                                                   |
 |**secrets**     | create secrets for cdb connection                                    |
 |**genyaml**     | generate yaml files                                                  |
-|target          | description                                                          |
+|createsidb      | create sidb (to use database running on k8s)                         |
+|stopsidb        | shutdown sidb instance                                               |
+|startsidb       | startup sidb instance                                                |
 |tkapplyinit     | config map creation                                                  |
 |opclean         | deintall the operator                                                |
 |run00           | lrest pod creation                                                   |
@@ -137,6 +162,7 @@ You can run **make runall00** to test all the functionality the multitenant cont
 |run06.1         | pdb1 plug                                                            |
 |dumplrest       | dump lrest                                                           |
 |dumpoperator    | dump operator logs                                                   |
+|currimg         | show operator image used                                             |
 |check           | print parameters value                                               |
 |tklrestnew      | online rest server recreation/https certificate rotation             |
 |mgrrestart      | restart manager                                                      |
@@ -169,6 +195,7 @@ You can run **make runall00** to test all the functionality the multitenant cont
 |opclean         | deintall the operator                                                |
 |checkimpdel     | report of imperative delete setting                                  |
 |cleanlrest      | drop lrest resource                                                  |
+|probetest       | test liveness                                                        |
 
 ## 7. <a name='Diagcommandsandtroubleshooting'></a>Diag commands and troubleshooting
 
@@ -226,22 +253,7 @@ I1029 10:07:20.189724       1 leaderelection.go:250] attempting to acquire leade
 2024-10-29T16:49:15Z    INFO    lrpdb-webhook   Setting default values in LRPDB spec for : lrpdb1
 ```
 
-### 7.4. <a name='Errordecryptingcredential'></a>Error decrypting credential
-
-In the following example you can see a resource creation failure due to a decryption issue
-
-```text
-2024-10-30T10:09:08Z    INFO    controllers.LRPDB       getEncriptedSecret :pdbusr      {"getEncriptedSecret": {"name":"lrpdb1","namespace":"pdbnamespace"}}
-2024-10-30T10:09:08Z    ERROR   controllers.LRPDB       Failed to parse private key - x509: failed to parse private key (use ParsePKCS1PrivateKey instead for this key format)     {"DecryptWithPrivKey": {"name":"lrpdb1","namespace":"pdbnamespace"}, "error": "x509: failed to parse private key (use ParsePKCS1PrivateKey instead for this key format)"}
-```
-
-**Solution**: Ensure you use **PCKS8** format during private key generation. If you are not using `openssl3`, then run this command:
-
-```bash
-openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > mykey
-```
-
-### 7.5. <a name='Crddetails'></a>Crd details
+### 7.4. <a name='Crddetails'></a>Crd details
 
 Use the **describe** option to obtain `crd` information
 

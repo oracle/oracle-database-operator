@@ -6,7 +6,7 @@ apiVersion: database.oracle.com/v4
 kind: OracleRestDataService
 metadata:
   name: ords-sample
-  namespace: default
+  namespace: ordsnamespace
 spec:
   
   ## Database ref. This can be of kind SingleInstanceDatabase.

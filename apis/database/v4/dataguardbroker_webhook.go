@@ -242,7 +242,14 @@ func validateLegacyDataguardBroker(obj *DataguardBroker) field.ErrorList {
 	}
 
 	if !isValidDataguardProtectionMode(obj.Spec.ProtectionMode) {
-		allErrs = append(allErrs, field.Invalid(specPath.Child("protectionMode"), obj.Spec.ProtectionMode, "must be MaxPerformance or MaxAvailability"))
+		allErrs = append(
+			allErrs,
+			field.Invalid(
+				specPath.Child("protectionMode"),
+				obj.Spec.ProtectionMode,
+				"must be MaxPerformance, MaxAvailability, or MaxProtection",
+			),
+		)
 	}
 	if obj.Spec.Execution != nil {
 		allErrs = append(allErrs, field.Forbidden(specPath.Child("execution"), "spec.execution is only valid when spec.topology is set"))
@@ -437,16 +444,41 @@ func validateDataguardTopology(brokerNamespace string, topology *DataguardTopolo
 
 	if topology.Policy != nil {
 		policyPath := topologyPath.Child("policy")
-		if mode := strings.TrimSpace(topology.Policy.ProtectionMode); mode != "" && !isValidDataguardProtectionMode(mode) {
-			allErrs = append(allErrs, field.Invalid(policyPath.Child("protectionMode"), topology.Policy.ProtectionMode, "must be MaxPerformance or MaxAvailability"))
+		if mode := strings.TrimSpace(topology.Policy.ProtectionMode); mode != "" &&
+			!isValidDataguardProtectionMode(mode) {
+			allErrs = append(
+				allErrs,
+				field.Invalid(
+					policyPath.Child("protectionMode"),
+					topology.Policy.ProtectionMode,
+					"must be MaxPerformance, MaxAvailability, or MaxProtection",
+				),
+			)
 		}
 		if mode := strings.ToUpper(strings.TrimSpace(topology.Policy.TransportMode)); mode != "" && mode != "SYNC" && mode != "ASYNC" {
 			allErrs = append(allErrs, field.Invalid(policyPath.Child("transportMode"), topology.Policy.TransportMode, "must be SYNC or ASYNC"))
 		}
 	}
 
+	fsfoConfigured := topology.Policy != nil &&
+		topology.Policy.FastStartFailover != nil
+
+	fsfoEnabled := fsfoConfigured &&
+		*topology.Policy.FastStartFailover
+
+	observerPath := topologyPath.Child("observer")
+
+	if fsfoEnabled {
+		if topology.Observer == nil {
+			allErrs = append(allErrs, field.Required(observerPath, "observer is required when policy.fastStartFailover=true"))
+		} else if !topology.Observer.Enabled {
+			allErrs = append(allErrs, field.Invalid(observerPath.Child("enabled"), topology.Observer.Enabled, "must be true when policy.fastStartFailover=true"))
+		}
+	} else if fsfoConfigured && topology.Observer != nil {
+		allErrs = append(allErrs, field.Forbidden(observerPath, "observer must be omitted when policy.fastStartFailover=false"))
+	}
+
 	if topology.Observer != nil && topology.Observer.Enabled {
-		observerPath := topologyPath.Child("observer")
 		if strings.TrimSpace(topology.Observer.Name) == "" {
 			allErrs = append(allErrs, field.Required(observerPath.Child("name"), "name is required when observer.enabled=true"))
 		}
@@ -504,13 +536,44 @@ func validateDataguardTopologyUpdate(oldObj, newObj *DataguardBroker) field.Erro
 	if !isDataguardBrokerTopologyLocked(oldObj) {
 		return allErrs
 	}
-	if !reflect.DeepEqual(oldObj.Spec.Topology, newObj.Spec.Topology) {
-		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("topology"), "spec.topology cannot be changed after DataguardBroker reconciliation has started"))
+	if !reflect.DeepEqual(
+		normalizeMutableDataguardTopologySpec(oldObj.Spec.Topology),
+		normalizeMutableDataguardTopologySpec(newObj.Spec.Topology),
+	) {
+		allErrs = append(allErrs,
+			field.Forbidden(
+				field.NewPath("spec").Child("topology"),
+				"spec.topology cannot be changed after DataguardBroker reconciliation has started except fastStartFailover and observer",
+			),
+		)
 	}
 	if !reflect.DeepEqual(normalizeMutableDataguardExecutionSpec(oldObj.Spec.Execution), normalizeMutableDataguardExecutionSpec(newObj.Spec.Execution)) {
 		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("execution"), "spec.execution cannot be changed after DataguardBroker reconciliation has started"))
 	}
 	return allErrs
+}
+
+func normalizeMutableDataguardTopologySpec(topology *DataguardTopologySpec) *DataguardTopologySpec {
+	if topology == nil {
+		return nil
+	}
+
+	clone := topology.DeepCopy()
+
+	if clone.Policy != nil {
+		clone.Policy.FastStartFailover = nil
+
+		// Normalize a policy that existed only because of fastStartFailover.
+		if strings.TrimSpace(clone.Policy.ProtectionMode) == "" &&
+			strings.TrimSpace(clone.Policy.TransportMode) == "" {
+			clone.Policy = nil
+		}
+	}
+
+	// Observer configuration is mutable together with FSFO.
+	clone.Observer = nil
+
+	return clone
 }
 
 func normalizeMutableDataguardExecutionSpec(spec *DataguardExecutionSpec) *DataguardExecutionSpec {
@@ -558,7 +621,7 @@ func isStandbyCompatibleDataguardRole(role string) bool {
 
 func isValidDataguardProtectionMode(mode string) bool {
 	switch strings.TrimSpace(mode) {
-	case "MaxPerformance", "MaxAvailability":
+	case "MaxPerformance", "MaxAvailability", "MaxProtection":
 		return true
 	default:
 		return false

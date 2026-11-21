@@ -1,0 +1,45 @@
+# Sanitized four-member TCPS NLB example validated with Oracle Database 19c.
+# Replace every <placeholder>. Deploy in Cluster 1 (primary region).
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: <primary-database-name>
+  namespace: <namespace>
+spec:
+  sid: <primary-db-unique-name>
+  pdbName: <primary-pdb-name>
+  createAs: primary
+  edition: enterprise
+  archiveLog: true
+  forceLog: true
+  flashBack: true
+  security:
+    secrets:
+      admin: {secretName: <admin-secret>, secretKey: oracle_pwd, keepSecret: true}
+      tde: {secretName: <tde-secret>, secretKey: tde_wallet_pwd}
+    tcps: {enabled: true, tlsSecret: <primary-tcps-tls-secret>}
+  dataguard:
+    prereqs: {enabled: true}
+    standbySources:
+      - {dbUniqueName: <standby1-db-unique-name>, host: <standby1-nlb-dns>, tcpPort: 1521, tcpsEnabled: true, tcpsPort: 2484}
+      - {dbUniqueName: <standby2-db-unique-name>, host: <standby2-nlb-dns>, tcpPort: 1521, tcpsEnabled: true, tcpsPort: 2484}
+      - {dbUniqueName: <standby3-db-unique-name>, host: <standby3-nlb-dns>, tcpPort: 1521, tcpsEnabled: true, tcpsPort: 2484}
+  image: {pullFrom: <database-image>, prebuiltDB: false, imagePullPolicy: IfNotPresent}
+  persistence:
+    oradata: {size: <storage-size>, storageClass: <storage-class>, accessMode: ReadWriteOnce}
+    setWritePermissions: true
+  services:
+    external:
+      type: LoadBalancer
+      publishNotReadyAddresses: true
+      externalTrafficPolicy: Local
+      annotations:
+        external-dns.alpha.kubernetes.io/hostname: <primary-nlb-dns>
+        oci.oraclecloud.com/load-balancer-type: nlb
+        service.beta.kubernetes.io/oci-load-balancer-connection-idle-timeout: "3600"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: <primary-subnet-ocid>
+      tcp: {enabled: true, port: 1521}
+      tcps: {enabled: true, port: 2484}
+  replicas: 1

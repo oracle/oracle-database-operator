@@ -433,6 +433,9 @@ spec:
                 required:
                 - secretName
                 type: object
+              allowPrivilegeEscalation:
+                default: false
+                type: boolean
               archiveLog:
                 type: boolean
               automountServiceAccountToken:
@@ -504,6 +507,8 @@ spec:
                           type: integer
                         tcpsEnabled:
                           type: boolean
+                        tcpsPort:
+                          type: integer
                       type: object
                     type: array
                 type: object
@@ -644,6 +649,8 @@ spec:
                 properties:
                   cpuCount:
                     type: integer
+                  memoryTarget:
+                    type: string
                   pgaAggregateTarget:
                     type: integer
                   processes:
@@ -661,6 +668,23 @@ spec:
                 type: object
               pdbName:
                 type: string
+              pdbParameters:
+                items:
+                  properties:
+                    name:
+                      pattern: ^[A-Za-z][A-Za-z0-9_$#]*$
+                      type: string
+                    pdbName:
+                      pattern: ^[A-Za-z][A-Za-z0-9_$#]*$
+                      type: string
+                    value:
+                      type: string
+                  required:
+                  - name
+                  - pdbName
+                  - value
+                  type: object
+                type: array
               persistence:
                 properties:
                   accessMode:
@@ -718,6 +742,8 @@ spec:
                       storageClass:
                         type: string
                     type: object
+                  retainOnDelete:
+                    type: boolean
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
@@ -752,6 +778,8 @@ spec:
                     type: object
                   pdbName:
                     type: string
+                  tcpsPort:
+                    type: integer
                 type: object
               readinessCheckPeriod:
                 type: integer
@@ -1114,6 +1142,8 @@ spec:
                           - nodeport
                           - loadbalancer
                           type: string
+                        publishNotReadyAddresses:
+                          type: boolean
                         tcp:
                           properties:
                             enabled:
@@ -1160,6 +1190,8 @@ spec:
                         - nodeport
                         - loadbalancer
                         type: string
+                      publishNotReadyAddresses:
+                        type: boolean
                       tcp:
                         properties:
                           enabled:
@@ -1213,6 +1245,22 @@ spec:
                     serviceName:
                       type: string
                     sslServerDN:
+                      type: string
+                  type: object
+                type: array
+              tolerations:
+                items:
+                  properties:
+                    effect:
+                      type: string
+                    key:
+                      type: string
+                    operator:
+                      type: string
+                    tolerationSeconds:
+                      format: int64
+                      type: integer
+                    value:
                       type: string
                   type: object
                 type: array
@@ -1585,6 +1633,17 @@ spec:
                 type: string
               dataguardPrereqsRerunToken:
                 type: string
+              datapatch:
+                properties:
+                  image:
+                    type: string
+                  imageID:
+                    type: string
+                  oracleHomePatchFingerprint:
+                    type: string
+                  sqlPatchFingerprint:
+                    type: string
+                type: object
               dgBroker:
                 type: string
               edition:
@@ -1597,6 +1656,8 @@ spec:
                 properties:
                   cpuCount:
                     type: integer
+                  memoryTarget:
+                    type: string
                   pgaAggregateTarget:
                     type: integer
                   processes:
@@ -1623,6 +1684,23 @@ spec:
                 type: string
               pdbName:
                 type: string
+              pdbParameters:
+                items:
+                  properties:
+                    name:
+                      pattern: ^[A-Za-z][A-Za-z0-9_$#]*$
+                      type: string
+                    pdbName:
+                      pattern: ^[A-Za-z][A-Za-z0-9_$#]*$
+                      type: string
+                    value:
+                      type: string
+                  required:
+                  - name
+                  - pdbName
+                  - value
+                  type: object
+                type: array
               persistence:
                 properties:
                   accessMode:
@@ -1680,6 +1758,8 @@ spec:
                       storageClass:
                         type: string
                     type: object
+                  retainOnDelete:
+                    type: boolean
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:

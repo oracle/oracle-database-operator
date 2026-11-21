@@ -2,12 +2,14 @@
 # Copyright (c) 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-# Same-cluster True Cache with TCPS. Pair with a primary SIDB that has:
-# - published the True Cache blob ConfigMap
+# Same-cluster True Cache with TCPS. Pair with
+# singleinstancedatabase_truecache_primary_tcps.yaml after that primary has:
+# - published ConfigMap <primary-name>-truecache-blob
 # - security.tcps enabled and a TLS secret whose SANs match client hostnames
 #
 # Prefer services.endpoints over deprecated services.external.
-# Structure matches validated lab YAML (services.external LoadBalancer shape).
+# Same-cluster: ClusterIP with TCP 1521 + TCPS 2484. LoadBalancer belongs on
+# cross-cluster / external samples (*_peered, *_external*), not here.
 #
 
 apiVersion: database.oracle.com/v4
@@ -45,7 +47,7 @@ spec:
     ## PRIMARY_PDB_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME
     trueCacheServices:
       - "APPPDB1:TPDB_PRIMARY:tpdb_cache"
-    ## When true, complete docs/sidb/PREREQUISITES.md (helper + externaljob.ora).
+    ## When true, complete docs/sidb/prerequisites/PREREQUISITES.md (helper + externaljob.ora).
     ## Readiness does not prove primary-side association; verify on primary.
     autoTCServiceRegistration: true
 
@@ -65,25 +67,29 @@ spec:
       tlsSecret: sidb-primary-tcps-tls
 
   image:
-    ## True Cache capable image. Replace <tenancy> / tag for your registry.
-    pullFrom: dbocir/oracle/database:truecache-23.26.0-ee
+    ## True Cache capable enterprise image.
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    ## OCR database/enterprise_ru requires authenticated pull (accept OCR
+    ## terms + auth token). Create ocr-reg-cred in this namespace.
+    ## Anonymous pull of this licensed image is not supported.
+    pullSecrets: ocr-reg-cred
     prebuiltDB: false
     imagePullPolicy: Always
 
-  ## Optional init parameters
-  initParams:
-    sgaTarget: 2048
-    pgaAggregateTarget: 1024
-    cpuCount: 2
-    processes: 600
-
-  resources:
-    requests:
-      memory: "12Gi"
-      cpu: "2"
-    limits:
-      memory: "24Gi"
-      cpu: "4"
+  ## Optional: SIDB initParams and pod resources (not True Cache-specific).
+  ## Uncomment and tune for lab or production. Omit both to use image/operator defaults.
+  # initParams:
+  #   sgaTarget: 3072
+  #   pgaAggregateTarget: 1024
+  #   cpuCount: 2
+  #   processes: 600
+  # resources:
+  #   requests:
+  #     memory: "12Gi"
+  #     cpu: "2"
+  #   limits:
+  #     memory: "24Gi"
+  #     cpu: "4"
 
   persistence:
     oradata:
@@ -92,19 +98,12 @@ spec:
       accessMode: "ReadWriteOnce"
     setWritePermissions: true
 
-  ## Operator-managed LoadBalancer with TCP 1521 and TCPS 2484.
-  ## Prefer services.endpoints (name=loadbalancer).
+  ## Same-cluster: ClusterIP with TCP 1521 + TCPS 2484. Cross-cluster True Cache
+  ## samples use LoadBalancer instead.
   services:
     endpoints:
-      - name: loadbalancer
-        type: LoadBalancer
-        externalTrafficPolicy: Local
-        annotations:
-          oci.oraclecloud.com/load-balancer-type: "nlb"
-          oci-network-load-balancer.oraclecloud.com/internal: "true"
-          ## Replace with your VCN subnet OCID.
-          oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.<region>.<placeholder-subnet-ocid>"
-          external-dns.alpha.kubernetes.io/hostname: "truecache.internal.example.com"
+      - name: listener
+        type: ClusterIP
         tcp:
           enabled: true
           port: 1521

@@ -2,12 +2,14 @@ package commons
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/go-logr/logr"
 	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -86,6 +88,219 @@ func TestBuildVolumeSpecForPrivateAI_UsesProjectedVolumeForSharedSecretMount(t *
 	}
 	if projected.Sources[1].Secret == nil || projected.Sources[1].Secret.Name != "tls-secret" {
 		t.Fatalf("expected second projected source to be tls-secret, got %#v", projected.Sources[1].Secret)
+	}
+}
+
+func TestBuildDeploySetForPrivateAI_ConfiguresSharedMemory(t *testing.T) {
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+				Image:   &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+				ShmSize: "2Gi",
+			},
+		},
+	}
+
+	deploy := BuildDeploySetForPrivateAI(instance)
+	var shmVolume *corev1.Volume
+	for i := range deploy.Spec.Template.Spec.Volumes {
+		if deploy.Spec.Template.Spec.Volumes[i].Name == "pai-sample-shm-vol" {
+			shmVolume = &deploy.Spec.Template.Spec.Volumes[i]
+			break
+		}
+	}
+	if shmVolume == nil || shmVolume.EmptyDir == nil {
+		t.Fatalf("expected memory-backed shared-memory volume, got %#v", deploy.Spec.Template.Spec.Volumes)
+	}
+	if shmVolume.EmptyDir.Medium != corev1.StorageMediumMemory {
+		t.Fatalf("expected shared-memory volume to use Memory medium, got %q", shmVolume.EmptyDir.Medium)
+	}
+	if shmVolume.EmptyDir.SizeLimit == nil || shmVolume.EmptyDir.SizeLimit.Cmp(resource.MustParse("2Gi")) != 0 {
+		t.Fatalf("expected shared-memory size limit 2Gi, got %#v", shmVolume.EmptyDir.SizeLimit)
+	}
+
+	container := deploy.Spec.Template.Spec.Containers[0]
+	var shmMount *corev1.VolumeMount
+	for i := range container.VolumeMounts {
+		if container.VolumeMounts[i].MountPath == "/dev/shm" {
+			shmMount = &container.VolumeMounts[i]
+			break
+		}
+	}
+	if shmMount == nil || shmMount.Name != "pai-sample-shm-vol" {
+		t.Fatalf("expected main container /dev/shm mount, got %#v", container.VolumeMounts)
+	}
+}
+
+func TestBuildDeploySetForPrivateAI_OmitsSharedMemoryWhenUnset(t *testing.T) {
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+				Image: &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+			},
+		},
+	}
+
+	deploy := BuildDeploySetForPrivateAI(instance)
+	for _, volume := range deploy.Spec.Template.Spec.Volumes {
+		if volume.Name == "pai-sample-shm-vol" {
+			t.Fatalf("did not expect shared-memory volume when shmSize is unset")
+		}
+	}
+	for _, mount := range deploy.Spec.Template.Spec.Containers[0].VolumeMounts {
+		if mount.MountPath == "/dev/shm" {
+			t.Fatalf("did not expect /dev/shm mount when shmSize is unset")
+		}
+	}
+}
+
+func TestSyncPrivateAIWorkloadUpdatesAndRemovesWorkerNodeAffinity(t *testing.T) {
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+				Image:       &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+				WorkerNodes: []string{"worker-a"},
+			},
+		},
+	}
+	found := BuildDeploySetForPrivateAI(instance)
+
+	instance.Spec.Runtime.WorkerNodes = []string{"worker-b"}
+	desired := BuildDeploySetForPrivateAI(instance)
+	if !SyncPrivateAIWorkload(found, desired) {
+		t.Fatal("expected worker-node affinity to be updated")
+	}
+	if got := found.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions[0].Values; len(got) != 1 || got[0] != "worker-b" {
+		t.Fatalf("expected worker-b affinity, got %#v", got)
+	}
+
+	instance.Spec.Runtime.WorkerNodes = nil
+	desired = BuildDeploySetForPrivateAI(instance)
+	if !SyncPrivateAIWorkload(found, desired) {
+		t.Fatal("expected worker-node affinity to be removed")
+	}
+	if found.Spec.Template.Spec.Affinity != nil {
+		t.Fatalf("expected affinity to be removed, got %#v", found.Spec.Template.Spec.Affinity)
+	}
+}
+
+func TestBuildDeploySetForPrivateAI_UsesServiceAccountName(t *testing.T) {
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+			Image:              &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+			ServiceAccountName: "pai-sa",
+		}},
+	}
+
+	deploy := BuildDeploySetForPrivateAI(instance)
+	if deploy.Spec.Template.Spec.ServiceAccountName != "pai-sa" {
+		t.Fatalf("expected pai-sa, got %q", deploy.Spec.Template.Spec.ServiceAccountName)
+	}
+}
+
+func TestBuildDeploySetForPrivateAI_UsesWorkerNodeSelector(t *testing.T) {
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+			Image:              &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+			WorkerNodeSelector: map[string]string{"privateai.oracle.com/pool": "inference"},
+		}},
+	}
+
+	affinity := BuildDeploySetForPrivateAI(instance).Spec.Template.Spec.Affinity
+	expressions := affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions
+	if len(expressions) != 1 || expressions[0].Key != "privateai.oracle.com/pool" || expressions[0].Values[0] != "inference" {
+		t.Fatalf("expected worker-node selector affinity, got %#v", expressions)
+	}
+}
+
+func TestSyncPrivateAISharedMemoryUpdatesAndRemovesConfiguration(t *testing.T) {
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+				Image:   &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+				ShmSize: "2Gi",
+			},
+		},
+	}
+	found := BuildDeploySetForPrivateAI(instance)
+	found.Spec.Template.Spec.Volumes = append(found.Spec.Template.Spec.Volumes[:0], corev1.Volume{
+		Name:         "unrelated-volume",
+		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+	})
+	found.Spec.Template.Spec.Containers[0].VolumeMounts = append(found.Spec.Template.Spec.Containers[0].VolumeMounts[:0], corev1.VolumeMount{
+		Name:      "unrelated-volume",
+		MountPath: "/privateai/other",
+	})
+
+	desired := BuildDeploySetForPrivateAI(instance)
+	if !SyncPrivateAISharedMemory(found, desired) {
+		t.Fatal("expected shared-memory configuration to be added")
+	}
+	if len(found.Spec.Template.Spec.Volumes) != 2 {
+		t.Fatalf("expected unrelated and shared-memory volumes, got %#v", found.Spec.Template.Spec.Volumes)
+	}
+
+	instance.Spec.Runtime.ShmSize = "4Gi"
+	desired = BuildDeploySetForPrivateAI(instance)
+	if !SyncPrivateAISharedMemory(found, desired) {
+		t.Fatal("expected shared-memory configuration to be updated")
+	}
+	for _, volume := range found.Spec.Template.Spec.Volumes {
+		if volume.Name == "pai-sample-shm-vol" && (volume.EmptyDir == nil || volume.EmptyDir.SizeLimit == nil || volume.EmptyDir.SizeLimit.Cmp(resource.MustParse("4Gi")) != 0) {
+			t.Fatalf("expected shared-memory volume size 4Gi, got %#v", volume.EmptyDir)
+		}
+	}
+
+	instance.Spec.Runtime.ShmSize = ""
+	desired = BuildDeploySetForPrivateAI(instance)
+	if !SyncPrivateAISharedMemory(found, desired) {
+		t.Fatal("expected shared-memory configuration to be removed")
+	}
+	for _, volume := range found.Spec.Template.Spec.Volumes {
+		if volume.Name == "pai-sample-shm-vol" {
+			t.Fatalf("did not expect shared-memory volume after removal")
+		}
+	}
+	for _, mount := range found.Spec.Template.Spec.Containers[0].VolumeMounts {
+		if mount.MountPath == "/dev/shm" {
+			t.Fatalf("did not expect /dev/shm mount after removal")
+		}
+	}
+}
+
+func TestBuildLogSidecarForPrivateAI_DoesNotInterpolateLogPathIntoShell(t *testing.T) {
+	logPath := `/privateai/logs; touch /tmp/privateai-injection $(id)`
+	instance := &privateaiv4.PrivateAi{
+		Spec: privateaiv4.PrivateAiSpec{
+			Logging: &privateaiv4.LoggingSpec{
+				Enabled:      true,
+				SidecarImage: "busybox:latest",
+				VolumeMount:  logPath,
+			},
+		},
+	}
+
+	sidecar := buildLogSidecarForPrivateAI(instance, "pai-log-sidecar")
+	if sidecar == nil {
+		t.Fatal("expected logging sidecar")
+	}
+	if len(sidecar.Command) != 4 || sidecar.Command[0] != "/bin/sh" || sidecar.Command[1] != "-c" {
+		t.Fatalf("expected fixed shell entrypoint, got %#v", sidecar.Command)
+	}
+	if sidecar.Command[2] != privateAILogSidecarScript {
+		t.Fatalf("expected fixed sidecar script, got %q", sidecar.Command[2])
+	}
+	if strings.Contains(sidecar.Command[2], logPath) {
+		t.Fatalf("log path must not be interpolated into shell source: %q", sidecar.Command[2])
+	}
+	if len(sidecar.Args) != 1 || sidecar.Args[0] != logPath {
+		t.Fatalf("expected log path as a separate argument, got %#v", sidecar.Args)
 	}
 }
 
@@ -268,6 +483,128 @@ func TestBuildDeploySetForPrivateAI_UsesHierarchicalSpec(t *testing.T) {
 	}
 }
 
+func TestBuildDeploySetForPrivateAI_DefaultsToSCCCompatiblePVCHandling(t *testing.T) {
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+				Image: &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+			},
+			Storage: &privateaiv4.PrivateAiStorageSpec{
+				PvcList: map[string]string{"models": "/privateai/models"},
+			},
+		},
+	}
+
+	podSpec := BuildDeploySetForPrivateAI(instance).Spec.Template.Spec
+	if podSpec.SecurityContext != nil {
+		t.Fatalf("expected security context IDs to be omitted for SCC assignment, got %#v", podSpec.SecurityContext)
+	}
+	if len(podSpec.InitContainers) != 0 {
+		t.Fatalf("expected no PVC ownership init container by default, got %#v", podSpec.InitContainers)
+	}
+}
+
+func TestBuildDeploySetForPrivateAI_RendersExplicitUIDGIDChownSettings(t *testing.T) {
+	runAsUser := int64(2001)
+	runAsGroup := int64(2001)
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+				Image: &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+				SecurityContext: &privateaiv4.PrivateAiPodSecurityContextSpec{
+					RunAsUser:  &runAsUser,
+					RunAsGroup: &runAsGroup,
+				},
+			},
+			Storage: &privateaiv4.PrivateAiStorageSpec{
+				PvcList: map[string]string{"models": "/privateai/models"},
+			},
+		},
+	}
+
+	podSpec := BuildDeploySetForPrivateAI(instance).Spec.Template.Spec
+	if podSpec.SecurityContext == nil || podSpec.SecurityContext.RunAsUser == nil || *podSpec.SecurityContext.RunAsUser != runAsUser ||
+		podSpec.SecurityContext.RunAsGroup == nil || *podSpec.SecurityContext.RunAsGroup != runAsGroup || podSpec.SecurityContext.FSGroup != nil {
+		t.Fatalf("expected explicit UID/GID pod security settings without fsGroup, got %#v", podSpec.SecurityContext)
+	}
+	if len(podSpec.InitContainers) != 1 {
+		t.Fatalf("expected one explicit legacy ownership init container, got %#v", podSpec.InitContainers)
+	}
+	init := podSpec.InitContainers[0]
+	if init.SecurityContext == nil || init.SecurityContext.Privileged == nil || !*init.SecurityContext.Privileged {
+		t.Fatalf("expected explicitly privileged legacy init container, got %#v", init.SecurityContext)
+	}
+	if init.SecurityContext.RunAsUser == nil || *init.SecurityContext.RunAsUser != 0 || init.SecurityContext.RunAsGroup == nil || *init.SecurityContext.RunAsGroup != 0 {
+		t.Fatalf("expected legacy init container to run as root, got %#v", init.SecurityContext)
+	}
+	if len(init.Command) != 1 || init.Command[0] != "chown" {
+		t.Fatalf("expected direct chown executable, got %#v", init.Command)
+	}
+	if len(init.Args) != 3 || init.Args[0] != "-R" || init.Args[1] != "2001:2001" || init.Args[2] != "/privateai/models" {
+		t.Fatalf("expected UID/GID and mount path as direct arguments, got %#v", init.Args)
+	}
+}
+
+func TestBuildDeploySetForPrivateAI_DoesNotInterpolatePVCPathIntoShell(t *testing.T) {
+	mountPath := "/privateai/models; touch /tmp/privateai-injection $(id)"
+	uid := int64(2001)
+	gid := int64(2001)
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			PvcList: map[string]string{"models": mountPath},
+			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+				Image: &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+				SecurityContext: &privateaiv4.PrivateAiPodSecurityContextSpec{
+					RunAsUser:  &uid,
+					RunAsGroup: &gid,
+				},
+			},
+		},
+	}
+
+	initContainers := buildInitContainerSpecForPrivateAI(instance, privateaiv4.EffectivePodSecurityContext(&instance.Spec))
+	if len(initContainers) != 1 {
+		t.Fatalf("expected one legacy init container, got %#v", initContainers)
+	}
+	init := initContainers[0]
+	if len(init.Command) != 1 || init.Command[0] != "chown" {
+		t.Fatalf("expected direct chown executable, got %#v", init.Command)
+	}
+	if len(init.Args) != 3 || init.Args[0] != "-R" || init.Args[1] != "2001:2001" || init.Args[2] != mountPath {
+		t.Fatalf("expected malicious PVC path to remain a direct argument, got %#v", init.Args)
+	}
+}
+
+func TestBuildDeploySetForPrivateAI_UsesFSGroupWithoutChown(t *testing.T) {
+	fsGroup := int64(2001)
+	instance := &privateaiv4.PrivateAi{
+		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		Spec: privateaiv4.PrivateAiSpec{
+			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
+				Image:           &privateaiv4.PrivateAiImageSpec{Name: "repo/pai:current"},
+				SecurityContext: &privateaiv4.PrivateAiPodSecurityContextSpec{FSGroup: &fsGroup},
+			},
+			Storage: &privateaiv4.PrivateAiStorageSpec{
+				PvcList: map[string]string{"models": "/privateai/models"},
+			},
+		},
+	}
+
+	podSpec := BuildDeploySetForPrivateAI(instance).Spec.Template.Spec
+	if podSpec.SecurityContext == nil || podSpec.SecurityContext.FSGroup == nil || *podSpec.SecurityContext.FSGroup != fsGroup {
+		t.Fatalf("expected explicit fsGroup, got %#v", podSpec.SecurityContext)
+	}
+	if podSpec.SecurityContext.RunAsUser != nil || podSpec.SecurityContext.RunAsGroup != nil {
+		t.Fatalf("expected fsGroup path to omit fixed UID/GID, got %#v", podSpec.SecurityContext)
+	}
+	if len(podSpec.InitContainers) != 0 {
+		t.Fatalf("expected fsGroup path to have no init container, got %#v", podSpec.InitContainers)
+	}
+}
+
 func TestBuildDeploySetForPrivateAI_AppliesUserAnnotations(t *testing.T) {
 	instance := &privateaiv4.PrivateAi{
 		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
@@ -275,8 +612,9 @@ func TestBuildDeploySetForPrivateAI_AppliesUserAnnotations(t *testing.T) {
 			Runtime: &privateaiv4.PrivateAiRuntimeSpec{
 				Annotations: &privateaiv4.PaiAnnotationsSpec{
 					Workload: map[string]string{
-						"company.com/change-ticket":     "CHG-12345",
-						"privateai.oracle.com/internal": "ignored",
+						"company.com/change-ticket":      "CHG-12345",
+						"privateai.oracle.com/internal":  "ignored",
+						"agentfactory.oracle.com/status": "ignored",
 					},
 					Pod: map[string]string{
 						"prometheus.io/scrape":          "true",
@@ -294,6 +632,9 @@ func TestBuildDeploySetForPrivateAI_AppliesUserAnnotations(t *testing.T) {
 	}
 	if _, ok := deploy.Annotations["privateai.oracle.com/internal"]; ok {
 		t.Fatalf("expected privateai reserved workload annotation to be filtered")
+	}
+	if _, ok := deploy.Annotations["agentfactory.oracle.com/status"]; ok {
+		t.Fatalf("expected agentfactory reserved workload annotation to be filtered")
 	}
 	if deploy.Spec.Template.Annotations["prometheus.io/scrape"] != "true" {
 		t.Fatalf("expected pod annotation to be applied, got %#v", deploy.Spec.Template.Annotations)

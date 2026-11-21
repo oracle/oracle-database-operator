@@ -1,0 +1,42 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Data Guard standby: same cluster and namespace, TCP without TDE or TCPS.
+# Procedure: docs/sidb/README.md#data-guard
+# Edit namespace, StorageClass, capacity, and image pull Secret for your environment.
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: standbydatabase-sample
+  namespace: default
+spec:
+  sid: ORCLS
+  edition: enterprise
+  createAs: standby
+
+  ## The primary SIDB must exist in the same cluster and namespace.
+  primarySource:
+    databaseRef: sidb-sample
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    imagePullPolicy: IfNotPresent
+
+  persistence:
+    oradata:
+      size: 100Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+
+  replicas: 1

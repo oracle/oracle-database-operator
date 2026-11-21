@@ -3,11 +3,11 @@ metadata:
   name: dbcssystem-existing
   namespace: default
 spec:
-  id: "ocid1.dbsystem.oc1.iad.anuwcljsabf7htyag4akvoakzw4qk7cae55qyp7hlffbouozvyl5ngoputza"
+  id: "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   pdbConfigs:
-    - pdbName: "pdb_sauahuja_11"
+    - pdbName: "pdb_example_11"
       isDelete: true
-    - pdbName: "pdb_sauahuja_12"
+    - pdbName: "pdb_example_12"
       isDelete: true

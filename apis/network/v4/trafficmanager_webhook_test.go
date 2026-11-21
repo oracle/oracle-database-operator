@@ -184,3 +184,79 @@ func TestValidateTrafficManagerCmanConfigSourceRejectsGeneratedFields(t *testing
 		})
 	}
 }
+
+func TestTrafficManagerRejectsNewCmanResources(t *testing.T) {
+	obj := &TrafficManager{
+		Spec: TrafficManagerSpec{Type: TrafficManagerTypeCman},
+	}
+
+	_, err := obj.ValidateCreate(context.Background(), obj)
+	if err == nil || !strings.Contains(err.Error(), "use kind ConnectionManager") {
+		t.Fatalf("expected new CMAN TrafficManager to be rejected, got %v", err)
+	}
+}
+
+func TestTrafficManagerAllowsExistingCmanUpdates(t *testing.T) {
+	legacy := &TrafficManager{
+		Spec: TrafficManagerSpec{
+			Type:    TrafficManagerTypeCman,
+			Runtime: TrafficManagerRuntimeSpec{Image: "oracle/cman:23.8.0"},
+			Cman: &CmanTrafficManagerSpec{
+				ConfigSource: &CmanTrafficManagerConfigSourceSpec{
+					ConfigMapRef: &TrafficManagerConfigMapKeyRef{Name: "cman-config", Key: "cman.ora"},
+				},
+			},
+		},
+	}
+
+	warnings, err := legacy.ValidateUpdate(context.Background(), legacy, legacy)
+	if err != nil {
+		t.Fatalf("expected existing CMAN TrafficManager update to remain valid, got %v", err)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "migrate to kind ConnectionManager") {
+		t.Fatalf("expected migration warning, got %v", warnings)
+	}
+}
+
+func TestTrafficManagerRejectsChangingToCman(t *testing.T) {
+	oldObj := &TrafficManager{
+		Spec: TrafficManagerSpec{Type: TrafficManagerTypeNginx},
+	}
+	newObj := &TrafficManager{
+		Spec: TrafficManagerSpec{Type: TrafficManagerTypeCman},
+	}
+
+	_, err := newObj.ValidateUpdate(context.Background(), oldObj, newObj)
+	if err == nil || !strings.Contains(err.Error(), "use kind ConnectionManager") {
+		t.Fatalf("expected transition to CMAN to be rejected, got %v", err)
+	}
+}
+
+func TestTrafficManagerRejectsChangingFromCman(t *testing.T) {
+	oldObj := &TrafficManager{
+		Spec: TrafficManagerSpec{Type: TrafficManagerTypeCman},
+	}
+	newObj := &TrafficManager{
+		Spec: TrafficManagerSpec{Type: TrafficManagerTypeNginx},
+	}
+
+	_, err := newObj.ValidateUpdate(context.Background(), oldObj, newObj)
+	if err == nil || !strings.Contains(err.Error(), "cannot be changed") {
+		t.Fatalf("expected transition from CMAN to be rejected, got %v", err)
+	}
+}
+
+func TestTrafficManagerRejectsNewCmanFields(t *testing.T) {
+	obj := &TrafficManager{
+		Spec: TrafficManagerSpec{
+			Type:    TrafficManagerTypeNginx,
+			Cman:    &CmanTrafficManagerSpec{},
+			Runtime: TrafficManagerRuntimeSpec{Image: "nginx:latest"},
+		},
+	}
+
+	_, err := obj.ValidateCreate(context.Background(), obj)
+	if err == nil || !strings.Contains(err.Error(), "spec.cman") {
+		t.Fatalf("expected new CMAN fields to be rejected, got %v", err)
+	}
+}

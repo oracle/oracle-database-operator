@@ -279,7 +279,7 @@ func buildContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCata
 			RunAsNonRoot:             BoolPointer(true),
 			RunAsUser:                &user,
 			RunAsGroup:               &group,
-			AllowPrivilegeEscalation: BoolPointer(false),
+			AllowPrivilegeEscalation: boolPointerOrDefault(OraCatalogSpex.AllowPrivilegeEscalation, false),
 			Capabilities: mergeCapabilitiesWithDefaults(&corev1.Capabilities{
 				Add:  []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
 				Drop: []corev1.Capability{"ALL"},
@@ -319,7 +319,6 @@ func buildContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCata
 func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
-	privFlag := true
 	// var uid int64 = 0
 	uid := oraRunAsUser
 	var scriptLoc string
@@ -332,9 +331,9 @@ func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, Ora
 		Name:  OraCatalogSpex.Name + "-init1",
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             BoolPointer(false),
-			AllowPrivilegeEscalation: BoolPointer(true),
-			Privileged:               &privFlag,
+			RunAsNonRoot:             BoolPointer(true),
+			AllowPrivilegeEscalation: BoolPointer(false),
+			Privileged:               BoolPointer(false),
 			RunAsUser:                &uid,
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
@@ -414,6 +413,11 @@ func volumeClaimTemplatesForCatalog(instance *databasev4.ShardingDatabase, OraCa
 					},
 				},
 			},
+		}
+		if pvcMount.mountPath == databasev4.DefaultOraDataMountPath {
+			if annotations := storageSourceAnnotations(OraCatalogSpex.StorageSource); len(annotations) > 0 {
+				claim.Annotations = annotations
+			}
 		}
 		claims = append(claims, claim)
 	}

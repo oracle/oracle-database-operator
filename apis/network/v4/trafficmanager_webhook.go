@@ -107,10 +107,28 @@ func (r *TrafficManager) Default(_ context.Context, obj *TrafficManager) error {
 
 // +kubebuilder:webhook:path=/validate-network-oracle-com-v4-trafficmanager,mutating=false,failurePolicy=fail,sideEffects=None,groups=network.oracle.com,resources=trafficmanagers,verbs=create;update,versions=v4,name=vtrafficmanager-v4.kb.io,admissionReviewVersions=v1
 func (r *TrafficManager) ValidateCreate(_ context.Context, obj *TrafficManager) (admission.Warnings, error) {
+	if obj.Spec.Type == TrafficManagerTypeCman {
+		return nil, fmt.Errorf("spec.type=cman is no longer accepted for TrafficManager; use kind ConnectionManager")
+	}
+	if obj.Spec.Cman != nil {
+		return nil, fmt.Errorf("spec.cman is no longer accepted for TrafficManager; use kind ConnectionManager")
+	}
 	return nil, validateTrafficManager(obj)
 }
 
-func (r *TrafficManager) ValidateUpdate(_ context.Context, _ *TrafficManager, newObj *TrafficManager) (admission.Warnings, error) {
+func (r *TrafficManager) ValidateUpdate(_ context.Context, oldObj, newObj *TrafficManager) (admission.Warnings, error) {
+	if oldObj != nil && oldObj.Spec.Type == TrafficManagerTypeCman && newObj.Spec.Type != TrafficManagerTypeCman {
+		return nil, fmt.Errorf("spec.type=cman cannot be changed on an existing TrafficManager; use kind ConnectionManager")
+	}
+	if newObj.Spec.Type == TrafficManagerTypeCman {
+		if oldObj == nil || oldObj.Spec.Type != TrafficManagerTypeCman {
+			return nil, fmt.Errorf("spec.type=cman is no longer accepted for TrafficManager; use kind ConnectionManager")
+		}
+		return admission.Warnings{"spec.type=cman and spec.cman fields are deprecated; migrate to kind ConnectionManager"}, validateTrafficManager(newObj)
+	}
+	if newObj.Spec.Cman != nil {
+		return nil, fmt.Errorf("spec.cman is no longer accepted for TrafficManager; use kind ConnectionManager")
+	}
 	return nil, validateTrafficManager(newObj)
 }
 

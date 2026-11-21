@@ -181,7 +181,7 @@ func buildSIDBPreviewTopology(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleI
 			Namespace:  m.Namespace,
 			Name:       m.Name,
 		},
-		Endpoints: buildSIDBPreviewEndpoints(m, m.Name, strings.TrimSpace(m.Spec.Sid)),
+		Endpoints: buildSIDBPreviewBrokerEndpoints(m),
 		TCPS:      buildSIDBPreviewTCPSConfig(m),
 	}
 	previewReady := true
@@ -368,6 +368,29 @@ func buildSIDBPreviewEndpoints(m *dbapi.SingleInstanceDatabase, hostHint, servic
 		})
 	}
 	return endpoints
+}
+
+// buildSIDBPreviewBrokerEndpoints uses the external service address when the
+// standby is built from an external primary source.  The Broker transport is
+// initiated by that primary, so the standby's cluster DNS name is not a valid
+// Broker connect identifier across clusters.
+func buildSIDBPreviewBrokerEndpoints(m *dbapi.SingleInstanceDatabase) []dbapi.DataguardEndpointSpec {
+	if m == nil {
+		return nil
+	}
+
+	if resolvePrimaryDatabaseSource(m).isExternal() {
+		endpoint := parsePrimaryConnectString(m.Status.ConnectString)
+		if endpoint.host != "" && endpoint.service != "" && endpoint.port > 0 {
+			endpoints := buildSIDBPreviewEndpoints(m, endpoint.host, endpoint.service)
+			if len(endpoints) > 0 {
+				endpoints[0].Port = int32(endpoint.port)
+			}
+			return endpoints
+		}
+	}
+
+	return buildSIDBPreviewEndpoints(m, m.Name, strings.TrimSpace(m.Spec.Sid))
 }
 
 func buildSIDBPreviewTCPSConfig(m *dbapi.SingleInstanceDatabase) *dbapi.DataguardTCPSConfig {
@@ -621,7 +644,7 @@ func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbap
 		}
 		standbyName := addMember(standbyMember, shard, "", "", "")
 
-		primaryMember, primaryName, msg, resolved, pairReady := r.buildShardingPrimaryPreviewMember(instance, shard)
+		primaryMember, _, msg, resolved, pairReady := r.buildShardingPrimaryPreviewMember(instance, shard)
 		if !resolved {
 			ready = false
 			previewReason = "WaitingForTopology"
@@ -650,7 +673,7 @@ func (r *ShardingDatabaseReconciler) buildShardingPreviewTopology(instance *dbap
 			primaryPhase = dataguardPreviewPhaseWaitingForUserInput
 			standbyPhase = dataguardPreviewPhaseWaitingForUserInput
 		}
-		primaryName = addMember(*primaryMember, dbapi.ShardSpec{}, "", primaryPhase, msg)
+		primaryName := addMember(*primaryMember, dbapi.ShardSpec{}, "", primaryPhase, msg)
 		idx := memberIndex[standbyName]
 		memberStatuses[idx].PrimaryMemberName = primaryName
 		memberStatuses[idx].Phase = standbyPhase

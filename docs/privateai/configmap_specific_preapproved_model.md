@@ -1,21 +1,24 @@
-# Use only Specific Pre-approved model
+# Use Only Selected Pre-approved Models
 
-If only specific included models need to be used, the admin can choose to explicitly specify them in the models section of `config.json`.
+To make only selected pre-approved models available, explicitly specify those models in the `models` section of `config.json`.
 
-Create a `config.json` file to create a configmap.
+The selected pre-approved model is included in the Private AI container image. You do not need to provide an HTTPS URL or download the model file separately.
 
-You can use the example file [specific_preapproved_model.json](./provisioning/specific_preapproved_model.json).
+Use the example file [`specific_preapproved_model.json`](./provisioning/specific_preapproved_model.json). The ConfigMap must contain the file under the key `config.json`, as expected by the Private AI configuration.
 
-Rename the file `specific_preapproved_model.json` to `config.json`.
+**Note:** For a list of supported model-specific configuration options, including `runtime`, `context_size`, `kv_cache`, and `runtime_arguments`, see [Inference Service Model Property](https://docs.oracle.com/en/database/oracle/oracle-database/26/prvai/inference-service-model-property.html).
 
-Create a configmap using this file as follows:
+Create or update the ConfigMap in the `pai` namespace. Run this command from the repository root:
 
 ```sh
-kubectl create configmap privateaiconfigjson --from-file=config.json -n pai
+kubectl create configmap privateaiconfigjson \
+  --from-file=config.json=docs/privateai/provisioning/specific_preapproved_model.json \
+  --namespace pai \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Check the details of the configmap:
+Verify the ConfigMap and its `config.json` entry:
 
 ```sh
-kubectl get configmap -n pai
+kubectl get configmap privateaiconfigjson -n pai -o yaml
 ```

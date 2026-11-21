@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
- name: oke-fsspvc
- namespace: pai
+  name: oke-fsspvc
+  namespace: pai
 spec:
- storageClassName: oci-fss
- accessModes:
- - ReadWriteMany
- resources:
-  requests:
-    storage: 100Gi
- volumeName: oke-fsspv
+  storageClassName: ""
+  volumeName: oke-fsspv
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi

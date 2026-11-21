@@ -55,7 +55,7 @@ type DataguardBrokerSpec struct {
 	SetAsPrimaryDatabase string            `json:"setAsPrimaryDatabase,omitempty"`
 	LoadBalancer         bool              `json:"loadBalancer,omitempty"`
 	ServiceAnnotations   map[string]string `json:"serviceAnnotations,omitempty"`
-	// +kubebuilder:validation:Enum=MaxPerformance;MaxAvailability
+	// +kubebuilder:validation:Enum=MaxPerformance;MaxAvailability;MaxProtection
 	ProtectionMode string            `json:"protectionMode,omitempty"`
 	NodeSelector   map[string]string `json:"nodeSelector,omitempty"`
 
@@ -95,7 +95,7 @@ type DataguardBrokerFailoverOperation struct {
 
 // DataguardBrokerProtectionModeOperation requests a one-time protection mode change.
 type DataguardBrokerProtectionModeOperation struct {
-	// +kubebuilder:validation:Enum=MaxPerformance;MaxAvailability
+	// +kubebuilder:validation:Enum=MaxPerformance;MaxAvailability;MaxProtection
 	Mode      string `json:"mode,omitempty"`
 	RequestID string `json:"requestId,omitempty"`
 }
