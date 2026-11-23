@@ -1,0 +1,105 @@
+name: SIDB e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: SIDB e2e profile
+        required: true
+        default: provision
+        type: choice
+        options: [provision, clone, dataguard, all]
+      namespace:
+        description: Kubernetes namespace
+        required: true
+        default: sidb-e2e
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  sidb-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    env:
+      E2E_NAMESPACE: ${{ inputs.namespace || vars.SIDB_E2E_NAMESPACE || 'sidb-e2e' }}
+      SIDB_TESTS: ${{ inputs.profile || vars.SIDB_TESTS || vars.SIDB_PROFILE || 'all' }}
+      SIDB_IMAGE: ${{ vars.SIDB_IMAGE }}
+      SIDB_PULL_SECRET: ${{ vars.SIDB_PULL_SECRET }}
+      SIDB_STORAGE_CLASS: ${{ vars.SIDB_STORAGE_CLASS }}
+      SIDB_PRIMARY_EXTERNAL_CONNECT_STRING: ${{ vars.SIDB_PRIMARY_EXTERNAL_CONNECT_STRING }}
+      CRD_MANIFEST: ${{ vars.CRD_MANIFEST || 'config/crd/bases/database.oracle.com_singleinstancedatabases.yaml' }}
+      OPERATOR_MANIFEST: ${{ vars.OPERATOR_MANIFEST }}
+      OPERATOR_IMAGE: ${{ vars.OPERATOR_IMAGE }}
+      OPERATOR_NAMESPACE: ${{ vars.OPERATOR_NAMESPACE || 'oracle-database-operator-system' }}
+      OPERATOR_DEPLOYMENT: ${{ vars.OPERATOR_DEPLOYMENT }}
+      KUBE_CONTEXT_NAME: ${{ vars.KUBE_CONTEXT_NAME }}
+      SIDB_ADMIN_PASSWORD: ${{ secrets.SIDB_ADMIN_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+        run: |
+          if [ -n "$KUBECONFIG_B64" ]; then
+            printf '%s' "$KUBECONFIG_B64" | base64 --decode > "$RUNNER_TEMP/kubeconfig"
+            chmod 600 "$RUNNER_TEMP/kubeconfig"
+            export KUBE_CONTEXT_FILE="$RUNNER_TEMP/kubeconfig"
+            echo "KUBE_CONTEXT_FILE=$KUBE_CONTEXT_FILE" >> "$GITHUB_ENV"
+          fi
+
+      - name: Prepare SIDB e2e environment
+        run: |
+          chmod +x test/e2e/controllers/sidb/scripts/prepare-env.sh
+          test/e2e/controllers/sidb/scripts/prepare-env.sh
+          set -a
+          source /tmp/sidb-e2e.env
+          set +a
+          for name in E2E_NAMESPACE SIDB_TESTS SIDB_PROFILE SIDB_IMAGE CRD_MANIFEST OPERATOR_MANIFEST OPERATOR_IMAGE OPERATOR_NAMESPACE OPERATOR_DEPLOYMENT SIDB_PULL_SECRET SIDB_STORAGE_CLASS SIDB_PRIMARY_EXTERNAL_CONNECT_STRING SIDB_ADMIN_PASSWORD KUBECONFIG KUBE_CONTEXT_NAME; do
+            printf '%s=%s\n' "$name" "${!name}" >> "$GITHUB_ENV"
+          done
+
+      - name: Install CRD and operator
+        run: |
+          if [ -n "$CRD_MANIFEST" ]; then
+            kubectl apply -f "$CRD_MANIFEST"
+          fi
+          if [ -n "$OPERATOR_MANIFEST" ]; then
+            kubectl apply -f "$OPERATOR_MANIFEST"
+            if [ -n "$OPERATOR_IMAGE" ]; then
+              deployment="$OPERATOR_DEPLOYMENT"
+              if [ -z "$deployment" ]; then
+                deployment="$(kubectl -n "$OPERATOR_NAMESPACE" get deploy -l control-plane=controller-manager -o jsonpath='{.items[0].metadata.name}')"
+              fi
+              test -n "$deployment"
+              kubectl -n "$OPERATOR_NAMESPACE" set image "deployment/$deployment" "manager=$OPERATOR_IMAGE"
+              kubectl -n "$OPERATOR_NAMESPACE" rollout status "deployment/$deployment" --timeout=15m
+            fi
+          fi
+
+      - name: Validate runner access
+        run: |
+          test -n "$SIDB_IMAGE"
+          test -n "$SIDB_STORAGE_CLASS"
+          kubectl --request-timeout=20s get namespace "$E2E_NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$E2E_NAMESPACE"
+
+      - name: Run SIDB e2e
+        run: |
+          chmod +x test/e2e/controllers/sidb/scripts/run.sh
+          test/e2e/controllers/sidb/scripts/run.sh --namespace "$E2E_NAMESPACE" --tests "$SIDB_TESTS"
+
+      - name: Upload SIDB e2e results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidb-e2e-results
+          path: test/e2e/controllers/sidb/results/
+          if-no-files-found: warn

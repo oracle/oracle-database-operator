@@ -43,7 +43,7 @@ import (
 	"reflect"
 	"strings"
 
-	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
+	lrestutil "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -75,10 +75,10 @@ var _ admission.Defaulter[*LREST] = &LREST{}
 // Change runtime.Object -> *LREST
 
 // Default set def values
-func (r *LREST) Default(ctx context.Context, obj *LREST) error {
+func (r *LREST) Default(_ context.Context, obj *LREST) error {
 
 	lrest := obj
-	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
+	if lrestutil.Bit(lrest.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrestlog.Info("Setting default values in LREST spec for : " + r.Name)
 	}
 
@@ -96,9 +96,9 @@ func (r *LREST) Default(ctx context.Context, obj *LREST) error {
 //+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrest,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=vlrest.kb.io,admissionReviewVersions=v1
 
 // ValidateCreate implements admission.Validator[*LREST]
-func (r *LREST) ValidateCreate(ctx context.Context, obj *LREST) (admission.Warnings, error) {
+func (r *LREST) ValidateCreate(_ context.Context, obj *LREST) (admission.Warnings, error) {
 	lrest := obj
-	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
+	if lrestutil.Bit(lrest.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrestlog.Info("ValidateCreate", "name", r.Name)
 	}
 	var allErrs field.ErrorList
@@ -200,7 +200,7 @@ func (r *LREST) ValidateCreate(ctx context.Context, obj *LREST) (admission.Warni
 }
 
 // ValidateUpdate implements admission.Validator[*LREST]
-func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj *LREST) (admission.Warnings, error) {
+func (r *LREST) ValidateUpdate(_ context.Context, old, _ *LREST) (admission.Warnings, error) {
 	isLRESTMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
 	if isLRESTMarkedToBeDeleted {
 		return nil, nil
@@ -211,7 +211,7 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj *LREST) (admissi
 	// Check for updation errors
 	oldLREST := old
 
-	if Bit(oldLREST.Spec.Trclvl, TRCWEB) == true {
+	if lrestutil.Bit(oldLREST.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrestlog.Info("validate update", "name", r.Name)
 	}
 
@@ -242,9 +242,9 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj *LREST) (admissi
 }
 
 // ValidateDelete implements admission.Validator[*LREST]
-func (r *LREST) ValidateDelete(ctx context.Context, obj *LREST) (admission.Warnings, error) {
+func (r *LREST) ValidateDelete(_ context.Context, obj *LREST) (admission.Warnings, error) {
 	lrest := obj
-	if Bit(lrest.Spec.Trclvl, TRCWEB) {
+	if lrestutil.Bit(lrest.Spec.Trclvl, lrestutil.TRCWEB) {
 		//lrestlog.Info("validate delete", "name", obj.Name)
 		lrestlog.Info("validate update", "name", r.Name)
 	}

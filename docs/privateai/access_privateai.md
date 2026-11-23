@@ -1,17 +1,18 @@
-# Accessing the PrivateAI Container Pod in Kubernetes
+# Accessing the Private AI Container Pod in Kubernetes
 
-This page has the details to access the PrivateAI Container deployed in Kubernetes using Oracle Database Operator PrivateAI Controller:
+This page has the details to access the Private AI Container deployed in Kubernetes using Oracle Database Operator Private AI Controller:
 
-- [Accessing the PrivateAI Container in Kubernetes using REST Calls](#accessing-the-privateai-container-in-kubernetes-using-rest-calls)
-- [Accessing the PrivateAI Container using REST Calls with SSL certificate](#accessing-the-privateai-container-using-rest-calls-with-ssl-certificate)
-- [Accessing the PrivateAI Container from Oracle Database](#accessing-the-privateai-container-from-oracle-database)
+- [Accessing the Private AI Container in Kubernetes using REST Calls](#accessing-the-private-ai-container-in-kubernetes-using-rest-calls)
+- [Accessing the Private AI Container using REST Calls with SSL certificate](#accessing-the-private-ai-container-using-rest-calls-with-ssl-certificate)
+- [Accessing the Private AI Container from Oracle Database](#accessing-the-private-ai-container-from-oracle-database)
   - [Create wallet](#create-wallet)
-  - [Create Database user to access the PrivateAI Container](#create-database-user-to-access-the-privateai-container)
-  - [Access the PrivateAI Container from within the Oracle Database](#access-the-privateai-container-from-within-the-oracle-database)
-    - [Access the PrivateAI Container using "dbms_vector.utl_to_embedding()"](#access-the-privateai-container-using-dbms_vectorutl_to_embedding)
-    - [Access the PrivateAI Container using "dbms_vector_chain.utl_to_embedding()"](#access-the-privateai-container-using-dbms_vector_chainutl_to_embedding)
+  - [Create Database user to access the Private AI Container](#create-database-user-to-access-the-private-ai-container)
+  - [Access the Private AI Container from within the Oracle Database](#access-the-private-ai-container-from-within-the-oracle-database)
+    - [Access the Private AI Container using "dbms_vector.utl_to_embedding()"](#access-the-private-ai-container-using-dbms_vectorutl_to_embedding)
+    - [Access the Private AI Container using "dbms_vector_chain.utl_to_embedding()"](#access-the-private-ai-container-using-dbms_vector_chainutl_to_embedding)
+    - [Access the Private AI Container Using "dbms_vector.utl_to_generate_text()"](#access-the-private-ai-container-using-dbms_vectorutl_to_generate_text)
 
-**IMPORTANT:** This example assumes that you have an existing Oracle PrivateAI Container Deployment in the `pai` namespace and you have:
+**IMPORTANT:** This example assumes that you have an existing Oracle Private AI Container Deployment in the `pai` namespace and you have:
 
 - The Reserved Public IP in case of the Public LoadBalancer
 - The Private IP in case of case of the Internal LoadBalancer
@@ -39,28 +40,36 @@ Please follow the below steps to access:
 
     Keep the LoadBalancer Reserved Public IP or the Private IP ready. You can use this IP in the API Endpoint call in the next step.
 
-## Accessing the PrivateAI Container in Kubernetes using REST Calls
+## Accessing the Private AI Container in Kubernetes using REST Calls
 
 When HTTPS and authentication are enabled, you can add the Bearer token to the header. Note that if your certificate is self-signed, you need to add "-k" flag to the curl request, which tells curl to skip SSL certificate verification.
 
-Assume the Oracle PrivateAI Container Deployment is using Public Loadbalancer and the Loadbalancer Reserved Public IP is `xxx.xxx.xxx.xxx`.
+Assume the Oracle Private AI Container Deployment is using Public Loadbalancer and the Loadbalancer Reserved Public IP is `xxx.xxx.xxx.xxx`.
 
 To get the list of Models, you can use below command:
 
 ```sh
-curl -k --noproxy '*' --header "Authorization: Bearer `cat  <PATH of the api-key file>/api-key`" https://xxx.xxx.xxx.xxx:443/v1/models
+export API_KEY_FILE=/secure/path/api-key
+curl -k --noproxy '*' \
+  --header "Authorization: Bearer $(<"$API_KEY_FILE")" \
+  "https://xxx.xxx.xxx.xxx:443/v1/models"
 ```
 
 To make an API Endpoint Call:
 
 ```sh
-curl -k --noproxy '*' -X POST --header 'Content-Type: application/json' --header 'Accept: application/json' --header "Authorization: Bearer `cat <PATH of the api-key file>/api-key`" -d '{"model": "<<AI Model>>","input": ["The quick brown fox jumped over the fence.","Another test sentence"]}' https://xxx.xxx.xxx.xxx:443/v1/embeddings
+export API_KEY_FILE=/secure/path/api-key
+curl -k --noproxy '*' -X POST \
+  --header 'Content-Type: application/json' --header 'Accept: application/json' \
+  --header "Authorization: Bearer $(<"$API_KEY_FILE")" \
+  -d '{"model": "<<AI Model>>","input": ["The quick brown fox jumped over the fence.","Another test sentence"]}' https://xxx.xxx.xxx.xxx:443/v1/embeddings
 ```
 
 In case of an LLM Model, use the below syntax:
 
 ```sh
-curl -k --noproxy '*' -X POST --header 'Content-Type: application/json' --header "Authorization: Bearer `cat <PATH of the api-key file>/api-key`" --data '{
+export API_KEY_FILE=/secure/path/api-key
+curl -k --noproxy '*' -X POST --header 'Content-Type: application/json' --header "Authorization: Bearer $(<"$API_KEY_FILE")" --data '{
    "model": "<< AI LLM Model Name>>",
    "messages":[
       {"role": "user", "content": "What does the SELECT statement in SQL do?"}
@@ -72,9 +81,9 @@ curl -k --noproxy '*' -X POST --header 'Content-Type: application/json' --header
 
 **NOTE:** In case of the Private LoadBalancer, use the Internal IP in place of the IP `xxx.xxx.xxx.xxx` in above examples.
 
-## Accessing the PrivateAI Container using REST Calls with SSL certificate
+## Accessing the Private AI Container using REST Calls with SSL certificate
 
-In case you want to use SSL authentication while accessing the PrivateAI Container in Kubernetes using SSL certificate, then you will need to follow below additional steps:
+In case you want to use SSL authentication while accessing the Private AI Container in Kubernetes using SSL certificate, then you will need to follow below additional steps:
 
 1. Copy the `ca.crt` file to the machine where you want to run the API Call to the Model Endpoint.
 2. Use this key file while running the below modified example command to make an API Endpoint Call
@@ -82,20 +91,31 @@ In case you want to use SSL authentication while accessing the PrivateAI Contain
 To get the list of Models, you can use below command:
 
 ```sh
-curl --cacert /home/opc/ca.crt -k --noproxy '*' --header "Authorization: Bearer `cat  <PATH of the api-key file>/api-key`" https://xxx.xxx.xxx.xxx:443/v1/models
+export API_KEY_FILE=/secure/path/api-key
+export CA_FILE=/secure/path/ca.crt
+curl --cacert "$CA_FILE" --noproxy '*' \
+  --header "Authorization: Bearer $(<"$API_KEY_FILE")" \
+  "https://xxx.xxx.xxx.xxx:443/v1/models"
 ```
 
-Assume the Oracle PrivateAI Container Deployment is using Public Loadbalancer and the Loadbalancer Reserved Public IP is `xxx.xxx.xxx.xxx`, you can use the below example command to make an API Endpoint Call:
+Assume the Oracle Private AI Container Deployment is using Public Loadbalancer and the Loadbalancer Reserved Public IP is `xxx.xxx.xxx.xxx`, you can use the below example command to make an API Endpoint Call:
 
 ```sh
-curl --cacert ca.crt --noproxy '*' -v -X POST --header "Content-Type: application/json"  --header "Authorization: Bearer `cat <PATH of the api-key file>/api-key`" -d '{"model": "<<AI Model>>","input": ["The quick brown fox jumped over the fence.","Another test sentence"]}' https://xxx.xxx.xxx.xxx:443/v1/embeddings
+export API_KEY_FILE=/secure/path/api-key
+export CA_FILE=/secure/path/ca.crt
+curl --cacert "$CA_FILE" --noproxy '*' -v -X POST \
+  --header "Content-Type: application/json"  \
+  --header "Authorization: Bearer $(<"$API_KEY_FILE")" \
+  -d '{"model": "<<AI Model>>","input": ["The quick brown fox jumped over the fence.","Another test sentence"]}' https://xxx.xxx.xxx.xxx:443/v1/embeddings
 ```
 
 In case of an LLM Model, use the below syntax:
 
 ```sh
-curl --cacert ca.crt --noproxy '*' -X POST --header 'Content-Type: application/json' --header "Authorization: Bearer `cat <PATH of the api-key file>/api-key`" --data '{
-   "model": "<< AI LLM Model Name>>",
+export API_KEY_FILE=/secure/path/api-key
+export CA_FILE=/secure/path/ca.crt
+curl --cacert "$CA_FILE" --noproxy '*' -X POST --header 'Content-Type: application/json' --header "Authorization: Bearer $(<"$API_KEY_FILE")" --data '{
+   "model": "<<AI Model>>",
    "messages":[
       {"role": "user", "content": "What does the SELECT statement in SQL do?"}
    ],                             
@@ -109,11 +129,11 @@ curl --cacert ca.crt --noproxy '*' -X POST --header 'Content-Type: application/j
 - In case of the Private LoadBalancer, use the Internal IP in place of the IP `xxx.xxx.xxx.xxx` in above examples.
 - Replace the details of the AI Model in the above URL with the available model name.
 
-## Accessing the PrivateAI Container from Oracle Database
+## Accessing the Private AI Container from Oracle Database
 
-You can access the PrivateAI Container deployed in Kubernetes from an Oracle Database using PL/SQL Commands. You can use `dbms_vector.utl_to_embedding()` or `dbms_vector_chain.utl_to_embedding()` for this purpose.
+You can access the Private AI Container deployed in Kubernetes from an Oracle Database using PL/SQL Commands. You can use `dbms_vector.utl_to_embedding()` or `dbms_vector_chain.utl_to_embedding()` for this purpose.
 
-**Note:** Your Oracle database version must be Oracle AI Database 26ai (23.26.0.0.0) to access the PrivateAI Container. 
+**Note:** Your Oracle database version must be Oracle AI Database 26ai (23.26.0.0.0) to access the Private AI Container.
 
 You must complete all of the following steps:
 
@@ -130,7 +150,7 @@ You must complete all of the following steps:
   orapki wallet add -wallet /home/oracle/wallet/ -trusted_cert -cert ca.crt -pwd Oracle_26ai
   ```
 
-### Create Database User to Access the PrivateAI Container
+### Create Database User to Access the Private AI Container
 
 - Create a user on the database. In this example, the user is created at the PDB `ORCLPDB` Level.
 
@@ -157,7 +177,7 @@ You must complete all of the following steps:
   /
   ```
 
-  **Note:** In the preceding command, replace `xxx.xxx.xxx.xxx` with the Public IP or the Private IP of the LoadBalancer used in the deployment of PrivateAI Container on Kubernetes. 
+  **Note:** In the preceding command, replace `xxx.xxx.xxx.xxx` with the Public IP or the Private IP of the LoadBalancer used in the deployment of Private AI Container on Kubernetes.
 
   ```sh
   BEGIN
@@ -171,7 +191,7 @@ You must complete all of the following steps:
   /
   ```
 
-### Access the PrivateAI Container from within the Oracle Database
+### Access the Private AI Container from within the Oracle Database
 
 - Connect to the PDB as the user that you previously created:
 
@@ -179,7 +199,7 @@ You must complete all of the following steps:
   connect vectordb/"<<Password>>"@orclpdb
   ```
 
-- Create credential named `ORACLEAI_CRED` using "api-key" generated when you used `pai_secret.sh` script during the PrivateAI Container Deployment: 
+- Create credential named `ORACLEAI_CRED` using "api-key" generated when you used `pai_secret.sh` script during the Private AI Container Deployment:
 
   ```sh
   -- Drop the credential in case existing earlier with this name:
@@ -209,7 +229,7 @@ You must complete all of the following steps:
   exec utl_http.set_wallet('file:/home/oracle/wallet/', '<<wallet password>>');
   ```
 
-#### Access the PrivateAI Container using "dbms_vector.utl_to_embedding()"
+#### Access the Private AI Container using "dbms_vector.utl_to_embedding()"
 
 - Declare embedding parameters:
 
@@ -227,7 +247,7 @@ You must complete all of the following steps:
   /
   ```
 
-  **Note:** `xxx.xxx.xxx.xxx` is the LoadBalancer IP and `clip-vit-base-patch32-txt` is the AI Model. 
+  **Note:** `xxx.xxx.xxx.xxx` is the LoadBalancer IP and `clip-vit-base-patch32-txt` is the AI Model.
 
 - Get the embeddings:
 
@@ -236,9 +256,9 @@ You must complete all of the following steps:
   select dbms_vector.utl_to_embedding('Hello world', json(:embed_params)) from dual;
   ```
 
-#### Access the PrivateAI Container using "dbms_vector_chain.utl_to_embedding()"
+#### Access the Private AI Container using "dbms_vector_chain.utl_to_embedding()"
 
-- Obtain the list of available models from the PrivateAI Container deployed in Kubernetes
+- Obtain the list of available models from the Private AI Container deployed in Kubernetes
 - In this example, `xxx.xxx.xxx.xxx` is the LoadBalancer IP and `ORACLEAI_CRED` is the credential name created earlier
 
   ```sh
@@ -296,3 +316,40 @@ You must complete all of the following steps:
   end;
   /
   ```
+
+#### Access the Private AI Container Using "dbms_vector.utl_to_generate_text()"
+
+- This example sends a prompt to a text-generation model through the Private AI chat completions endpoint.
+- In this example, `xxx.xxx.xxx.xxx` is the Load Balancer IP, and `ORACLEAI_CRED` is the credential created earlier. Replace `your-text-generation-model` with the model ID returned by the Private AI `/v1/models` endpoint. Confirm that the model supports text generation.
+- For vLLM’s OpenAI-compatible endpoint, use `"provider": "openai"` and the `/v1/chat/completions` URL. For details, see [Oracle Database 26ai `UTL_TO_GENERATE_TEXT` documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/vecse/utl_to_generate_text-dbms_vector.html).
+
+```sql
+SET SERVEROUTPUT ON;
+
+DECLARE
+  preferences CLOB;
+  input       CLOB;
+  output      CLOB;
+BEGIN
+  preferences := '{
+    "provider": "openai",
+    "url": "https://xxx.xxx.xxx.xxx:443/v1/chat/completions",
+    "credential_name": "ORACLEAI_CRED",
+    "model": "your-text-generation-model",
+    "max_tokens": 128,
+    "temperature": 0
+  }';
+
+  input := 'In one sentence, explain what an embedding is.';
+
+  output := DBMS_VECTOR.UTL_TO_GENERATE_TEXT(
+    TO_CLOB(input),
+    JSON(preferences)
+  );
+
+  IF output IS NOT NULL THEN
+    DBMS_OUTPUT.PUT_LINE(DBMS_LOB.SUBSTR(output, 5000, 1));
+  END IF;
+END;
+/
+```

@@ -1,28 +1,62 @@
-# Deploying Oracle PrivateAI Container using Public LoadBalancer and memory and cpu limits for pods
+## Set or Change CPU and Memory for an Existing Private AI Deployment
 
-Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In this example, the deployment uses the YAML file based on `OCI OKE` cluster. The memory and cpu limits are assigned for the Pods for the PrivateAI Container.
+Use this procedure to set CPU and memory requests and limits for the first time or to update existing values.
 
-**IMPORTANT:** Complete [Before You Begin](./README.md#before-you-begin) before using Oracle PrivateAI Controller. Make sure you use the Public IP Address of the Public LoadBalancer to the parameter `IP_ADDRESS` while creating the certificate for this `PrivateAi` Deployment.
+Set the namespace and name of the existing `PrivateAi` resource:
 
-**NOTE:** Modify the file `pai_sample_publiclb_mem_cpu_limit.yaml` with the actual Reserved Public IP before deployment.
+```sh
+export NAMESPACE=pai
+export NAME=pai-sample
+```
 
-Use the file: [pai_sample_publiclb_mem_cpu_limit.yaml](./provisioning/pai_sample_publiclb_mem_cpu_limit.yaml) for this use case as below:
+### Update Requests and Limits
 
-1. Deploy the `pai_sample_publiclb_mem_cpu_limit.yaml` file:
+This example sets the CPU request and limit to `8` and the memory request and limit to `32Gi` for each Private AI container. These values match the starting capacity described in [Before You Begin](./README.md#resources-shared-memory-and-worker-nodes).
 
-    ```sh
-    kubectl apply -f pai_sample_publiclb_mem_cpu_limit.yaml
-    ```
+Adjust the values for your workload. Ensure the eligible worker nodes have enough allocatable capacity for all replicas and the rollout. Each request must be less than or equal to its corresponding limit.
 
-2. Check the status of the deployment:
+```sh
+kubectl patch pai "$NAME" -n "$NAMESPACE" --type=merge -p '{
+  "spec": {
+    "runtime": {
+      "resources": {
+        "requests": {"cpu": "8", "memory": "32Gi"},
+        "limits": {"cpu": "8", "memory": "32Gi"}
+      }
+    }
+  }
+}'
+```
 
-    ```sh
-    # Check the status of the Kubernetes Pods:
-    kubectl get all -n pai
+The operator updates the generated Deployment with the new resource settings. Kubernetes then replaces the Pods as the updated Deployment rolls out. Resource keys omitted from this merge patch, such as `nvidia.com/gpu`, are retained.
 
-    # Check the logs of a particular pod. For example, to check status of pod "pai-sample-b669d7897-nkkhz":
-    kubectl logs pod/pai-sample-b669d7897-nkkhz -n pai
+### Check the Result
 
-    # Check the memory and cpu limits on the Pods by describing them:
-    kubectl describe pod/pai-sample-b669d7897-nkkhz -n pai    
-    ```
+Check the values in the `PrivateAi` resource:
+
+```sh
+kubectl get pai "$NAME" -n "$NAMESPACE" \
+  -o jsonpath='requests: cpu={.spec.runtime.resources.requests.cpu} memory={.spec.runtime.resources.requests.memory}{"\n"}limits: cpu={.spec.runtime.resources.limits.cpu} memory={.spec.runtime.resources.limits.memory}{"\n"}'
+```
+
+List the Pods for this deployment and check their rollout status:
+
+```sh
+kubectl get pods -n "$NAMESPACE" \
+  -l "app.kubernetes.io/name=$NAME" -o wide
+
+kubectl rollout status "deployment/$NAME" \
+  -n "$NAMESPACE" --timeout=15m
+```
+
+Inspect a Pod to confirm that its container requests and limits match the configured values:
+
+```sh
+POD_NAME=$(kubectl get pods -n "$NAMESPACE" \
+  -l "app.kubernetes.io/name=$NAME" \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl describe pod "$POD_NAME" -n "$NAMESPACE"
+```
+
+Confirm that the replacement Pods are Ready and that the Private AI container shows the expected CPU and memory requests and limits.

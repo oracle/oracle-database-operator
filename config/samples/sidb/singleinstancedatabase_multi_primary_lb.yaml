@@ -1,0 +1,100 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Multi-standby Data Guard primary (Cluster 1) over OCI NLB (TCP).
+# Based on the single-standby LB primary sample, extended for ORCLSTBY1/2/3.
+#
+# Pair with multi-standby LB standby samples and dataguardbroker_multi_standby_lb.yaml.
+# See docs/sidb/dataguard/DATAGUARD_MULTI_STANDBY_LB.md.
+#
+# Before apply:
+# - Replace namespace, secrets, image, storageClass, subnet OCID
+# - Set standbySources[].host to each standby NLB IP after LBs exist (not ClusterIP DNS)
+# - Ensure peered-VCN routes allow TCP 1521 both ways
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: <operator-watched-namespace>
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  createAs: primary
+  edition: enterprise
+  archiveLog: true
+  flashBack: true
+  forceLog: true
+
+  dataguard:
+    prereqs:
+      enabled: true
+    standbySources:
+      # Same-cluster standby1: use ClusterIP Service or standby1 NLB once created.
+      - dbUniqueName: ORCLSTBY1
+        host: "<standby1-nlb-or-clusterip>"
+        tcpPort: 1521
+        tcpsEnabled: false
+      # Remote standbys (Cluster 2): use each standby NLB IP/DNS.
+      - dbUniqueName: ORCLSTBY2
+        host: "<standby2-nlb-ip-or-dns>"
+        tcpPort: 1521
+        tcpsEnabled: false
+      - dbUniqueName: ORCLSTBY3
+        host: "<standby3-nlb-ip-or-dns>"
+        tcpPort: 1521
+        tcpsEnabled: false
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: IfNotPresent
+  initParams:
+    sgaTarget: 14336
+    pgaAggregateTarget: 2048
+    processes: 800
+
+  resources:
+    requests:
+      memory: "24Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+    setWritePermissions: true
+
+  services:
+    external:
+      type: LoadBalancer
+      isKeep: false
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<primary-subnet-ocid>"
+        service.beta.kubernetes.io/oci-load-balancer-connection-idle-timeout: "3600"
+      tcp:
+        enabled: true
+        port: 1521
+
+  replicas: 1

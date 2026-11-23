@@ -8,6 +8,7 @@ import (
 
 	networkv4 "github.com/oracle/oracle-database-operator/apis/network/v4"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -137,6 +138,12 @@ func (v *privateAiValidator) ValidateDelete(_ context.Context, obj *PrivateAi) (
 func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi) (admission.Warnings, error) {
 	privateailog.Info("Validation for PrivateAi", "name", privateai.GetName())
 	warnings := deprecatedPrivateAIFieldWarnings(&privateai.Spec)
+	if err := validatePrivateAISecuritySettings(&privateai.Spec); err != nil {
+		return warnings, err
+	}
+	if err := validatePrivateAIShmSize(&privateai.Spec); err != nil {
+		return warnings, err
+	}
 	authSecret := EffectiveAuthSecret(&privateai.Spec)
 	tls := EffectiveTLS(&privateai.Spec)
 	configFile := EffectiveConfigFile(&privateai.Spec)
@@ -224,6 +231,40 @@ func (v *privateAiValidator) validate(ctx context.Context, privateai *PrivateAi)
 		}
 	}
 	return warnings, nil
+}
+
+func validatePrivateAIShmSize(spec *PrivateAiSpec) error {
+	if spec == nil || spec.Runtime == nil || strings.TrimSpace(spec.Runtime.ShmSize) == "" {
+		return nil
+	}
+
+	shmSize := strings.TrimSpace(spec.Runtime.ShmSize)
+	quantity, err := resource.ParseQuantity(shmSize)
+	if err != nil {
+		return fmt.Errorf("spec.runtime.shmSize must be a valid Kubernetes quantity: %w", err)
+	}
+	if quantity.Sign() <= 0 {
+		return fmt.Errorf("spec.runtime.shmSize must be greater than zero")
+	}
+	return nil
+}
+
+func validatePrivateAISecuritySettings(spec *PrivateAiSpec) error {
+	if spec == nil || spec.Runtime == nil || spec.Runtime.SecurityContext == nil {
+		return nil
+	}
+
+	securityContext := spec.Runtime.SecurityContext
+	hasUser := securityContext.RunAsUser != nil
+	hasGroup := securityContext.RunAsGroup != nil
+	hasFSGroup := securityContext.FSGroup != nil
+	if hasFSGroup && (hasUser || hasGroup) {
+		return fmt.Errorf("spec.runtime.securityContext.fsGroup cannot be combined with runAsUser or runAsGroup")
+	}
+	if hasUser != hasGroup {
+		return fmt.Errorf("spec.runtime.securityContext.runAsUser and runAsGroup must be supplied together")
+	}
+	return nil
 }
 
 func deprecatedPrivateAIFieldWarnings(spec *PrivateAiSpec) admission.Warnings {

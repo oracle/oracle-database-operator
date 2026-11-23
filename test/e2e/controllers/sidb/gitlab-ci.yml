@@ -1,0 +1,97 @@
+# Include this file from the repository .gitlab-ci.yml, or use it as a child pipeline.
+# GitLab schedule cadence is configured in CI/CD > Schedules. Set SIDB_PROFILE
+# as a schedule variable to run provision, clone, dataguard, or all.
+
+.sidb-e2e:
+  extends:
+    - .operator-e2e-setup
+  stage: e2e
+  image: alpine/k8s:1.30.0
+  variables:
+    OP_IMAGE: "$OCI_OPERATOR_REGISTRY/$OCI_OPERATOR_REPOSITORY:db-operator-$CI_COMMIT_SHORT_SHA"
+    E2E_CLEANUP_POLICY: "pre"
+    SIDB_E2E_ENABLED: "false"
+    E2E_NAMESPACE: "sidb-ns"
+    SIDB_TESTS: "all"
+    SIDB_PROFILE: ""
+    SIDB_TIMEOUT_SECONDS: "1500"
+    SIDB_UNHEALTHY_GRACE_SECONDS: "600"
+    SIDB_POLL_INTERVAL: "20"
+  before_script:
+    - source .gitlab/ci/operator-e2e-setup.sh
+    - operator_setup_init_logs
+    - source .gitlab/ci/oci-context.sh
+    - source .gitlab/ci/oci-tunnel.sh
+    - operator_setup_run_stage "bastion-access" ensure_bastion_kubernetes_access
+    - select_kube_context
+    - operator_setup_start_tunnel_watchdog
+    - operator_setup_run_stage "cluster-info-before" bash .gitlab/ci/collect-cluster-info.sh
+    - operator_setup_run_stage "node-health-before" assert_healthy_nodes
+    - operator_setup_run_stage "cert-manager" ensure_cert_manager
+    - chmod +x test/e2e/controllers/sidb/scripts/prepare-env.sh test/e2e/controllers/sidb/scripts/run.sh
+    - operator_setup_run_stage "sidb-prepare-environment" test/e2e/controllers/sidb/scripts/prepare-env.sh
+    - source /tmp/sidb-e2e.env
+    - operator_setup_run_stage "sidb-input-validation" bash -c 'test -n "$SIDB_IMAGE" || { echo "Set SIDB_IMAGE as a protected CI/CD variable"; exit 2; }; test -n "$SIDB_STORAGE_CLASS" || { echo "Set SIDB_STORAGE_CLASS as a CI/CD variable"; exit 2; }'
+    - operator_setup_run_stage "namespace-create" operator_setup_ensure_namespace "$E2E_NAMESPACE"
+    - operator_setup_run_stage "operator-pre-cleanup" operator_setup_pre_cleanup
+    - operator_setup_run_stage "operator-preflight" assert_clean_operator_cluster
+    - operator_setup_run_stage "watched-namespace-snapshot" operator_setup_snapshot_watched_namespaces
+    - operator_setup_run_stage "operator-install" setup_operator
+    - operator_setup_run_stage "operator-watch-namespace" operator_setup_configure_watched_namespaces
+    - operator_setup_run_stage "kubectl-client" kubectl version --client
+  script:
+    - |
+      set -eu
+      cleanup_args=()
+      if operator_setup_post_cleanup_enabled || [ "${SIDB_CLEANUP:-false}" = "true" ]; then
+        cleanup_args+=(--cleanup)
+      fi
+      operator_setup_run_stage "sidb-tests" \
+        test/e2e/controllers/sidb/scripts/run.sh \
+        --namespace "$E2E_NAMESPACE" \
+        --tests "$SIDB_TESTS" \
+        "${cleanup_args[@]}"
+  after_script:
+    - |
+      set +e
+      source .gitlab/ci/operator-e2e-setup.sh
+      export OPERATOR_LOG_DIR="$(operator_setup_log_dir)"
+      export OCI_VALIDATE_AUTH=false
+      if source .gitlab/ci/oci-context.sh && source .gitlab/ci/oci-tunnel.sh; then
+        operator_setup_stop_tunnel_watchdog || true
+        if operator_setup_run_stage "bastion-access-final" ensure_bastion_kubernetes_access; then
+          export CLUSTER_INFO_DIR="$OPERATOR_LOG_DIR/cluster-info-final"
+          mkdir -p "$CLUSTER_INFO_DIR"
+          operator_setup_run_stage "cluster-info-final" bash .gitlab/ci/collect-cluster-info.sh || true
+          operator_setup_run_stage "watched-namespace-cleanup" operator_setup_cleanup_watched_namespaces || true
+          operator_setup_run_stage "operator-cleanup" cleanup_operator || true
+        else
+          echo "Unable to reconnect to Kubernetes for final diagnostics and cleanup" | tee -a "$OPERATOR_LOG_DIR/job.log"
+        fi
+        operator_setup_copy_tunnel_log || true
+        stop_bastion_tunnel || true
+      else
+        echo "OCI or Bastion initialization failed during finalization" | tee -a "$OPERATOR_LOG_DIR/job.log"
+      fi
+      operator_setup_archive_logs || true
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths:
+      - artifacts/operator-pipeline-logs/
+      - artifacts/cluster-info/
+      - test/e2e/controllers/sidb/results/
+
+sidb-e2e-on-demand:
+  extends: .sidb-e2e
+  rules:
+    - if: '$RUN_OPERATOR_E2E != "true" && $SIDB_E2E_ENABLED == "true" && ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "pipeline")'
+      when: manual
+    - when: never
+
+sidb-e2e-scheduled:
+  extends: .sidb-e2e
+  rules:
+    - if: '$RUN_OPERATOR_E2E != "true" && $SIDB_E2E_ENABLED == "true" && $CI_PIPELINE_SOURCE == "schedule"'
+      when: on_success
+    - when: never

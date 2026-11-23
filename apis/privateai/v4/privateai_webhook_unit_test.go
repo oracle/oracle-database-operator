@@ -29,6 +29,88 @@ func TestPrivateAIValidate_AllowsSharedAuthAndTLSMountPath(t *testing.T) {
 	}
 }
 
+func TestPrivateAIValidate_AllowsPlatformSelectedIdentity(t *testing.T) {
+	validator := &privateAiValidator{}
+	obj := &PrivateAi{Spec: PrivateAiSpec{
+		Storage: &PrivateAiStorageSpec{PvcList: map[string]string{"models": "/privateai/models"}},
+	}}
+	if _, err := validator.validate(context.Background(), obj); err != nil {
+		t.Fatalf("expected platform-selected identity to be valid, got %v", err)
+	}
+}
+
+func TestPrivateAIValidate_AllowsExplicitUIDAndGID(t *testing.T) {
+	validator := &privateAiValidator{}
+	uid := int64(2001)
+	gid := int64(2001)
+	obj := &PrivateAi{Spec: PrivateAiSpec{
+		Runtime: &PrivateAiRuntimeSpec{SecurityContext: &PrivateAiPodSecurityContextSpec{
+			RunAsUser:  &uid,
+			RunAsGroup: &gid,
+		}},
+	}}
+	if _, err := validator.validate(context.Background(), obj); err != nil {
+		t.Fatalf("expected explicit UID/GID to be valid, got %v", err)
+	}
+}
+
+func TestPrivateAIValidate_RequiresExplicitUIDAndGIDTogether(t *testing.T) {
+	validator := &privateAiValidator{}
+	uid := int64(2001)
+	obj := &PrivateAi{Spec: PrivateAiSpec{
+		Runtime: &PrivateAiRuntimeSpec{SecurityContext: &PrivateAiPodSecurityContextSpec{
+			RunAsUser: &uid,
+		}},
+	}}
+	_, err := validator.validate(context.Background(), obj)
+	if err == nil || !strings.Contains(err.Error(), "runAsUser and runAsGroup must be supplied together") {
+		t.Fatalf("expected UID/GID pair validation error, got %v", err)
+	}
+}
+
+func TestPrivateAIValidate_RejectsFSGroupWithExplicitUIDAndGID(t *testing.T) {
+	validator := &privateAiValidator{}
+	uid := int64(2001)
+	gid := int64(2001)
+	fsGroup := int64(2001)
+	obj := &PrivateAi{Spec: PrivateAiSpec{
+		Runtime: &PrivateAiRuntimeSpec{SecurityContext: &PrivateAiPodSecurityContextSpec{
+			RunAsUser:  &uid,
+			RunAsGroup: &gid,
+			FSGroup:    &fsGroup,
+		}},
+	}}
+	_, err := validator.validate(context.Background(), obj)
+	if err == nil || !strings.Contains(err.Error(), "fsGroup cannot be combined with runAsUser or runAsGroup") {
+		t.Fatalf("expected mutually exclusive security context validation error, got %v", err)
+	}
+}
+
+func TestPrivateAIValidate_AllowsPositiveShmSize(t *testing.T) {
+	validator := &privateAiValidator{}
+	for _, value := range []string{"128Mi", "2Gi", "1073741824"} {
+		obj := &PrivateAi{Spec: PrivateAiSpec{
+			Runtime: &PrivateAiRuntimeSpec{ShmSize: value},
+		}}
+		if _, err := validator.validate(context.Background(), obj); err != nil {
+			t.Fatalf("expected shmSize %q to be valid, got %v", value, err)
+		}
+	}
+}
+
+func TestPrivateAIValidate_RejectsInvalidShmSize(t *testing.T) {
+	validator := &privateAiValidator{}
+	for _, value := range []string{"not-a-quantity", "0", "-1Gi"} {
+		obj := &PrivateAi{Spec: PrivateAiSpec{
+			Runtime: &PrivateAiRuntimeSpec{ShmSize: value},
+		}}
+		_, err := validator.validate(context.Background(), obj)
+		if err == nil || !strings.Contains(err.Error(), "spec.runtime.shmSize") {
+			t.Fatalf("expected shmSize %q validation error, got %v", value, err)
+		}
+	}
+}
+
 func TestPrivateAIValidate_RejectsRelativeTLSMountPath(t *testing.T) {
 	validator := &privateAiValidator{}
 	obj := &PrivateAi{

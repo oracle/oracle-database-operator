@@ -1,0 +1,86 @@
+
+#
+# Copyright (c) 2023, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  # Creates a primary SIDB with TCPS and TDE enabled.
+  # Update namespace, admin, TDE and TLS secrets, image, and storage class before applying.
+  name: sidb-sample
+  namespace: <operator-watched-namespace>
+spec:
+  ## Use only alphanumeric characters for sid.
+  sid: ORCL1
+
+  ## DB edition.
+  edition: enterprise
+
+  ## Intended type of database.
+  createAs: primary
+
+  ## Grouped security settings.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-tcps-tls
+
+  ## DB character set.
+  charset: AL32UTF8
+
+  ## PDB name.
+  pdbName: orclpdb1
+
+  ## Enable ArchiveLog. Should be true to allow DB cloning.
+  archiveLog: true
+
+  ## Database image details.
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    imagePullPolicy: IfNotPresent
+
+  ## Database storage details.
+  persistence:
+    oradata:
+      size: 100Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+
+  ## Optional service endpoint configuration.
+  ## Enable TCPS because spec.security.tcps.enabled is true.
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        tcp:
+          enabled: true
+        tcps:
+          enabled: true
+
+  replicas: 1
+
+  ## Optional Data Guard configuration.
+  ## Enable prerequisites when preparing this primary for Data Guard.
+  ## For a standby using primarySource.connectString, also configure
+  ## standbySources with the standby's reachable listener endpoint.
+  ## standbySources is not required when using primarySource.databaseRef.
+  ## Use port 2484 for TCPS or 1521 for TCP, as appropriate.
+  # dataguard:
+  #   prereqs:
+  #     enabled: true
+  #   standbySources:
+  #     - dbUniqueName: ORCLS
+  #       host: standby-1.example.com
+  #       tcpPort: 2484
+  #       tcpsEnabled: true

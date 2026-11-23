@@ -51,6 +51,7 @@ var (
 	GroupVersion = schema.GroupVersion{Group: "database.oracle.com", Version: "v4"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
+	//nolint:staticcheck // generated Register calls use controller-runtime's builder API.
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
 
 	// AddToScheme adds the types in this group-version to the given scheme.

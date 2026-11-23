@@ -1,0 +1,12 @@
+apiVersion: v2
+name: oracle-database-operator-observability
+description: Grafana Alloy telemetry integration for Oracle Database Operator
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: alloy
+    version: "1.12.1"
+    repository: https://grafana.github.io/helm-charts
+    condition: alloy.enabled

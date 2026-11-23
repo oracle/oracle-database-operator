@@ -44,6 +44,7 @@ package v4
 import (
 	"context"
 	"fmt"
+	"net"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -52,6 +53,7 @@ import (
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
+	sharedresources "github.com/oracle/oracle-database-operator/commons/resources"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -69,6 +71,112 @@ import (
 var singleinstancedatabaselog = logf.Log.WithName("singleinstancedatabase-resource")
 
 var singleInstanceDatabaseTNSAliasNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+var singleInstanceDatabasePDBNamePattern = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_$#]*$")
+var singleInstanceDatabasePDBParameterNamePattern = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_$#]*$")
+
+const singleInstanceDatabaseMaxStringSizeParameter = "MAX_STRING_SIZE"
+
+func validateSIDBPDBName(path *field.Path, name string) field.ErrorList {
+	if strings.TrimSpace(name) == "" || singleInstanceDatabasePDBNamePattern.MatchString(name) {
+		return nil
+	}
+	return field.ErrorList{field.Invalid(path, name, "pdbName must be a valid Oracle identifier")}
+}
+
+func sidbPDBParameterKey(parameter SingleInstanceDatabasePDBParameter) string {
+	return strings.ToUpper(strings.TrimSpace(parameter.PdbName)) + "|" +
+		strings.ToUpper(strings.TrimSpace(parameter.Name))
+}
+
+func validateSIDBPDBParameters(sidb *SingleInstanceDatabase) field.ErrorList {
+	var allErrs field.ErrorList
+	if sidb == nil || len(sidb.Spec.PDBParameters) == 0 {
+		return allErrs
+	}
+
+	basePath := field.NewPath("spec").Child("pdbParameters")
+	if strings.EqualFold(strings.TrimSpace(sidb.Spec.CreateAs), "standby") {
+		return append(allErrs, field.Forbidden(basePath, "pdbParameters cannot be specified for a standby database"))
+	}
+
+	seen := map[string]struct{}{}
+	for i, parameter := range sidb.Spec.PDBParameters {
+		parameterPath := basePath.Index(i)
+		pdbName := strings.TrimSpace(parameter.PdbName)
+		name := strings.ToUpper(strings.TrimSpace(parameter.Name))
+		value := strings.ToUpper(strings.TrimSpace(parameter.Value))
+
+		if pdbName == "" {
+			allErrs = append(allErrs, field.Required(parameterPath.Child("pdbName"), "pdbName is required"))
+		} else {
+			allErrs = append(allErrs, validateSIDBPDBName(parameterPath.Child("pdbName"), pdbName)...)
+		}
+		if name == "" {
+			allErrs = append(allErrs, field.Required(parameterPath.Child("name"), "name is required"))
+		} else if !singleInstanceDatabasePDBParameterNamePattern.MatchString(name) {
+			allErrs = append(allErrs, field.Invalid(parameterPath.Child("name"), parameter.Name, "name must be a valid Oracle identifier"))
+		}
+		if value == "" {
+			allErrs = append(allErrs, field.Required(parameterPath.Child("value"), "value is required"))
+		}
+
+		key := sidbPDBParameterKey(SingleInstanceDatabasePDBParameter{PdbName: pdbName, Name: name})
+		if _, exists := seen[key]; exists {
+			allErrs = append(allErrs, field.Duplicate(parameterPath, parameter))
+		}
+		seen[key] = struct{}{}
+
+		switch name {
+		case singleInstanceDatabaseMaxStringSizeParameter:
+			if value != "STANDARD" && value != "EXTENDED" {
+				allErrs = append(allErrs, field.Invalid(parameterPath.Child("value"), parameter.Value, "MAX_STRING_SIZE must be STANDARD or EXTENDED"))
+			}
+		default:
+			allErrs = append(allErrs, field.Invalid(parameterPath.Child("name"), parameter.Name, "unsupported PDB parameter"))
+		}
+	}
+
+	return allErrs
+}
+
+func validateSIDBPDBParameterUpdate(oldSidb, newSidb *SingleInstanceDatabase) field.ErrorList {
+	if oldSidb == nil || newSidb == nil || reflect.DeepEqual(oldSidb.Spec, newSidb.Spec) {
+		return nil
+	}
+
+	locked := map[string]struct{}{}
+	for _, parameter := range oldSidb.Spec.PDBParameters {
+		if strings.EqualFold(strings.TrimSpace(parameter.Name), singleInstanceDatabaseMaxStringSizeParameter) &&
+			strings.EqualFold(strings.TrimSpace(parameter.Value), "EXTENDED") {
+			locked[sidbPDBParameterKey(parameter)] = struct{}{}
+		}
+	}
+	for _, parameter := range oldSidb.Status.PDBParameters {
+		if strings.EqualFold(strings.TrimSpace(parameter.Name), singleInstanceDatabaseMaxStringSizeParameter) &&
+			strings.EqualFold(strings.TrimSpace(parameter.Value), "EXTENDED") {
+			locked[sidbPDBParameterKey(parameter)] = struct{}{}
+		}
+	}
+	if len(locked) == 0 {
+		return nil
+	}
+
+	desired := map[string]SingleInstanceDatabasePDBParameter{}
+	for _, parameter := range newSidb.Spec.PDBParameters {
+		desired[sidbPDBParameterKey(parameter)] = parameter
+	}
+
+	basePath := field.NewPath("spec").Child("pdbParameters")
+	var allErrs field.ErrorList
+	for key := range locked {
+		parameter, exists := desired[key]
+		if !exists || !strings.EqualFold(strings.TrimSpace(parameter.Value), "EXTENDED") {
+			allErrs = append(allErrs, field.Forbidden(basePath,
+				"MAX_STRING_SIZE=EXTENDED cannot be removed or changed once applied to a PDB"))
+		}
+	}
+	return allErrs
+}
 
 func (r *SingleInstanceDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, r).
@@ -306,6 +414,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 	newForCompare := newSidb.DeepCopy()
 	specChanged := !reflect.DeepEqual(oldForCompare.Spec, newForCompare.Spec)
 	if specChanged {
+		allErrs = append(allErrs, validateSIDBPDBParameterUpdate(oldSidb, newSidb)...)
 		if locked, lockGen, lockMsg := lockpolicy.IsControllerUpdateLocked(oldSidb.Status.Conditions, lockpolicy.DefaultReconcilingConditionType, lockpolicy.DefaultUpdateLockReason); locked {
 			if overrideEnabled, _ := lockpolicy.IsUpdateLockOverrideEnabled(newSidb.GetAnnotations(), lockpolicy.DefaultOverrideAnnotation); !overrideEnabled {
 				allErrs = append(allErrs, field.Forbidden(
@@ -334,7 +443,9 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("archiveLog"), "cannot be changed for non-primary database"))
 		}
 		statusFlashBack, _ := strconv.ParseBool(oldSidb.Status.FlashBack)
-		if newSidb.Spec.FlashBack != nil && statusFlashBack != *newSidb.Spec.FlashBack {
+		allowStandbyFlashBackEnable := strings.EqualFold(oldSidb.Status.Role, "PHYSICAL_STANDBY") &&
+			newSidb.Spec.FlashBack != nil && *newSidb.Spec.FlashBack
+		if newSidb.Spec.FlashBack != nil && statusFlashBack != *newSidb.Spec.FlashBack && !allowStandbyFlashBackEnable {
 			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("flashBack"), "cannot be changed for non-primary database"))
 		}
 		statusForceLogging, _ := strconv.ParseBool(oldSidb.Status.ForceLogging)
@@ -436,6 +547,7 @@ func validateSingleInstanceDatabaseSpecWithLegacySelfSignedTCPS(sidb *SingleInst
 	}
 	allErrs = append(allErrs, validateDataguardProducerSpec(field.NewPath("spec").Child("dataguard"), sidb.Spec.Dataguard)...)
 	allErrs = append(allErrs, validateSIDBImageSpec(field.NewPath("spec").Child("image"), &sidb.Spec.Image)...)
+	allErrs = append(allErrs, validateSIDBPDBName(field.NewPath("spec").Child("pdbName"), sidb.Spec.Pdbname)...)
 	allErrs = append(allErrs, validateSIDBServiceEndpoints(field.NewPath("spec").Child("services").Child("endpoints"), sidb)...)
 
 	oradata := sidbOradataPersistence(sidb)
@@ -533,9 +645,6 @@ func validateSingleInstanceDatabaseSpecWithLegacySelfSignedTCPS(sidb *SingleInst
 		if sidb.Spec.ArchiveLog != nil {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("archiveLog"), sidb.Spec.ArchiveLog, "archiveLog cannot be specified for standby"))
 		}
-		if sidb.Spec.FlashBack != nil {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("flashBack"), sidb.Spec.FlashBack, "flashBack cannot be specified for standby"))
-		}
 		if sidb.Spec.ForceLogging != nil {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("forceLog"), sidb.Spec.ForceLogging, "forceLog cannot be specified for standby"))
 		}
@@ -566,6 +675,7 @@ func validateSingleInstanceDatabaseSpecWithLegacySelfSignedTCPS(sidb *SingleInst
 				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("security").Child("secrets").Child("tde").Child("walletRoot"), tde.WalletRoot, "walletRoot requires secretName"))
 			}
 		}
+		allErrs = append(allErrs, validateSIDBStandbyTDESecretKey(sidb, tde)...)
 	}
 
 	if sidb.Spec.Replicas > 1 {
@@ -614,10 +724,23 @@ func validateSingleInstanceDatabaseSpecWithLegacySelfSignedTCPS(sidb *SingleInst
 		}
 	}
 	allErrs = append(allErrs, validateTNSAliases(sidb)...)
+	allErrs = append(allErrs, validateSIDBPDBParameters(sidb)...)
 
 	if sidb.Spec.InitParams != nil {
 		if (sidb.Spec.InitParams.PgaAggregateTarget != 0 && sidb.Spec.InitParams.SgaTarget == 0) || (sidb.Spec.InitParams.PgaAggregateTarget == 0 && sidb.Spec.InitParams.SgaTarget != 0) {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("initParams"), sidb.Spec.InitParams, "provide both pgaAggregateTarget and sgaTarget"))
+		}
+		if sidb.Spec.InitParams.MemoryTarget != "" {
+			memoryTarget := strings.ReplaceAll(strings.TrimSpace(sidb.Spec.InitParams.MemoryTarget), " ", "")
+			memoryTarget = strings.ReplaceAll(strings.ReplaceAll(strings.ToUpper(memoryTarget), "GIB", "Gi"), "GB", "G")
+			memoryTarget = strings.ReplaceAll(strings.ReplaceAll(memoryTarget, "MIB", "Mi"), "MB", "M")
+			memoryTarget = strings.ReplaceAll(strings.ReplaceAll(memoryTarget, "GI", "Gi"), "MI", "Mi")
+			if quantity, err := resource.ParseQuantity(memoryTarget); err != nil || quantity.Sign() <= 0 {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("initParams").Child("memoryTarget"), sidb.Spec.InitParams.MemoryTarget, "must be a positive memory quantity such as 20Gi or 20GB"))
+			}
+		}
+		if sidb.Spec.InitParams.MemoryTarget != "" && (sidb.Spec.InitParams.SgaTarget != 0 || sidb.Spec.InitParams.PgaAggregateTarget != 0) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("initParams"), sidb.Spec.InitParams, "memoryTarget cannot be combined with sgaTarget or pgaAggregateTarget"))
 		}
 	}
 
@@ -900,6 +1023,58 @@ func validateTNSAliases(sidb *SingleInstanceDatabase) field.ErrorList {
 	return allErrs
 }
 
+// sidbImageLooksLike19c reports whether the SIDB image is Oracle Database 19c.
+// Detection uses spec.image.version when set, otherwise the pullFrom tag.
+// Opaque OCR tags used for 19c validation (for example :128786) are included
+// so mistaken standby tde.secretKey can be rejected without an image rebuild.
+func sidbImageLooksLike19c(image SingleInstanceDatabaseImage) bool {
+	version := strings.TrimSpace(image.Version)
+	if version != "" {
+		lower := strings.ToLower(version)
+		if lower == "19" || lower == "19c" || strings.HasPrefix(lower, "19.") {
+			return true
+		}
+	}
+
+	pullFrom := strings.TrimSpace(image.PullFrom)
+	tag := pullFrom
+	if idx := strings.LastIndex(pullFrom, ":"); idx >= 0 {
+		tag = pullFrom[idx+1:]
+	}
+	tag = strings.TrimSpace(tag)
+	lowerTag := strings.ToLower(tag)
+	if lowerTag == "19" || strings.HasPrefix(lowerTag, "19.") || strings.HasPrefix(lowerTag, "19-") {
+		return true
+	}
+	// Known OCR 19c SIDB validation tag family.
+	if tag == "128786" || strings.HasPrefix(tag, "128786-") {
+		return true
+	}
+	return false
+}
+
+// validateSIDBStandbyTDESecretKey forbids tde.secretKey on 19c standby databases.
+// 19c standby TDE uses walletZipFileKey only; secretKey is required for 23ai+.
+func validateSIDBStandbyTDESecretKey(sidb *SingleInstanceDatabase, tde *SingleInstanceDatabasePasswordSecret) field.ErrorList {
+	var allErrs field.ErrorList
+	if sidb == nil || tde == nil {
+		return allErrs
+	}
+	if !strings.EqualFold(strings.TrimSpace(sidb.Spec.CreateAs), "standby") {
+		return allErrs
+	}
+	if strings.TrimSpace(tde.SecretKey) == "" {
+		return allErrs
+	}
+	if !sidbImageLooksLike19c(sidb.Spec.Image) {
+		return allErrs
+	}
+	return append(allErrs, field.Forbidden(
+		field.NewPath("spec").Child("security").Child("secrets").Child("tde").Child("secretKey"),
+		"not supported for Oracle Database 19c standby; omit secretKey and keep walletZipFileKey (secretKey is required for 23ai and later)",
+	))
+}
+
 func validateSIDBImageSpec(path *field.Path, image *SingleInstanceDatabaseImage) field.ErrorList {
 	var allErrs field.ErrorList
 	if image == nil {
@@ -1038,12 +1213,86 @@ func validateSingleInstanceDatabaseResourceFields(sidb *SingleInstanceDatabase) 
 
 	validateResourceRequirements(sidb.Spec.Resources, specPath.Child("resources"))
 	validateResourceRequirements(sidb.Spec.ResourceRequirements, specPath.Child("resourceRequirements"))
+	allErrs = append(allErrs, validateSIDBHugePagesPolicy(sidb)...)
 	if strings.TrimSpace(sidb.Spec.ShmSize) != "" {
 		shmSize, err := resource.ParseQuantity(strings.TrimSpace(sidb.Spec.ShmSize))
 		if err != nil {
 			allErrs = append(allErrs, field.Invalid(specPath.Child("shmSize"), sidb.Spec.ShmSize, "must be a valid Kubernetes quantity"))
 		} else if shmSize.Sign() <= 0 {
 			allErrs = append(allErrs, field.Invalid(specPath.Child("shmSize"), sidb.Spec.ShmSize, "must be greater than zero"))
+		}
+	}
+
+	return allErrs
+}
+
+func validateSIDBHugePagesPolicy(sidb *SingleInstanceDatabase) field.ErrorList {
+	if sidb == nil {
+		return nil
+	}
+
+	resources := sidb.Spec.Resources
+	resourcesPath := field.NewPath("spec").Child("resources")
+	if resources == nil {
+		resources = sidb.Spec.ResourceRequirements
+		resourcesPath = field.NewPath("spec").Child("resourceRequirements")
+	}
+	if resources == nil {
+		return nil
+	}
+
+	var allErrs field.ErrorList
+	var hugePageName corev1.ResourceName
+	for name := range resources.Limits {
+		if !strings.HasPrefix(string(name), "hugepages-") {
+			continue
+		}
+		if name != corev1.ResourceName("hugepages-2Mi") {
+			allErrs = append(allErrs, field.Invalid(resourcesPath.Child("limits").Child(string(name)), name, "SIDB currently supports hugepages-2Mi only"))
+			continue
+		}
+		hugePageName = name
+	}
+	for name := range resources.Requests {
+		if !strings.HasPrefix(string(name), "hugepages-") {
+			continue
+		}
+		if name != corev1.ResourceName("hugepages-2Mi") {
+			allErrs = append(allErrs, field.Invalid(resourcesPath.Child("requests").Child(string(name)), name, "SIDB currently supports hugepages-2Mi only"))
+			continue
+		}
+		hugePageName = name
+	}
+	if hugePageName == "" {
+		return allErrs
+	}
+
+	hugePageRequest, requestOK := resources.Requests[hugePageName]
+	hugePageLimit, limitOK := resources.Limits[hugePageName]
+	if !requestOK || !limitOK {
+		allErrs = append(allErrs, field.Required(resourcesPath, "hugepages-2Mi requests and limits must both be set"))
+	} else if hugePageRequest.Cmp(hugePageLimit) != 0 {
+		allErrs = append(allErrs, field.Invalid(resourcesPath, resources, "hugepages-2Mi requests and limits must be equal"))
+	}
+
+	memoryLimit, memoryLimitOK := resources.Limits[corev1.ResourceMemory]
+	if !memoryLimitOK || memoryLimit.Sign() <= 0 {
+		allErrs = append(allErrs, field.Required(resourcesPath.Child("limits").Child(string(corev1.ResourceMemory)), "memory limit is required when HugePages are configured"))
+	}
+
+	initParams := sidb.Spec.InitParams
+	if initParams != nil && strings.TrimSpace(initParams.MemoryTarget) != "" {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("spec").Child("initParams").Child("memoryTarget"), "memoryTarget cannot be combined with HugePages"))
+	}
+	if initParams == nil || initParams.SgaTarget <= 0 || initParams.PgaAggregateTarget <= 0 {
+		allErrs = append(allErrs, field.Required(field.NewPath("spec").Child("initParams"), "HugePages require explicit positive sgaTarget and pgaAggregateTarget"))
+	}
+
+	if requestOK && limitOK && memoryLimitOK && initParams != nil && initParams.SgaTarget > 0 && initParams.PgaAggregateTarget > 0 {
+		sgaBytes := int64(initParams.SgaTarget) * 1024 * 1024
+		pgaBytes := int64(initParams.PgaAggregateTarget) * 1024 * 1024
+		if err := sharedresources.ValidateSgaPgaSafety(sgaBytes, pgaBytes, memoryLimit.Value(), hugePageLimit.Value(), sharedresources.DefaultSafetyPct); err != nil {
+			allErrs = append(allErrs, field.Invalid(resourcesPath, resources, err.Error()))
 		}
 	}
 
@@ -1406,6 +1655,15 @@ func validateDataguardProducerSpec(path *field.Path, spec *DataguardProducerSpec
 			if standby.TCPPort < 0 || standby.TCPPort > 65535 {
 				allErrs = append(allErrs, field.Invalid(standbyPath.Child("tcpPort"), standby.TCPPort, "must be between 0 and 65535"))
 			}
+			if standby.TCPSPort < 0 || standby.TCPSPort > 65535 {
+				allErrs = append(allErrs, field.Invalid(standbyPath.Child("tcpsPort"), standby.TCPSPort, "must be between 0 and 65535"))
+			}
+			// TCPS-only: IP-based peers need an explicit external tcpsPort. Omitting it
+			// defaults aliases to container port 2484, which breaks NodePort routes.
+			// Non-TCPS standbySources and DNS/service hosts are unchanged.
+			if standby.TCPSEnabled && standby.TCPSPort == 0 && net.ParseIP(host) != nil {
+				allErrs = append(allErrs, field.Required(standbyPath.Child("tcpsPort"), "tcpsPort is required when tcpsEnabled is true and host is an IP address"))
+			}
 			if dbUniqueName == "" {
 				continue
 			}
@@ -1430,6 +1688,16 @@ func validatePrimarySourceSpec(sidb *SingleInstanceDatabase, mode string) field.
 	}
 
 	if sidb.Spec.PrimarySource != nil {
+		if sidb.Spec.PrimarySource.TCPSPort < 0 || sidb.Spec.PrimarySource.TCPSPort > 65535 {
+			allErrs = append(allErrs, field.Invalid(sourcePath.Child("tcpsPort"), sidb.Spec.PrimarySource.TCPSPort, "must be between 0 and 65535"))
+		}
+		// TCPS-only: external connectString hosts need an explicit primarySource.tcpsPort
+		// so standby ORCL*TCPS aliases do not silently target container port 2484.
+		if sidbTcpsEnabled(sidb) &&
+			sidb.Spec.PrimarySource.TCPSPort == 0 &&
+			primarySourceConnectStringHostIsIP(sidb.Spec.PrimarySource.ConnectString) {
+			allErrs = append(allErrs, field.Required(sourcePath.Child("tcpsPort"), "tcpsPort is required when TCPS is enabled and primarySource.connectString uses an IP address"))
+		}
 		selected := 0
 		if strings.TrimSpace(sidb.Spec.PrimarySource.DatabaseRef) != "" {
 			selected++
@@ -1458,4 +1726,27 @@ func validatePrimarySourceSpec(sidb *SingleInstanceDatabase, mode string) field.
 	}
 
 	return allErrs
+}
+
+// primarySourceConnectStringHostIsIP reports whether connectString uses an IP host.
+// Accepted shapes: host:port/service, host/service, [ipv6]:port/service.
+// DNS service names return false so in-cluster TCPS defaults remain unchanged.
+func primarySourceConnectStringHostIsIP(connectString string) bool {
+	trimmed := strings.TrimSpace(connectString)
+	if trimmed == "" {
+		return false
+	}
+	hostPort := trimmed
+	if slash := strings.Index(trimmed, "/"); slash >= 0 {
+		hostPort = trimmed[:slash]
+	}
+	host := hostPort
+	if strings.HasPrefix(hostPort, "[") {
+		if end := strings.Index(hostPort, "]"); end > 1 {
+			host = hostPort[1:end]
+		}
+	} else if colon := strings.LastIndex(hostPort, ":"); colon >= 0 {
+		host = hostPort[:colon]
+	}
+	return net.ParseIP(strings.TrimSpace(host)) != nil
 }

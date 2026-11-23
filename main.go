@@ -40,7 +40,7 @@
 // controllers for CRDs including AutonomousDatabase, AutonomousDatabaseBackup,
 // AutonomousDatabaseRestore, AutonomousContainerDatabase, SingleInstanceDatabase,
 // ShardingDatabase, DbcsSystem, OracleRestDataService, OracleRestart, LRPDB,
-// LREST, DataguardBroker, OrdsSrvs, RacDatabase, and PrivateAi.
+// LREST, DataguardBroker, OrdsSrvs, RacDatabase, PrivateAi, and AgentFactory.
 package main
 
 import (
@@ -76,13 +76,12 @@ import (
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	networkv4 "github.com/oracle/oracle-database-operator/apis/network/v4"
-	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
-	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
 	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
 	dataguardcontroller "github.com/oracle/oracle-database-operator/controllers/dataguard"
 	networkcontroller "github.com/oracle/oracle-database-operator/controllers/network"
+	connectionmanagercontroller "github.com/oracle/oracle-database-operator/controllers/network/connectionmanager"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	privateaiv4controller "github.com/oracle/oracle-database-operator/controllers/privateai"
 	// +kubebuilder:scaffold:imports
@@ -93,15 +92,26 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+const oracleRestDataServiceDeprecationWarningPrefix = "OracleRestDataService is deprecated;"
+
+type operatorWarningHandler struct {
+	delegate rest.WarningHandler
+}
+
+func (h operatorWarningHandler) HandleWarningHeader(code int, agent, message string) {
+	if code == 299 && strings.HasPrefix(message, oracleRestDataServiceDeprecationWarningPrefix) {
+		return
+	}
+	h.delegate.HandleWarningHeader(code, agent, message)
+}
+
 // init registers all API schemas used by the manager.
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(observabilityv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(monitorv1.AddToScheme(scheme))
 	utilruntime.Must(databasev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(databasev4.AddToScheme(scheme))
 	utilruntime.Must(networkv4.AddToScheme(scheme))
-	utilruntime.Must(observabilityv1.AddToScheme(scheme))
 	utilruntime.Must(observabilityv4.AddToScheme(scheme))
 	utilruntime.Must(privateaiv4.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
@@ -118,7 +128,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), buildManagerOptions(metricsAddr, enableLeaderElection, watchNamespaces))
+	kubeConfig := ctrl.GetConfigOrDie()
+	kubeConfig.WarningHandler = operatorWarningHandler{delegate: rest.WarningLogger{}}
+	mgr, err := ctrl.NewManager(kubeConfig, buildManagerOptions(metricsAddr, enableLeaderElection, watchNamespaces))
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
@@ -207,14 +219,17 @@ func buildManagerOptions(metricsAddr string, enableLeaderElection bool, watchNam
 			opts.DefaultNamespaces = watchNamespaces
 			return cache.New(config, opts)
 		},
-		EventBroadcaster: record.NewBroadcasterWithCorrelatorOptions(record.CorrelatorOptions{
-			BurstSize: 10,
-			QPS:       1,
-		}),
 	}
 }
 
 type controllerSetupFn func(ctrl.Manager, int64) error
+
+// getEventRecorder adapts the manager recorder to controllers using the Kubernetes recorder API.
+//
+//nolint:staticcheck // controller-runtime's replacement has an incompatible recorder interface.
+func getEventRecorder(mgr ctrl.Manager, name string) record.EventRecorder {
+	return mgr.GetEventRecorderFor(name)
+}
 
 func setupControllers(mgr ctrl.Manager, interval int64) error {
 	type controllerRegistration struct {
@@ -235,7 +250,9 @@ func setupControllers(mgr ctrl.Manager, interval int64) error {
 		{name: "OracleRestDataService", required: true, setup: setupOrdsController},
 		{name: "OracleRestart", required: true, setup: setupOracleRestartController},
 		{name: "PrivateAi", required: true, setup: setupPrivateAiController},
+		{name: "AgentFactory", required: true, setup: setupAgentFactoryController},
 		{name: "TrafficManager", required: true, probe: &networkv4.TrafficManager{}, setup: setupTrafficManagerController},
+		{name: "ConnectionManager", required: false, probe: &networkv4.ConnectionManager{}, setup: setupConnectionManagerController},
 		{name: "LRPDB", required: true, setup: setupLRPDBController},
 		{name: "LREST", required: true, setup: setupLRESTController},
 		{name: "DataguardBroker", required: true, setup: setupDataguardBrokerController},
@@ -273,7 +290,7 @@ func setupAutonomousDatabaseController(mgr ctrl.Manager, _ int64) error {
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("database").WithName("AutonomousDatabase"),
 		Scheme:     mgr.GetScheme(),
-		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabase"),
+		Recorder:   getEventRecorder(mgr, "AutonomousDatabase"),
 	}).SetupWithManager(mgr)
 }
 
@@ -282,7 +299,7 @@ func setupAutonomousDatabaseBackupController(mgr ctrl.Manager, _ int64) error {
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseBackup"),
 		Scheme:     mgr.GetScheme(),
-		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabaseBackup"),
+		Recorder:   getEventRecorder(mgr, "AutonomousDatabaseBackup"),
 	}).SetupWithManager(mgr)
 }
 
@@ -291,7 +308,7 @@ func setupAutonomousDatabaseRestoreController(mgr ctrl.Manager, _ int64) error {
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseRestore"),
 		Scheme:     mgr.GetScheme(),
-		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabaseRestore"),
+		Recorder:   getEventRecorder(mgr, "AutonomousDatabaseRestore"),
 	}).SetupWithManager(mgr)
 }
 
@@ -300,7 +317,7 @@ func setupAutonomousContainerDatabaseController(mgr ctrl.Manager, _ int64) error
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousContainerDatabase"),
 		Scheme:     mgr.GetScheme(),
-		Recorder:   mgr.GetEventRecorderFor("AutonomousContainerDatabase"),
+		Recorder:   getEventRecorder(mgr, "AutonomousContainerDatabase"),
 	}).SetupWithManager(mgr)
 }
 
@@ -310,7 +327,7 @@ func setupSingleInstanceDatabaseController(mgr ctrl.Manager, _ int64) error {
 		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("SingleInstanceDatabase"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
-		Recorder: mgr.GetEventRecorderFor("SingleInstanceDatabase"),
+		Recorder: getEventRecorder(mgr, "SingleInstanceDatabase"),
 	}).SetupWithManager(mgr)
 }
 
@@ -319,7 +336,7 @@ func setupShardingDatabaseController(mgr ctrl.Manager, _ int64) error {
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("ShardingDatabase"),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ShardingDatabase"),
+		Recorder: getEventRecorder(mgr, "ShardingDatabase"),
 	}).SetupWithManager(mgr)
 }
 
@@ -328,7 +345,7 @@ func setupDbcsSystemController(mgr ctrl.Manager, _ int64) error {
 		KubeClient: mgr.GetClient(),
 		Logger:     ctrl.Log.WithName("controllers").WithName("database").WithName("DbcsSystem"),
 		Scheme:     mgr.GetScheme(),
-		Recorder:   mgr.GetEventRecorderFor("DbcsSystem"),
+		Recorder:   getEventRecorder(mgr, "DbcsSystem"),
 	}).SetupWithManager(mgr)
 }
 
@@ -338,7 +355,7 @@ func setupOrdsController(mgr ctrl.Manager, _ int64) error {
 		Log:      ctrl.Log.WithName("controllers").WithName("OracleRestDataService"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
-		Recorder: mgr.GetEventRecorderFor("OracleRestDataService"),
+		Recorder: getEventRecorder(mgr, "OracleRestDataService"),
 	}).SetupWithManager(mgr)
 }
 
@@ -356,7 +373,17 @@ func setupPrivateAiController(mgr ctrl.Manager, _ int64) error {
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("privateai").WithName("PrivateAi"),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("PrivateAi"),
+		Recorder: getEventRecorder(mgr, "PrivateAi"),
+		Config:   mgr.GetConfig(),
+	}).SetupWithManager(mgr)
+}
+
+func setupAgentFactoryController(mgr ctrl.Manager, _ int64) error {
+	return (&privateaiv4controller.AgentFactoryReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("privateai").WithName("AgentFactory"),
+		Scheme:   mgr.GetScheme(),
+		Recorder: getEventRecorder(mgr, "AgentFactory"),
 		Config:   mgr.GetConfig(),
 	}).SetupWithManager(mgr)
 }
@@ -366,8 +393,17 @@ func setupTrafficManagerController(mgr ctrl.Manager, _ int64) error {
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("network").WithName("TrafficManager"),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("TrafficManager"),
+		Recorder: getEventRecorder(mgr, "TrafficManager"),
 		Config:   mgr.GetConfig(),
+	}).SetupWithManager(mgr)
+}
+
+func setupConnectionManagerController(mgr ctrl.Manager, _ int64) error {
+	return (&connectionmanagercontroller.ConnectionManagerReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("network").WithName("ConnectionManager"),
+		Scheme:   mgr.GetScheme(),
+		Recorder: getEventRecorder(mgr, "ConnectionManager"),
 	}).SetupWithManager(mgr)
 }
 
@@ -377,7 +413,7 @@ func setupLRPDBController(mgr ctrl.Manager, interval int64) error {
 		Scheme:   mgr.GetScheme(),
 		Log:      ctrl.Log.WithName("controllers").WithName("LRPDB"),
 		Interval: time.Duration(interval),
-		Recorder: mgr.GetEventRecorderFor("LRPDB"),
+		Recorder: getEventRecorder(mgr, "LRPDB"),
 	}).SetupWithManager(mgr)
 }
 
@@ -388,7 +424,7 @@ func setupLRESTController(mgr ctrl.Manager, interval int64) error {
 		Config:   mgr.GetConfig(),
 		Log:      ctrl.Log.WithName("controllers").WithName("LREST"),
 		Interval: time.Duration(interval),
-		Recorder: mgr.GetEventRecorderFor("LREST"),
+		Recorder: getEventRecorder(mgr, "LREST"),
 	}).SetupWithManager(mgr)
 }
 
@@ -398,7 +434,7 @@ func setupDataguardBrokerController(mgr ctrl.Manager, _ int64) error {
 		Log:      ctrl.Log.WithName("controllers").WithName("dataguard").WithName("DataguardBroker"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
-		Recorder: mgr.GetEventRecorderFor("DataguardBroker"),
+		Recorder: getEventRecorder(mgr, "DataguardBroker"),
 	}).SetupWithManager(mgr)
 }
 
@@ -406,7 +442,7 @@ func setupOrdsSrvsController(mgr ctrl.Manager, _ int64) error {
 	return (&databasecontroller.OrdsSrvsReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("OrdsSrvs"),
+		Recorder: getEventRecorder(mgr, "OrdsSrvs"),
 	}).SetupWithManager(mgr)
 }
 
@@ -415,7 +451,7 @@ func setupDatabaseObserverController(mgr ctrl.Manager, _ int64) error {
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("observability").WithName("DatabaseObserver"),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("DatabaseObserver"),
+		Recorder: getEventRecorder(mgr, "DatabaseObserver"),
 	}).SetupWithManager(mgr)
 }
 
@@ -456,8 +492,6 @@ func setupWebhooks(mgr ctrl.Manager) error {
 		{name: "ShardingDatabase", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1ShardingDatabaseWebhook},
 		{name: "ShardingDatabase", setup: setupV4ShardingDatabaseWebhook},
 		{name: "DbcsSystem", setup: setupV4DbcsSystemWebhook},
-		{name: "DatabaseObserver", apiVersion: "v1alpha1", deprecated: true, setup: setupV1Alpha1DatabaseObserverWebhook},
-		{name: "DatabaseObserver", apiVersion: "v1", deprecated: true, setup: setupV1DatabaseObserverWebhook},
 		{name: "DatabaseObserver", setup: setupV4DatabaseObserverWebhook},
 		{name: "SingleInstanceDatabase", setup: setupV4SingleInstanceDatabaseWebhook},
 		{name: "DataguardBroker", setup: setupV4DataguardBrokerWebhook},
@@ -465,6 +499,7 @@ func setupWebhooks(mgr ctrl.Manager) error {
 		{name: "OracleRestart", setup: setupV4OracleRestartWebhook},
 		{name: "PrivateAi", setup: setupV4PrivateAiWebhook},
 		{name: "TrafficManager", probe: &networkv4.TrafficManager{}, setup: setupV4TrafficManagerWebhook},
+		{name: "ConnectionManager", probe: &networkv4.ConnectionManager{}, setup: setupV4ConnectionManagerWebhook},
 		{name: "RacDatabase", setup: setupV4RacDatabaseWebhook},
 	}
 
@@ -573,16 +608,8 @@ func setupV4ShardingDatabaseWebhook(mgr ctrl.Manager) error {
 	return (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr)
 }
 
-func setupV1Alpha1DatabaseObserverWebhook(mgr ctrl.Manager) error {
-	return (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr)
-}
-
 func setupV4DbcsSystemWebhook(mgr ctrl.Manager) error {
 	return (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr)
-}
-
-func setupV1DatabaseObserverWebhook(mgr ctrl.Manager) error {
-	return (&observabilityv1.DatabaseObserver{}).SetupWebhookWithManager(mgr)
 }
 
 func setupV4DatabaseObserverWebhook(mgr ctrl.Manager) error {
@@ -611,6 +638,10 @@ func setupV4PrivateAiWebhook(mgr ctrl.Manager) error {
 
 func setupV4TrafficManagerWebhook(mgr ctrl.Manager) error {
 	return (&networkv4.TrafficManager{}).SetupWebhookWithManager(mgr)
+}
+
+func setupV4ConnectionManagerWebhook(mgr ctrl.Manager) error {
+	return (&networkv4.ConnectionManager{}).SetupWebhookWithManager(mgr)
 }
 
 func setupV4RacDatabaseWebhook(mgr ctrl.Manager) error {

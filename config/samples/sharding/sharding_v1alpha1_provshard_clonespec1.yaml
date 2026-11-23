@@ -60,6 +60,6 @@ spec:
  nsConfigMap: onsconfigmap
  nsSecret: my-secret
  pvAnnotations:
-   volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1.phx.abyhqljrrmuodpfn3jevjr4kksaaubyjnusykgthfsahi4eazyppiuhbtwwa
+   volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1..<REPLACE_WITH_VOLUME_OCID>
  pvMatchLabels:
    failure-domain.beta.kubernetes.io/zone: "PHX-AD-1" 

@@ -53,6 +53,8 @@ import (
 // log is for logging in this package.
 var oraclerestdataservicelog = logf.Log.WithName("oraclerestdataservice-resource")
 
+const oracleRestDataServiceDeprecationWarning = "OracleRestDataService is deprecated; use the OrdsSrvs controller instead. See https://github.com/oracle/oracle-database-operator/blob/main/docs/ordsservices/README.md."
+
 // SetupWebhookWithManager sets up webhook handlers for OracleRestDataService.
 func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	// 1. Add the generic type parameter [*OracleRestDataService]
@@ -96,6 +98,7 @@ func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj *OracleR
 
 	oraclerestdataservicelog.Info("validate create", "name", ords.Name)
 
+	warnings := admission.Warnings{oracleRestDataServiceDeprecationWarning}
 	var allErrs field.ErrorList
 
 	namespaces := dbcommons.GetWatchNamespaces()
@@ -137,9 +140,9 @@ func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj *OracleR
 	}
 
 	if len(allErrs) == 0 {
-		return nil, nil
+		return warnings, nil
 	}
-	return nil, apierrors.NewInvalid(
+	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
 		ords.Name, allErrs)
 }
@@ -154,6 +157,7 @@ func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeOb
 
 	// check creation validations first
 	warnings, err := newObj.ValidateCreate(ctx, newRuntimeObject)
+	warnings = withoutOracleRestDataServiceResourceWarning(warnings)
 	if err != nil {
 		return warnings, err
 	}
@@ -171,9 +175,9 @@ func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeOb
 	}
 
 	if len(allErrs) == 0 {
-		return nil, nil
+		return warnings, nil
 	}
-	return nil, apierrors.NewInvalid(
+	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
 		newObj.Name, allErrs)
 
@@ -186,4 +190,14 @@ func (r *OracleRestDataService) ValidateDelete(ctx context.Context, obj *OracleR
 	oraclerestdataservicelog.Info("validate delete", "name", r.Name)
 
 	return nil, nil
+}
+
+func withoutOracleRestDataServiceResourceWarning(warnings admission.Warnings) admission.Warnings {
+	filtered := make(admission.Warnings, 0, len(warnings))
+	for _, warning := range warnings {
+		if warning != oracleRestDataServiceDeprecationWarning {
+			filtered = append(filtered, warning)
+		}
+	}
+	return filtered
 }

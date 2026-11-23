@@ -1,0 +1,71 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Standby-cluster CMAN for cross-cluster Data Guard.
+# File-mode + next_hop to the local sidb-standby ClusterIP Service.
+# See docs/sidb/dataguard/DATAGUARD_CROSS_CLUSTER_CMAN.md.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cman-sidb-standby-static-config
+  namespace: <operator-watched-namespace>
+data:
+  cman.ora: |
+    CMAN_cman-sidb.default.svc.cluster.local =
+    (configuration=
+      (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
+      (next_hop=
+        (description=
+          (address=(protocol=tcp)(host=sidb-standby.default.svc.cluster.local)(port=1521))
+        )
+      )
+      (parameter_list=
+        (connection_statistics=yes)
+        (log_directory=/u01/oracle/product/23ai/client_1/network/log)
+        (log_level=user)
+        (trace_directory=/u01/oracle/product/23ai/client_1/network/trace)
+        (trace_level=user)
+        (valid_node_checking_registration=on)
+        (registration_invited_nodes=*)
+      )
+      (rule_list=
+        (rule=
+          (src=*)(dst=*)(srv=*)(act=accept)
+          (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+      )
+    )
+---
+apiVersion: network.oracle.com/v4
+kind: ConnectionManager
+metadata:
+  name: cman-sidb
+  namespace: <operator-watched-namespace>
+spec:
+  runtime:
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: NodePort
+      externalTrafficPolicy: Cluster
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+          nodePort: 30189
+  configSource:
+    configMapRef:
+      name: cman-sidb-standby-static-config
+      key: cman.ora

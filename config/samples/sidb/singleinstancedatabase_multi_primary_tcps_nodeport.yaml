@@ -1,0 +1,97 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Multi-standby Data Guard primary with TCP+TCPS NodePorts.
+# Create TLS Certificate/Secret first (see docs/sidb/tcps-cert-manager/).
+# See docs/sidb/dataguard/DATAGUARD_MULTI_STANDBY_TCPS_NODEPORT.md.
+#
+# Example ports:
+#   TCP 32331, TCPS 32484
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-primary
+  namespace: <operator-watched-namespace>
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  createAs: primary
+  edition: enterprise
+  archiveLog: true
+  flashBack: true
+  forceLog: true
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-primary-tcps-tls
+
+  dataguard:
+    prereqs:
+      enabled: true
+    standbySources:
+      - dbUniqueName: ORCLSTBY1
+        host: "<cluster1-node-ip>"
+        tcpPort: 30281
+        tcpsEnabled: true
+        tcpsPort: 30284
+      - dbUniqueName: ORCLSTBY2
+        host: "<cluster2-node-ip>"
+        tcpPort: 30282
+        tcpsEnabled: true
+        tcpsPort: 30285
+      - dbUniqueName: ORCLSTBY3
+        host: "<cluster2-node-ip>"
+        tcpPort: 30283
+        tcpsEnabled: true
+        tcpsPort: 30286
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: IfNotPresent
+
+  initParams:
+    sgaTarget: 14336
+    pgaAggregateTarget: 2048
+    processes: 800
+
+  resources:
+    requests:
+      memory: "24Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    setWritePermissions: true
+
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        tcp:
+          enabled: true
+          nodePort: 32331
+        tcps:
+          enabled: true
+          nodePort: 32484
+
+  replicas: 1

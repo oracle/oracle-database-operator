@@ -93,6 +93,18 @@ rules:
   verbs:
   - create
 - apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - coordination.k8s.io
   resources:
   - leases
@@ -204,9 +216,10 @@ rules:
 - apiGroups:
   - network.oracle.com
   resources:
-  - trafficmanagers
+  - connectionmanagers
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -215,11 +228,23 @@ rules:
 - apiGroups:
   - network.oracle.com
   resources:
+  - connectionmanagers/status
   - trafficmanagers/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - network.oracle.com
+  resources:
+  - trafficmanagers
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - observability.oracle.com
   resources:
@@ -249,6 +274,7 @@ rules:
 - apiGroups:
   - privateai.oracle.com
   resources:
+  - agentfactories
   - privateais
   verbs:
   - get
@@ -259,12 +285,14 @@ rules:
 - apiGroups:
   - privateai.oracle.com
   resources:
+  - agentfactories/finalizers
   - privateais/finalizers
   verbs:
   - update
 - apiGroups:
   - privateai.oracle.com
   resources:
+  - agentfactories/status
   - privateais/status
   verbs:
   - get

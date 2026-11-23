@@ -3,8 +3,17 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 # True Cache with an external or cross-cluster primary via connectString.
-# Ensure the blob ConfigMap exists in this namespace before apply
-# (operator-generated on a primary SIDB and copied here, or manual DBCA blob).
+#
+# Cross-cluster SIDB primary: pair after the blob ConfigMap exists here with
+#   singleinstancedatabase_truecache_primary_tcp_peered.yaml (TCP), or
+#   singleinstancedatabase_truecache_primary_tcps_peered.yaml (TCPS).
+#
+# External host SI (not a SIDB): create the blob with DBCA on the primary host
+# (docs/sidb/truecache/TRUECACHE.md#4-external-host-si-or-rac), load it into a ConfigMap,
+# then replace connectString / blobConfigMapRef / trueCacheServices placeholders.
+# For external RAC, use singleinstancedatabase_truecache_external_rac.yaml.
+#
+# Keep connectString on TCP bootstrap; uncomment tcpsPort + security.tcps for TCPS.
 #
 
 apiVersion: database.oracle.com/v4
@@ -23,28 +32,36 @@ spec:
 
   ## Use a primary endpoint reachable from this cluster, for example through
   ## peered VCNs, private DNS, or another cluster-private service endpoint.
-  ## Lab examples: "10.0.2.7:1521/ORCLPRD" or hostname:1521/SERVICE.
+  ## connectString is the TCP bootstrap target for DBCA create.
+  ## Lab examples: "10.0.2.7:1521/ORCLPRD", hostname:1521/SERVICE, or a TCP
+  ## NodePort such as "10.0.2.182:31100/ORCLPRD".
   primarySource:
     connectString: "sidb-sample.internal.example.com:1521/ORCLPRD"
+    ## When the primary publishes TCPS and peers use NodePort/IP or a non-default
+    ## TCPS port, set tcpsPort to the reachable primary TCPS port (2484 on an NLB
+    ## service port, or the TCPS NodePort). Keep connectString on TCP.
+    # tcpsPort: 2484
     ## The trailing service name or SID must identify the primary database.
     ## It does not need to match the True Cache SID defined below.
     ## Optional: primary CDB short DB_NAME (SELECT name FROM v$database).
     ## Not DB_UNIQUE_NAME, not the full SCAN/service string, not the TC SID.
     ## Omit: scripts resolve PRIMARY_DB_NAME from the primary (works).
-    ## Set short name when the connectString service segment is not the CDB name
-    ## (common for RAC SCAN) or when you prefer not to inherit primary db_domain.
-    ## See docs/sidb/README.md — Source Database Reference.
+    ## Set only when the short DB_NAME is required by the image/operator and the
+    ## connectString remains independently valid. It does not replace the
+    ## connectString service or repair an unregistered service. Omit it when
+    ## the connectString already reaches the primary CDB service.
+    ## See docs/sidb/truecache/TRUECACHE.md and docs/sidb/README.md.
     # dbName: "ORCLPRD"
 
   ## Use only alphanumeric characters for sid
   sid: ORCLTC
 
-  ## Optional environment overrides for the True Cache container.
-  ## Uncomment to override the default primary-host script path used by
-  ## autoTCServiceRegistration.
+  ## Optional: if the helper on the external primary is not at the default path
+  ## /home/oracle/configure-primary-truecache-service.sh, set this on the True Cache
+  ## SIDB (top-level spec.envVars). Operator passes it through to the TC image.
   # envVars:
   #   - name: PRIMARY_TC_SERVICE_SCRIPT_PATH
-  #     value: /home/oracle/configure-primary-truecache-service.sh
+  #     value: /custom/path/configure-primary-truecache-service.sh
 
   ## Grouped security settings.
   security:
@@ -57,33 +74,37 @@ spec:
         secretName: tde-wallet-secret
         secretKey: tde_wallet_pwd
     ## Optional TCPS settings for the True Cache endpoint.
-    ## When enabled, also set services.endpoints[].tcps and use :2484 in
-    ## primarySource.connectString if the primary listener is TCPS.
+    ## When enabled, also set services.endpoints[].tcps and set
+    ## primarySource.tcpsPort to the reachable primary TCPS port. Keep
+    ## primarySource.connectString on the TCP bootstrap endpoint.
     # tcps:
     #   enabled: true
-    #   tlsSecret: sidb-standby-tcps-tls
+    #   tlsSecret: sidb-truecache-tcps-tls
 
   ## Database image details
   image:
-    ## True Cache capable image. Replace <tenancy> / tag for your registry.
-    pullFrom: dbocir/oracle/database:truecache-23.26.0-ee
+    ## True Cache capable enterprise image.
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    ## OCR database/enterprise_ru requires authenticated pull (accept OCR
+    ## terms + auth token). Create ocr-reg-cred in this namespace.
+    ## Anonymous pull of this licensed image is not supported.
+    pullSecrets: ocr-reg-cred
     prebuiltDB: false
     imagePullPolicy: Always
 
-  ## Optional init parameters (tune for lab or production)
-  initParams:
-    sgaTarget: 7376
-    pgaAggregateTarget: 2458
-    processes: 360
-
-  ## Database pod resource details
-  resources:
-    requests:
-      memory: "20Gi"
-      cpu: "2"
-    limits:
-      memory: "20Gi"
-      cpu: "2"
+  ## Optional: SIDB initParams and pod resources (not True Cache-specific).
+  ## Uncomment and tune for lab or production. Omit both to use image/operator defaults.
+  # initParams:
+  #   sgaTarget: 7376
+  #   pgaAggregateTarget: 2458
+  #   processes: 360
+  # resources:
+  #   requests:
+  #     memory: "20Gi"
+  #     cpu: "2"
+  #   limits:
+  #     memory: "20Gi"
+  #     cpu: "2"
 
   ## Optional node selector to restrict the database pod to nodes having specific labels.
   ## For a single exact node, kubernetes.io/hostname can be used.
@@ -109,12 +130,13 @@ spec:
     ##   PRIMARY_PDB_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME
     ## The first value is the primary PDB name.
     ##
-    ## With autoTCServiceRegistration disabled (or omitted), primary-side service
-    ## creation/association stays manual on the primary host.
-    ## With autoTCServiceRegistration: true, install the helper script on the
-    ## primary first (extension image prebakes the default path). On RAC, place
-    ## it on every node and verify externaljob.ora / DBMS_SCHEDULER as documented
-    ## in docs/sidb/PREREQUISITES.md.
+    ## Create/start the primary PDB service before deploy (required for both
+    ## auto and manual association). With autoTCServiceRegistration: true on an
+    ## external host primary, copy configure-primary-truecache-service.sh onto
+    ## the primary (same path on every RAC node) for association. OCR SIDB
+    ## primaries already ship that script—do not copy it there. Verify
+    ## externaljob.ora / DBMS_SCHEDULER in
+    ## docs/sidb/prerequisites/PREREQUISITES.md#primary-pdb-service.
     ## True Cache database readiness does not by itself confirm that this
     ## primary-side service association succeeded; verify it on the primary.
     autoTCServiceRegistration: true

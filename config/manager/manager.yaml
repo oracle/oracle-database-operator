@@ -28,7 +28,7 @@ spec:
         - /manager
         args:
         - --enable-leader-election
-        image: controller:v2.2
+        image: controller:v2.3.0
         imagePullPolicy: Always
         name: manager
         securityContext:

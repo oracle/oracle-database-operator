@@ -1,0 +1,27 @@
+# Quick-start, basic configuration.
+apiVersion: database.oracle.com/v4
+kind: AutonomousDatabase
+metadata:
+  name: "__NAME__"
+  namespace: "__NAMESPACE__"
+  labels:
+    e2e.oracle.com/owner: operator-e2e
+    e2e.oracle.com/controller: adb
+    e2e.oracle.com/test-id: test01
+spec:
+  hardLink: true
+  action: Create
+  details:
+    compartmentId: __COMPARTMENT__
+    dbName: __NAME__
+    displayName: __NAME__
+    dbWorkload: LH
+    computeModel: ECPU
+    computeCount: 1
+    dataStorageSizeInTBs: 1
+    adminPassword:
+      k8sSecret:
+        name: __ADMIN_PASSWORD_SECRET_NAME__
+  ociConfig:
+    configMapName: __OCI_CONFIG_CONFIG_MAP_NAME__
+    secretName: __OCI_CONFIG_SECRET_NAME__

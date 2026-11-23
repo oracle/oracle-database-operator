@@ -16,7 +16,7 @@ parameters:
 
   # OCID of the OCI File Storage Mount Target
   # where the dynamically provisioned file system will be exported.
-  mountTargetOcid: ocid1.mounttarget.oc1.phx...........
+  mountTargetOcid: ocid1.mounttarget.oc1..<REPLACE_WITH_MOUNTTARGET_OCID>
 
   # Optional export path for the dynamically created export.
   # The path must begin with "/" and be unique within the mount target.

@@ -1,0 +1,84 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+# Same-cluster True Cache primary (TCPS) — same Kubernetes cluster and namespace.
+# Publishes ConfigMap <name>-truecache-blob via trueCache.generateBlob /
+# createConfigMap. Requires security.tcps and TLS secret sidb-primary-tcps-tls
+# (SANs must match in-cluster client hostnames, for example
+# sidb-sample.<ns>.svc.cluster.local).
+#
+# Services: same-cluster uses ClusterIP with TCP 1521 + TCPS 2484. Do not use
+# LoadBalancer here — that belongs on *_peered / cross-cluster samples.
+# Apply this first, then singleinstancedatabase_truecache_same_cluster_tcps.yaml.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: default
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  edition: enterprise
+  createAs: primary
+  archiveLog: true
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-primary-tcps-tls
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    ## OCR database/enterprise_ru requires authenticated pull (accept OCR
+    ## terms + auth token). Create ocr-reg-cred in this namespace.
+    ## Anonymous pull of this licensed image is not supported.
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: Always
+  trueCache:
+    generateBlob: true
+    createConfigMap: true
+    generatePath: /tmp/tc_config_blob.tar.gz
+  ## Same-cluster: ClusterIP is enough. Cross-cluster peers use LoadBalancer
+  ## in singleinstancedatabase_truecache_primary_tcps_peered.yaml instead.
+  services:
+    endpoints:
+      - name: listener
+        type: ClusterIP
+        tcp:
+          enabled: true
+          port: 1521
+        tcps:
+          enabled: true
+          port: 2484
+  ## Optional: SIDB initParams and pod resources (not True Cache-specific).
+  ## Uncomment and tune for lab or production. Omit both to use image/operator defaults.
+  # initParams:
+  #   sgaTarget: 3072
+  #   pgaAggregateTarget: 1024
+  #   cpuCount: 2
+  #   processes: 600
+  # resources:
+  #   requests:
+  #     memory: "12Gi"
+  #     cpu: "2"
+  #   limits:
+  #     memory: "24Gi"
+  #     cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    setWritePermissions: true
+  replicas: 1

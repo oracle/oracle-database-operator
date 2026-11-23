@@ -1,4 +1,4 @@
-# Read PrivateAI Logs From stdout On OKE
+# Read Private AI Logs From stdout On OKE
 
 This guide explains the recommended way to read Oracle Private AI logs on OKE:
 send the main container `stdout` and `stderr` stream to a cluster logging
@@ -13,15 +13,15 @@ by Loki if your cluster already uses a Loki-based logging stack.
 
 As of today, the recommended default path is:
 
-1. PrivateAI writes logs to `stdout` and `stderr`
+1. Private AI writes logs to `stdout` and `stderr`
 2. Kubernetes exposes those logs through `kubectl logs`
 3. OKE workload logging forwards them to OCI Logging
 
 This should be the default documentation path.
 
-## What This Means For The PrivateAI CR
+## What This Means For The Private AI CR
 
-You do not need any extra PrivateAI logging configuration for the default OKE
+You do not need any extra Private AI logging configuration for the default OKE
 logging path.
 
 You also do not need to configure file-based log shipping in the `PrivateAi`
@@ -31,7 +31,7 @@ The only `PrivateAi` field that may still matter for logging behavior is:
 
 - `spec.runtime.env`
 
-Use `spec.runtime.env` only if the PrivateAI container image supports
+Use `spec.runtime.env` only if the Private AI container image supports
 environment variables that change log level, log format, or application logging
 behavior.
 
@@ -46,7 +46,7 @@ Make sure:
 
 ## Step 1: Verify The Main Container Logs
 
-List the PrivateAI Pods:
+List the Private AI Pods:
 
 ```bash
 kubectl get pods -n pai
@@ -59,32 +59,57 @@ kubectl logs -n pai pod/<pod-name>
 ```
 
 If the logs you want are visible here, this is enough to use OKE workload
-logging. No extra PrivateAI log collector configuration is needed.
+logging. No extra Private AI log collector configuration is needed.
 
 ## Step 2: Generate A Test Request
 
-Generate some log activity before checking OCI Logging.
+Use one of the following paths to check service connectivity. In each case, use the Service port or Load Balancer port configured for your deployment.
 
-For example:
+### Port Forwarding
 
-```bash
-kubectl port-forward svc/pai-sample 8443:8443 -n pai
+Check the Service port:
+
+```sh
+kubectl get service "$NAME" -n "$NAMESPACE"
 ```
 
-Then in another terminal:
+Start port forwarding in one terminal. Set `SERVICE_PORT` to the Service port shown by the command above. For example, use `443` if the Service exposes `443`, or `8443` if it exposes `8443`:
 
-```bash
-curl -k -v https://127.0.0.1:8443/health
+```sh
+export SERVICE_PORT=443
+kubectl port-forward -n "$NAMESPACE" "svc/$NAME" "8443:$SERVICE_PORT"
 ```
 
-Re-check the container logs:
+In another terminal, request the health endpoint through the local forwarded port:
 
-```bash
-kubectl logs -n pai pod/<pod-name>
+```sh
+curl -k -i -v https://127.0.0.1:8443/health
 ```
 
-Confirm you can see the request, health check, or startup messages you want to
-collect.
+The local port is `8443`; the remote port in the port-forward command must match the Service port. For example, if the Service exposes port `443`, use `8443:443`. If it exposes port `8443`, use `8443:8443`.
+
+### Internal Load Balancer
+
+From a client that can reach the private network, request the endpoint using the reserved private IP. This example uses `xx.xx.xx.xx` and the Load Balancer's HTTPS port `443`:
+
+```sh
+curl -k -i -v https://xx.xx.xx.xx/health
+```
+
+Replace the example IP and port with the values configured for your deployment.
+
+### Public Load Balancer
+
+From a client that can reach the public endpoint, set `PUBLIC_ENDPOINT` to the public Load Balancer IP or DNS name. This example assumes the Load Balancer listens on HTTPS port `443`:
+
+```sh
+export PUBLIC_ENDPOINT="xxx.xxx.xxx.xxx"
+curl -k -i -v "https://$PUBLIC_ENDPOINT/health"
+```
+
+Replace the example address with the public IP or DNS name configured for the deployment. 
+
+The `/health` request checks service health. It may not create an application log entry. After generating a request, check `kubectl logs` again to see whether the application emitted a corresponding line.
 
 ## Step 3: Enable OKE Workload Logging
 
@@ -97,12 +122,12 @@ At a minimum, ensure that you can filter or search by the following:
 - Pod name
 - container name
 
-For the default path, search the main PrivateAI application container logs.
+For the default path, search the main Private AI application container logs.
 
 ## Step 4: Read The Logs In OCI Logging
 
 After workload logging is enabled and log traffic exists, search for the
-PrivateAI logs in OCI Logging.
+Private AI logs in OCI Logging.
 
 Use these filters:
 
@@ -142,7 +167,7 @@ being delivered to the expected OCI Log Group.
 
 ### 4. Verify you are searching the correct container
 
-Search the main PrivateAI application container, not just the Pod name or
+Search the main Private AI application container, not just the Pod name or
 service name.
 
 ## Alternative Backend: Loki
@@ -152,13 +177,13 @@ stream as the source for Loki ingestion.
 
 The pattern is:
 
-1. PrivateAI writes logs to `stdout` and `stderr`
+1. Private AI writes logs to `stdout` and `stderr`
 2. A cluster logging agent such as Promtail or Grafana Agent scrapes container
    logs from Kubernetes
 3. The agent pushes those logs to Loki
 
 This is a cluster logging architecture choice, not a feature managed directly by
-the PrivateAI controller in this repo.
+the Private AI controller in this repo.
 
 So the documentation boundary is:
 
@@ -169,7 +194,7 @@ So the documentation boundary is:
 
 The default and recommended flow is:
 
-1. Confirm the PrivateAI main container logs are visible with `kubectl logs`
+1. Confirm the Private AI main container logs are visible with `kubectl logs`
 2. Generate a test request
 3. Enable OKE workload logging
 4. Read the same log lines in OCI Logging

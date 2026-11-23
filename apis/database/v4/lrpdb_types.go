@@ -182,16 +182,17 @@ type LRPDBAdminPassword struct {
 	Secret LRPDBSecret `json:"secret"`
 }
 
-// TDEPwd defines the secret containing TDE Wallet Password mapped to key 'tdePassword' for LRPDB
+// LTDEPwd defines the secret containing TDE Wallet Password mapped to key 'tdePassword' for LRPDB
 type LTDEPwd struct {
 	Secret LRPDBSecret `json:"secret"`
 }
 
-// TDESecret defines the secret containing TDE Secret to key 'tdeSecret' for LRPDB
+// LTDESecret defines the secret containing TDE Secret to key 'tdeSecret' for LRPDB
 type LTDESecret struct {
 	Secret LRPDBSecret `json:"secret"`
 }
 
+// LRPDBAppuser defines the secret containing an LRPDB application user.
 type LRPDBAppuser struct {
 	Secret LRPDBSecret `json:"secret"`
 }
@@ -204,10 +205,12 @@ type LRPDBAppuser struct {
 //	Secret LRPDBSecret `json:"secret"`
 //}
 
+// AdminpdbUser defines the secret containing the PDB administrator user.
 type AdminpdbUser struct {
 	Secret LRPDBSecret `json:"secret"`
 }
 
+// AdminpdbPass defines the secret containing the PDB administrator password.
 type AdminpdbPass struct {
 	Secret LRPDBSecret `json:"secret"`
 }
@@ -218,18 +221,22 @@ type LRPDBSecret struct {
 	Key        string `json:"key"`
 }
 
+// LRPDBTLSKEY defines the secret containing the LRPDB TLS private key.
 type LRPDBTLSKEY struct {
 	Secret LRPDBSecret `json:"secret"`
 }
 
+// LRPDBTLSCRT defines the secret containing the LRPDB TLS certificate.
 type LRPDBTLSCRT struct {
 	Secret LRPDBSecret `json:"secret"`
 }
 
+// LRPDBTLSCAT defines the secret containing the LRPDB TLS CA certificate.
 type LRPDBTLSCAT struct {
 	Secret LRPDBSecret `json:"secret"`
 }
 
+// LRPDBPRVKEY defines the secret containing the LRPDB private key.
 type LRPDBPRVKEY struct {
 	Secret LRPDBSecret `json:"secret"`
 }
@@ -262,7 +269,7 @@ type LRPDBStatus struct {
 	PDBBitMaskStr string `json:"pdbBitMaskStr,omitempty"`
 	AlterSystem   string `json:"alterSystem,omitempty"`
 	// Last ORA-
-	SqlCode      int    `json:"sqlCode"`
+	SQLCode      int    `json:"sqlCode"`
 	LastPLSQL    string `json:"lastplsql,omitempty"`
 	CmBitstat    int    `json:"bitstat,omitempty"`    /* Bitmask */
 	CmBitStatStr string `json:"bitstatstr,omitempty"` /* Decoded bitmask */

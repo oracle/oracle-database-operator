@@ -22,7 +22,9 @@ resources:
 - bases/database.oracle.com_racdatabases.yaml
 - bases/database.oracle.com_oraclerestarts.yaml
 - bases/privateai.oracle.com_privateais.yaml
+- bases/privateai.oracle.com_agentfactories.yaml
 - bases/network.oracle.com_trafficmanagers.yaml
+- bases/network.oracle.com_connectionmanagers.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

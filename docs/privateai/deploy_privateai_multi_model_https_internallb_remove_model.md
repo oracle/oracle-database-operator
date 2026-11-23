@@ -1,26 +1,39 @@
-# Remove an existing Model from PrivateAI deployed in OKE cluster
+# Remove a Model from an Existing Private AI Deployment
 
-The existing PrivateAI Container is deployed in case [PrivateAI Container using Multiple AI Models with HTTPS URL and an Internal LoadBalancer](./deploy_privateai_multi_model_https_internallb.md) using multiple AI Models and HTTPS URLs for those model files are provided using a configmap.
+The existing Private AI deployment uses multiple models configured through the `multiconfigjson` ConfigMap. See [Private AI with Multiple Models from HTTPS URLs and an Internal Load Balancer](./deploy_privateai_multi_model_https_internallb.md).
 
-or
+If you added models after the initial deployment, see [Add an AI Model to an Existing Private AI Deployment](./deploy_privateai_multi_model_https_internallb_add_model.md).
 
-Additional AI Models have been added to the existing PrivateAI Deployment using [Add New Model](./deploy_privateai_multi_model_https_internallb_add_model.md).
+In this example, you remove a model from the existing deployment. This removes the model from Private AI’s configuration; it does not delete the model file at its HTTPS URL.
 
-In this example, an existing AI Model is removed from the existing PrivateAI deployment.
+1. Edit the ConfigMap:
 
-1. Use the following command to edit the configmap used by the existing PrivateAI Deployment to removew an existing AI Model:
+   ```sh
+   kubectl edit configmap multiconfigjson -n pai
+   ```
 
-    ```sh
-    kubectl edit configmap multiconfigjson -n pai
-    ```
+   In `data.config.json`, remove the complete model object from the `models` array. Preserve the other model entries and ensure the JSON syntax remains valid.
 
-2. Wait for few minutes. You should see the configmap updated inside the Pod. You can verify that by using file `/privateai/config/config.json` inside the Pod.
+2. Verify that the model entry is absent from the ConfigMap:
 
-    ```sh
-    kubectl exec -i -t pod/pai-sample-699b88cdb-5h9bq -n pai /bin/bash
+   ```sh
+   kubectl get configmap multiconfigjson -n pai -o yaml
+   ```
 
-    # Once you are inside the pod, check the contents of below file:
-    cat /privateai/config/config.json
-    ```
+3. Wait for the Private AI Pod to be replaced, then confirm that the new Pod is ready:
 
-**NOTE:** This step will result in termination of the existing PrivateAI Container Pod and creation of new Pod while the Internal LoadBalancer IP will not change.
+   ```sh
+   kubectl get pods -n pai -l app.kubernetes.io/name=pai-sample -w
+   ```
+
+4. Verify the configuration in the new Pod:
+
+   ```sh
+   POD_NAME=$(kubectl get pods -n pai \
+     -l app.kubernetes.io/name=pai-sample \
+     -o jsonpath='{.items[0].metadata.name}')
+
+   kubectl exec -n pai "$POD_NAME" -- cat /privateai/config/config.json
+   ```
+
+**Note:** Updating the ConfigMap causes the existing Pod to be terminated and replaced so the deployment can load the updated model configuration. Expect a brief service interruption while the replacement Pod starts. The Internal LoadBalancer IP address remains unchanged.

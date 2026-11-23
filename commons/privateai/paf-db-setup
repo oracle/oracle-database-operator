@@ -1,0 +1,474 @@
+#!/bin/bash
+#
+# paf-db-setup
+#
+# This script is temporarily mounted by the AgentFactory controller into the
+# bootstrap Job. The image must provide Bash and Oracle SQL*Plus. Credentials
+# are read from mounted Secret files and are never placed in command arguments.
+
+set -Eeuo pipefail
+
+# Keep the bootstrap image independent of its default PATH. The current PAF
+# image installs SQL*Plus at the Oracle client path below; standard system
+# directories are included for Bash and the supporting utilities.
+common_path="/bin:/usr/bin:/sbin:/usr/local/bin:/usr/lib/oracle/23/client64/bin"
+export PATH="${common_path}${PATH:+:$PATH}"
+
+die() {
+    printf 'paf-db-setup: ERROR: %s\n' "$*" >&2
+    exit 2
+}
+
+usage() {
+    cat >&2 <<'EOF'
+Usage:
+  paf-db-setup \
+    --runtime-config <file> \
+    --admin-username-file <file> \
+    --admin-password-file <file> \
+    --admin-privilege NORMAL|SYSDBA \
+    --paf-username <username> \
+    --paf-password-file <file> \
+    [--wallet-file <file>]
+EOF
+    exit 2
+}
+
+runtime_config=""
+admin_username_file=""
+admin_password_file=""
+admin_privilege="NORMAL"
+paf_username=""
+paf_password_file=""
+wallet_file=""
+
+while (($# > 0)); do
+    case "$1" in
+        --runtime-config)
+            (($# >= 2)) || die "missing value for --runtime-config"
+            runtime_config=$2
+            shift 2
+            ;;
+        --admin-username-file)
+            (($# >= 2)) || die "missing value for --admin-username-file"
+            admin_username_file=$2
+            shift 2
+            ;;
+        --admin-password-file)
+            (($# >= 2)) || die "missing value for --admin-password-file"
+            admin_password_file=$2
+            shift 2
+            ;;
+        --admin-privilege)
+            (($# >= 2)) || die "missing value for --admin-privilege"
+            admin_privilege=${2^^}
+            shift 2
+            ;;
+        --paf-username)
+            (($# >= 2)) || die "missing value for --paf-username"
+            paf_username=$2
+            shift 2
+            ;;
+        --paf-password-file)
+            (($# >= 2)) || die "missing value for --paf-password-file"
+            paf_password_file=$2
+            shift 2
+            ;;
+        --wallet-file)
+            (($# >= 2)) || die "missing value for --wallet-file"
+            wallet_file=$2
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            ;;
+        *)
+            die "unknown argument: $1"
+            ;;
+    esac
+done
+
+[[ -n "$runtime_config" ]] || usage
+[[ -n "$admin_username_file" ]] || usage
+[[ -n "$admin_password_file" ]] || usage
+[[ -n "$paf_username" ]] || usage
+[[ -n "$paf_password_file" ]] || usage
+
+case "$admin_privilege" in
+    NORMAL|SYSDBA)
+        ;;
+    *)
+        die "--admin-privilege must be NORMAL or SYSDBA"
+        ;;
+esac
+
+[[ -r "$runtime_config" ]] || die "runtime config is not readable: $runtime_config"
+[[ -r "$admin_username_file" ]] || die "admin username file is not readable"
+[[ -r "$admin_password_file" ]] || die "admin password file is not readable"
+[[ -r "$paf_password_file" ]] || die "PAF password file is not readable"
+
+source_env="${PAF_DB_SETUP_SOURCE_ENV:-/mount/config/app/latest/backend/source_env.sh}"
+if [[ -r "$source_env" ]]; then
+    # shellcheck disable=SC1090
+    source "$source_env"
+fi
+
+sqlplus_bin="${SQLPLUS_BIN:-/usr/lib/oracle/23/client64/bin/sqlplus}"
+if [[ ! -x "$sqlplus_bin" ]]; then
+    sqlplus_bin=$(command -v "$sqlplus_bin" 2>/dev/null || true)
+fi
+[[ -n "$sqlplus_bin" && -x "$sqlplus_bin" ]] ||
+    die "SQL*Plus was not found; checked /usr/lib/oracle/23/client64/bin/sqlplus and PATH"
+
+config_value() {
+    local key=$1
+    local line
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == "$key="* ]]; then
+            printf '%s\n' "${line#*=}"
+            return 0
+        fi
+    done < "$runtime_config"
+}
+
+read_secret_file() {
+    local file=$1
+    local label=$2
+    local output_variable=$3
+    local value
+
+    value=$(<"$file")
+    [[ -n "$value" ]] || die "$label is empty"
+
+    case "$value" in
+        *$'\n'*|*$'\r'*|*\"*)
+            die "$label contains a newline, carriage return, or double quote"
+            ;;
+    esac
+
+    printf -v "$output_variable" '%s' "$value"
+}
+
+validate_identifier() {
+    local label=$1
+    local value=$2
+
+    [[ "$value" =~ ^[A-Za-z][A-Za-z0-9_\$#]*$ ]] ||
+        die "$label is not a simple Oracle identifier: $value"
+}
+
+read_secret_file "$admin_username_file" "administrator username" admin_username
+read_secret_file "$admin_password_file" "administrator password" admin_password
+read_secret_file "$paf_password_file" "PAF password" paf_password
+
+validate_identifier "administrator username" "$admin_username"
+validate_identifier "PAF username" "$paf_username"
+
+admin_username=${admin_username^^}
+paf_username=${paf_username^^}
+companion_username="AAI_RO_${paf_username}"
+
+[[ ${#paf_username} -le 121 ]] ||
+    die "PAF username is too long for the AAI_RO_ companion user"
+
+validate_identifier "normalized administrator username" "$admin_username"
+validate_identifier "normalized PAF username" "$paf_username"
+validate_identifier "companion username" "$companion_username"
+
+connection_type=$(config_value AGENT_FACTORY_DB_CONNECTION_TYPE)
+uses_wallet=$(config_value AGENT_FACTORY_DB_USES_WALLET)
+connect_identifier=""
+
+if [[ "${uses_wallet,,}" == "yes" ]]; then
+    [[ -n "$wallet_file" ]] || die "wallet mode requires --wallet-file"
+    [[ -r "$wallet_file" ]] || die "wallet file is not readable: $wallet_file"
+    wallet_alias=$(config_value AGENT_FACTORY_DB_SELECTED_TNS_ALIAS)
+    [[ -n "$wallet_alias" ]] ||
+        die "wallet mode is enabled but the TNS alias is empty"
+    [[ "$wallet_alias" =~ ^[A-Za-z][A-Za-z0-9_.-]*$ ]] ||
+        die "invalid wallet alias: $wallet_alias"
+    connect_identifier="$wallet_alias"
+else
+    [[ "${connection_type^^}" == "DETAILS" ]] ||
+        die "only Details connection mode is supported without a wallet alias"
+
+    protocol=$(config_value AGENT_FACTORY_DB_PROTOCOL)
+    host=$(config_value AGENT_FACTORY_DB_HOST)
+    port=$(config_value AGENT_FACTORY_DB_PORT)
+    service_name=$(config_value AGENT_FACTORY_DB_SERVICE_NAME)
+    protocol=${protocol^^}
+
+    case "$protocol" in
+        TCP|TCPS)
+            ;;
+        *)
+            die "AGENT_FACTORY_DB_PROTOCOL must be TCP or TCPS"
+            ;;
+    esac
+
+    [[ "$host" =~ ^[A-Za-z0-9._:-]+$ ]] || die "invalid database host: $host"
+    [[ "$service_name" =~ ^[A-Za-z0-9._\$#-]+$ ]] ||
+        die "invalid database service name: $service_name"
+    [[ "$port" =~ ^[0-9]{1,5}$ ]] || die "invalid database port: $port"
+
+    port_number=$((10#$port))
+    ((port_number >= 1 && port_number <= 65535)) ||
+        die "database port is outside the valid range: $port"
+
+    if [[ "$protocol" == "TCPS" ]]; then
+        connect_identifier="tcps://${host}:${port}/${service_name}"
+    else
+        connect_identifier="//${host}:${port}/${service_name}"
+    fi
+fi
+
+if [[ "$admin_privilege" == "SYSDBA" ]]; then
+    admin_privilege_clause=" AS SYSDBA"
+else
+    admin_privilege_clause=""
+fi
+
+# SQL*Plus dynamic SQL requires single quotes in a password to be doubled.
+# Double quotes are rejected above because they delimit Oracle passwords.
+escape_sql_single_quotes() {
+    printf '%s' "$1" | sed "s/'/''/g"
+}
+
+paf_password_sql=$(escape_sql_single_quotes "$paf_password")
+
+tmp_dir=""
+sql_file=""
+
+cleanup() {
+    if [[ -n "${tmp_dir:-}" && -d "$tmp_dir" ]]; then
+        rm -rf -- "$tmp_dir"
+    fi
+}
+
+normalize_wallet_directory() {
+    local tnsnames_path=$1
+    local wallet_directory=$2
+    local normalized_path="${tnsnames_path}.normalized"
+
+    # SIDB may generate a MY_WALLET_DIRECTORY that points to a path inside
+    # the SIDB Pod. The wallet is extracted into a different Pod and a
+    # private temporary directory, so relocate this path to the directory
+    # that contains the extracted wallet files.
+    awk -v wallet_directory="$wallet_directory" '
+        {
+            line = $0
+            sub(/\(MY_WALLET_DIRECTORY[[:space:]]*=[^)]*\)/,
+                "(MY_WALLET_DIRECTORY=" wallet_directory ")", line)
+            print line
+        }
+    ' "$tnsnames_path" > "$normalized_path" ||
+        die "failed to normalize MY_WALLET_DIRECTORY in database wallet"
+    chmod --reference="$tnsnames_path" "$normalized_path" 2>/dev/null || true
+    mv -- "$normalized_path" "$tnsnames_path"
+}
+
+normalize_sqlnet_wallet_directory() {
+    local sqlnet_path=$1
+    local wallet_directory=$2
+    local normalized_path="${sqlnet_path}.normalized"
+
+    awk -v wallet_directory="$wallet_directory" '
+        {
+            line = $0
+            if (line ~ /^[[:space:]]*\(DIRECTORY[[:space:]]*=/) {
+                sub(/\(DIRECTORY[[:space:]]*=[[:space:]]*[^)]*\)/,
+                    "(DIRECTORY = " wallet_directory ")", line)
+            }
+            print line
+        }
+    ' "$sqlnet_path" > "$normalized_path" ||
+        die "failed to normalize wallet directory in sqlnet.ora"
+    chmod --reference="$sqlnet_path" "$normalized_path" 2>/dev/null || true
+    mv -- "$normalized_path" "$sqlnet_path"
+}
+
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/paf-db-setup.XXXXXX")
+chmod 700 "$tmp_dir"
+sql_file="$tmp_dir/setup.sql"
+umask 077
+
+if [[ "${uses_wallet,,}" == "yes" ]]; then
+    unzip_bin=$(command -v unzip 2>/dev/null || true)
+    [[ -n "$unzip_bin" && -x "$unzip_bin" ]] ||
+        die "unzip is required for Wallet database connections"
+
+    wallet_extract_dir="$tmp_dir/wallet"
+    mkdir -m 700 "$wallet_extract_dir"
+    "$unzip_bin" -q "$wallet_file" -d "$wallet_extract_dir" ||
+        die "failed to extract the database wallet"
+
+    tnsnames_file=$(find "$wallet_extract_dir" -type f -name tnsnames.ora -print -quit)
+    [[ -n "$tnsnames_file" ]] ||
+        die "database wallet does not contain tnsnames.ora"
+    normalize_wallet_directory "$tnsnames_file" "$wallet_extract_dir"
+    sqlnet_file=$(find "$wallet_extract_dir" -type f -name sqlnet.ora -print -quit)
+    if [[ -n "$sqlnet_file" ]]; then
+        normalize_sqlnet_wallet_directory "$sqlnet_file" "$wallet_extract_dir"
+    fi
+    export TNS_ADMIN="$(dirname "$tnsnames_file")"
+fi
+
+cat >"$sql_file" <<SQL
+SET ECHO OFF
+SET FEEDBACK OFF
+SET HEADING OFF
+SET VERIFY OFF
+SET TERMOUT ON
+SET SERVEROUTPUT OFF
+SET PAGESIZE 0
+SET LINESIZE 32767
+SET SQLBLANKLINES ON
+SET DEFINE OFF
+SET ESCAPE OFF
+
+WHENEVER OSERROR EXIT FAILURE ROLLBACK
+WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
+
+PROMPT paf-db-setup: connecting to target PDB
+CONNECT ${admin_username}/"${admin_password}"@${connect_identifier}${admin_privilege_clause}
+
+PROMPT paf-db-setup: creating or upgrading PAF users
+DECLARE
+    l_count PLS_INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO l_count FROM dba_users WHERE username = '${paf_username}';
+
+    IF l_count = 0 THEN
+        EXECUTE IMMEDIATE
+            'CREATE USER "${paf_username}" IDENTIFIED BY "${paf_password_sql}" ' ||
+            'DEFAULT TABLESPACE USERS QUOTA UNLIMITED ON USERS ACCOUNT UNLOCK';
+    ELSE
+        EXECUTE IMMEDIATE
+            'ALTER USER "${paf_username}" IDENTIFIED BY "${paf_password_sql}" ACCOUNT UNLOCK';
+        EXECUTE IMMEDIATE 'ALTER USER "${paf_username}" DEFAULT TABLESPACE USERS';
+        EXECUTE IMMEDIATE 'ALTER USER "${paf_username}" QUOTA UNLIMITED ON USERS';
+    END IF;
+
+    SELECT COUNT(*) INTO l_count FROM dba_users WHERE username = '${companion_username}';
+
+    IF l_count = 0 THEN
+        EXECUTE IMMEDIATE
+            'CREATE USER "${companion_username}" IDENTIFIED BY "${paf_password_sql}" ACCOUNT UNLOCK';
+    ELSE
+        EXECUTE IMMEDIATE
+            'ALTER USER "${companion_username}" IDENTIFIED BY "${paf_password_sql}" ACCOUNT UNLOCK';
+    END IF;
+END;
+/
+
+PROMPT paf-db-setup: applying PAF grants
+GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE TRIGGER,
+      CREATE TYPE, CREATE PROCEDURE, CREATE VIEW, CREATE SYNONYM
+TO "${paf_username}";
+
+GRANT READ, WRITE ON DIRECTORY DATA_PUMP_DIR TO "${paf_username}";
+GRANT SELECT ON V_\$PARAMETER TO "${paf_username}";
+GRANT CREATE SESSION TO "${companion_username}";
+
+PROMPT paf-db-setup: validating PAF users, grants, PDB, and quotas
+DECLARE
+    l_count PLS_INTEGER;
+    l_status VARCHAR2(128);
+    l_con_name VARCHAR2(128);
+
+    PROCEDURE fail(message VARCHAR2) IS
+    BEGIN
+        raise_application_error(-20001, message);
+    END;
+
+    PROCEDURE check_open_user(username_value VARCHAR2) IS
+    BEGIN
+        SELECT account_status INTO l_status
+          FROM dba_users WHERE username = username_value;
+        IF l_status <> 'OPEN' THEN
+            fail('user ' || username_value || ' is not OPEN: ' || l_status);
+        END IF;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            fail('user ' || username_value || ' does not exist');
+    END;
+
+    PROCEDURE check_system_privilege(username_value VARCHAR2, privilege_value VARCHAR2) IS
+    BEGIN
+        SELECT COUNT(*) INTO l_count FROM dba_sys_privs
+         WHERE grantee = username_value AND privilege = privilege_value;
+        IF l_count = 0 THEN
+            fail('missing system privilege ' || privilege_value || ' for ' || username_value);
+        END IF;
+    END;
+
+    PROCEDURE check_object_privilege(
+        username_value VARCHAR2,
+        owner_value VARCHAR2,
+        object_value VARCHAR2,
+        privilege_value VARCHAR2
+    ) IS
+    BEGIN
+        SELECT COUNT(*) INTO l_count FROM dba_tab_privs
+         WHERE grantee = username_value
+           AND owner = owner_value
+           AND table_name = object_value
+           AND privilege = privilege_value;
+        IF l_count = 0 THEN
+            fail('missing object privilege ' || privilege_value ||
+                 ' on ' || owner_value || '.' || object_value ||
+                 ' for ' || username_value);
+        END IF;
+    END;
+BEGIN
+    l_con_name := UPPER(SYS_CONTEXT('USERENV', 'CON_NAME'));
+    IF l_con_name = 'CDB\$ROOT' THEN
+        fail('connected to CDB\$ROOT; connect to the target PDB service');
+    END IF;
+
+    check_open_user('${paf_username}');
+    check_open_user('${companion_username}');
+
+    check_system_privilege('${paf_username}', 'CREATE SESSION');
+    check_system_privilege('${paf_username}', 'CREATE TABLE');
+    check_system_privilege('${paf_username}', 'CREATE SEQUENCE');
+    check_system_privilege('${paf_username}', 'CREATE TRIGGER');
+    check_system_privilege('${paf_username}', 'CREATE TYPE');
+    check_system_privilege('${paf_username}', 'CREATE PROCEDURE');
+    check_system_privilege('${paf_username}', 'CREATE VIEW');
+    check_system_privilege('${paf_username}', 'CREATE SYNONYM');
+    check_system_privilege('${companion_username}', 'CREATE SESSION');
+
+    check_object_privilege('${paf_username}', 'SYS', 'DATA_PUMP_DIR', 'READ');
+    check_object_privilege('${paf_username}', 'SYS', 'DATA_PUMP_DIR', 'WRITE');
+    check_object_privilege('${paf_username}', 'SYS', 'V_\$PARAMETER', 'SELECT');
+
+    SELECT COUNT(*) INTO l_count FROM dba_ts_quotas
+     WHERE username = '${paf_username}'
+       AND tablespace_name = 'USERS'
+       AND max_bytes = -1;
+    IF l_count = 0 THEN
+        fail('UNLIMITED quota on USERS is missing for ${paf_username}');
+    END IF;
+END;
+/
+
+EXIT SUCCESS
+SQL
+
+sqlplus_output=""
+set +e
+sqlplus_output=$("$sqlplus_bin" -L -n /nolog @"$sql_file" 2>&1)
+sqlplus_status=$?
+set -e
+if ((sqlplus_status != 0)); then
+    printf 'paf-db-setup: SQL*Plus setup failed, exit_code=%s\n' "$sqlplus_status" >&2
+    printf '%s\n' "$sqlplus_output" >&2
+    exit 1
+fi
+
+printf 'paf-db-setup: PAF users, grants, PDB, and quotas validated successfully\n'

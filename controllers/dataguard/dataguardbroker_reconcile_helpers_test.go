@@ -16,6 +16,67 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+func boolPtr(value bool) *bool {
+	return &value
+}
+
+func TestDataguardBrokerRunnerPodReadyAllowsCompletedInitContainer(t *testing.T) {
+	pod := &corev1.Pod{
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			Conditions: []corev1.PodCondition{{
+				Type:   corev1.PodReady,
+				Status: corev1.ConditionTrue,
+			}},
+			InitContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "init",
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0}},
+			}},
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "runner",
+				Ready: false,
+				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}, {
+				Name:  "unrelated-sidecar",
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "NotReady"}},
+			}},
+		},
+	}
+
+	if !dataguardBrokerRunnerPodReady(pod) {
+		t.Fatalf("expected running runner container with a completed init container to be usable")
+	}
+}
+
+func TestDataguardBrokerRunnerPodReadyRequiresNamedRunnerStatus(t *testing.T) {
+	pod := &corev1.Pod{
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			Conditions: []corev1.PodCondition{{
+				Type:   corev1.PodReady,
+				Status: corev1.ConditionFalse,
+			}},
+		},
+	}
+	if dataguardBrokerRunnerPodReady(pod) {
+		t.Fatalf("expected Running pod without runner container status to be not ready")
+	}
+
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name:  "runner",
+		Ready: false,
+		State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "ContainerCreating"}},
+	}}
+	if dataguardBrokerRunnerPodReady(pod) {
+		t.Fatalf("expected waiting runner container to be not ready")
+	}
+
+	pod.Status.ContainerStatuses[0].State = corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}
+	if !dataguardBrokerRunnerPodReady(pod) {
+		t.Fatalf("expected running named runner container to be usable")
+	}
+}
+
 func setDataguardBrokerRunnerOwner(t *testing.T, scheme *runtime.Scheme, broker *dbapi.DataguardBroker, pod *corev1.Pod) {
 	t.Helper()
 	if err := ctrl.SetControllerReference(broker, pod, scheme); err != nil {
@@ -216,7 +277,7 @@ func TestResolveDataguardBrokerDesiredSpecTopologyProjectsLocalSIDBMembers(t *te
 			Topology: &dbapi.DataguardTopologySpec{
 				Policy: &dbapi.DataguardPolicySpec{
 					ProtectionMode:    "MaxAvailability",
-					FastStartFailover: true,
+					FastStartFailover: boolPtr(true),
 				},
 				Members: []dbapi.DataguardTopologyMember{
 					{
@@ -587,6 +648,11 @@ func TestEnsureDataguardBrokerRunnerPodDeletesStaleRunnerAfterDesiredReady(t *te
 	desiredPod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, desiredHash)
 	setDataguardBrokerRunnerOwner(t, scheme, broker, desiredPod)
 	desiredPod.Status.Phase = corev1.PodRunning
+	desiredPod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name:  dataguardBrokerRunnerContainerName,
+		Ready: true,
+		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+	}}
 
 	stalePod := buildDataguardBrokerRunnerPod(broker, runtimeSpec, "stalehash00")
 	setDataguardBrokerRunnerOwner(t, scheme, broker, stalePod)

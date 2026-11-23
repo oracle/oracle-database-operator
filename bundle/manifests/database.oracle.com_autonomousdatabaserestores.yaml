@@ -3,7 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.21.0
   creationTimestamp: null
   name: autonomousdatabaserestores.database.oracle.com
 spec:
@@ -61,7 +61,7 @@ spec:
                 type: object
               source:
                 properties:
-                  k8sADBBackup:
+                  k8sAdbBackup:
                     properties:
                       name:
                         type: string
@@ -74,14 +74,14 @@ spec:
                 type: object
               target:
                 properties:
-                  k8sADB:
+                  k8sAdb:
                     properties:
                       name:
                         type: string
                     type: object
-                  ociADB:
+                  ociAdb:
                     properties:
-                      ocid:
+                      id:
                         type: string
                     type: object
                 type: object
@@ -112,8 +112,6 @@ spec:
             - workRequestOCID
             type: object
         type: object
-    deprecated: true
-    deprecationWarning: AutonomousDatabaseRestore v1alpha1 is deprecated; use apiVersion database.oracle.com/v4. Existing v1alpha1 resources remain supported for migration only.
     served: true
     storage: false
     subresources:
@@ -149,7 +147,7 @@ spec:
                 type: object
               source:
                 properties:
-                  k8sADBBackup:
+                  k8sAdbBackup:
                     properties:
                       name:
                         type: string
@@ -162,14 +160,14 @@ spec:
                 type: object
               target:
                 properties:
-                  k8sADB:
+                  k8sAdb:
                     properties:
                       name:
                         type: string
                     type: object
-                  ociADB:
+                  ociAdb:
                     properties:
-                      ocid:
+                      id:
                         type: string
                     type: object
                 type: object

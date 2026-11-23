@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -43,7 +44,7 @@ func TestExtractMemoryAndHugePagesBytes(t *testing.T) {
 	}
 }
 
-func TestCalculateOracleSysctls(t *testing.T) {
+func TestCalculateOracleSysctlsDoesNotGenerateRegularMemoryDefaults(t *testing.T) {
 	sysctls, err := CalculateOracleSysctls(
 		8*1024*1024*1024,
 		2*1024*1024*1024,
@@ -55,9 +56,25 @@ func TestCalculateOracleSysctls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CalculateOracleSysctls unexpected err: %v", err)
 	}
-	if len(sysctls) == 0 {
-		t.Fatalf("expected sysctls")
+	if len(sysctls) != 0 {
+		t.Fatalf("did not expect automatic regular-memory sysctls, got %#v", sysctls)
 	}
+}
+
+func TestCalculateOracleSysctlsPreservesExplicitShmmax(t *testing.T) {
+	oneGi := int64(1024 * 1024 * 1024)
+	wantedShmmax := int64(32) * oneGi
+
+	sysctls, err := CalculateOracleSysctls(8*oneGi, 2*oneGi, 12*oneGi, 0, wantedShmmax, 0)
+	if err != nil {
+		t.Fatalf("CalculateOracleSysctls unexpected err: %v", err)
+	}
+	for _, sysctl := range sysctls {
+		if sysctl.Name == "kernel.shmmax" && sysctl.Value == fmt.Sprintf("%d", wantedShmmax) {
+			return
+		}
+	}
+	t.Fatalf("expected explicit shmmax %d to be preserved, got %#v", wantedShmmax, sysctls)
 }
 
 func TestValidateSgaPgaSafety(t *testing.T) {
@@ -69,11 +86,57 @@ func TestValidateSgaPgaSafety(t *testing.T) {
 	if err := ValidateSgaPgaSafety(8*oneGi, 2*oneGi, 10*oneGi, 0, 0.80); err == nil {
 		t.Fatalf("expected non-hugepages budget failure")
 	}
-	if err := ValidateSgaPgaSafety(8*oneGi, 2*oneGi, 3*oneGi, 8*oneGi, 0.80); err != nil {
+	if err := ValidateSgaPgaSafety(8*oneGi, 2*oneGi, 4*oneGi, 8*oneGi, 0.80); err != nil {
 		t.Fatalf("expected hugepages budget to pass, got err: %v", err)
 	}
 	if err := ValidateSgaPgaSafety(8*oneGi, 2*oneGi, 2*oneGi, 8*oneGi, 0.80); err == nil {
 		t.Fatalf("expected hugepages regular-memory budget failure")
+	}
+}
+
+func TestCalculateOracleSysctlsAllowsHugePagesBackedSga(t *testing.T) {
+	oneGi := int64(1024 * 1024 * 1024)
+
+	if _, err := CalculateOracleSysctls(
+		8*oneGi,
+		2*oneGi,
+		4*oneGi,
+		8*oneGi,
+		0,
+		0,
+	); err != nil {
+		t.Fatalf("expected HugePages-backed SGA to be independent of regular memory, got err: %v", err)
+	}
+}
+
+func TestCalculateOracleSysctlsSetsShmmaxToHugePages(t *testing.T) {
+	oneGi := int64(1024 * 1024 * 1024)
+	hugePages := int64(8) * oneGi
+
+	sysctls, err := CalculateOracleSysctls(8*oneGi, 2*oneGi, 4*oneGi, hugePages, 0, 0)
+	if err != nil {
+		t.Fatalf("CalculateOracleSysctls unexpected err: %v", err)
+	}
+	for _, sysctl := range sysctls {
+		if sysctl.Name == "kernel.shmmax" && sysctl.Value == fmt.Sprintf("%d", hugePages) {
+			return
+		}
+	}
+	t.Fatalf("expected shmmax to equal HugePages allocation %d, got %#v", hugePages, sysctls)
+}
+
+func TestCalculateOracleSysctlsRejectsMemoryBelowFourGiB(t *testing.T) {
+	oneGi := int64(1024 * 1024 * 1024)
+
+	if _, err := CalculateOracleSysctls(
+		1*oneGi,
+		1*oneGi,
+		3*oneGi,
+		0,
+		0,
+		0,
+	); err == nil {
+		t.Fatalf("expected regular container memory below 4GiB to fail")
 	}
 }
 

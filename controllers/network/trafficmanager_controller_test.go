@@ -680,8 +680,23 @@ func TestBuildTrafficManagerDeploymentCmanAddsConfigAndSecurityContext(t *testin
 		Spec: networkv4.TrafficManagerSpec{
 			Type: networkv4.TrafficManagerTypeCman,
 			Runtime: networkv4.TrafficManagerRuntimeSpec{
-				Image:                    "oracle/cman:23.8.0",
-				ServiceAccountName:       "cman-sa",
+				Image:              "oracle/cman:23.8.0",
+				ServiceAccountName: "cman-sa",
+				NodeSelector:       map[string]string{"workload": "cman"},
+				Affinity: &corev1.Affinity{
+					PodAntiAffinity: &corev1.PodAntiAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
+							Weight: 100,
+							PodAffinityTerm: corev1.PodAffinityTerm{
+								TopologyKey: "kubernetes.io/hostname",
+								LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{
+									"app.kubernetes.io/name":      "cman",
+									"app.kubernetes.io/component": "traffic-manager",
+								}},
+							},
+						}},
+					},
+				},
 				PodSecurityContext:       &corev1.PodSecurityContext{FSGroup: ptr.To[int64](54321)},
 				ContainerSecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: ptr.To(false)},
 			},
@@ -702,6 +717,13 @@ func TestBuildTrafficManagerDeploymentCmanAddsConfigAndSecurityContext(t *testin
 	}
 	if deploy.Spec.Template.Spec.SecurityContext == nil || ptr.Deref(deploy.Spec.Template.Spec.SecurityContext.FSGroup, 0) != 54321 {
 		t.Fatalf("expected pod security context fsGroup 54321")
+	}
+	if deploy.Spec.Template.Spec.NodeSelector["workload"] != "cman" {
+		t.Fatalf("expected CMAN node selector, got %#v", deploy.Spec.Template.Spec.NodeSelector)
+	}
+	if deploy.Spec.Template.Spec.Affinity == nil || deploy.Spec.Template.Spec.Affinity.PodAntiAffinity == nil ||
+		len(deploy.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) != 1 {
+		t.Fatalf("expected preferred CMAN pod anti-affinity, got %#v", deploy.Spec.Template.Spec.Affinity)
 	}
 	container := deploy.Spec.Template.Spec.Containers[0]
 	if container.SecurityContext == nil || ptr.Deref(container.SecurityContext.AllowPrivilegeEscalation, true) {
@@ -750,6 +772,15 @@ func TestSyncTrafficManagerDeploymentUpdatesTemplate(t *testing.T) {
 					Annotations: map[string]string{"network.oracle.com/config-hash": "new"},
 				},
 				Spec: corev1.PodSpec{
+					NodeSelector: map[string]string{"workload": "cman"},
+					Affinity: &corev1.Affinity{
+						PodAntiAffinity: &corev1.PodAntiAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
+								Weight:          100,
+								PodAffinityTerm: corev1.PodAffinityTerm{TopologyKey: "kubernetes.io/hostname"},
+							}},
+						},
+					},
 					Volumes: []corev1.Volume{{
 						Name: "traffic-manager-backend-tls",
 						VolumeSource: corev1.VolumeSource{
@@ -783,5 +814,12 @@ func TestSyncTrafficManagerDeploymentUpdatesTemplate(t *testing.T) {
 	}
 	if found.Spec.Replicas == nil || *found.Spec.Replicas != 2 {
 		t.Fatalf("expected updated replicas, got %#v", found.Spec.Replicas)
+	}
+	if found.Spec.Template.Spec.NodeSelector["workload"] != "cman" {
+		t.Fatalf("expected updated node selector, got %#v", found.Spec.Template.Spec.NodeSelector)
+	}
+	if found.Spec.Template.Spec.Affinity == nil || found.Spec.Template.Spec.Affinity.PodAntiAffinity == nil ||
+		len(found.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) != 1 {
+		t.Fatalf("expected updated affinity, got %#v", found.Spec.Template.Spec.Affinity)
 	}
 }

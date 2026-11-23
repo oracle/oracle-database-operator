@@ -11,7 +11,7 @@ In order to terminate an existing OBDS system, the two steps are as follows:
 
 This example uses `terminate_dbcs_system.yaml` to terminated a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with the following:
 
-- OCID of existing VMDB as `ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa`
+- OCID of existing VMDB as `ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>`
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
 

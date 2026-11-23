@@ -650,6 +650,9 @@ spec:
                       format: int32
                       minimum: 1
                       type: integer
+                    allowPrivilegeEscalation:
+                      default: false
+                      type: boolean
                     autoVncr:
                       enum:
                       - "ON"
@@ -917,6 +920,14 @@ spec:
                       default: 50
                       format: int32
                       type: integer
+                    storageSource:
+                      properties:
+                        oci:
+                          properties:
+                            volumeBackupId:
+                              type: string
+                          type: object
+                      type: object
                     useExistingCatalog:
                       type: boolean
                     validateNetwork:
@@ -967,6 +978,8 @@ spec:
                           type: integer
                         tcpsEnabled:
                           type: boolean
+                        tcpsPort:
+                          type: integer
                       type: object
                     type: array
                 type: object
@@ -1056,6 +1069,9 @@ spec:
                         - mountPath
                         type: object
                       type: array
+                    allowPrivilegeEscalation:
+                      default: false
+                      type: boolean
                     capabilities:
                       properties:
                         add:
@@ -1330,6 +1346,9 @@ spec:
                             - mountPath
                             type: object
                           type: array
+                        allowPrivilegeEscalation:
+                          default: false
+                          type: boolean
                         capabilities:
                           properties:
                             add:
@@ -1960,6 +1979,9 @@ spec:
                         - mountPath
                         type: object
                       type: array
+                    allowPrivilegeEscalation:
+                      default: false
+                      type: boolean
                     capabilities:
                       properties:
                         add:

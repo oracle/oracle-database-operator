@@ -52,7 +52,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
+	obs "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -69,7 +69,7 @@ func TestAPIs(t *testing.T) {
 	RunSpecs(t, "Controller Suite")
 }
 
-var _ = BeforeSuite(func(done Done) {
+var _ = BeforeSuite(func(_ SpecContext) {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
@@ -82,7 +82,7 @@ var _ = BeforeSuite(func(done Done) {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(cfg).ToNot(BeNil())
 
-	err = observabilityv1alpha1.AddToScheme(scheme.Scheme)
+	err = obs.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
@@ -91,7 +91,6 @@ var _ = BeforeSuite(func(done Done) {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(k8sClient).ToNot(BeNil())
 
-	close(done)
 }, NodeTimeout(60*time.Second))
 
 var _ = AfterSuite(func() {

@@ -11,17 +11,17 @@ To scale up storage of an existing OBDS system, the two steps are as follows:
 
 This example uses `scale_up_storage.yaml` to scale up storage of an existing Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with the following:
 
-- OCID of existing VMDB as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
+- OCID of existing VMDB as `ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>`
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
 - Availability Domain for the OBDS VMDB as `OLou:AP-MUMBAI-1-AD-1`  
-- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`  
+- Compartment OCID as `ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>`  
 - Database Admin Credential as `admin-password`  
 - Database Hostname Prefix as `host1234`  
 - Target Data Storage Size in GBs as `512`
 - Oracle VMDB Shape as `VM.Standard2.1`  
 - SSH Public key for the OBDS system being deployed as `oci-publickey`  
-- OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`  
+- OCID of the Subnet as `ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>`  
 
 
 Use the file: [scale_up_storage.yaml](./scale_up_storage.yaml) for this use case as described in the following steps:

@@ -3,7 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.21.0
   creationTimestamp: null
   name: lrpdbs.database.oracle.com
 spec:
@@ -32,18 +32,26 @@ spec:
       jsonPath: .status.totalSize
       name: PDB Size
       type: string
-    - description: Status of the LRPDB Resource
-      jsonPath: .status.phase
-      name: Status
-      type: string
     - description: Error message, if any
       jsonPath: .status.msg
       name: Message
+      type: string
+    - description: open restricted
+      jsonPath: .status.restricted
+      name: Restricted
       type: string
     - description: last sqlcode
       jsonPath: .status.sqlCode
       name: last sqlcode
       type: integer
+    - description: last plsql applied
+      jsonPath: .status.lastplsql
+      name: last PLSQL
+      type: string
+    - description: Bitmask status
+      jsonPath: .status.pdbBitMaskStr
+      name: BITMASK STATUS
+      type: string
     - description: The connect string to be used
       jsonPath: .status.connString
       name: Connect_String
@@ -61,17 +69,6 @@ spec:
           spec:
             properties:
               action:
-                enum:
-                - Create
-                - Clone
-                - Plug
-                - Unplug
-                - Delete
-                - Modify
-                - Status
-                - Map
-                - Alter
-                - Noaction
                 type: string
               adminName:
                 properties:
@@ -136,12 +133,12 @@ spec:
               alterSystem:
                 type: string
               alterSystemParameter:
+                maxLength: 20
                 type: string
               alterSystemValue:
+                maxLength: 4000
                 type: string
               asClone:
-                type: boolean
-              assertiveLrpdbDeletion:
                 type: boolean
               cdbName:
                 type: string
@@ -164,6 +161,8 @@ spec:
                 type: object
               cdbResName:
                 type: string
+              codeconfigmap:
+                type: string
               copyAction:
                 enum:
                 - COPY
@@ -176,54 +175,13 @@ spec:
                 - KEEP
                 type: string
               fileNameConversions:
+                maxLength: 513
                 type: string
               getScript:
+                default: false
                 type: boolean
-              lrpdbTlsCat:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              lrpdbTlsCrt:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              lrpdbTlsKey:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
+              imperativeLrpdbDeletion:
+                type: boolean
               modifyOption:
                 enum:
                 - IMMEDIATE
@@ -232,7 +190,18 @@ spec:
                 - READ WRITE
                 - RESTRICTED
                 type: string
+              modifyOption2:
+                default: NONE
+                type: string
+              monitorinitparameter:
+                type: boolean
               parameterScope:
+                type: string
+              passwordProtection:
+                default: NATIVE
+                enum:
+                - NATIVE
+                - OPENSSL3
                 type: string
               pdbName:
                 type: string
@@ -241,12 +210,28 @@ spec:
                 - OPEN
                 - CLOSE
                 - ALTER
+                - DELETE
+                - UNPLUG
+                - PLUG
+                - CLONE
+                - RESET
+                - NONE
+                type: string
+              pdbappuser:
                 type: string
               pdbconfigmap:
                 type: string
+              plsqlexemode:
+                type: integer
+              resetstate:
+                type: integer
+              resetstrstate:
+                type: string
               reuseTempFile:
+                default: true
                 type: boolean
               sourceFileNameConversions:
+                maxLength: 513
                 type: string
               sparseClonePath:
                 type: string
@@ -292,45 +277,16 @@ spec:
                 type: string
               totalSize:
                 type: string
+              tracelevel:
+                type: integer
               unlimitedStorage:
+                default: true
                 type: boolean
-              webServerPwd:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              webServerUser:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
               xmlFileName:
+                maxLength: 513
                 type: string
             required:
-            - action
-            - alterSystemParameter
-            - alterSystemValue
-            - webServerPwd
+            - passwordProtection
             type: object
           status:
             properties:
@@ -344,13 +300,21 @@ spec:
                 type: string
               connString:
                 type: string
+              lastplsql:
+                type: string
               modifyOption:
                 type: string
               msg:
                 type: string
               openMode:
                 type: string
+              pdbBitMask:
+                type: integer
+              pdbBitMaskStr:
+                type: string
               phase:
+                type: string
+              restricted:
                 type: string
               sqlCode:
                 type: integer

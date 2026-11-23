@@ -3,20 +3,11 @@ version: "2"
 run:
   timeout: 10m
   tests: false
-  version: "2"
 
 linters:
-  disable-all: true
-  enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - revive
-    - staticcheck
-    - unused
-
-issues:
-  exclude-rules:
+  default: none
+  exclusions:
+    rules:
     - path: ^apis/database/v4/(oraclerestart|racdatabase|shardingdatabase)_webhook\.go$
       linters:
         - unused
@@ -30,3 +21,13 @@ issues:
       linters:
         - govet
       text: "non-constant format string|Printf format %d has arg .* of wrong type"
+    # Data Guard retains these compatibility fields until all controller/API
+    # consumers migrate together.
+    - path: ^controllers/dataguard/
+      linters:
+        - staticcheck
+      text: "SA1019:.*(Requeue|AdminPassword)"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

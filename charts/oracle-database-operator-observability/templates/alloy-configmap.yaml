@@ -1,0 +1,347 @@
+{{- if .Values.alloy.enabled }}
+
+{{- if and .Values.proxy.enabled .Values.proxy.url .Values.proxy.fromEnvironment }}
+{{- fail "proxy.url and proxy.fromEnvironment cannot both be configured" }}
+{{- end }}
+
+{{- if and .Values.destinations.prometheus.enabled (empty .Values.destinations.prometheus.url) }}
+{{- fail "destinations.prometheus.url is required when destinations.prometheus.enabled=true" }}
+{{- end }}
+
+{{- if and .Values.destinations.loki.enabled (empty .Values.destinations.loki.url) }}
+{{- fail "destinations.loki.url is required when destinations.loki.enabled=true" }}
+{{- end }}
+
+{{- if and .Values.workloadLogs.enabled (eq (len .Values.workloadLogs.namespaces) 0) }}
+{{- fail "workloadLogs.namespaces must contain at least one namespace when workloadLogs.enabled=true" }}
+{{- end }}
+
+{{- if and .Values.workloadLogs.enabled (not .Values.destinations.loki.enabled) }}
+{{- fail "destinations.loki.enabled must be true when workloadLogs.enabled=true" }}
+{{- end }}
+
+{{- if and .Values.cadvisor.enabled (not .Values.destinations.prometheus.enabled) }}
+{{- fail "destinations.prometheus.enabled must be true when cadvisor.enabled=true" }}
+{{- end }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ required "alloyConfigMapName is required" .Values.alloyConfigMapName }}
+  labels:
+    {{- include "oracle-database-operator-observability.labels" . | nindent 4 }}
+data:
+  config.alloy: |-
+    logging {
+      level  = "info"
+      format = "logfmt"
+    }
+
+    {{ if and .Values.destinations.prometheus.enabled .Values.destinations.prometheus.url }}
+    prometheus.remote_write "prometheus" {
+      endpoint {
+        url = {{ .Values.destinations.prometheus.url | quote }}
+
+        {{ if .Values.destinations.prometheus.bearerTokenFile }}
+        bearer_token_file = {{ .Values.destinations.prometheus.bearerTokenFile | quote }}
+        {{ end }}
+
+        {{ if or .Values.destinations.prometheus.tls.caFile .Values.destinations.prometheus.tls.insecureSkipVerify }}
+        tls_config {
+          {{ if .Values.destinations.prometheus.tls.caFile }}
+          ca_file = {{ .Values.destinations.prometheus.tls.caFile | quote }}
+          {{ end }}
+          {{ if .Values.destinations.prometheus.tls.insecureSkipVerify }}
+          insecure_skip_verify = true
+          {{ end }}
+        }
+        {{ end }}
+
+        {{ if and .Values.proxy.enabled .Values.proxy.url }}
+        proxy_url = {{ .Values.proxy.url | quote }}
+        {{ if .Values.proxy.noProxy }}
+        no_proxy = {{ join "," .Values.proxy.noProxy | quote }}
+        {{ end }}
+        {{ else if and .Values.proxy.enabled .Values.proxy.fromEnvironment }}
+        proxy_from_environment = true
+        {{ end }}
+      }
+    }
+    {{ end }}
+
+    {{ if and .Values.destinations.loki.enabled .Values.destinations.loki.url }}
+    loki.write "loki" {
+      endpoint {
+        url = {{ .Values.destinations.loki.url | quote }}
+
+        {{ if .Values.destinations.loki.bearerTokenFile }}
+        bearer_token_file = {{ .Values.destinations.loki.bearerTokenFile | quote }}
+        {{ end }}
+
+        {{ if or .Values.destinations.loki.tls.caFile .Values.destinations.loki.tls.insecureSkipVerify }}
+        tls_config {
+          {{ if .Values.destinations.loki.tls.caFile }}
+          ca_file = {{ .Values.destinations.loki.tls.caFile | quote }}
+          {{ end }}
+          {{ if .Values.destinations.loki.tls.insecureSkipVerify }}
+          insecure_skip_verify = true
+          {{ end }}
+        }
+        {{ end }}
+
+        {{ if and .Values.proxy.enabled .Values.proxy.url }}
+        proxy_url = {{ .Values.proxy.url | quote }}
+        {{ if .Values.proxy.noProxy }}
+        no_proxy = {{ join "," .Values.proxy.noProxy | quote }}
+        {{ end }}
+        {{ else if and .Values.proxy.enabled .Values.proxy.fromEnvironment }}
+        proxy_from_environment = true
+        {{ end }}
+      }
+    }
+    {{ end }}
+
+    {{ if and .Values.operator.metrics.enabled .Values.destinations.prometheus.enabled .Values.destinations.prometheus.url }}
+    discovery.kubernetes "operator_services" {
+      role = "service"
+
+      {{ if and .Values.proxy.enabled .Values.proxy.url }}
+      proxy_url = {{ .Values.proxy.url | quote }}
+      {{ if .Values.proxy.noProxy }}
+      no_proxy = {{ join "," .Values.proxy.noProxy | quote }}
+      {{ end }}
+      {{ else if and .Values.proxy.enabled .Values.proxy.fromEnvironment }}
+      proxy_from_environment = true
+      {{ end }}
+
+      namespaces {
+        names = {{ .Values.operator.namespaces | toJson }}
+      }
+    }
+
+    discovery.relabel "operator_metrics" {
+      targets = discovery.kubernetes.operator_services.targets
+
+      rule {
+        source_labels = ["__meta_kubernetes_service_name"]
+        regex         = {{ printf "^%s$" .Values.operator.metrics.serviceName | quote }}
+        action        = "keep"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_service_port_name"]
+        regex         = {{ printf "^%s$" .Values.operator.metrics.servicePortName | quote }}
+        action        = "keep"
+      }
+    }
+
+    prometheus.scrape "operator_metrics" {
+      targets           = discovery.relabel.operator_metrics.output
+      forward_to        = [prometheus.remote_write.prometheus.receiver]
+      scheme            = "https"
+      metrics_path      = {{ .Values.operator.metrics.path | quote }}
+      scrape_interval   = {{ .Values.operator.metrics.interval | quote }}
+      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+      {{ if and .Values.proxy.enabled .Values.proxy.url }}
+      proxy_url = {{ .Values.proxy.url | quote }}
+      {{ if .Values.proxy.noProxy }}
+      no_proxy = {{ join "," .Values.proxy.noProxy | quote }}
+      {{ end }}
+      {{ else if and .Values.proxy.enabled .Values.proxy.fromEnvironment }}
+      proxy_from_environment = true
+      {{ end }}
+
+      {{ if or .Values.operator.metrics.tls.caFile .Values.operator.metrics.tls.insecureSkipVerify }}
+      tls_config {
+        {{ if .Values.operator.metrics.tls.caFile }}
+        ca_file = {{ .Values.operator.metrics.tls.caFile | quote }}
+        {{ end }}
+        {{ if .Values.operator.metrics.tls.insecureSkipVerify }}
+        insecure_skip_verify = true
+        {{ end }}
+      }
+      {{ end }}
+    }
+    {{ end }}
+
+    {{ if and .Values.cadvisor.enabled .Values.destinations.prometheus.enabled .Values.destinations.prometheus.url }}
+    discovery.kubernetes "cadvisor_nodes" {
+      role = "node"
+
+      {{ if and .Values.proxy.enabled .Values.proxy.url }}
+      proxy_url = {{ .Values.proxy.url | quote }}
+      {{ if .Values.proxy.noProxy }}
+      no_proxy = {{ join "," .Values.proxy.noProxy | quote }}
+      {{ end }}
+      {{ else if and .Values.proxy.enabled .Values.proxy.fromEnvironment }}
+      proxy_from_environment = true
+      {{ end }}
+    }
+
+    discovery.relabel "cadvisor_nodes" {
+      targets = discovery.kubernetes.cadvisor_nodes.targets
+
+      rule {
+        replacement  = "kubernetes.default.svc:443"
+        target_label = "__address__"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_node_name"]
+        regex         = "(.+)"
+        replacement   = "/api/v1/nodes/$1/proxy{{ .Values.cadvisor.metricsPath }}"
+        target_label  = "__metrics_path__"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_node_name"]
+        target_label  = "node"
+      }
+    }
+
+    prometheus.scrape "cadvisor" {
+      targets           = discovery.relabel.cadvisor_nodes.output
+      forward_to        = [prometheus.relabel.cadvisor_metrics.receiver]
+      scheme            = "https"
+      scrape_interval   = {{ .Values.cadvisor.scrapeInterval | quote }}
+      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+      tls_config {
+        ca_file = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+      }
+
+      {{ if and .Values.proxy.enabled .Values.proxy.url }}
+      proxy_url = {{ .Values.proxy.url | quote }}
+      {{ if .Values.proxy.noProxy }}
+      no_proxy = {{ join "," .Values.proxy.noProxy | quote }}
+      {{ end }}
+      {{ else if and .Values.proxy.enabled .Values.proxy.fromEnvironment }}
+      proxy_from_environment = true
+      {{ end }}
+    }
+
+    prometheus.relabel "cadvisor_metrics" {
+      forward_to = [prometheus.remote_write.prometheus.receiver]
+
+      rule {
+        replacement  = "kubernetes-cadvisor"
+        target_label = "job"
+      }
+
+      rule {
+        source_labels = ["__name__"]
+        regex         = {{ .Values.cadvisor.keepMetricsRegex | quote }}
+        action        = "keep"
+      }
+    }
+    {{ end }}
+
+    {{ if and .Values.operator.logs.enabled .Values.destinations.loki.enabled .Values.destinations.loki.url }}
+    discovery.kubernetes "operator_pods" {
+      role = "pod"
+
+      {{ if and .Values.proxy.enabled .Values.proxy.url }}
+      proxy_url = {{ .Values.proxy.url | quote }}
+      {{ if .Values.proxy.noProxy }}
+      no_proxy = {{ join "," .Values.proxy.noProxy | quote }}
+      {{ end }}
+      {{ else if and .Values.proxy.enabled .Values.proxy.fromEnvironment }}
+      proxy_from_environment = true
+      {{ end }}
+
+      namespaces {
+        names = {{ .Values.operator.namespaces | toJson }}
+      }
+    }
+
+    discovery.relabel "operator_pods" {
+      targets = discovery.kubernetes.operator_pods.targets
+
+      rule {
+        source_labels = [{{ .Values.operator.logs.podLabelMeta | quote }}]
+        regex         = {{ printf "^%s$" .Values.operator.logs.podLabelValue | quote }}
+        action        = "keep"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+
+      rule {
+        replacement  = "oracle-database-operator"
+        target_label = "job"
+      }
+    }
+
+    loki.source.kubernetes "operator_pods" {
+      targets    = discovery.relabel.operator_pods.output
+      forward_to = [loki.write.loki.receiver]
+    }
+    {{ end }}
+
+    {{ if and .Values.workloadLogs.enabled .Values.destinations.loki.enabled .Values.destinations.loki.url }}
+    discovery.kubernetes "workload_pods" {
+      role = "pod"
+
+      {{ if and .Values.proxy.enabled .Values.proxy.url }}
+      proxy_url = {{ .Values.proxy.url | quote }}
+      {{ if .Values.proxy.noProxy }}
+      no_proxy = {{ join "," .Values.proxy.noProxy | quote }}
+      {{ end }}
+      {{ else if and .Values.proxy.enabled .Values.proxy.fromEnvironment }}
+      proxy_from_environment = true
+      {{ end }}
+
+      namespaces {
+        names = {{ .Values.workloadLogs.namespaces | toJson }}
+      }
+    }
+
+    discovery.relabel "workload_pods" {
+      targets = discovery.kubernetes.workload_pods.targets
+
+      {{ if .Values.workloadLogs.labels.namespace }}
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+      {{ end }}
+
+      {{ if .Values.workloadLogs.labels.pod }}
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+      {{ end }}
+
+      {{ if .Values.workloadLogs.labels.container }}
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+      {{ end }}
+
+      rule {
+        replacement  = "oracle-database-kubernetes-logs"
+        target_label = "job"
+      }
+    }
+
+    loki.source.kubernetes "workload_pods" {
+      targets    = discovery.relabel.workload_pods.output
+      forward_to = [loki.write.loki.receiver]
+    }
+    {{ end }}
+{{- end }}

@@ -6,13 +6,16 @@
 #
 # Prerequisites:
 # - Create the True Cache blob on the RAC primary with DBCA and load it into a
-#   ConfigMap in this namespace (docs/sidb/README.md — manual DBCA blob).
-# - For autoTCServiceRegistration=true, install the helper on every RAC node
-#   and complete docs/sidb/PREREQUISITES.md (externaljob.ora + smoke test).
+#   ConfigMap in this namespace (docs/sidb/truecache/TRUECACHE.md#4-external-host-si-or-rac).
+# - For autoTCServiceRegistration: true, copy the helper onto every RAC node
+#   (external RAC is outside the OCR SIDB image; do not skip the install) and
+#   complete docs/sidb/prerequisites/PREREQUISITES.md#primary-pdb-service
+#   (externaljob.ora + DBMS_SCHEDULER smoke test).
 #
-# Structure matches validated lab manifests (for example
-# build/sidb/sidb-create-truecache-rac-issue.yaml). Hostnames, subnet OCIDs,
-# and image tags below are sanitized placeholders — replace before apply.
+# Use a SCAN-based TCP connectString for bootstrap. Keep connectString on TCP;
+# set primarySource.tcpsPort and security.tcps only when using TCPS.
+# Hostnames, subnet OCIDs, and image tags below are sanitized placeholders —
+# replace before apply.
 #
 
 apiVersion: database.oracle.com/v4
@@ -33,10 +36,11 @@ spec:
     ## Use the RAC SCAN listener and a registered primary service.
     connectString: "primrac-scan.mysubnet.examplevcn.oraclevcn.com:1521/PRIM_UNQNAME.mysubnet.examplevcn.oraclevcn.com"
     ## Primary CDB short DB_NAME (SELECT name FROM v$database), e.g. PRIMDB.
-    ## Required in practice for domain-qualified RAC SCAN services so bootstrap
-    ## does not treat the full service string as PRIMARY_DB_NAME.
-    ## Never set to DB_UNIQUE_NAME or the full SCAN service (breaks CREATE TRUE CACHE).
-    ## Same definition as docs/sidb/README.md — Source Database Reference.
+    ## Optional short DB_NAME. Set it only when required by the image/operator;
+    ## it does not replace the valid CDB service in connectString. Omit it if
+    ## the connectString already reaches the primary CDB service.
+    ## Never set to DB_UNIQUE_NAME or the full SCAN service.
+    ## See docs/sidb/truecache/TRUECACHE.md and docs/sidb/README.md.
     dbName: PRIMDB
 
   trueCache:
@@ -50,19 +54,21 @@ spec:
     trueCacheServices:
       - "PRIMDB_PDB1:tcokeprim.example.com:tcokenodes.example.com"
     ## Automatic primary-side service registration via DBMS_SCHEDULER.
-    ## Keep the sample helper installed at the same path on every RAC node,
-    ## owned by oracle:oinstall and executable. Verify externaljob.ora runs
-    ## external jobs as the Oracle software owner (not nobody:nobody).
-    ## See docs/sidb/PREREQUISITES.md. Pod READY TO USE does not prove association.
+    ## External RAC: copy configure-primary-truecache-service.sh to the same
+    ## path on every node (OCR SIDB primaries already ship it; this path does not).
+    ## Keep it owned by oracle:oinstall and executable. Verify externaljob.ora
+    ## runs external jobs as the Oracle software owner (not nobody:nobody).
+    ## See docs/sidb/prerequisites/PREREQUISITES.md. Pod READY TO USE does not prove association.
     autoTCServiceRegistration: true
     ## Optional advanced: primary-side DBMS_SCHEDULER credential name.
     ## Prefer externaljob.ora as oracle:oinstall unless you need a credential.
     # primarySchedulerCredentialName: TC_ORACLE_OS_CRED
 
-  ## Optional environment overrides (for example custom helper path).
+  ## Optional: custom helper path on the RAC nodes (same path every node).
+  ## Set only when not using /home/oracle/configure-primary-truecache-service.sh.
   # envVars:
   #   - name: PRIMARY_TC_SERVICE_SCRIPT_PATH
-  #     value: /home/oracle/configure-primary-truecache-service.sh
+  #     value: /custom/path/configure-primary-truecache-service.sh
 
   security:
     secrets:
@@ -75,25 +81,28 @@ spec:
         secretKey: tde_wallet_pwd
 
   image:
-    ## True Cache capable image required (lab used truecache-*-ee-patch tags).
-    ## Replace <tenancy> / tag for your registry.
-    pullFrom: dbocir/oracle/database:truecache-23.26.0-ee
+    ## True Cache capable enterprise image required.
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    ## OCR database/enterprise_ru requires authenticated pull (accept OCR
+    ## terms + auth token). Create ocr-reg-cred in this namespace.
+    ## Anonymous pull of this licensed image is not supported.
+    pullSecrets: ocr-reg-cred
     prebuiltDB: false
     imagePullPolicy: Always
 
-  ## Optional init parameters (tune for lab or production; match primary sizing carefully)
-  initParams:
-    sgaTarget: 16384
-    pgaAggregateTarget: 4096
-    processes: 1200
-
-  resources:
-    requests:
-      memory: "32Gi"
-      cpu: "2"
-    limits:
-      memory: "32Gi"
-      cpu: "2"
+  ## Optional: SIDB initParams and pod resources (not True Cache-specific).
+  ## Uncomment and tune for lab or production. Omit both to use image/operator defaults.
+  # initParams:
+  #   sgaTarget: 16384
+  #   pgaAggregateTarget: 4096
+  #   processes: 1200
+  # resources:
+  #   requests:
+  #     memory: "32Gi"
+  #     cpu: "2"
+  #   limits:
+  #     memory: "32Gi"
+  #     cpu: "2"
 
   ## Optional node selector.
   # nodeSelector:
@@ -123,12 +132,14 @@ spec:
           ## Optional: pin frontend IP across delete/recreate (lab used this).
           # oci-network-load-balancer.oraclecloud.com/assigned-private-ipv4: "10.0.2.27"
           ## Placeholder subnet OCID — replace with your VCN subnet OCID.
-          oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaxxxxxxxx6ljna"
+          oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"
           external-dns.alpha.kubernetes.io/hostname: "tck8node1.internal.example.com"
         tcp:
           enabled: true
           port: 1521
-        ## Uncomment for TCPS clients (and set security.tcps + connectString :2484).
+        ## Uncomment for TCPS clients. Also enable security.tcps and set
+        ## primarySource.tcpsPort to the reachable primary TCPS port. Keep
+        ## primarySource.connectString on the TCP SCAN bootstrap endpoint.
         # tcps:
         #   enabled: true
         #   port: 2484

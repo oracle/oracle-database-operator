@@ -1,4 +1,4 @@
-# PrivateAI TLS with cert-manager
+# Private AI TLS with cert-manager
 
 Use this guide to generate a Kubernetes TLS secret for:
 
@@ -31,13 +31,11 @@ TARGET=pai   -> CERT_NAME=privateai-cert  and  SECRET_NAME=privateai-tls
 
 You can override both names with environment variables.
 
-If you use older provisioning manifests that still reference `paisecret`, set `SECRET_NAME=paisecret` when `TARGET=pai`, or update the manifest to the newer TLS secret name.
-
 ## Quick Start
 
 ### Create a Bootstrap Self-Signed Issuer
 
-Before issuing TLS certificates for PrivateAI, create a bootstrap  `ClusterIssuer`. This issuer is used by cert-manager to generate an initial self-signed certificate, which can then be used to create a Certificate Authority (CA) and issue application certificates. Create a YAML file `bootstrap-issuer.yaml` as below and apply the manifest:
+Before issuing TLS certificates for Private AI, create a bootstrap  `ClusterIssuer`. This issuer is used by cert-manager to generate an initial self-signed certificate, which can then be used to create a Certificate Authority (CA) and issue application certificates. Create a YAML file `bootstrap-issuer.yaml` as below and apply the manifest:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -76,16 +74,32 @@ cd oracle-database-operator/docs/privateai/tls-cert-manager
 
 NAMESPACE=pai \
 TARGET=pai \
+SECRET_NAME=privateai-tls \
 ISSUER_NAME=tcps-selfsigned-bootstrap \
 ISSUER_KIND=ClusterIssuer \
 COMMON_NAME=api.example.com \
 DNS_NAMES="api.example.com,pai-sample.pai.svc,pai-sample.pai.svc.cluster.local" \
-IP_ADDRESSES="<IP_ADRESS>" \
+IP_ADDRESSES="<IP_ADDRESS>" \
 GENERATE_PKCS12=true \
 PASSWORD_SECRET_NAME=paisecret \
 PASSWORD_SECRET_KEY=privateai-ssl-pwd \
 ./tr_cert_manager.sh
 ```
+
+`SECRET_NAME` is a supported optional script parameter. It specifies the
+Kubernetes Secret that cert-manager creates or updates. For `TARGET=pai`, the
+default is already `privateai-tls`, so the explicit assignment above makes the
+name clear and must match the Private AI resource:
+
+```yaml
+spec:
+  security:
+    tls:
+      secretName: privateai-tls
+```
+
+`PASSWORD_SECRET_NAME=paisecret` is separate: it identifies the Secret that
+contains the PKCS#12 password and is not the generated TLS Secret.
 
 Verify the result:
 

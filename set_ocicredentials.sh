@@ -102,12 +102,12 @@ parse() {
   found=false
 
   # While loop to read line by line
-  while IFS= read -r line; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
 
     # Find the target PROFILE section and parse the data
     if [[ "$line" =~ ^"[$PROFILE]" ]] ; then
       found=true
-      while IFS= read -r line; do
+      while IFS= read -r line || [[ -n "$line" ]]; do
 
         # Exit if reaches the next profile section
         if [[ "$line" =~ ^\[(.*)\] ]]; then
@@ -187,10 +187,6 @@ create_secret() {
     create secret generic "$SECRET_NAME"
     --from-file="privatekey=$key_file"
   )
-
-  # Generate command that creates a Secret
-  cmd="kubectl create secret generic $SECRET_NAME \
-  --from-file=privatekey=$key_file"
 
   if [[ -n "${NAMESPACE:-}" ]]; then
     args+=(-n "$NAMESPACE")

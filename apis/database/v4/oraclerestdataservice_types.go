@@ -159,6 +159,7 @@ type OracleRestDataServiceStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.databaseActionsUrl",name="Database Actions URL",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.apexUrl",name="Apex URL",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.mongoDbApiAccessUrl",name="MongoDbApi Access URL",type="string"
+//+kubebuilder:deprecatedversion:warning="OracleRestDataService is deprecated; use the OrdsSrvs controller instead. See https://github.com/oracle/oracle-database-operator/blob/main/docs/ordsservices/README.md."
 
 // OracleRestDataService is the Schema for the oraclerestdataservices API
 // +kubebuilder:storageversion

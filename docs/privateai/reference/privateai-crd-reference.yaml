@@ -1,0 +1,461 @@
+# Oracle Private AI Services - annotated CRD field reference
+#
+# Documentation only. Do not apply this file unchanged.
+# Replace placeholders, remove unused alternatives, and provide real Secret,
+# ConfigMap, image, storage, and network values before creating a resource.
+#
+# The generated CRD and Go API types are authoritative:
+#   config/crd/bases/privateai.oracle.com_privateais.yaml
+#   apis/privateai/v4/privateai_types.go
+#
+# The grouped fields under security, runtime, configuration, storage,
+# networking, and logging are preferred for new resources. The legacy fields
+# at the bottom of spec remain for compatibility and should not be mixed with
+# their grouped replacements in a new manifest.
+# Current API behavior and validation rules:
+# - Use the grouped fields for new manifests. If a grouped field is absent, the
+#   controller can fall back to its deprecated counterpart; if both are present,
+#   the grouped value is authoritative and deprecated fields produce warnings.
+# - HTTP and HTTPS listener enabled flags are mutually exclusive. When neither
+#   is enabled, the webhook defaults to HTTPS on 8443; HTTP defaults to 8080
+#   when HTTP is selected.
+# - security.authEnabled=true requires security.secret.name (or deprecated
+#   paiSecret.name). ConfigMap, Secret, TLS, and logging mount paths must be
+#   absolute when supplied. Authentication and TLS items must not map different
+#   keys to the same file when they share a mount path.
+# - runtime.securityContext.fsGroup cannot be combined with runAsUser or
+#   runAsGroup; runAsUser and runAsGroup must be supplied together, and all
+#   identity values must be at least 1. runtime.shmSize must be a positive
+#   Kubernetes quantity.
+# - Each LoadBalancer externalTrafficPolicy is Local or Cluster. A configured
+#   networking.trafficManager requires ref, resolves to an NGINX TrafficManager
+#   in the same namespace, and uses a routePath matching the documented pattern.
+# - logging adds a sidecar only when logging.enabled=true and sidecarImage is
+#   non-empty; the log volume is otherwise still created for the workload.
+# - Fields marked Deprecated below remain in the v4 schema for compatibility.
+#   They may generate admission warnings and should not be used in new manifests.
+
+
+apiVersion: privateai.oracle.com/v4
+kind: PrivateAi
+metadata:
+  # Kubernetes object name. It is also used in generated resource names and
+  # the default Traffic Manager route path.
+  name: pai-sample
+  # The namespace must be watched by the Oracle Database Operator.
+  namespace: pai
+spec:
+  # Authentication, application Secret, and inbound TLS configuration.
+  security:
+    # Enables Private AI authentication. Keep this enabled when the referenced
+    # Secret contains the authentication material required by the image.
+    authEnabled: true
+
+    # Secret containing authentication material. The controller mounts the
+    # selected keys into the generated workload; it does not copy Secret data
+    # into the PrivateAi status.
+    secret:
+      # Existing Secret name in this namespace.
+      name: paisecret
+      # Must be an absolute path. Defaults to /privateai/ssl when omitted.
+      mountLocation: /privateai/ssl
+      # Optional key-to-file mappings. If path is omitted, the key name is used.
+      items:
+      - key: api-key
+        path: api-key
+      - key: cert.pem
+        path: cert.pem
+      - key: key.pem
+        path: key.pem
+
+    # Inbound TLS Secret used by the Private AI HTTPS listener. This is not a
+    # client private key requested from a normal browser; tls.key is the server
+    # key paired with tls.crt and is mounted into the workload.
+    tls:
+      # Existing TLS Secret in this namespace, normally containing tls.crt and
+      # tls.key or the keys listed below.
+      secretName: privateai-tls
+      # Must be an absolute path. Defaults to /privateai/ssl when omitted.
+      mountLocation: /privateai/ssl
+      # Optional key-to-file mappings for non-standard Secret key names.
+      items:
+      - key: tls.crt
+        path: tls.crt
+      - key: tls.key
+        path: tls.key
+
+  # Container image, scaling, process environment, scheduling, and pod
+  # security settings.
+  runtime:
+    image:
+      # Required runtime image reference.
+      name: registry.example.com/privateai/private-ai:26.7.0
+      # Kubernetes image pull policy. If omitted, Kubernetes determines it
+      # from the image tag and local image state.
+      pullPolicy: IfNotPresent
+      # Optional image-pull Secret name in this namespace.
+      pullSecret: privateai-registry
+
+    # Desired number of runtime replicas. Updates are reconciled by the
+    # controller and cause the generated workload to converge to this value.
+    replicas: 1
+
+    # Additional environment variables passed to the main runtime container.
+    # Names must be valid C identifiers. Do not put credentials here; use a
+    # Kubernetes Secret instead.
+    env:
+    - name: PRIVATEAI_LOG_LEVEL
+      value: INFO
+
+    # Kubernetes resource requests and limits for the runtime container.
+    resources:
+      requests:
+        cpu: "2"
+        memory: 8Gi
+      limits:
+        cpu: "4"
+        memory: 16Gi
+
+    # Size of the memory-backed /dev/shm volume. Must be a positive Kubernetes
+    # quantity such as 128Mi or 2Gi. Omit it to use the container runtime
+    # default. The allocation counts against the pod memory budget.
+    shmSize: 2Gi
+
+    # Optional pod identity settings. On OpenShift, omit all three fields so
+    # the SCC can assign the namespace's arbitrary UID/GID range. The choices
+    # are mutually exclusive:
+    #   - use fsGroup alone for group ownership; or
+    #   - use runAsUser and runAsGroup together for an explicit identity.
+    # Each supplied value must be at least 1.
+    securityContext: {}
+    # Example alternatives for securityContext (do not set both alternatives):
+    #   fsGroup: 1000
+    # or:
+    #   runAsUser: 1000
+    #   runAsGroup: 1000
+
+    # Enables image/controller debug behavior when supported by the runtime.
+    debug: false
+    # Readiness and liveness polling periods in seconds.
+    readinessCheckPeriod: 10
+    livenessCheckPeriod: 30
+    # Controls whether the runtime image's optional download scripts are used.
+    downloadScripts: false
+
+    # ServiceAccount used by the generated Pods. On OpenShift, grant the
+    # required SCC to this ServiceAccount separately with oc adm policy.
+    serviceAccountName: pai-sa
+
+    # Optional eligible nodes. When set, all replicas are
+    # constrained to nodes whose kubernetes.io/hostname label matches these values.
+    workerNodes:
+    - worker-a
+    - worker-b
+    # Alternatively, select nodes by labels. Do not set both workerNodes and
+    # workerNodeSelector.
+    # workerNodeSelector:
+    #   privateai.oracle.com/pool: inference
+
+    # Optional annotations copied to the generated workload and its pods.
+    annotations:
+      workload:
+        example.com/workload-owner: platform
+      pod:
+        example.com/pod-purpose: privateai
+
+  # ConfigMap-backed application configuration.
+  configuration:
+    configFile:
+      # Existing ConfigMap in this namespace.
+      name: privateai-config
+      # Must be an absolute path. Defaults to /privateai/config when omitted.
+      mountLocation: /privateai/config
+
+  # PVC and log-volume settings.
+  storage:
+    # StorageClass used for operator-managed PVCs.
+    storageClass: oci-bv
+    # Map of logical mount names to absolute paths used by the runtime.
+    # The referenced storage is reconciled as part of the PrivateAi workload.
+    pvcList:
+      models: /privateai/models
+    # Requested storage size in GiB.
+    sizeInGb: 100
+    # Controls deletion of operator-managed PVCs when the PrivateAi resource is
+    # deleted. Set false to retain them. User-provided PVCs are not owned by
+    # this resource merely because a matching name is supplied.
+    deletePvcOnDelete: false
+    # Application log directory. Must be absolute when supplied. The logging
+    # sidecar, when enabled, reads files from this shared path.
+    logLocation: /privateai/logs
+
+  # Listener, Service, NodePort, and Traffic Manager configuration.
+  networking:
+    listeners:
+      http:
+        # If neither HTTP nor HTTPS is explicitly enabled, HTTPS is selected by
+        # default. HTTP defaults to port 8080.
+        enabled: false
+        port: 8080
+      https:
+        enabled: true
+        # HTTPS defaults to port 8443.
+        port: 8443
+
+    service:
+      # Service port mappings. port is the Kubernetes Service port and
+      # targetPort is the selected container listener port.
+      ports:
+      - name: https
+        port: 443
+        targetPort: 8443
+        protocol: TCP
+
+      # ClusterIP service. Enabled by default.
+      cluster:
+        enabled: true
+        annotations:
+          example.com/service-owner: platform
+
+      # Public LoadBalancer. Disabled by default. Set ip only when the
+      # platform/cloud provider supports a pre-allocated address.
+      publicLoadBalancer:
+        enabled: false
+        # ip: 203.0.113.10
+        externalTrafficPolicy: Cluster
+        annotations: {}
+          # service.beta.kubernetes.io/oci-load-balancer-subnet1: <subnet-ocid>
+
+      # Private/internal LoadBalancer. Disabled by default. The controller
+      # adds the provider-specific internal-load-balancer annotation for this
+      # service where supported.
+      privateLoadBalancer:
+        enabled: false
+        externalTrafficPolicy: Cluster
+        annotations: {}
+          # service.beta.kubernetes.io/oci-load-balancer-subnet1: <subnet-ocid>
+
+    # Optional NodePort services. Each entry has a controller-managed service
+    # name and one or more current port mappings. Each mapping requires port,
+    # targetPort, and protocol; nodePort is optional and must be 0 or a valid
+    # allocated port.
+    nodePortServices:
+    - name: privateai-nodeport
+      svcType: NodePort
+      portMappings:
+      - port: 443
+        targetPort: 8443
+        protocol: TCP
+        # Set to 0 or omit it for Kubernetes allocation; use a valid allocated
+        # NodePort only when the cluster policy permits it.
+        nodePort: 0
+
+    # Optional shared Traffic Manager binding. ref identifies the TrafficManager
+    # resource in the same namespace. routePath must start and end with '/'
+    # and contain only letters, numbers, '.', '_', '~', or '-'.
+    trafficManager:
+      ref: pai-traffic-manager
+      routePath: /privateai/v1/
+
+  # Optional application-log forwarding sidecar. This is separate from
+  # Kubernetes stdout/stderr collection. The controller always creates the
+  # shared log emptyDir at the selected path; it adds a sidecar only when both
+  # enabled is true and sidecarImage is non-empty.
+  logging:
+    enabled: false
+    sidecarImage: registry.example.com/platform/log-forwarder:1.0
+    # Defaults to <privateai-name>-logs-vol when omitted.
+    volumeName: privateai-logs-vol
+    # Defaults to storage.logLocation, then /privateai/logs.
+    volumeMount: /privateai/logs
+    # Optional valid Kubernetes quantity used as emptyDir.sizeLimit.
+    volumeSizeLimit: 1Gi
+
+  # -------------------------------------------------------------------------
+  # Deprecated compatibility fields. Prefer the grouped fields above.
+  # Do not configure a grouped field and its legacy replacement with conflicting
+  # values. These fields remain in the CRD for older manifests and consumers.
+  # -------------------------------------------------------------------------
+
+  # Deprecated: use configuration.configFile.
+  # paiConfigFile:
+  #   name: privateai-config
+  #   mountLocation: /privateai/config
+
+  # Deprecated: use security.authEnabled. Valid values are the strings "true"
+  # and "false"; the default is "false".
+  # paiEnableAuthentication: "false"
+
+  # Deprecated: use security.secret.
+  # paiSecret:
+  #   name: paisecret
+  #   mountLocation: /privateai/ssl
+  #   items:
+  #   - key: api-key
+  #     path: api-key
+
+  # Deprecated: use networking.service.publicLoadBalancer.enabled or
+  # networking.service.privateLoadBalancer.enabled. Valid values: "true",
+  # "false".
+  # isExternalSvc: "false"
+
+  # Deprecated: use storage.storageClass.
+  # storageClass: oci-bv
+
+  # Deprecated: use storage.pvcList.
+  # pvcList:
+  #   models: /privateai/models
+
+  # Deprecated: use runtime.image.name.
+  # paiImage: registry.example.com/privateai/private-ai:26.7.0
+
+  # Deprecated: use runtime.image.pullSecret.
+  # paiImagePullSecret: privateai-registry
+
+  # Deprecated: use runtime.debug.
+  # isDebug: false
+
+  # Deprecated: use runtime.readinessCheckPeriod.
+  # readinessCheckPeriod: 10
+
+  # Deprecated: use runtime.livenessCheckPeriod.
+  # livenessCheckPeriod: 30
+
+  # Deprecated: use runtime.downloadScripts.
+  # isDownloadScripts: false
+
+  # Deprecated: use networking.service. Service name and service type are
+  # controller-managed in the grouped model.
+  # paiService:
+  #   name: privateai
+  #   svcType: ClusterIP
+  #   portMappings:
+  #   - port: 443
+  #     targetPort: 8443
+  #     protocol: TCP
+  #     nodePort: 0
+
+  # Deprecated: use storage.sizeInGb.
+  # storageSizeInGb: 100
+
+  # Deprecated: use runtime.env. Do not use this field for credentials.
+  # envVars:
+  # - name: PRIVATEAI_LOG_LEVEL
+  #   value: INFO
+
+  # Deprecated: use runtime.replicas.
+  # replicas: 1
+
+  # Deprecated: use runtime.resources.
+  # resources:
+  #   requests:
+  #     cpu: "2"
+  #     memory: 8Gi
+
+  # Deprecated: use networking.nodePortServices.
+  # nodePortSvc:
+  # - name: privateai-nodeport
+  #   svcType: NodePort
+  #   portMappings:
+  #   - port: 443
+  #     targetPort: 8443
+  #     protocol: TCP
+  #     nodePort: 0
+
+  # Deprecated: use networking.service.ports.
+  # portMappings:
+  # - port: 443
+  #   targetPort: 8443
+  #   protocol: TCP
+  #   nodePort: 0
+
+  # Deprecated: use storage.deletePvcOnDelete.
+  # isDeleteOraPvc: false
+
+  # Deprecated: use storage.logLocation.
+  # paiLogLocation: /privateai/logs
+
+  # Deprecated: use networking.listeners.http.enabled. Valid values are the
+  # strings "true" and "false".
+  # paiHTTPEnabled: "false"
+
+  # Deprecated: use networking.listeners.https.enabled. Valid values are the
+  # strings "true" and "false".
+  # paiHTTPSEnabled: "true"
+
+  # Deprecated: use networking.listeners.http.port.
+  # paiHTTPPort: 8080
+
+  # Deprecated: use networking.listeners.https.port.
+  # paiHTTPSPort: 8443
+
+  # Deprecated: use networking.service.ports.
+  # paiLBPort: 443
+
+  # Deprecated: use networking.service.publicLoadBalancer.ip or
+  # networking.service.privateLoadBalancer.ip.
+  # paiLBIP: 203.0.113.10
+
+  # Deprecated: use the LoadBalancer externalTrafficPolicy field. Valid values
+  # are "local" and "cluster" in this compatibility field.
+  # paiLBExternalTrafficPolicy: cluster
+
+  # Deprecated: use networking.service.privateLoadBalancer.
+  # paiInternalLB: "false"
+
+  # Deprecated: use the selected LoadBalancer annotations under
+  # networking.service.publicLoadBalancer or privateLoadBalancer.
+  # pailbAnnotation:
+  #   service.beta.kubernetes.io/oci-load-balancer-subnet1: <subnet-ocid>
+
+  # Deprecated: use runtime.workerNodes.
+  # workerNodes:
+  # - worker-a
+
+  # Deprecated: use networking.trafficManager.
+  # trafficManager:
+  #   ref: pai-traffic-manager
+  #   routePath: /privateai/v1/
+
+# status is written by the controller and must not be supplied by users.
+# It records observed state and references to generated resources.
+# status:
+#   status: Healthy
+#   replicas: 1
+#   releaseUpdate: ""
+#   loadBalancerIP: ""
+#   podIP: ""
+#   NodeIP: ""
+#   clusterIP: ""
+#   localService: pai-sample
+#   publicLoadBalancerService: ""
+#   privateLoadBalancerService: ""
+#   externalService: ""
+#   paiSecret:
+#     name: paisecret
+#     resourceVersion: "123"
+#     hasAPIKey: true
+#     hasCertPem: true
+#     apiKey: ""       # Deprecated status compatibility field.
+#     certpem: ""      # Deprecated status compatibility field.
+#   tlsSecret:
+#     name: privateai-tls
+#     resourceVersion: "123"
+#   paiConfigMap:
+#     name: privateai-config
+#     resourceVersion: "123"
+#   mode: ""
+#   trafficManager:
+#     ref: pai-traffic-manager
+#     routePath: /privateai/v1/
+#     serviceName: pai-traffic-manager
+#     endpoint: http://pai-traffic-manager
+#     publicURL: https://pai.example.com/privateai/v1/
+#   logging:
+#     enabled: false
+#     sidecarImage: ""
+#   conditions:
+#   - type: Ready
+#     status: "True"
+#     reason: ReconcileComplete
+#     message: Private AI Services is ready

@@ -11,16 +11,16 @@ To scale up an existing OBDS system, the two steps are:
 
 This example uses `scale_up_dbcs_system_shape.yaml` to scale up a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with:
 
-- OCID of existing VMDB as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
+- OCID of existing VMDB as `ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>`
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
 - Availability Domain for the OBDS VMDB as `OLou:AP-MUMBAI-1-AD-1`  
-- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72`  
+- Compartment OCID as `ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>`  
 - Database Admin Credential as `admin-password`  
 - Database Hostname Prefix as `host1234`  
 - Oracle VMDB target Shape as `VM.Standard2.2`  
 - SSH Public key for the OBDS system being deployed as `oci-publickey`  
-- OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`  
+- OCID of the Subnet as `ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>`  
 
 **NOTE:** For the details of the parameters to be used in the `.yaml` file, see: [DBCS Controller Parameters](./dbcs_controller_parameters.md).
 

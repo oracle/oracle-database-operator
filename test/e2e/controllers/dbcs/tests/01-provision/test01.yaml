@@ -1,0 +1,30 @@
+apiVersion: database.oracle.com/v4
+kind: DbcsSystem
+metadata:
+  name: __DBCS_TEST_NAME__
+  namespace: __DBCS_NAMESPACE__
+  labels:
+    e2e.oracle.com/owner: operator-e2e
+    e2e.oracle.com/test-id: "__DBCS_CASE_ID__"
+    e2e.oracle.com/pipeline: "__DBCS_CASE_PIPELINE__"
+spec:
+  ociConfigMap: "oci-cred"
+  ociSecret: "oci-privatekey"
+  dbSystem:
+    availabilityDomain: "__DBCS_AVAILABILITY_DOMAIN__"
+    compartmentId: "__DBCS_COMPARTMENT_ID__"
+    dbAdminPasswordSecret: "admin-password"
+    dbEdition: "__DBCS_DB_EDITION__"
+    dbName: "__DBCS_DB_NAME__"
+    displayName: "__DBCS_DISPLAY_NAME__"
+    licenseModel: "__DBCS_LICENSE_MODEL__"
+    dbVersion: "__DBCS_DB_VERSION__"
+    dbWorkload: "__DBCS_DB_WORKLOAD__"
+    hostName: "__DBCS_HOST_NAME__"
+    shape: "__DBCS_SHAPE__"
+    cpuCoreCount: __DBCS_CPU_CORE_COUNT__
+    initialDataStorageSizeInGB: __DBCS_STORAGE_SIZE_IN_GB__
+    domain: "__DBCS_DOMAIN__"
+    sshPublicKeys:
+      - "oci-publickey"
+    subnetId: "__DBCS_SUBNET_ID__"

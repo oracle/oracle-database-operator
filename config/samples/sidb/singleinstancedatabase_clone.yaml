@@ -35,9 +35,8 @@ spec:
   ## or a patched DB image built from the souce DB image following instructions at
   ## https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
-    pullSecrets: oracle-container-registry-secret
-
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
   ## Optional node selector to restrict the database pod to nodes having specific labels.
   ## For a single exact node, kubernetes.io/hostname can be used.
   # nodeSelector:

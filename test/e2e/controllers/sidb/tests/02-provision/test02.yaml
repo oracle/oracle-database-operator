@@ -1,0 +1,55 @@
+# SIDB test02: primary database with TDE, operator-managed TCPS, resource
+# limits, and the supported PDB MAX_STRING_SIZE parameter.
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: "__SIDB_TEST_NAME__"
+  labels:
+    e2e.oracle.com/owner: "operator-e2e"
+    e2e.oracle.com/controller: "sidb"
+    e2e.oracle.com/test-id: "test02"
+    e2e.oracle.com/pipeline: "__SIDB_CASE_PIPELINE__"
+spec:
+  sid: "__SIDB_TEST_SID__"
+  createAs: primary
+  edition: "__SIDB_EDITION__"
+  charset: "__SIDB_CHARSET__"
+  pdbName: "__SIDB_TEST_PDB__"
+  initParams:
+    sgaTarget: 3072
+    pgaAggregateTarget: 1024
+    processes: 1000
+  pdbParameters:
+  - pdbName: "__SIDB_TEST_PDB__"
+    name: "MAX_STRING_SIZE"
+    value: "EXTENDED"
+  resources:
+    requests:
+      cpu: "2"
+      memory: "8Gi"
+    limits:
+      cpu: "2"
+      memory: "8Gi"
+  archiveLog: true
+  security:
+    tcps:
+      enabled: true
+      tlsSecret: "__SIDB_TCPS_TLS_SECRET__"
+    secrets:
+      admin:
+        secretName: "__SIDB_ADMIN_SECRET__"
+        secretKey: "__SIDB_ADMIN_SECRET_KEY__"
+        keepSecret: true
+      tde:
+        secretName: "__SIDB_TDE_SECRET__"
+        secretKey: "__SIDB_TDE_SECRET_KEY__"
+  image:
+    pullFrom: "__SIDB_IMAGE__"
+    pullSecrets: "__SIDB_PULL_SECRET__"
+    imagePullPolicy: "__SIDB_IMAGE_PULL_POLICY__"
+  persistence:
+    oradata:
+      size: "__SIDB_STORAGE_SIZE__"
+      storageClass: "__SIDB_STORAGE_CLASS__"
+      accessMode: "__SIDB_ACCESS_MODE__"
+  replicas: 1
