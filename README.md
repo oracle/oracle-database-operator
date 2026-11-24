@@ -1,3 +1,17 @@
+> # ⚠️ **Development Branch** ⚠️
+>
+> This branch contains active development for the following controllers:
+>
+> * **OrdsSrvs**
+> * **Observability**
+> * **Multitenant**
+>
+> **Not for production use.**
+>
+> * [OrdsSrvs Controller](./docs/ordsservices/README.md)
+> * [Observability Controller](./docs/observability/README.md)
+> * [Multitenant Controller](./docs/multitenant/README.md)
+
 <div align="center">
 <h1 align="center">
   <br>
@@ -263,7 +277,7 @@ After the operator is installed, continue with the guide for your workload:
 | Private AI | Manage Oracle Private AI Services Container | Deploy, scale, configure networking, manage runtime updates | [docs/privateai/README.md](./docs/privateai/README.md) | [Oracle Private AI Services Container](https://docs.oracle.com/en/database/oracle/oracle-database/26/prvai/oracle-private-ai-services-container.html) |
 | Oracle AI Database Private Agent Factory | Deploy Oracle AI Database Private Agent Factory services with Oracle Database connectivity | Provision schema, configure database connectivity, manage storage, scale, secure access, and update runtime settings | [docs/agentfactory/README.md](./docs/agentfactory/README.md) | [Kubernetes Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) · [Kubernetes Storage](https://kubernetes.io/docs/concepts/storage/) |
 | Oracle Connection Manager (CMAN) | Route database listener traffic | CMAN for Oracle listener connectivity | [docs/cman/README.md](./docs/cman/README.md) | [Oracle Connection Manager](https://docs.oracle.com/en/database/oracle/oracle-database/26/netag/components-oracle-net-services.html) · [Kubernetes Services](https://kubernetes.io/docs/concepts/services-networking/service/) |
-| Oracle AI Database Operator Observability chart | Collect operator metrics and logs with Grafana Alloy and forward them to customer-managed Prometheus-compatible metrics and Loki log backends | Helm install, TLS, RBAC, backend configuration, and telemetry verification | [Chart README](./charts/oracle-database-operator-observability/README.md) · [Chart details](https://github.com/oracle/oracle-database-operator/tree/main/charts/oracle-database-operator-observability) | [Prometheus](https://prometheus.io/docs/) · [Grafana Alloy](https://grafana.com/docs/alloy/) · [Grafana Loki](https://grafana.com/docs/loki/latest/) · [Helm](https://helm.sh/docs/) · [Kubernetes monitoring](https://kubernetes.io/docs/tasks/debug/debug-cluster/resource-usage-monitoring/) |
+| Oracle AI Database Operator Observability chart | Collect operator metrics and logs with Grafana Alloy and forward them to customer-managed Prometheus-compatible metrics and Loki log backends | Helm install, TLS, RBAC, backend configuration, and telemetry verification | [Chart README](./charts/oracle-database-operator-observability/README.md) | [Prometheus](https://prometheus.io/docs/) · [Grafana Alloy](https://grafana.com/docs/alloy/) · [Grafana Loki](https://grafana.com/docs/loki/latest/) · [Helm](https://helm.sh/docs/) · [Kubernetes monitoring](https://kubernetes.io/docs/tasks/debug/debug-cluster/resource-usage-monitoring/) |
 
 
 ### Deploy a controller resource
@@ -284,7 +298,7 @@ kubectl get singleinstancedatabase -n "${TARGET_NAMESPACE}"
 ### Supporting services
 
 - [Oracle Database Observability](./docs/observability/README.md) — Database-level monitoring and exporter guidance
-- [Oracle AI Database Operator Metrics with Observability Chart](./charts/oracle-database-operator-observability/README.md) — Operator metrics and logs through Grafana Alloy; see the [chart details](https://github.com/oracle/oracle-database-operator/tree/main/charts/oracle-database-operator-observability)
+- [Oracle AI Database Operator Metrics with Observability Chart](./charts/oracle-database-operator-observability/README.md) — Operator metrics and logs through Grafana Alloy
 
 ## Advanced installation and scope management
 
