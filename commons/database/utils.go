@@ -72,12 +72,13 @@ import (
 // Legacy exported helper signatures/names are preserved for backward compatibility.
 
 // To requeue after 15 secs allowing graceful state changes
-var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
+var requeueY ctrl.Result = ctrl.Result{RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
 
 // ErrNoReadyPod indicates no ready pod is currently available for SIDB operations.
 var ErrNoReadyPod = errors.New("SingleInstanceDatabase has no ready pod currently")
 
+// BuildSecureHereDocWriteCommand builds a shell command that writes content with restrictive permissions.
 func BuildSecureHereDocWriteCommand(fileName, content string) string {
 	delimiter := buildHereDocDelimiter(content)
 	return fmt.Sprintf(
@@ -87,6 +88,18 @@ func BuildSecureHereDocWriteCommand(fileName, content string) string {
 		content,
 		delimiter,
 	)
+}
+
+// WritePodFileWithInput writes content to a file without embedding the content
+// in the shell command. This is required for secrets and other arbitrary input.
+func WritePodFileWithInput(r client.Reader, config *rest.Config, pod corev1.Pod,
+	fileName, content string, ctx context.Context, req ctrl.Request) error {
+	_, err := ExecCommandWithInput(
+		r, config, pod.Name, pod.Namespace, "", ctx, req, true,
+		content, "bash", "-c",
+		fmt.Sprintf("umask 177 && cat > %s", shellQuoteLiteral(fileName)),
+	)
+	return err
 }
 
 func buildHereDocDelimiter(content string) string {
@@ -110,6 +123,7 @@ func shellQuoteLiteral(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\"'\"'`) + "'"
 }
 
+// ExecSQLPlusScript executes a SQL*Plus script in a database pod.
 func ExecSQLPlusScript(
 	r client.Reader,
 	config *rest.Config,
@@ -180,6 +194,38 @@ func ExecSQLPlusScript(
 	}
 
 	return out, nil
+}
+
+// ExecSQLPlusScriptWithInput executes a SQL*Plus script with standard input.
+func ExecSQLPlusScriptWithInput(
+	r client.Reader,
+	config *rest.Config,
+	podName string,
+	namespace string,
+	containerName string,
+	ctx context.Context,
+	req ctrl.Request,
+	scriptName string,
+	sql string,
+	input string,
+) (out string, err error) {
+	log := ctrllog.FromContext(ctx).WithValues("ExecSQLPlusScriptWithInput", req.NamespacedName, "pod", podName, "script", scriptName)
+
+	if _, err = ExecCommand(r, config, podName, namespace, containerName, ctx, req, true, "bash", "-c", BuildSecureHereDocWriteCommand(scriptName, sql)); err != nil {
+		log.Error(err, "failed to create sqlplus script")
+		return "", err
+	}
+
+	defer func() {
+		if _, cleanupErr := ExecCommand(r, config, podName, namespace, containerName, ctx, req, true, "bash", "-c", fmt.Sprintf("rm -f -- %s", shellQuoteLiteral(scriptName))); cleanupErr != nil {
+			log.Error(cleanupErr, "failed to remove sqlplus script")
+			if err == nil {
+				err = cleanupErr
+			}
+		}
+	}()
+
+	return ExecCommandWithInput(r, config, podName, namespace, containerName, ctx, req, true, input+"\n", "bash", "-c", SQLPlusNoLoginCLI+" "+shellQuoteLiteral("@"+scriptName))
 }
 
 // ResourceEventHandler filters events that should trigger reconciliation.
@@ -630,7 +676,7 @@ func CheckDBInitParams(sidbReadyPod corev1.Pod, r client.Reader, config *rest.Co
 	log.Info("Parsing pga_aggregate_target_value")
 	log.Info(strings.Fields(initParams[1])[1])
 	pgaAggregateTargetValue := strings.Fields(initParams[1])[1]
-	pgaAggregateTarget, err := strconv.Atoi(pgaAggregateTargetValue[0 : len(pgaAggregateTargetValue)-1])
+	pgaAggregateTarget, err := parseSIDBInitParamValue(pgaAggregateTargetValue)
 	if err != nil {
 		return -1, -1, -1, -1, err
 	}
@@ -647,13 +693,65 @@ func CheckDBInitParams(sidbReadyPod corev1.Pod, r client.Reader, config *rest.Co
 	log.Info("parsing sga_target_value")
 	log.Info(strings.Fields(initParams[3])[1])
 	sgaTargetValue := strings.Fields(initParams[3])[1]
-	sgaTarget, err := strconv.Atoi(sgaTargetValue[0 : len(sgaTargetValue)-1])
+	sgaTarget, err := parseSIDBInitParamValue(sgaTargetValue)
 	if err != nil {
 		return -1, -1, -1, -1, err
 	}
 	log.Info("After parsing sgaTarget", "sgaTarget", sgaTarget)
 
 	return cpuCount, pgaAggregateTarget, processes, sgaTarget, nil
+}
+
+func parseSIDBInitParamValue(value string) (int, error) {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return 0, errors.New("empty SIDB init parameter value")
+	}
+
+	// Oracle reports memory init parameters using display units such as 2G
+	// and 2048M.  The API status model stores these values in MB, so normalize
+	// the unit before comparing the live value with the requested value.
+	multiplier := 1
+	last := normalized[len(normalized)-1]
+	switch last {
+	case 'G', 'g':
+		multiplier = 1024
+		normalized = normalized[:len(normalized)-1]
+	case 'M', 'm':
+		normalized = normalized[:len(normalized)-1]
+	}
+
+	base, err := strconv.Atoi(strings.TrimSpace(normalized))
+	if err != nil {
+		return 0, fmt.Errorf("invalid SIDB init parameter value %q: %w", value, err)
+	}
+	return base * multiplier, nil
+}
+
+// CheckDBMemoryTarget returns Oracle MEMORY_TARGET from the ready SIDB pod.
+func CheckDBMemoryTarget(sidbReadyPod corev1.Pod, r client.Reader, config *rest.Config,
+	ctx context.Context, req ctrl.Request) (string, error) {
+	if sidbReadyPod.Name == "" {
+		return "", errors.New("no pod is ready")
+	}
+	out, err := ExecCommand(r, config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", "printf '%s\\n' \"set heading off feedback off pagesize 0\" \"select display_value from v\\$parameter where name = 'memory_target';\" | sqlplus -s / as sysdba")
+	if err != nil {
+		return "", err
+	}
+	if strings.Contains(out, "ORA-") || strings.Contains(out, "SP2-") {
+		return "", fmt.Errorf("error while getting memory_target\\n%s", out)
+	}
+	fields := strings.Fields(out)
+	if len(fields) > 0 {
+		return fields[len(fields)-1], nil
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if value := strings.TrimSpace(line); value != "" {
+			return value, nil
+		}
+	}
+	return "", errors.New("cannot fetch memory_target")
 }
 
 // IsDatabaseFound checks whether SID exists and optionally matches the requested DG role.
@@ -793,9 +891,14 @@ func GetNodeIp(r client.Reader, ctx context.Context, req ctrl.Request) string {
 
 	log := ctrllog.FromContext(ctx).WithValues("GetNodeIp", req.NamespacedName)
 
-	//new workflow
+	// Bound the list: without nodes RBAC, controller-runtime's cached client can
+	// block forever waiting for a Node informer that never syncs, which freezes
+	// the calling reconcile worker (e.g. DataguardBroker stuck after patchService).
+	listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	nl := &corev1.NodeList{}
-	err := r.List(ctx, nl)
+	err := r.List(listCtx, nl)
 	nodeip := ""
 	if err != nil {
 		log.Error(err, err.Error())

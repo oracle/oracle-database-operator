@@ -109,6 +109,85 @@ func TestEnsureServiceUpdatesAndPreservesNodePort(t *testing.T) {
 	}
 }
 
+func TestEnsureServiceSynchronizesLoadBalancerIP(t *testing.T) {
+	sch := runtime.NewScheme()
+	if err := corev1.AddToScheme(sch); err != nil {
+		t.Fatalf("failed to register corev1 scheme: %v", err)
+	}
+
+	existing := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "svc-lb",
+			Namespace:       "ns1",
+			OwnerReferences: []metav1.OwnerReference{serviceOwnerRef("owner-1")},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector:       map[string]string{"app": "agentfactory"},
+			Ports:          []corev1.ServicePort{{Name: "https", Port: 443, NodePort: 30443}},
+			Type:           corev1.ServiceTypeLoadBalancer,
+			LoadBalancerIP: "129.153.125.170",
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(sch).WithObjects(existing).Build()
+
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "svc-lb",
+			Namespace:       "ns1",
+			OwnerReferences: []metav1.OwnerReference{serviceOwnerRef("owner-1")},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector:       map[string]string{"app": "agentfactory"},
+			Ports:          []corev1.ServicePort{{Name: "https", Port: 443}},
+			Type:           corev1.ServiceTypeLoadBalancer,
+			LoadBalancerIP: "137.131.24.236",
+		},
+	}
+
+	changed, err := EnsureService(context.Background(), cl, "ns1", desired, ServiceSyncOptions{
+		NodePortMerge:          NodePortMergeByName,
+		SyncOwnerReferences:    true,
+		SyncLoadBalancerFields: true,
+	})
+	if err != nil {
+		t.Fatalf("EnsureService update failed: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected changed=true when LoadBalancerIP changes")
+	}
+
+	got := &corev1.Service{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Namespace: "ns1", Name: "svc-lb"}, got); err != nil {
+		t.Fatalf("failed to fetch updated service: %v", err)
+	}
+	if got.Spec.LoadBalancerIP != "137.131.24.236" {
+		t.Fatalf("expected LoadBalancerIP to be updated, got %q", got.Spec.LoadBalancerIP)
+	}
+	if got.Spec.Ports[0].NodePort != 30443 {
+		t.Fatalf("expected nodePort preserved, got %d", got.Spec.Ports[0].NodePort)
+	}
+
+	desired.Spec.LoadBalancerIP = ""
+	changed, err = EnsureService(context.Background(), cl, "ns1", desired, ServiceSyncOptions{
+		NodePortMerge:          NodePortMergeByName,
+		SyncOwnerReferences:    true,
+		SyncLoadBalancerFields: true,
+	})
+	if err != nil {
+		t.Fatalf("EnsureService clear failed: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected changed=true when LoadBalancerIP is cleared")
+	}
+
+	if err := cl.Get(context.Background(), types.NamespacedName{Namespace: "ns1", Name: "svc-lb"}, got); err != nil {
+		t.Fatalf("failed to fetch service after clearing LoadBalancerIP: %v", err)
+	}
+	if got.Spec.LoadBalancerIP != "" {
+		t.Fatalf("expected LoadBalancerIP to be cleared, got %q", got.Spec.LoadBalancerIP)
+	}
+}
+
 func TestEnsureServiceRefusesUnownedExistingServiceWhenSyncingOwner(t *testing.T) {
 	sch := runtime.NewScheme()
 	if err := corev1.AddToScheme(sch); err != nil {

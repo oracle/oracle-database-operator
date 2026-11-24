@@ -71,7 +71,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	"github.com/oracle/oracle-database-operator/commons/k8sutil"
+	k8s "github.com/oracle/oracle-database-operator/commons/k8sutil"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
@@ -822,6 +822,10 @@ func isLocalWalletStale(remote *common.SDKTime, local string) (bool, error) {
 // create a backup object if it's not found in the same namespace
 func (r *AutonomousDatabaseReconciler) syncBackupResources(ctx context.Context, logger logr.Logger, dbService oci.DatabaseService, adb *dbv4.AutonomousDatabase) error {
 	l := logger.WithName("syncBackupResources")
+	if adb.Spec.Details.Id == nil {
+		l.Info("spec.details.id is missing, skipping syncBackupResources")
+		return nil
+	}
 
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
 	backupList, err := k8s.FetchAutonomousDatabaseBackups(ctx, r.KubeClient, adb.Namespace, adb.Name)

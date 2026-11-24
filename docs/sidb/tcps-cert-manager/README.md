@@ -1,15 +1,53 @@
 # TCPS Cert-Manager Flow
 
-This folder is a sanitized, reusable version of the `tcps-cert-manager` setup used for SIDB primary and True Cache TCPS certificates.
+Reusable cert-manager scripts for SIDB TCPS certificates used by **Data Guard**
+and **True Cache**. Peer leaves use the script `STANDBY_*` variables and the
+default secret name `sidb-standby-tcps-tls` (override when your manifest uses
+another `tlsSecret`).
 
-It creates:
+Both flows below implement the **same PKI design**:
+
+1. Create root + intermediate CA on the primary cluster
+2. Place that intermediate CA on every peer cluster
+3. Issue each member leaf from the shared intermediate Issuer
+
+Primary and peer leaves share one certification path. Independent CA trees
+break TCPS mutual authentication between primary and Data Guard standby or
+True Cache peers.
+
+Leaf certificates include **Server Authentication** and **Client Authentication**
+EKUs because each peer database is both a TCPS server and a TCPS client with
+its partner.
+
+---
+
+## Choose how you share the intermediate CA
+
+| Access model | When to use | How to run |
+| --- | --- | --- |
+| **Shared admin client** | One host/terminal can reach primary and peer clusters (`PRIMARY_CTX` + `STANDBY_CTX`) | This folder’s `run-all.sh` (auto-copies intermediate CA) |
+| **Separate cluster access** | Clusters are reached independently (different admin hosts, private endpoints, no dual-context kubectl) | [`SEPARATE_CLUSTER_ACCESS.md`](./SEPARATE_CLUSTER_ACCESS.md): export intermediate Secret from primary, apply on peer, then `BOOTSTRAP_CA=false … standby` |
+
+Param’s Release 2.2 scripts provide both the dual-context helpers and the `primary\|standby` wrapper. The separate-cluster path was the missing documented runbook; the dual-context path remains fully supported.
+
+End-to-end Data Guard using the separate-cluster cert path:
+
+[`../dataguard/DATAGUARD_MULTI_CLUSTER_TCPS_SEPARATE_CLUSTER.md`](../dataguard/DATAGUARD_MULTI_CLUSTER_TCPS_SEPARATE_CLUSTER.md)
+
+Verified cross-cluster TCPS + NLB Data Guard (ExternalDNS, Broker wallet handoff):
+
+[`../dataguard/DATAGUARD_CROSS_CLUSTER_TCPS_NLB.md`](../dataguard/DATAGUARD_CROSS_CLUSTER_TCPS_NLB.md)
+
+---
+
+## What the scripts create
 
 - a self-signed root CA on the primary cluster
 - an intermediate CA on the primary cluster
-- the intermediate CA secret on the True Cache cluster
+- the intermediate CA secret on peer clusters
 - a primary leaf secret, default `sidb-primary-tcps-tls`
-- a True Cache leaf secret, default `sidb-standby-tcps-tls`
-- an optional `primary-peer-ca` trust secret on the True Cache side
+- a peer leaf secret (Data Guard standby or True Cache), default `sidb-standby-tcps-tls`
+- an optional `primary-peer-ca` trust secret on peer clusters
 
 Each leaf secret contains:
 
@@ -17,15 +55,15 @@ Each leaf secret contains:
 - `tls.key`
 - `ca.crt`
 
-The leaf certificates are issued with both **Server Authentication** and **Client Authentication** extended key usages. Data Guard TCPS redo transport requires both because a database acts as both a TCPS server and a TCPS client when communicating with its peer.
-
 ---
 
 ## Files
 
 - `env.sh`: shared defaults and kubectl helpers
 - `01-create-namespace.sh` through `11-verify-secrets.sh`: one step per action
-- `run-all.sh`: runs the full flow in order
+- `run-all.sh`: shared-admin-client flow
+- [`SEPARATE_CLUSTER_ACCESS.md`](./SEPARATE_CLUSTER_ACCESS.md): separate-cluster-access flow (manual intermediate CA handoff)
+- [`../script/setup-sidb-tcps-cert-manager.sh`](../script/setup-sidb-tcps-cert-manager.sh): `primary\|standby\|both` wrapper
 
 ---
 
@@ -42,13 +80,17 @@ NS=default
 PRIMARY_CERT_NAME=sidb-primary-tcps
 PRIMARY_SECRET_NAME=sidb-primary-tcps-tls
 PRIMARY_DNS=orcl-production.internal.example.com
-PRIMARY_DNS_NAMES=orcl-production.internal.example.com,orcl-production,orcl-production.default.svc.cluster.local
+PRIMARY_DNS_NAMES=orcl-production.internal.example.com,orcl-production,orcl-production.${NS}.svc.cluster.local
 
 STANDBY_CERT_NAME=sidb-standby-tcps
 STANDBY_SECRET_NAME=sidb-standby-tcps-tls
 STANDBY_DNS=truecache-production.internal.example.com
-STANDBY_DNS_NAMES=truecache-production.internal.example.com,truecache-production,truecache-production.default.svc.cluster.local
+STANDBY_DNS_NAMES=truecache-production.internal.example.com,truecache-production,truecache-production.${NS}.svc.cluster.local
 ```
+
+`STANDBY_*` names are the peer leaf defaults for Data Guard standby or True
+Cache. Override `STANDBY_DNS` / `STANDBY_DNS_NAMES` to match the hostnames in
+your peer SIDB connect strings and Service DNS.
 
 Override them when your namespace, DNS names, or Kubernetes contexts differ:
 
@@ -73,7 +115,8 @@ The leaf issuance steps use the first hostname in `PRIMARY_DNS_NAMES` or `STANDB
 - `tls.crt` contains the complete **leaf + intermediate + root** certificate chain
 - `ca.crt` contains the **intermediate + root** CA bundle
 
-It then copies the primary trust bundle to the True Cache cluster.
+It then copies the primary trust bundle to the peer (standby or True Cache)
+cluster.
 
 ---
 
@@ -359,7 +402,7 @@ kubectl --context "${STANDBY_CTX}" -n "${NS}" delete issuer \
 
 ## SIDB Manifest Wiring
 
-Use the generated primary TLS secret:
+Use the generated primary TLS secret on the primary SIDB:
 
 ```yaml
 spec:
@@ -369,7 +412,9 @@ spec:
       tlsSecret: sidb-primary-tcps-tls
 ```
 
-Use the generated True Cache TLS secret:
+Use the generated peer leaf secret on a Data Guard standby or a True Cache
+SIDB that needs its own certificate (`STANDBY_SECRET_NAME`, default
+`sidb-standby-tcps-tls`):
 
 ```yaml
 spec:
@@ -378,3 +423,8 @@ spec:
       enabled: true
       tlsSecret: sidb-standby-tcps-tls
 ```
+
+Same-namespace True Cache may instead share `sidb-primary-tcps-tls` when the
+certificate SANs cover every presented hostname. If you issue a dedicated
+True Cache secret under another name, set `tlsSecret` to that name and export
+matching `STANDBY_SECRET_NAME` / DNS variables before running the scripts.

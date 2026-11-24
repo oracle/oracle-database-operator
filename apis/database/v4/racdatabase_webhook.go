@@ -60,6 +60,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 
 	utils "github.com/oracle/oracle-database-operator/commons/crs/rac/utils"
@@ -363,6 +364,25 @@ func (r *RacDatabase) ValidateCreate(ctx context.Context, obj *RacDatabase) (adm
 	return warnings, nil
 }
 
+var asmNamePattern = regexp.MustCompile(`^\+?[A-Za-z0-9_/-]+$`)
+var asmDiskPattern = regexp.MustCompile("^[A-Za-z0-9_/-]+$")
+
+func validateAsmNames(details []AsmDiskGroupDetails, path *field.Path) field.ErrorList {
+	var errs field.ErrorList
+	for groupIndex, group := range details {
+		groupPath := path.Index(groupIndex)
+		if group.Name != "" && !asmNamePattern.MatchString(group.Name) {
+			errs = append(errs, field.Invalid(groupPath.Child("name"), group.Name, "ASM disk group name contains unsupported characters"))
+		}
+		for diskIndex, disk := range group.Disks {
+			if !asmDiskPattern.MatchString(disk) {
+				errs = append(errs, field.Invalid(groupPath.Child("disks").Index(diskIndex), disk, "ASM disk name contains unsupported characters"))
+			}
+		}
+	}
+	return errs
+}
+
 // validateAsmStorage ensures ASM storage specifications meet required rules.
 func (cr *RacDatabase) validateAsmStorage() field.ErrorList {
 	var allErrs field.ErrorList
@@ -420,6 +440,7 @@ func (cr *RacDatabase) validateAsmStorage() field.ErrorList {
 			}
 		}
 	}
+	allErrs = append(allErrs, validateAsmNames(cr.Spec.AsmStorageDetails, field.NewPath("spec").Child("asmDiskGroupDetails"))...)
 	diskToGroup := make(map[string]string)
 	seenTypes := make(map[AsmDiskDGTypes]string)
 
@@ -613,6 +634,7 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *RacDat
 		newCr.validateUpdateServiceSpecs,
 		newCr.validateUpdatePrivateIPSpecs,
 		newCr.validateUpdateAsmStorage,
+		newCr.validateUpdateSoftwareStorage,
 		newCr.validateUpdateGeneric,
 	} {
 		if errs := vfn(oldCr); errs != nil {
@@ -753,6 +775,48 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *RacDat
 	}
 
 	return warnings, nil
+}
+
+// validateUpdateSoftwareStorage rejects software-home PVC shrink attempts
+// before the updated custom resource is persisted. Kubernetes PVCs cannot be
+// shrunk, so allowing the CR update would leave the desired spec ahead of the
+// actual PVC state and make reconciliation fail later.
+func (r *RacDatabase) validateUpdateSoftwareStorage(oldCr *RacDatabase) field.ErrorList {
+	if oldCr == nil {
+		return nil
+	}
+
+	oldMode, oldErr := oldCr.Spec.ResolveSwStorageMode()
+	newMode, newErr := r.Spec.ResolveSwStorageMode()
+	if oldErr != nil || newErr != nil ||
+		oldMode != RacSwStorageStorageClass || newMode != RacSwStorageStorageClass {
+		return nil
+	}
+
+	oldSize := effectiveRACSoftwarePVCSizeForValidation(&oldCr.Spec)
+	newSize := effectiveRACSoftwarePVCSizeForValidation(&r.Spec)
+	if newSize >= oldSize {
+		return nil
+	}
+
+	return field.ErrorList{field.Invalid(
+		field.NewPath("spec").Child("swLocStorageSizeInGb"),
+		r.Spec.SwLocStorageSizeInGb,
+		fmt.Sprintf("RAC software PVC size cannot be decreased after creation (old: %dGi, new: %dGi)", oldSize, newSize),
+	)}
+}
+
+func effectiveRACSoftwarePVCSizeForValidation(spec *RacDatabaseSpec) int {
+	if spec == nil {
+		return 0
+	}
+	if spec.SwLocStorageSizeInGb > 0 {
+		return spec.SwLocStorageSizeInGb
+	}
+	if spec.StorageSizeInGB > 0 {
+		return spec.StorageSizeInGB
+	}
+	return 100
 }
 
 // validateSshSecret verifies SSH secret references and required fields.

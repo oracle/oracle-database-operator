@@ -1,0 +1,95 @@
+kube-state-metrics:
+  rbac:
+    extraRules:
+      - apiGroups: [database.oracle.com]
+        resources: [ordssrvs]
+        verbs: [list, watch]
+
+  customResourceState:
+    enabled: true
+    config:
+      kind: CustomResourceStateMetrics
+      spec:
+        resources:
+          - groupVersionKind:
+              group: database.oracle.com
+              version: v4
+              kind: OrdsSrvs
+            metricNamePrefix: ordssrvs
+            labelsFromPath:
+              namespace: [metadata, namespace]
+              ordssrvs: [metadata, name]
+            metrics:
+              - name: status
+                help: Current OrdsSrvs workload status.
+                each:
+                  type: StateSet
+                  stateSet:
+                    path: [status, status]
+                    labelName: state
+                    list: [Preparing, Progressing, Healthy, Degraded, Unhealthy]
+
+              - name: pools_health
+                help: Aggregate ORDS pool health.
+                each:
+                  type: StateSet
+                  stateSet:
+                    path: [status, poolsHealth]
+                    labelName: state
+                    list: [Disabled, Unknown, Healthy, Partial, Unhealthy]
+
+              - name: pool_outcome
+                help: Most recent ORDS pool probe outcome.
+                each:
+                  type: StateSet
+                  stateSet:
+                    path: [status, poolProbes]
+                    valueFrom: [outcome]
+                    labelsFromPath:
+                      pool: [poolName]
+                    labelName: outcome
+                    list: [OK, POOL_NOT_FOUND, SERVER_ERROR, UNEXPECTED, ERROR]
+
+              - name: pool_http_status_code
+                help: HTTP response code from the latest pool probe when present.
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, poolProbes]
+                    valueFrom: [httpStatusCode]
+                    labelsFromPath:
+                      pool: [poolName]
+
+              - name: pool_last_checked_timestamp_seconds
+                help: Unix timestamp of the latest pool probe.
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, poolProbes]
+                    valueFrom: [lastChecked]
+                    labelsFromPath:
+                      pool: [poolName]
+
+              - name: pool_total_count
+                help: Number of pools in the latest probe evaluation.
+                errorLogV: 10
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, poolsTotal]
+
+              - name: pool_ok_count
+                help: Number of successful pool probes.
+                errorLogV: 10
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, poolsOK]
+
+              - name: pool_failed_count
+                help: Number of failed pool probes.
+                errorLogV: 10
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, poolsFailed]

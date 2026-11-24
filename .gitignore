@@ -16,3 +16,11 @@ dist/
 .aider*
 .ocaider.tags.cache.v4/
 docs/trafficmanager/oca/
+
+# Local agent continuity (do not commit)
+CONTINUITY.md
+AGENTS.md
+.continuity*
+.agents/
+.codex/
+.crush/

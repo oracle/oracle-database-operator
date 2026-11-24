@@ -1,0 +1,63 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Data Guard primary: TDE and TCPS, paired with a connectString standby.
+# Procedure: docs/sidb/README.md#data-guard
+# Edit namespace, StorageClass, capacity, and image pull Secret for your environment.
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: default
+spec:
+  sid: ORCL1
+  edition: enterprise
+  createAs: primary
+  charset: AL32UTF8
+  pdbName: orclpdb1
+  archiveLog: true
+  forceLog: true
+  flashBack: true
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      ## Create this Secret before applying; see the linked TDE prerequisites.
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    ## Create the corresponding TLS Secret before applying this sample.
+    tcps:
+      enabled: true
+      tlsSecret: sidb-primary-tcps-tls
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    imagePullPolicy: IfNotPresent
+
+  persistence:
+    oradata:
+      size: 100Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+
+  ## Explicit database-side Data Guard prerequisite setup for this workflow.
+  dataguard:
+    prereqs:
+      enabled: true
+    ## Standby peer for the primarySource.connectString workflow.
+    standbySources:
+      - dbUniqueName: ORCLS
+        host: standbydatabase-sample.default.svc.cluster.local
+        tcpPort: 1521
+        tcpsEnabled: true
+        tcpsPort: 2484
+
+  replicas: 1

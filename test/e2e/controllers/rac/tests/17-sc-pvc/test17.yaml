@@ -1,0 +1,87 @@
+---
+# E2E template for rac/test17.
+# Keep the user-facing sample in docs/rac/provisioning/racdb_prov_sc_pvc.yaml.
+# This file follows the placeholder-rendering pattern used by Oracle Restart
+# test01.yaml; test17/run.sh renders and server-validates it before applying.
+apiVersion: database.oracle.com/v4
+kind: RacDatabase
+metadata:
+  name: __RAC_NAME__
+  namespace: __RAC_NAMESPACE__
+spec:
+  instanceDetails:
+    nodeCount: 1
+    racNodeName: __RAC_NODE_NAME__
+    privateIPDetails:
+      - name: __RAC_NAD_ONE__
+        interface: ens1
+      - name: __RAC_NAD_TWO__
+        interface: ens2
+    workerNodeSelector:
+      __RAC_WORKER_LABEL_KEY__: __RAC_WORKER_LABEL_VALUE__
+  envVars:
+    - name: LOG_DIR
+      value: "/tmp/orod"
+  swStorageClass: "__RAC_SOFTWARE_STORAGE_CLASS__"
+  swLocStorageSizeInGb: 300
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/asm-disk1
+        - /dev/asm-disk2
+      asmStorageSizeInGb: 50
+      storageClass: "__RAC_ASM_STORAGE_CLASS__"
+      accessMode: "ReadWriteOnce"
+  sshKeySecret:
+    name: ssh-key-secret
+    privKeySecretName: ssh-privkey
+    pubKeySecretName: ssh-pubkey
+  dbSecret:
+    name: db-user-pass
+    keyFileName: key.pem
+    pwdFileName: pwdfile.enc
+  tdeWalletSecret:
+    name: tde-user-pass
+    keyFileName: key.pem
+    pwdFileName: pwdfile.enc
+  image: __RAC_IMAGE__
+  imagePullPolicy: Always
+  serviceAccountName: __RAC_SERVICE_ACCOUNT__
+  scanSvcName: racnode-scan
+  scanSvcTargetPort: 31521
+  serviceDetails:
+    name: soepdb
+  resources:
+    requests:
+      cpu: "2"
+      memory: "16Gi"
+    limits:
+      cpu: "2"
+      memory: "16Gi"
+  securityContext:
+    sysctls:
+      - name: kernel.shmall
+        value: "2097152"
+      - name: kernel.sem
+        value: "250 32000 100 128"
+      - name: kernel.shmmax
+        value: "8589934592"
+      - name: kernel.shmmni
+        value: "4096"
+  configParams:
+    sgaSize: "3Gi"
+    pgaSize: "1Gi"
+    processes: 2000
+    cpuCount: 4
+    gridHome: "__RAC_GRID_HOME__"
+    gridBase: "/u01/app/grid"
+    dbHome: "__RAC_DB_HOME__"
+    dbBase: "/u01/app/oracle"
+    inventory: "/u01/app/oraInventory"
+    gridSwZipFile: "grid_home.zip"
+    dbSwZipFile: "db_home.zip"
+    dbName: "PORCLCDB"
+    swStagePvc: __RAC_STAGE_PVC__
+    swStagePvcMountLocation: "__RAC_STAGE_MOUNT__"

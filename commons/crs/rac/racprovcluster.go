@@ -374,7 +374,9 @@ func buildContainerSpecForRacCluster(
 ) []corev1.Container {
 
 	var result []corev1.Container
-	privileged := false
+	// RAC runs systemd as PID 1 and requires the privileged container
+	// context for CRS, ASM, and the mounted block devices on OpenShift.
+	privileged := true
 
 	// --- Probe tuning ---
 	readinessFailureThreshold := int32(3)

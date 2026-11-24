@@ -1,32 +1,57 @@
-# Create OCI FSS based PVC
+# Create an OCI File Storage Service PV and PVC
 
-The Persistent Volume (PV) is created using `oci-fss` Storage Class. For information about OCI File Storage, see the [documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengcreatingpersistentvolumeclaim_Provisioning_PVCs_on_FSS.htm) for provisioning 
-PVCs on the file storage service. A Persistent Volume Claim (PVC) is created for this PV. For the PV with `oci-fss` Storage Class to be used, an OCI File System Storage and a Mount Target is created in OCI before creating the PV.
+This procedure creates a PersistentVolume (PV) and PersistentVolumeClaim (PVC) for an existing file system in the Oracle Cloud Infrastructure (OCI) File Storage service (FSS). The PV uses the FSS CSI driver, `fss.csi.oraclecloud.com`.
 
-**Important:** The VCN of the OKE Cluster and the File System Storage in OCI must be the same for the OKE Cluster Nodes to access the FSS Mount Target.
+For more information, see [Provisioning PVCs on the File Storage Service](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengcreatingpersistentvolumeclaim_Provisioning_PVCs_on_FSS.htm).
 
-1. Provision an OCI File Systems in the same VCN that is used by the OKE Cluster on which you want to deploy the PrivateAI Container. See the Create File System [documentation](https://docs.oracle.com/en-us/iaas/Content/File/Tasks/create-file-system.htm) for the details of this step.
+**Important:** Ensure that the OKE worker nodes can reach the FSS mount target’s private IP address. For a single-VCN setup, create the mount target in the same VCN as the OKE worker nodes. Configure the required routes and network security rules to allow File Storage traffic. See [Configuring VCN Security Rules for File Storage](https://docs.oracle.com/en-us/iaas/Content/File/Tasks/securitylistsfilestorage.htm?utm_source=chatgpt.com).
 
-2. After the OCI File System is created, obtain the details of the `Export Path` and `Mount Target` (the IP and OCID of Mount Target) information. It will be required in the next step.
+1. Create an OCI file system, mount target, and export. Create them in a network configuration that allows the OKE worker nodes to reach the mount target. For instructions, see [Creating a File System](https://docs.oracle.com/en-us/iaas/Content/File/Tasks/create-file-system.htm).
 
-3. Create a YAML file for the Storage Class. For reference, see the example file: [StorageClass.yaml](./provisioning/StorageClass.yaml). You will need to provide the `OCID` of the mount target in this file.
+2. Record the following details; you will need them to configure the PV:
 
-4. Create a YAML file for the Persistent Volume (PV). It will use the `oci-fss` storage class. For reference, see the example file: [oke-pv.yaml](./provisioning/oke-pv.yaml). You will need to provide the `Export Path` and Mount Target `IP` in this file.
+   - The file system OCID
+   - The mount target IP address
+   - The export path
 
-5. Create a YAML file for the Persistent Volume Claim (PVC). It will use the PV created in previous step. For reference, see the example file: [oke-pvc.yaml](./provisioning/oke-pvc.yaml)
+3. Review the PV manifest, [`oke-pv.yaml`](./provisioning/oke-pv.yaml). Set `volumeHandle` to the file system OCID, mount target IP address, and export path, separated by colons:
 
-6. Apply the above YAML files to create the PVC using `oci-fss` based File System.
+   ```text
+   <FileSystemOCID>:<MountTargetIP>:<ExportPath>
+   ```
 
-    ```sh
-    kubectl apply -f StorageClass.yaml
-    kubectl apply -f oke-pv.yaml
-    kubectl apply -f oke-pvc.yaml
-    ```
+   The manifest must use the FSS CSI driver, `fss.csi.oraclecloud.com`. For static provisioning, set `storageClassName: ""`; this procedure does not create or use a StorageClass.
 
-7. Check the details of the PVC created using `oci-fss` based File System:
+4. Review the PVC manifest, [`oke-pvc.yaml`](./provisioning/oke-pvc.yaml). Set `volumeName` to the PV name and `storageClassName: ""`. The PVC request must match the storage capacity specified in the PV.
 
-    ```sh
-    kubectl get sc
-    kubectl get pv -n pai
-    kubectl get pvc -n pai
-    ```
+5. Apply the manifests from the repository root:
+
+   ```sh
+   kubectl apply -f docs/privateai/provisioning/oke-pv.yaml
+   kubectl apply -f docs/privateai/provisioning/oke-pvc.yaml
+   ```
+
+6. Verify that the PV and PVC are bound:
+
+   ```sh
+   kubectl get pv oke-fsspv
+   kubectl get pvc oke-fsspvc -n pai
+   ```
+
+   Confirm that both resources show `Bound`.
+
+7. Copy Model Files to the PVC
+
+   Creating the PV and PVC does not copy model files to the file system. Before deploying Private AI with models stored on this PVC, mount the claim in a temporary Pod and copy the model files to it. Verify that the expected files are present and readable from the mounted file system. The files remain in OCI File Storage after the temporary Pod is removed.
+
+8. In the `PrivateAi` resource, map the PVC to the path where Private AI should access the model files. For example:
+
+   ```yaml
+   spec:
+     pvcList:
+       oke-fsspvc: /privateai/models
+   ```
+
+Specify the corresponding paths in the model configuration file.
+
+**Note:** The `storage: 100Gi` values in the PV and PVC are Kubernetes binding values. They must match, but they do not set or limit the capacity of the OCI file system.

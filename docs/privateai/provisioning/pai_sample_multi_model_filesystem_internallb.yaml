@@ -33,27 +33,24 @@ spec:
         path: key.pem
       - key: keystore.p12
         path: keystore
+  storage:
+    pvcList:
+      oke-fsspvc: /privateai/models
   runtime:
     image:
-      name: container-registry.oracle.com/database/private-ai:latest
+      name: container-registry.oracle.com/database/private-ai:large-cpu-infer-latest
       pullSecret: oracle-container-registry-secret
     replicas: 3
-    workerNodes:
-    - <<Replace with the worker nodes>>
-    resources:
-      requests:
-        memory: "8Gi"
-        cpu: "2"
-      limits:
-        memory: "8Gi"
-        cpu: "2"
+    annotations:
+      workload:
+        company.com/change-ticket: CHG-12345
+      pod:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8443"
   configuration:
     configFile:
       name: multiconfigjson
       mountLocation: /privateai/config
-  storage:
-    pvcList:
-      oke-fsspvc: /privateai/models
   networking:
     listeners:
       https:

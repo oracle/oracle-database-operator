@@ -1,0 +1,27 @@
+# Quick-start single pool, with ORDS installation for the SIDB dependency.
+apiVersion: database.oracle.com/v4
+kind: OrdsSrvs
+metadata:
+  name: "__NAME__"
+  namespace: "__NAMESPACE__"
+  labels:
+    e2e.oracle.com/owner: operator-e2e
+    e2e.oracle.com/controller: ordssrvs
+    e2e.oracle.com/test-id: test01
+spec:
+  image: "__IMAGE__"
+  poolProbeSettings:
+    intervalSeconds: 10
+  poolSettings:
+    - poolName: default
+      autoUpgradeORDS: true
+      db.connectionType: customurl
+      db.customURL: "__URL__"
+      db.username: ORDS_PUBLIC_USER
+      db.secret:
+        secretName: "__SECRET__"
+        passwordKey: dbAuth
+      db.adminUser: SYS
+      db.adminUser.secret:
+        secretName: "__SECRET__"
+        passwordKey: adminAuth

@@ -1863,13 +1863,18 @@ func collectPasswordResetPods(instance *databasev4.ShardingDatabase) []string {
 func getInitContainerCmd(resType string, name string,
 ) string {
 	var initCmd string
+	// Legacy privileged command reference for rollback:
+	// chown -R 54321:54321 /opt/oracle/scripts/sharding
+	// chmod 755 /opt/oracle/scripts/sharding/*
+	// chown -R 54321:54321 /opt/oracle/oradata /opt/oracle/diag /var/log/gdd
+	// chmod 750 /opt/oracle/oradata /opt/oracle/diag /var/log/gdd
 	permCmd := "mkdir -p " + databasev4.DefaultOraDataMountPath + " " + databasev4.DefaultDiagMountPath + " " + databasev4.DefaultGddLogMountPath +
-		";chown -R 54321:54321 " + databasev4.DefaultOraDataMountPath + " " + databasev4.DefaultDiagMountPath + " " + databasev4.DefaultGddLogMountPath +
 		";chmod 750 " + databasev4.DefaultOraDataMountPath + " " + databasev4.DefaultDiagMountPath + " " + databasev4.DefaultGddLogMountPath
+	scriptPermCmd := "if [ -d " + oraDbScriptMount + " ]; then chmod 755 " + oraDbScriptMount + "/*; fi"
 	if resType == "WEB" {
-		initCmd = "chown -R 54321:54321 " + oraDbScriptMount + ";chmod 755 " + oraDbScriptMount + "/*;" + permCmd
+		initCmd = scriptPermCmd + ";" + permCmd
 	} else {
-		initCmd = resType + ";chown -R 54321:54321 " + oraDbScriptMount + ";chmod 755 " + oraDbScriptMount + "/*;" + permCmd
+		initCmd = resType + ";" + scriptPermCmd + ";" + permCmd
 	}
 	return initCmd
 }
@@ -1877,11 +1882,15 @@ func getInitContainerCmd(resType string, name string,
 func getGsmInitContainerCmd(resType string, name string,
 ) string {
 	var initCmd string
+	// Legacy privileged command reference for rollback:
+	// chown -R 54321:54321 /opt/oracle/scripts/sharding
+	// find /opt/oracle/scripts/sharding -type d -exec chmod 755 {} \;
+	// find /opt/oracle/scripts/sharding -type f \( -name '*.sh' -o -name '*.py' -o -name 'cmdExec' \) -exec chmod 755 {} \;
+	// chown -R 54321:54321 /opt/oracle/gsmdata /u01/app/oracle/diag /var/log/gdd
+	// chmod 750 /opt/oracle/gsmdata /u01/app/oracle/diag /var/log/gdd
 	permCmd := "mkdir -p " + databasev4.DefaultGsmDataMountPath + " " + databasev4.DefaultGsmDiagMountPath + " " + databasev4.DefaultGddLogMountPath +
-		";chown -R 54321:54321 " + databasev4.DefaultGsmDataMountPath + " " + databasev4.DefaultGsmDiagMountPath + " " + databasev4.DefaultGddLogMountPath +
 		";chmod 750 " + databasev4.DefaultGsmDataMountPath + " " + databasev4.DefaultGsmDiagMountPath + " " + databasev4.DefaultGddLogMountPath
 	scriptPermCmd := "if [ -d " + oraDbScriptMount + " ]; then " +
-		"chown -R 54321:54321 " + oraDbScriptMount + ";" +
 		"find " + oraDbScriptMount + " -type d -exec chmod 755 {} \\;;" +
 		"find " + oraDbScriptMount + " -type f \\( -name '*.sh' -o -name '*.py' -o -name 'cmdExec' \\) -exec chmod 755 {} \\;;" +
 		"fi"
@@ -2198,6 +2207,13 @@ func Int64Pointer(d int64) *int64 {
 
 func BoolPointer(d bool) *bool {
 	return &d
+}
+
+func boolPointerOrDefault(value *bool, defaultValue bool) *bool {
+	if value == nil {
+		return BoolPointer(defaultValue)
+	}
+	return BoolPointer(*value)
 }
 
 func normalizePlacementNodes(nodes []string) []string {

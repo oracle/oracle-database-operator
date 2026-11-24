@@ -21,14 +21,14 @@ Allow dynamic-group <> to manage vaults in compartment <>
 For example: 
 
 ```txt
-ALL {resource.compartment.id = 'ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a'}
+ALL {resource.compartment.id = 'ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>'}
 ```
 ```txt
-Allow dynamic-group db_dynamic_group to manage secret-family in compartment sauahuja	
-Allow dynamic-group db_dynamic_group to manage instance-family in compartment sauahuja	
-Allow dynamic-group db_dynamic_group to manage database-family in compartment sauahuja	
-Allow dynamic-group db_dynamic_group to manage keys in compartment sauahuja
-Allow dynamic-group db_dynamic_group to manage vaults in compartment sauahuja
+Allow dynamic-group db_dynamic_group to manage secret-family in compartment <COMPARTMENT_NAME>	
+Allow dynamic-group db_dynamic_group to manage instance-family in compartment <COMPARTMENT_NAME>	
+Allow dynamic-group db_dynamic_group to manage database-family in compartment <COMPARTMENT_NAME>	
+Allow dynamic-group db_dynamic_group to manage keys in compartment <COMPARTMENT_NAME>
+Allow dynamic-group db_dynamic_group to manage vaults in compartment <COMPARTMENT_NAME>
 ```
 3. Create KMS Vault and KMS Keys so that you can use it during OBDS provisioning. We refer to those variables (`vaultName`, `keyName`) in the yaml file.
 
@@ -37,7 +37,7 @@ This example uses `dbcs_service_with_kms.yaml` to deploy a Single Instance OBDS 
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
 - Availability Domain for the OBDS VMDB as `OLou:AP-MUMBAI-1-AD-1`
-- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`
+- Compartment OCID as `ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>`
 - Database Admin Credential as `admin-password`  
 - Database Name as `kmsdb`  
 - Oracle Database Software Image Version as `19c`  
@@ -46,9 +46,9 @@ This example uses `dbcs_service_with_kms.yaml` to deploy a Single Instance OBDS 
 - Oracle VMDB Shape as `VM.Standard2.2`  
 - SSH Public key for the OBDS system being deployed as `oci-publickey`  
 - domain `subdda0b5eaa.cluster1.oraclevcn.com`
-- OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`
+- OCID of the Subnet as `ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>`
 - KMS Vault Name as `dbvault`
-- KMS Compartment Id as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`
+- KMS Compartment Id as `ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>`
 - KMS Key Name as `dbkey`
 
 **NOTE:** For the details of the parameters used in the `.yaml` file, see: [DBCS Controller Parameters](./dbcs_controller_parameters.md). When providing the KMS Vault, ensure that you do not pass the TDE wallet password in database creation, because either of them can be used only for encryption.

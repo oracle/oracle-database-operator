@@ -1,0 +1,78 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Cross-cluster Data Guard standby (TCP + NodePort only, no NLB).
+# Pair with singleinstancedatabase_primary_cross_cluster_nodeport.yaml and
+# dataguardbroker_cross_cluster_nodeport.yaml.
+# See docs/sidb/dataguard/DATAGUARD_MULTI_CLUSTER_NODEPORT.md.
+#
+# Before apply:
+# - Replace namespace, secrets, image, storageClass
+# - Set primarySource.connectString to <primary-node-ip>:<primary-nodePort>/ORCLPRD
+# - Create tde-wallet-secret with standby-wallet.zip when primary uses TDE
+# - Match the primary database image tag exactly
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-standby
+  namespace: <operator-watched-namespace>
+spec:
+  sid: ORCLSTBY
+  edition: enterprise
+  createAs: standby
+  # Enable database flashback independently from endpoint publication.
+  flashBack: true
+
+  primarySource:
+    connectString: "<primary-node-ip>:32330/ORCLPRD"
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+        walletZipFileKey: standby-wallet.zip
+        walletRoot: /opt/oracle/oradata/dbconfig/ORCLSTBY/.wallet
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: IfNotPresent
+  dataguard:
+    prereqs:
+      enabled: true
+
+  resources:
+    requests:
+      memory: "24Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    setWritePermissions: true
+
+  # NodePort-only standby endpoint. This sample creates no OCI NLB.
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        publishNotReadyAddresses: true
+        tcp:
+          enabled: true
+          nodePort: 30281
+
+  replicas: 1

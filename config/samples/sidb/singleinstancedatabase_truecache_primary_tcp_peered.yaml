@@ -1,0 +1,84 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+# Cross-cluster True Cache primary (TCP).
+# Publishes ConfigMap <name>-truecache-blob via trueCache.generateBlob /
+# createConfigMap. LoadBalancer exposes TCP 1521 (no TCPS).
+# Pair with singleinstancedatabase_truecache_external.yaml:
+#   connectString: sidb-sample.internal.example.com:1521/ORCLPRD
+# For TCPS peering, use singleinstancedatabase_truecache_primary_tcps_peered.yaml.
+#
+
+# "Peered" = primary and True Cache in different Kubernetes clusters.
+# Requires VCN peering (or equivalent), security rules, DNS/hostAliases,
+# and a reachable LoadBalancer or NodePort. See docs/sidb/truecache/TRUECACHE.md
+# section "What peered means in True Cache samples".
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  namespace: default
+spec:
+  sid: ORCLPRD
+  pdbName: APPPDB1
+  edition: enterprise
+  createAs: primary
+  archiveLog: true
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    ## OCR database/enterprise_ru requires authenticated pull (accept OCR
+    ## terms + auth token). Create ocr-reg-cred in this namespace.
+    ## Anonymous pull of this licensed image is not supported.
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: Always
+  trueCache:
+    generateBlob: true
+    createConfigMap: true
+    generatePath: /tmp/tc_config_blob.tar.gz
+  services:
+    endpoints:
+      - name: loadbalancer
+        type: LoadBalancer
+        externalTrafficPolicy: Local
+        annotations:
+          oci.oraclecloud.com/load-balancer-type: "nlb"
+          oci-network-load-balancer.oraclecloud.com/internal: "true"
+          oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.<region>.<placeholder-subnet-ocid>"
+          external-dns.alpha.kubernetes.io/hostname: "sidb-sample.internal.example.com"
+        tcp:
+          enabled: true
+          port: 1521
+  ## Optional: SIDB initParams and pod resources (not True Cache-specific).
+  ## Uncomment and tune for lab or production. Omit both to use image/operator defaults.
+  # initParams:
+  #   sgaTarget: 3072
+  #   pgaAggregateTarget: 1024
+  #   cpuCount: 2
+  #   processes: 600
+  # resources:
+  #   requests:
+  #     memory: "12Gi"
+  #     cpu: "2"
+  #   limits:
+  #     memory: "24Gi"
+  #     cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    setWritePermissions: true
+  replicas: 1

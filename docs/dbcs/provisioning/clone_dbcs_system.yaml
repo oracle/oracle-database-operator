@@ -4,7 +4,7 @@ metadata:
   name: dbcssystem-clone
   namespace: default
 spec:
-  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyaqui4hoqdyzmzl65jwkncyp3bnohengniqienetsdzw2q"
+  id: "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   setupDBCloning: true
@@ -17,4 +17,4 @@ spec:
     domain: "subdda0b5eaa.cluster1.oraclevcn.com"
     sshPublicKeys:
      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
+    subnetId: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"

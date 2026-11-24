@@ -93,8 +93,6 @@ clause to match your environment.
 Create a secret with the database credentials and connection string:
 
 ```bash
-kubectl delete secret -n testcase obsdb-secret --ignore-not-found=true
-
 kubectl create secret -n testcase generic obsdb-secret \
   --from-literal=username='C##OBS' \
   --from-literal=password='<db-password>' \
@@ -164,7 +162,6 @@ spec:
 Save it as `obs-quick.yaml`, then apply it:
 
 ```bash
-kubectl delete -f obs-quick.yaml --ignore-not-found=true
 kubectl apply -f obs-quick.yaml
 ```
 
@@ -197,7 +194,7 @@ username: admin
 password: <grafana-admin-password>
 ```
 
-## 6. Configure the Grafana Datasource
+## 7. Configure the Grafana Datasource
 
 If the Prometheus datasource is not already present, add it manually in the
 Grafana UI:
@@ -213,7 +210,7 @@ http://prometheus-operated.prometheus.svc.cluster.local:9090
 
 5. Click `Save & test`.
 
-## 7. Import the Oracle Dashboard
+## 8. Import the Oracle Dashboard
 
 Download the Oracle dashboard JSON:
 
@@ -229,7 +226,7 @@ In Grafana:
 3. When prompted, select the Prometheus datasource.
 4. Finish the import.
 
-## 8. Verify the Setup
+## 9. Verify the Setup
 
 In a separate terminal, start a local port-forward to Prometheus:
 

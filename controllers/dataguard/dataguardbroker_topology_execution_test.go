@@ -22,6 +22,90 @@ func TestDataguardBrokerOutputErrorDetectsBrokerErrors(t *testing.T) {
 	); err == nil {
 		t.Fatalf("expected ORA-16596 to be treated as a DGMGRL error")
 	}
+	err := dataguardBrokerOutputError("Connected to \"STBYDB\"\nORA-01017: invalid username/password; logon denied")
+	if err == nil || !strings.Contains(err.Error(), "ORA-01017: invalid username/password") {
+		t.Fatalf("expected the complete ORA-01017 failure, got %v", err)
+	}
+}
+
+func TestDataguardBrokerOutputErrorIgnoresTransientApplyLagWarning(t *testing.T) {
+	out := `Connected to "ORCLPRD"
+Configuration Status:
+WARNING
+ORA-16854: apply lag could not be determined`
+	if err := dataguardBrokerOutputError(out); err != nil {
+		t.Fatalf("did not expect transient ORA-16854 warning to fail reconciliation: %v", err)
+	}
+}
+
+func TestDataguardBrokerOutputErrorIgnoresObserverNotStartedWarning(t *testing.T) {
+	out := `Connected to "ORCL1"
+Configuration - dg_config
+
+  Protection Mode: MaxPerformance
+  Members:
+  ORCL1 - Primary database
+    Warning: ORA-16819: fast-start failover observer not started
+
+    orcls - (*) Physical standby database
+      Warning: ORA-16819: fast-start failover observer not started
+
+Fast-Start Failover: Enabled in Potential Data Loss Mode
+
+Configuration Status:
+WARNING`
+	if err := dataguardBrokerOutputError(out); err != nil {
+		t.Fatalf("did not expect ORA-16819 warning to fail reconciliation: %v", err)
+	}
+}
+
+func TestDataguardBrokerOutputErrorDetectsObserverNotStartedError(t *testing.T) {
+	out := `Error: ORA-16819: fast-start failover observer not started`
+	err := dataguardBrokerOutputError(out)
+	if err == nil || !strings.Contains(err.Error(), "ORA-16819:") {
+		t.Fatalf("expected ORA-16819 error to be treated as a failure, got %v", err)
+	}
+}
+
+func TestDataguardBrokerOutputErrorDetectsErrorAfterObserverWarning(t *testing.T) {
+	out := `Warning: ORA-16819: fast-start failover observer not started
+ORA-01017: invalid username/password; logon denied`
+	err := dataguardBrokerOutputError(out)
+	if err == nil || !strings.Contains(err.Error(), "ORA-01017:") {
+		t.Fatalf("expected ORA-01017 failure after observer warning, got %v", err)
+	}
+}
+
+func TestBuildDataguardBrokerTNSNamesInspectionCommand(t *testing.T) {
+	command := buildDataguardBrokerTNSNamesInspectionCommand()
+	if !strings.Contains(command, "${TNS_ADMIN:-${ORACLE_HOME}/network/admin}/tnsnames.ora") ||
+		!strings.Contains(command, "cat \"$tns_file\"") ||
+		!strings.Contains(command, "TNSNAMES.ORA is not readable") {
+		t.Fatalf("expected tnsnames inspection command, got:\n%s", command)
+	}
+}
+
+func TestDataguardTopologyDiagnosticMembersIncludesUniquePrimaryAndStandby(t *testing.T) {
+	primary := &dataguardTopologyResolvedMember{Name: "primary", DBUniqueName: "PRIMDB"}
+	standby := &dataguardTopologyResolvedMember{Name: "standby", DBUniqueName: "STBYDB"}
+	candidates := dataguardTopologyDiagnosticMembers(&dataguardTopologyResolvedState{
+		Primary: primary,
+		Members: []*dataguardTopologyResolvedMember{
+			primary,
+			standby,
+		},
+	})
+	if len(candidates) != 2 || candidates[0] != primary || candidates[1] != standby {
+		t.Fatalf("expected unique primary and standby diagnostic candidates, got %#v", candidates)
+	}
+}
+
+func TestTruncateDataguardBrokerDiagnosticOutput(t *testing.T) {
+	output := strings.Repeat("x", 9000)
+	truncated := truncateDataguardBrokerDiagnosticOutput(output)
+	if len(truncated) <= 8192 || !strings.HasSuffix(truncated, "... output truncated") {
+		t.Fatalf("expected long diagnostic output to be truncated, got length %d", len(truncated))
+	}
 }
 
 func TestDataguardBrokerConfigurationPreviouslyObserved(t *testing.T) {
@@ -39,6 +123,33 @@ func TestDataguardBrokerConfigurationPreviouslyObserved(t *testing.T) {
 	broker.Status.PrimaryDatabase = "PRIMDB"
 	if !dataguardBrokerConfigurationPreviouslyObserved(broker) {
 		t.Fatalf("expected populated broker status to be treated as observed")
+	}
+}
+
+func TestDataguardTopologyBrokerMemberViewStable(t *testing.T) {
+	broker := &dbapi.DataguardBroker{}
+	broker.Status.PrimaryDatabase = "ORCLPRD"
+	broker.Status.DatabasesInDataguardConfig = map[string]string{
+		"ORCLPRD":  "primary",
+		"ORCLSTBY": "standby",
+	}
+
+	if dataguardTopologyBrokerMemberViewStable(broker, map[string]string{
+		"ORCLPRD": "PRIMARY",
+	}) {
+		t.Fatal("expected an incomplete member view to be unstable")
+	}
+	if !dataguardTopologyBrokerMemberViewStable(broker, map[string]string{
+		"ORCLPRD":  "PRIMARY",
+		"ORCLSTBY": "PHYSICAL_STANDBY",
+	}) {
+		t.Fatal("expected a complete member view with one primary to be stable")
+	}
+	if dataguardTopologyBrokerMemberViewStable(broker, map[string]string{
+		"ORCLPRD":  "PRIMARY",
+		"ORCLSTBY": "PRIMARY",
+	}) {
+		t.Fatal("expected a member view with two primaries to be unstable")
 	}
 }
 
@@ -72,6 +183,44 @@ func TestBuildDataguardTopologyTNSAliasesIncludesBrokerStaticAlias(t *testing.T)
 	}
 	if !strings.Contains(aliases[1], "(MY_WALLET_DIRECTORY = /opt/oracle/dg-wallet/primdb-wallet)") {
 		t.Fatalf("expected TCPS alias to keep MY_WALLET_DIRECTORY, got:\n%s", aliases[1])
+	}
+}
+
+func TestBuildDataguardTopologyLocalTNSAliasSyncCommandPreservesConfiguredPort(t *testing.T) {
+	command, err := buildDataguardTopologyLocalTNSAliasSyncCommand(&dataguardTopologyResolvedState{
+		Members: []*dataguardTopologyResolvedMember{{
+			DBUniqueName: "STBYDB",
+			Alias:        "STBYDB",
+			StaticAlias:  "STBYDB_DGMGRL",
+			Endpoint:     dbapi.DataguardEndpointSpec{Protocol: "TCP", Host: "10.2.1.131", Port: 30281, ServiceName: "STBYDB"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("expected local alias sync command to build, got %v", err)
+	}
+	if !strings.Contains(command, "manageTnsAliases.sh") || !strings.Contains(command, "--port 30281") || !strings.Contains(command, "STBYDB_DGMGRL") {
+		t.Fatalf("expected local alias sync to use helper, configured port, and static alias, got:\n%s", command)
+	}
+}
+
+func TestBuildDataguardTopologyTNSAliasesUsesTCPStaticEndpoint(t *testing.T) {
+	member := &dataguardTopologyResolvedMember{
+		DBUniqueName:   "STBYDB",
+		Alias:          "STBYDBTCPS",
+		StaticAlias:    "STBYDB_DGMGRL",
+		Endpoint:       dbapi.DataguardEndpointSpec{Protocol: "TCPS", Host: "10.2.1.131", Port: 30285, ServiceName: "STBYDB"},
+		StaticEndpoint: dbapi.DataguardEndpointSpec{Protocol: "TCP", Host: "10.2.1.131", Port: 30282, ServiceName: "STBYDB"},
+	}
+
+	aliases, err := buildDataguardTopologyTNSAliases(member)
+	if err != nil {
+		t.Fatalf("expected TNS aliases to build, got %v", err)
+	}
+	if !strings.Contains(aliases[0], "(PORT = 30285)") || !strings.Contains(aliases[0], "(PROTOCOL = TCPS)") {
+		t.Fatalf("expected normal alias to use configured TCPS endpoint, got:\n%s", aliases[0])
+	}
+	if !strings.Contains(aliases[1], "(PORT = 30282)") || !strings.Contains(aliases[1], "(PROTOCOL = TCP)") {
+		t.Fatalf("expected static alias to use configured TCP endpoint, got:\n%s", aliases[1])
 	}
 }
 
@@ -328,6 +477,79 @@ func TestBuildDataguardStaticConnectIdentifierReturnsDescriptor(t *testing.T) {
 	}
 }
 
+func TestBuildDataguardStaticConnectIdentifierOmitsRunnerClientWallet(t *testing.T) {
+	member := &dataguardTopologyResolvedMember{
+		DBUniqueName:    "PRIMDB",
+		WalletDirectory: "/opt/oracle/dg-wallet/primdb-wallet",
+		Endpoint: dbapi.DataguardEndpointSpec{
+			Protocol:    "TCPS",
+			Host:        "primary.example.com",
+			Port:        2484,
+			ServiceName: "PRIMDB",
+		},
+	}
+
+	got, err := buildDataguardStaticConnectIdentifier(member)
+	if err != nil {
+		t.Fatalf("expected static descriptor to validate, got %v", err)
+	}
+	if strings.Contains(got, "MY_WALLET_DIRECTORY") || strings.Contains(got, "/opt/oracle/dg-wallet/primdb-wallet") {
+		t.Fatalf("static descriptor must not embed runner client-wallet path, got %q", got)
+	}
+	if !strings.Contains(got, "PROTOCOL=TCPS") || !strings.Contains(got, "SERVICE_NAME=PRIMDB_DGMGRL") {
+		t.Fatalf("expected TCPS Broker static descriptor, got %q", got)
+	}
+}
+
+func TestBuildDataguardStaticConnectIdentifierUsesTCPStaticEndpoint(t *testing.T) {
+	member := &dataguardTopologyResolvedMember{
+		DBUniqueName: "STBYDB",
+		Endpoint: dbapi.DataguardEndpointSpec{
+			Protocol:    "TCPS",
+			Host:        "10.2.1.131",
+			Port:        30285,
+			ServiceName: "STBYDB",
+		},
+		StaticEndpoint: dbapi.DataguardEndpointSpec{
+			Protocol:    "TCP",
+			Host:        "10.2.1.131",
+			Port:        30282,
+			ServiceName: "STBYDB",
+		},
+	}
+
+	got, err := buildDataguardStaticConnectIdentifier(member)
+	if err != nil {
+		t.Fatalf("expected TCP static descriptor to validate, got %v", err)
+	}
+	want := "'(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=10.2.1.131)(PORT=30282))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=STBYDB_DGMGRL)))'"
+	if got != want {
+		t.Fatalf("expected TCP static endpoint descriptor: got %q, want %q", got, want)
+	}
+}
+
+func TestBuildDataguardStaticConnectIdentifierKeepsTCPDescriptorUnchanged(t *testing.T) {
+	member := &dataguardTopologyResolvedMember{
+		DBUniqueName:    "STBYDB",
+		WalletDirectory: "/opt/oracle/dg-wallet/stbydb-wallet",
+		Endpoint: dbapi.DataguardEndpointSpec{
+			Protocol:    "TCP",
+			Host:        "sidb-standby",
+			Port:        1521,
+			ServiceName: "STBYDB",
+		},
+	}
+
+	got, err := buildDataguardStaticConnectIdentifier(member)
+	if err != nil {
+		t.Fatalf("expected TCP static descriptor to validate, got %v", err)
+	}
+	want := "'(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=sidb-standby)(PORT=1521))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=STBYDB_DGMGRL)))'"
+	if got != want {
+		t.Fatalf("TCP static descriptor changed unexpectedly: got %q, want %q", got, want)
+	}
+}
+
 func TestBuildDataguardStaticConnectIdentifierRejectsUnsafeHost(t *testing.T) {
 	member := &dataguardTopologyResolvedMember{
 		Name:         "standby-a",
@@ -358,7 +580,79 @@ func TestBuildDataguardDGMGRLConnectIdentifierPrefersResolvedConnectString(t *te
 		t.Fatalf("expected connect identifier to build, got %v", err)
 	}
 	if got != "'sidb-standby.shns.svc.cluster.local:2484/STBYDB'" {
-		t.Fatalf("expected resolved connect string literal, got %q", got)
+		t.Fatalf("expected generated Easy Connect literal, got %q", got)
+	}
+}
+
+func TestBuildDataguardDGMGRLConnectIdentifierUsesAliasForTCP(t *testing.T) {
+	member := &dataguardTopologyResolvedMember{
+		Alias:         "STBYDB",
+		ConnectString: "sidb-standby.default.svc.cluster.local:1521/STBYDB",
+		Endpoint: dbapi.DataguardEndpointSpec{
+			Protocol: "TCP",
+		},
+	}
+
+	got, err := dataguardDGMGRLConnectIdentifier(member)
+	if err != nil {
+		t.Fatalf("expected TCP alias literal, got %v", err)
+	}
+	if got != "'sidb-standby.default.svc.cluster.local:1521/STBYDB'" {
+		t.Fatalf("expected generated TCP Easy Connect literal, got %q", got)
+	}
+}
+
+func TestBuildDataguardDGMGRLConnectIdentifierFallsBackToDBUniqueName(t *testing.T) {
+	member := &dataguardTopologyResolvedMember{DBUniqueName: "ORCLSTBY"}
+
+	got, err := dataguardDGMGRLConnectIdentifier(member)
+	if err != nil {
+		t.Fatalf("expected DB unique name fallback, got %v", err)
+	}
+	if got != "'ORCLSTBY'" {
+		t.Fatalf("expected DB unique name TNS alias, got %q", got)
+	}
+}
+
+func TestBuildDataguardDGMGRLConnectIdentifierNormalizesEasyConnectPrefix(t *testing.T) {
+	member := &dataguardTopologyResolvedMember{
+		ConnectString: "//sidb-standby.default.svc.cluster.local:1521/ORCLSTBY",
+	}
+
+	got, err := dataguardDGMGRLConnectIdentifier(member)
+	if err != nil {
+		t.Fatalf("expected Easy Connect identifier to build, got %v", err)
+	}
+	if got != "'sidb-standby.default.svc.cluster.local:1521/ORCLSTBY'" {
+		t.Fatalf("expected DGMGRL Easy Connect identifier without // prefix, got %q", got)
+	}
+}
+
+func TestDataguardDGMGRLStringLiteralNormalizesEasyConnectPrefix(t *testing.T) {
+	got, err := dataguardDGMGRLStringLiteral("//standby.example:1521/ORCLSTBY")
+	if err != nil {
+		t.Fatalf("expected normalized DGMGRL literal, got %v", err)
+	}
+	if got != "'standby.example:1521/ORCLSTBY'" {
+		t.Fatalf("expected DGMGRL-safe literal, got %q", got)
+	}
+}
+
+func TestBuildDataguardBrokerAuthWalletBuildCommandAddsNormalizedEasyConnectCredential(t *testing.T) {
+	state := &dataguardTopologyResolvedState{
+		Members: []*dataguardTopologyResolvedMember{{
+			Alias:         "ORCLSTBY",
+			ConnectString: "//sidb-standby.default.svc.cluster.local:1521/ORCLSTBY",
+			AdminPassword: "secret",
+		}},
+	}
+
+	command := buildDataguardBrokerAuthWalletBuildCommand(state, "/tmp/wallet", "wallet-password")
+	if !strings.Contains(command, "-createCredential '//sidb-standby.default.svc.cluster.local:1521/ORCLSTBY'") {
+		t.Fatalf("expected raw Easy Connect wallet credential, got:\n%s", command)
+	}
+	if !strings.Contains(command, "-createCredential 'sidb-standby.default.svc.cluster.local:1521/ORCLSTBY'") {
+		t.Fatalf("expected normalized Easy Connect wallet credential, got:\n%s", command)
 	}
 }
 
@@ -376,13 +670,12 @@ func TestBuildDataguardDGMGRLConnectIdentifierUsesAliasForTCPS(t *testing.T) {
 		t.Fatalf("expected connect identifier to build, got %v", err)
 	}
 	if got != "'STBYDBTCPS'" {
-		t.Fatalf("expected TCPS alias literal, got %q", got)
+		t.Fatalf("expected TCPS TNS alias literal, got %q", got)
 	}
 }
 
 func TestBuildDataguardDGMGRLConnectIdentifierRejectsUnsafeConnectString(t *testing.T) {
 	member := &dataguardTopologyResolvedMember{
-		Alias:         "STBYDB",
 		ConnectString: "sidb-standby:1521/STBYDB'; DISABLE CONFIGURATION; --",
 	}
 
@@ -621,14 +914,14 @@ func TestIsDataguardTopologyLocalMemberNotReady(t *testing.T) {
 	}
 }
 
-func TestResolveDataguardTopologyMemberUsesTCPSAliasAndCanonicalPort(t *testing.T) {
+func TestResolveDataguardTopologyMemberUsesTCPSAliasAndConfiguredPort(t *testing.T) {
 	member := &dbapi.DataguardTopologyMember{
 		Name:         "primary-db",
 		Role:         "PRIMARY",
 		DBUniqueName: "PRIMDB",
 		Endpoints: []dbapi.DataguardEndpointSpec{
 			{Protocol: "TCP", Host: "primary-tcp", Port: 1521, ServiceName: "PRIMDB"},
-			{Protocol: "TCPS", Host: "primary-tcps", Port: 1521, ServiceName: "PRIMDB"},
+			{Protocol: "TCPS", Host: "primary-tcps", Port: 32443, ServiceName: "PRIMDB"},
 		},
 		TCPS: &dbapi.DataguardTCPSConfig{
 			Enabled:            true,
@@ -655,21 +948,24 @@ func TestResolveDataguardTopologyMemberUsesTCPSAliasAndCanonicalPort(t *testing.
 	if resolved.Endpoint.Protocol != "TCPS" {
 		t.Fatalf("expected canonical TCPS protocol, got %q", resolved.Endpoint.Protocol)
 	}
-	if resolved.Endpoint.Port != 2484 {
-		t.Fatalf("expected canonical TCPS port 2484, got %d", resolved.Endpoint.Port)
+	if resolved.Endpoint.Port != 32443 {
+		t.Fatalf("expected configured TCPS port 32443, got %d", resolved.Endpoint.Port)
 	}
 	if resolved.Endpoint.Host != "primary-tcps" {
 		t.Fatalf("expected TCPS endpoint host, got %q", resolved.Endpoint.Host)
 	}
+	if resolved.ConnectString != "primary-tcps:32443/PRIMDB" {
+		t.Fatalf("expected configured TCPS connect string, got %q", resolved.ConnectString)
+	}
 }
 
-func TestResolveDataguardTopologyMemberUsesTCPAliasAndCanonicalPort(t *testing.T) {
+func TestResolveDataguardTopologyMemberUsesTCPAliasAndConfiguredPort(t *testing.T) {
 	member := &dbapi.DataguardTopologyMember{
 		Name:         "standby-db",
 		Role:         "PHYSICAL_STANDBY",
 		DBUniqueName: "STBYDB",
 		Endpoints: []dbapi.DataguardEndpointSpec{
-			{Protocol: "TCP", Host: "standby-tcp", Port: 2484, ServiceName: "STBYDB"},
+			{Protocol: "TCP", Host: "standby-tcp", Port: 32330, ServiceName: "STBYDB"},
 			{Protocol: "TCPS", Host: "standby-tcps", Port: 2484, ServiceName: "STBYDB"},
 		},
 	}
@@ -687,11 +983,14 @@ func TestResolveDataguardTopologyMemberUsesTCPAliasAndCanonicalPort(t *testing.T
 	if resolved.Endpoint.Protocol != "TCP" {
 		t.Fatalf("expected canonical TCP protocol, got %q", resolved.Endpoint.Protocol)
 	}
-	if resolved.Endpoint.Port != 1521 {
-		t.Fatalf("expected canonical TCP port 1521, got %d", resolved.Endpoint.Port)
+	if resolved.Endpoint.Port != 32330 {
+		t.Fatalf("expected configured TCP port 32330, got %d", resolved.Endpoint.Port)
 	}
 	if resolved.Endpoint.Host != "standby-tcp" {
 		t.Fatalf("expected TCP endpoint host, got %q", resolved.Endpoint.Host)
+	}
+	if resolved.ConnectString != "standby-tcp:32330/STBYDB" {
+		t.Fatalf("expected configured TCP connect string, got %q", resolved.ConnectString)
 	}
 }
 
@@ -869,5 +1168,31 @@ func TestNormalizeTopologyMemberRoleAcceptsBrokerFormatting(t *testing.T) {
 	}
 	if got := normalizeTopologyMemberRole("primary"); got != "PRIMARY" {
 		t.Fatalf("expected PRIMARY, got %q", got)
+	}
+}
+
+func TestBuildDataguardLegacyBrokerRunnerEnvUsesResolvedConnectString(t *testing.T) {
+	database := &dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{Sid: "ORCLSTBY"},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			ConnectString: "10.2.1.52:1521/ORCLSTBY",
+		},
+	}
+
+	got, err := buildDataguardLegacyBrokerRunnerEnv(database)
+	if err != nil {
+		t.Fatalf("expected legacy broker environment, got %v", err)
+	}
+	if got != "export SVC_HOST='10.2.1.52'; export ORACLE_SID='ORCLSTBY'; " {
+		t.Fatalf("unexpected legacy broker environment %q", got)
+	}
+}
+
+func TestBuildDataguardLegacyBrokerRunnerEnvRejectsMissingConnectString(t *testing.T) {
+	_, err := buildDataguardLegacyBrokerRunnerEnv(&dbapi.SingleInstanceDatabase{
+		Spec: dbapi.SingleInstanceDatabaseSpec{Sid: "ORCLSTBY"},
+	})
+	if err == nil {
+		t.Fatal("expected missing connect string error")
 	}
 }

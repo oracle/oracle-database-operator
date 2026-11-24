@@ -29,11 +29,15 @@ type EffectivePrivateAiRuntime struct {
 	Replicas             int32
 	Env                  []EnvironmentVariable
 	Resources            *corev1.ResourceRequirements
+	ShmSize              string
+	SecurityContext      *PrivateAiPodSecurityContextSpec
 	Debug                bool
 	ReadinessCheckPeriod int
 	LivenessCheckPeriod  int
 	DownloadScripts      bool
+	ServiceAccountName   string
 	WorkerNodes          []string
+	WorkerNodeSelector   map[string]string
 }
 
 type EffectivePrivateAiConfiguration struct {
@@ -84,11 +88,15 @@ func EffectivePrivateAiSpecFromSpec(spec *PrivateAiSpec) *EffectivePrivateAiSpec
 			Replicas:             effectiveReplicas(spec),
 			Env:                  copyEnvironmentVariables(effectiveEnv(spec)),
 			Resources:            copyResourceRequirements(effectiveResources(spec)),
+			ShmSize:              effectiveShmSize(spec),
+			SecurityContext:      effectivePodSecurityContext(spec),
 			Debug:                effectiveDebug(spec),
 			ReadinessCheckPeriod: effectiveReadinessCheckPeriod(spec),
 			LivenessCheckPeriod:  effectiveLivenessCheckPeriod(spec),
 			DownloadScripts:      effectiveDownloadScripts(spec),
+			ServiceAccountName:   effectiveServiceAccountName(spec),
 			WorkerNodes:          copyStringSlice(effectiveWorkerNodes(spec)),
+			WorkerNodeSelector:   copyStringMap(effectiveWorkerNodeSelector(spec)),
 		},
 		Configuration: EffectivePrivateAiConfiguration{
 			ConfigFile: effectiveConfigFile(spec),
@@ -151,6 +159,16 @@ func EffectiveEnvVars(spec *PrivateAiSpec) []EnvironmentVariable {
 // EffectiveResources returns the preferred container resource requirements.
 func EffectiveResources(spec *PrivateAiSpec) *corev1.ResourceRequirements {
 	return EffectivePrivateAiSpecFromSpec(spec).Runtime.Resources
+}
+
+// EffectiveShmSize returns the configured memory-backed /dev/shm size.
+func EffectiveShmSize(spec *PrivateAiSpec) string {
+	return EffectivePrivateAiSpecFromSpec(spec).Runtime.ShmSize
+}
+
+// EffectivePodSecurityContext returns the optional PrivateAI pod identity settings.
+func EffectivePodSecurityContext(spec *PrivateAiSpec) *PrivateAiPodSecurityContextSpec {
+	return EffectivePrivateAiSpecFromSpec(spec).Runtime.SecurityContext
 }
 
 // EffectiveDebug returns the preferred debug flag.
@@ -271,6 +289,20 @@ func effectiveResources(spec *PrivateAiSpec) *corev1.ResourceRequirements {
 	return spec.Resources.DeepCopy()
 }
 
+func effectiveShmSize(spec *PrivateAiSpec) string {
+	if spec.Runtime == nil {
+		return ""
+	}
+	return strings.TrimSpace(spec.Runtime.ShmSize)
+}
+
+func effectivePodSecurityContext(spec *PrivateAiSpec) *PrivateAiPodSecurityContextSpec {
+	if spec.Runtime == nil || spec.Runtime.SecurityContext == nil {
+		return nil
+	}
+	return copyPrivateAiPodSecurityContextSpec(spec.Runtime.SecurityContext)
+}
+
 func effectiveDebug(spec *PrivateAiSpec) bool {
 	if spec.Runtime != nil && spec.Runtime.Debug != nil {
 		return *spec.Runtime.Debug
@@ -304,6 +336,20 @@ func effectiveWorkerNodes(spec *PrivateAiSpec) []string {
 		return spec.Runtime.WorkerNodes
 	}
 	return spec.WorkerNodes
+}
+
+func effectiveWorkerNodeSelector(spec *PrivateAiSpec) map[string]string {
+	if spec.Runtime == nil {
+		return nil
+	}
+	return spec.Runtime.WorkerNodeSelector
+}
+
+func effectiveServiceAccountName(spec *PrivateAiSpec) string {
+	if spec.Runtime != nil {
+		return strings.TrimSpace(spec.Runtime.ServiceAccountName)
+	}
+	return ""
 }
 
 func effectiveConfigFile(spec *PrivateAiSpec) *PaiConfigMap {
@@ -455,6 +501,26 @@ func copyPrivateAiImageSpec(in *PrivateAiImageSpec) *PrivateAiImageSpec {
 	}
 	out := *in
 	return &out
+}
+
+func copyPrivateAiPodSecurityContextSpec(in *PrivateAiPodSecurityContextSpec) *PrivateAiPodSecurityContextSpec {
+	if in == nil {
+		return nil
+	}
+	out := &PrivateAiPodSecurityContextSpec{}
+	if in.RunAsUser != nil {
+		v := *in.RunAsUser
+		out.RunAsUser = &v
+	}
+	if in.RunAsGroup != nil {
+		v := *in.RunAsGroup
+		out.RunAsGroup = &v
+	}
+	if in.FSGroup != nil {
+		v := *in.FSGroup
+		out.FSGroup = &v
+	}
+	return out
 }
 
 func copyPaiConfigMap(in *PaiConfigMap) *PaiConfigMap {

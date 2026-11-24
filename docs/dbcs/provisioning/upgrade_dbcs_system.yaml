@@ -12,7 +12,7 @@ metadata:
 # Specification of the DBCS system
 spec:  
   # OCID of the existing DB System in OCI (the one we want to manage/upgrade)
-  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq"  
+  id: "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"  
 
   # Name of the ConfigMap that holds OCI credentials (tenancy, user, fingerprint, region)
   ociConfigMap: "oci-cred-mumbai"  
@@ -24,7 +24,7 @@ spec:
   isUpgrade: true  
 
   # OCID of the specific database inside the DB System (not the DB system itself)
-  databaseId: "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htya2mo5an5blhlvx5euyqnazi45hli7zqs5uig7juzgme5a"  
+  databaseId: "ocid1.database.oc1..<REPLACE_WITH_DATABASE_OCID>"  
 
   # dbSystem section holds DB system upgrade target details
   dbSystem:  

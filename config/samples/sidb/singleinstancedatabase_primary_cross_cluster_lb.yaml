@@ -1,0 +1,121 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Cross-cluster Data Guard primary (TCP + OCI NLB). CNI-agnostic (VCN-native or overlay).
+# Pair with singleinstancedatabase_standby_cross_cluster_lb.yaml and
+# dataguardbroker_cross_cluster_lb.yaml. See docs/sidb/dataguard/DATAGUARD_CROSS_CLUSTER_LB.md.
+#
+# Before apply:
+# - Replace <operator-watched-namespace>, secrets, image, storageClass, subnet OCID
+# - Set standbySources[].host to the standby cluster NLB IP/DNS after it exists
+# - Replace the ExternalDNS hostname below with a name in your private DNS zone
+#   that resolves from both clusters
+# - Ensure peered-VCN routes allow TCP 1521 both ways
+# - Default NLB policy below (Local + is-preserve-source=false) matches VCN-native.
+#   If the remote cluster cannot reach this VIP, see DATAGUARD_CROSS_CLUSTER_LB.md
+#   "NLB traffic policy (short)" (for example Cluster without is-preserve-source).
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-sample
+  # Must be the namespace watched by the operator in the primary cluster.
+  namespace: <operator-watched-namespace>
+spec:
+  # This SID is the primary database identity used by the standby connect string.
+  sid: ORCLPRD
+  # PDB created in the primary database; change only if your application needs
+  # a different PDB name.
+  pdbName: APPPDB1
+  # This resource creates a new primary database, not a standby or clone.
+  createAs: primary
+  edition: enterprise
+  archiveLog: true
+  forceLog: true
+
+  dataguard:
+    # Creates the prerequisites needed for a later cross-cluster standby.
+    prereqs:
+      enabled: true
+    standbySources:
+      # Set dbUniqueName to the standby SIDB's spec.sid. It must also match
+      # the DataguardBroker standby member name.
+      - dbUniqueName: ORCLSTBY
+        # Use the standby NLB DNS name (preferred) or IP, not a Pod IP or
+        # Kubernetes ClusterIP. Replace this after the standby NLB is created.
+        host: "<standby-nlb-ip-or-dns>"
+        # The standby NLB listener port.
+        tcpPort: 1521
+        # This runbook uses unencrypted TCP Data Guard. Use the TCPS runbook
+        # and TLS settings for an encrypted listener.
+        tcpsEnabled: false
+
+  security:
+    secrets:
+      # The Secret must exist in the primary cluster and namespace before apply.
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      # The primary TDE password is used to create/export the wallet. The wallet
+      # ZIP is copied into the standby cluster later by the runbook.
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+
+  # Use an image tag supported by the operator and use the exact same tag in
+  # the standby sample.
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    # Required only when the registry is private; the Secret must exist in the
+    # primary namespace and have the same name in the standby namespace.
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: IfNotPresent
+  initParams:
+    sgaTarget: 14336
+    pgaAggregateTarget: 2048
+    processes: 800
+
+  resources:
+    requests:
+      memory: "24Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  # The StorageClass and size must be available in the primary cluster.
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+    setWritePermissions: true
+
+  # Publishes the primary listener through an internal OCI Network Load Balancer.
+  # The resulting DNS name is used as PRIMARY_NLB by the standby and Broker.
+  services:
+    external:
+      type: LoadBalancer
+      isKeep: false
+      publishNotReadyAddresses: true
+      # Keep the listener published during early database provisioning, before
+      # the database Pod becomes Ready.
+      externalTrafficPolicy: Local
+      annotations:
+        external-dns.alpha.kubernetes.io/hostname: "sidb-sample.internal.example.com"
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        service.beta.kubernetes.io/oci-load-balancer-connection-idle-timeout: "3600"
+        # Set this to false for the Local policy. If a remote overlay network
+        # cannot reach the Local VIP, use Cluster and omit this annotation.
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<primary-subnet-ocid>"
+      tcp:
+        enabled: true
+        port: 1521
+
+  replicas: 1

@@ -1,0 +1,77 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Multi-standby standby2 (Cluster 2) via primary TCP+TCPS NodePorts.
+# See docs/sidb/dataguard/DATAGUARD_MULTI_STANDBY_TCPS_NODEPORT.md.
+#
+# Example ports: TCP 30282, TCPS 30285
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-standby2
+  namespace: <operator-watched-namespace>
+spec:
+  sid: ORCLSTBY2
+  edition: enterprise
+  createAs: standby
+  flashBack: true
+
+  primarySource:
+    connectString: "<cluster1-node-ip>:32331/ORCLPRD"
+    tcpsPort: 32484
+
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+        walletZipFileKey: standby-wallet.zip
+        walletRoot: /opt/oracle/oradata/dbconfig/ORCLSTBY2/.wallet
+    tcps:
+      enabled: true
+      tlsSecret: sidb-standby-tcps-tls
+
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: IfNotPresent
+
+  dataguard:
+    prereqs:
+      enabled: true
+
+  resources:
+    requests:
+      memory: "24Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    setWritePermissions: true
+
+  services:
+    endpoints:
+      - name: nodeport
+        type: NodePort
+        tcp:
+          enabled: true
+          nodePort: 30282
+        tcps:
+          enabled: true
+          nodePort: 30285
+
+  replicas: 1

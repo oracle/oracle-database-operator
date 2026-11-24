@@ -1,5 +1,5 @@
-2025-06-20T16:40:02Z    INFO    Terminating peer DB system      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "peerDbSystemId": "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyakjqrailvboa6efrypg3oxaqis44433rjd3hjuzeygcuq"}
-2025-06-20T16:40:03Z    INFO    Waiting for work request to complete    {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "workRequestID": "ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrm6qzswsn5x3payealiktawjfpnfggonbbznu3ylxzth2nofn3p4a"}
+2025-06-20T16:40:02Z    INFO    Terminating peer DB system      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "peerDbSystemId": "ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>"}
+2025-06-20T16:40:03Z    INFO    Waiting for work request to complete    {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "workRequestID": "ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>"}
 2025-06-20T16:40:04Z    INFO    Polling WorkRequest status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "status": "ACCEPTED"}
 2025-06-20T16:40:35Z    INFO    Polling WorkRequest status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "status": "IN_PROGRESS"}
 2025-06-20T16:41:06Z    INFO    Polling WorkRequest status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "status": "IN_PROGRESS"}
@@ -26,7 +26,7 @@
 2025-06-20T16:51:53Z    INFO    Polling WorkRequest status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "status": "IN_PROGRESS"}
 2025-06-20T16:52:24Z    INFO    Polling WorkRequest status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "status": "IN_PROGRESS"}
 2025-06-20T16:52:55Z    INFO    Polling WorkRequest status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "status": "SUCCEEDED"}
-2025-06-20T16:52:55Z    INFO    WorkRequest succeeded   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "workRequestID": "ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrm6qzswsn5x3payealiktawjfpnfggonbbznu3ylxzth2nofn3p4a"}
+2025-06-20T16:52:55Z    INFO    WorkRequest succeeded   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36", "workRequestID": "ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>"}
 2025-06-20T16:52:55Z    INFO    Successfully deleted Data Guard association     {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "61f3d6fa-6bc2-480f-a16b-2bf3f0262c36"}
 
 kubectl describe dbcssystems.database.oracle.com dbcssystem-existing
@@ -34,7 +34,7 @@ Name:         dbcssystem-existing
 Namespace:    default
 Labels:       <none>
 Annotations:  lastSuccessfulSpec:
-                {"id":"ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq","ociConfigMap":"oci-cred-mumbai","ociS...
+                {"id":"ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>","ociConfigMap":"oci-cred-mumbai","ociS...
 API Version:  database.oracle.com/v4
 Kind:         DbcsSystem
 Metadata:
@@ -45,8 +45,8 @@ Metadata:
 Spec:
   Data Guard:
     Is Delete:          true
-    Peer Db System Id:  ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyakjqrailvboa6efrypg3oxaqis44433rjd3hjuzeygcuq
-  Id:                   ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq
+    Peer Db System Id:  ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
+  Id:                   ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Oci Config Map:       oci-cred-mumbai
   Oci Secret:           oci-privatekey
 Status:
@@ -60,13 +60,13 @@ Status:
     Host Name:          
   Db Edition:           ENTERPRISE_EDITION_HIGH_PERFORMANCE
   Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.ap-mumbai-1.anrg6ljrqlb5nxia62a4renaws56iay2nboazrndrw2p5fxgdtxbjggjkjbq
+    Db Home Id:      ocid1.dbhome.oc1..<REPLACE_WITH_DB_HOME_OCID>
     Db Name:         cdb1234
     Db Unique Name:  cdb1234_dgk_bom
     Db Workload:     OLTP
-    Id:              ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htya2mo5an5blhlvx5euyqnazi45hli7zqs5uig7juzgme5a
+    Id:              ocid1.database.oc1..<REPLACE_WITH_DATABASE_OCID>
   Display Name:      dbsystem123
-  Id:                ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq
+  Id:                ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   Kms Details Status:
   License Model:  BRING_YOUR_OWN_LICENSE
   Network:
@@ -81,58 +81,58 @@ Status:
   Shape:                    VM.Standard2.1
   State:                    AVAILABLE
   Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaaklvzufcgma65ibn4al7xukjmyfz7nnrpaewfzbffz5zrnz3htweq
+  Subnet Id:                ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Time Zone:                UTC
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrezh3gctuqydvhcwp3s7ciihu2wnjzzrmz7rfw5jnkiwarjxbz6ia
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create Data Guard
     Percent Complete:  100
     Time Accepted:     2025-06-20 11:51:32.803 +0000 UTC
     Time Finished:     2025-06-20 14:07:19.763 +0000 UTC
     Time Started:      2025-06-20 11:51:39.534 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljromubu2srfzznxbgv6ussbgbii6ln6t7sb6nkpwkab4meqxoionjq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create Data Guard
     Percent Complete:  100
     Time Accepted:     2025-06-19 16:39:05.542 +0000 UTC
     Time Finished:     2025-06-19 18:37:19.007 +0000 UTC
     Time Started:      2025-06-19 16:39:13.226 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljr7oy4dlwckl7r6ukwg5mxxnjjocp5wqp5ehsx3zblow2zza6h7j4q
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create Data Guard
     Percent Complete:  100
     Time Accepted:     2025-06-19 09:30:22.587 +0000 UTC
     Time Finished:     2025-06-19 11:51:06.723 +0000 UTC
     Time Started:      2025-06-19 09:30:30.03 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrlansxzbmlry2uw3f2wlg3c32poxxpqqxiqvs4jeza5kp3a3zjdaa
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create Data Guard
     Percent Complete:  100
     Time Accepted:     2025-06-18 11:52:28.133 +0000 UTC
     Time Finished:     2025-06-18 13:54:02.717 +0000 UTC
     Time Started:      2025-06-18 11:52:31.256 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljr745m6kvhdlchnbfpgfi53oabqpbp6edr4sihrrlhh3vpx272q32a
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create Data Guard
     Percent Complete:  100
     Time Accepted:     2025-06-18 11:23:18.919 +0000 UTC
     Time Finished:     2025-06-18 11:28:17.598 +0000 UTC
     Time Started:      2025-06-18 11:23:28.016 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrxow6rzn63igski66j7264ft3bnnjkvg74vd6xf77rqg6tkakrlkq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create Data Guard
     Percent Complete:  100
     Time Accepted:     2025-06-18 11:15:30.139 +0000 UTC
     Time Finished:     2025-06-18 11:22:04.763 +0000 UTC
     Time Started:      2025-06-18 11:15:36.599 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrzj4cnxwitxjjlcwwymbpby7chckrq5vtm2hpykprgxrm5rtw2eqq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create Data Guard
     Percent Complete:  100
     Time Accepted:     2025-06-18 10:59:14.372 +0000 UTC
     Time Finished:     2025-06-18 11:15:15.936 +0000 UTC
     Time Started:      2025-06-18 10:59:20.854 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrsfschtlkucf65m575jyswb6xsk3mpfx26gsrumrfa6huzhjswbxq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create Data Guard
     Percent Complete:  100
     Time Accepted:     2025-06-18 07:20:00.043 +0000 UTC
     Time Finished:     2025-06-18 07:43:54.273 +0000 UTC
     Time Started:      2025-06-18 07:20:07.169 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljryitxrazcuutk3ttxscpudqtaeq7o3havhhh3aov5tdtvuhmnclma
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create DB System
     Percent Complete:  100
     Time Accepted:     2025-06-13 11:53:36.483 +0000 UTC

@@ -1,0 +1,165 @@
+# This chart installs Grafana Alloy for Oracle Database Operator telemetry.
+# DatabaseObserver-based database-level telemetry is outside the scope of
+# this chart and can be integrated separately if required.
+
+# The parent chart renders the Alloy configuration into this ConfigMap. Keep
+# this value aligned with alloy.alloy.configMap.name below.
+alloyConfigMapName: oracle-database-operator-observability-alloy-config
+
+operator:
+  # Namespaces whose operator services and controller-manager Pods should be
+  # discovered. Keep alloy.rbac.namespaces aligned with this list.
+  namespaces:
+    - oracle-database-operator-system
+
+  metrics:
+    enabled: true
+    serviceName: oracle-database-operator-controller-manager-metrics-service
+    servicePortName: https
+    path: /metrics
+    interval: 15s
+
+    # The live operator exposes its controller-runtime metrics over HTTPS and
+    # authorizes requests using Kubernetes authentication/authorization.
+    tls:
+      # Use true only for an initial smoke test. Production deployments should
+      # use a trusted CA. caFile may point to a mounted CA file when required.
+      insecureSkipVerify: false
+      caFile: ""
+
+  logs:
+    enabled: true
+    # The default operator Deployment uses control-plane=controller-manager.
+    podLabelMeta: __meta_kubernetes_pod_label_control_plane
+    podLabelValue: controller-manager
+
+# Optional logs from workloads managed by Oracle Database Operator.
+# Disabled by default because customers may already have Kubernetes log
+# collection in their environment.
+workloadLogs:
+  enabled: false
+  namespaces: []
+
+  labels:
+    namespace: true
+    pod: true
+    container: true
+
+# Optional Kubernetes container CPU and memory collection through cAdvisor.
+# Disabled by default because customers may already collect these metrics.
+cadvisor:
+  enabled: false
+  scrapeInterval: 30s
+  metricsPath: /metrics/cadvisor
+
+  # Keep the initial cardinality small and collect only the metrics required
+  # by the reference workload resource dashboard.
+  keepMetricsRegex: '^(container_cpu_usage_seconds_total|container_memory_working_set_bytes)$'
+
+destinations:
+  prometheus:
+    enabled: false
+    # Example: https://prometheus.example.com/api/v1/write
+    url: ""
+    # Optional path to a mounted bearer-token file.
+    bearerTokenFile: ""
+
+    tls:
+      insecureSkipVerify: false
+      # Optional path to a mounted CA file for the remote-write backend.
+      caFile: ""
+
+  loki:
+    enabled: false
+    # Example: https://loki.example.com/loki/api/v1/push
+    url: ""
+    # Optional path to a mounted bearer-token file.
+    bearerTokenFile: ""
+
+    tls:
+      insecureSkipVerify: false
+      # Optional path to a mounted CA file for the Loki backend.
+      caFile: ""
+
+proxy:
+  # Configure either url or fromEnvironment, not both.
+  enabled: false
+  # Direct proxy URL used by Alloy components.
+  url: ""
+  # Optional comma-separated bypass list is generated from this array.
+  noProxy: []
+  # When true, Alloy reads HTTP_PROXY, HTTPS_PROXY, and NO_PROXY from its
+  # container environment. Set those through alloy.alloy.extraEnv below.
+  fromEnvironment: false
+
+# Grafana Alloy dependency values. The dependency is remote; the official
+# chart is not copied into this repository.
+alloy:
+  enabled: true
+  fullnameOverride: oracle-database-operator-observability-alloy
+
+  crds:
+    create: false
+
+  alloy:
+    configMap:
+      create: false
+      name: oracle-database-operator-observability-alloy-config
+      key: config.alloy
+    enableReporting: false
+    storagePath: /tmp/alloy
+    extraEnv: []
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    mounts:
+      # Add CA secrets or backend-token secrets here when required.
+      extra: []
+
+  controller:
+    # Deployment is appropriate for Kubernetes API-based log collection. Use
+    # clustering or target allocation before scaling this beyond one replica.
+    type: deployment
+    replicas: 1
+    volumes:
+      extra: []
+
+  serviceAccount:
+    create: true
+    automountServiceAccountToken: true
+
+  rbac:
+    create: true
+    # Restrict namespaced discovery to the monitored operator and workload
+    # namespaces.
+    namespaces:
+      - oracle-database-operator-system
+
+    rules:
+      - apiGroups: [""]
+        resources:
+          - pods
+          - pods/log
+          - services
+          - endpoints
+        verbs: [get, list, watch]
+
+      - apiGroups: ["discovery.k8s.io"]
+        resources:
+          - endpointslices
+        verbs: [get, list, watch]
+
+    # This remains useful when the Alloy dependency is used without namespaced
+    # RBAC. The parent chart also creates the required cluster-scoped RBAC when
+    # namespaced RBAC or cAdvisor is enabled.
+    clusterRules:
+      - nonResourceURLs:
+          - /metrics
+        verbs: [get]
+
+  serviceMonitor:
+    enabled: false

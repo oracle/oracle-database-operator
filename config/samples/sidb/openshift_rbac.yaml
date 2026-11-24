@@ -4,7 +4,8 @@
 #
 ---
 
-# Create a Security Context Contraint
+# Create a Security Context Constraint for SIDB Pods that do not need a root
+# permissions init container.
 kind: SecurityContextConstraints
 apiVersion: security.openshift.io/v1
 metadata:
@@ -20,75 +21,45 @@ seLinuxContext:
 fsGroup:
   type: MustRunAs
   ranges:
-  - min: 54321
-    max: 54321
-supplementalGroups:
-   type: MustRunAs
-   ranges:
-   - min: 54321
-     max: 54321
---- 
-
-# Create a Security Context Contraint
-kind: SecurityContextConstraints
-apiVersion: security.openshift.io/v1
-metadata:
-  name: sidb-oracle-root-user-scc
-allowPrivilegedContainer: false
-allowedCapabilities:
-  - SYS_NICE
-runAsUser:
-  type: MustRunAsRange
-  uidRangeMin: 0
-  uidRangeMax: 54321
-seLinuxContext:
-  type: RunAsAny
-fsGroup:
-  type: MustRunAs
-  ranges:
-  - min: 0
-    max: 54321
+    - min: 54321
+      max: 54321
 supplementalGroups:
   type: MustRunAs
   ranges:
-  - min: 0
-    max: 5432
+    - min: 54321
+      max: 54321
 ---
-
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: sidb-sa
   namespace: sidb-ns
 ---
-
-kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
-  name: use-sidb-scc
+  name: use-sidb-oracle-user-scc
   namespace: sidb-ns
 rules:
   - apiGroups:
-    - security.openshift.io
-    verbs:
-    - use
+      - security.openshift.io
     resources:
-    - securitycontextconstraints
+      - securitycontextconstraints
     resourceNames:
-    - sidb-oracle-user-scc
-    - sidb-oracle-root-user-scc
+      - sidb-oracle-user-scc
+    verbs:
+      - use
 ---
-
-kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
 metadata:
-  name: use-sidb-scc
+  name: use-sidb-oracle-user-scc
   namespace: sidb-ns
 subjects:
   - kind: ServiceAccount
     name: sidb-sa
     namespace: sidb-ns
 roleRef:
-  kind: Role
-  name: use-sidb-scc
   apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: use-sidb-oracle-user-scc

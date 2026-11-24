@@ -60,6 +60,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
@@ -358,6 +359,19 @@ func (r *PrivateAiReconciler) updateReconcileStatusOnce(
 // #############################################################################
 func (r *PrivateAiReconciler) validate(m *privateaiv4.PrivateAi, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	r.Log.Info("Entering reconcile validation")
+	if runtimeSpec := m.Spec.Runtime; runtimeSpec != nil {
+		if len(runtimeSpec.WorkerNodes) > 0 && len(runtimeSpec.WorkerNodeSelector) > 0 {
+			return resultNq, fmt.Errorf("spec.runtime.workerNodes and spec.runtime.workerNodeSelector are mutually exclusive")
+		}
+		for key, value := range runtimeSpec.WorkerNodeSelector {
+			if errors := validation.IsQualifiedName(key); len(errors) > 0 {
+				return resultNq, fmt.Errorf("spec.runtime.workerNodeSelector key %q is invalid: %s", key, strings.Join(errors, "; "))
+			}
+			if errors := validation.IsValidLabelValue(value); len(errors) > 0 || strings.TrimSpace(value) == "" {
+				return resultNq, fmt.Errorf("spec.runtime.workerNodeSelector value for key %q is invalid", key)
+			}
+		}
+	}
 	if trafficManagerRef := privateaiv4.EffectiveTrafficManager(&m.Spec); trafficManagerRef != nil && strings.TrimSpace(trafficManagerRef.Ref) != "" {
 		trafficManager := &networkv4.TrafficManager{}
 		ref := strings.TrimSpace(trafficManagerRef.Ref)
@@ -537,7 +551,9 @@ func (r *PrivateAiReconciler) reconcileWorkload(ctx context.Context, req ctrl.Re
 	if err := controllerutil.SetControllerReference(privateAiInst, desiredDeploy, r.Scheme); err != nil {
 		return resultNq, err
 	}
-	foundDeploy, depResult, err := k8sobjects.ReconcileDeployment(ctx, r.Client, privateAiInst.Namespace, desiredDeploy, nil)
+	foundDeploy, depResult, err := k8sobjects.ReconcileDeployment(ctx, r.Client, privateAiInst.Namespace, desiredDeploy, func(found, desired *appsv1.Deployment) bool {
+		return aicommons.SyncPrivateAIWorkload(found, desired)
+	})
 	if err != nil {
 		return resultNq, err
 	}

@@ -1,0 +1,68 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+---
+apiVersion: privateai.oracle.com/v4
+kind: AgentFactory
+metadata:
+  name: agentfactory-sample
+  namespace: paf
+spec:
+  runtime:
+    image:
+      name: container-registry.oracle.com/database/applied-ai:latest
+      pullPolicy: IfNotPresent
+      pullSecret: oracle-container-registry-secret
+    replicas: 3
+    resources:
+      requests:
+        cpu: "2"
+        memory: 8Gi
+      limits:
+        cpu: "4"
+        memory: 16Gi
+  configuration:
+    uiAdminUsername: admin@example.com
+  database:
+    connectionType: Wallet
+    username: app_schema_user
+    airGapped: false
+    wallet:
+      selectedTnsAlias: mydb_high
+      hasOciCertificates: true
+  security:
+    secret:
+      name: agentfactory-runtime-secret
+      mountLocation: /run/secrets
+      uiAdminPasswordKey: paf_ui_admin_password
+      dbPasswordKey: paf_db_password
+      walletZipKey: db_wallet.zip
+      # Optional when db_wallet.zip contains an encrypted private key such as
+      # ewallet.pem. The Secret data key can have any user-selected name.
+      # walletPasswordKey: wallet-password-prod
+  storage:
+    volumes:
+    - name: app-mount
+      mountPath: /mount
+      source:
+        existingPVC:
+          claimName: agentfactory-shared-mount
+    - name: logs
+      mountPath: /var/log/agentfactory
+      source:
+        emptyDir:
+          sizeLimit: 20Gi
+  networking:
+    service:
+      ports:
+      - name: https
+        port: 443
+        targetPort: 8080
+        protocol: TCP
+      cluster:
+        enabled: true
+      publicLoadBalancer:
+        enabled: false
+      privateLoadBalancer:
+        enabled: false

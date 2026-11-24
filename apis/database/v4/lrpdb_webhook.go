@@ -49,7 +49,7 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
+	lrestutil "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -95,10 +95,10 @@ var _ admission.Validator[*LRPDB] = &LRPDB{}
 //+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrpdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=vlrpdb.kb.io,admissionReviewVersions=v1
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *LRPDB) Default(ctx context.Context, obj *LRPDB) error {
+func (r *LRPDB) Default(_ context.Context, obj *LRPDB) error {
 	pdb := obj
 
-	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+	if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 		// lrpdblog.Info("Setting default values in LRPDB spec for : " + pdb.Name)
 		lrpdblog.Info("Setting default values in LRPDB spec for : " + r.Name)
 	}
@@ -108,7 +108,7 @@ func (r *LRPDB) Default(ctx context.Context, obj *LRPDB) error {
 	if action == "DELETE" {
 		if pdb.Spec.DropAction == "" {
 			pdb.Spec.DropAction = "KEEP"
-			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+			if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 				lrpdblog.Info(" - dropAction : KEEP")
 			}
 		}
@@ -116,35 +116,35 @@ func (r *LRPDB) Default(ctx context.Context, obj *LRPDB) error {
 		if pdb.Spec.ReuseTempFile == nil {
 			pdb.Spec.ReuseTempFile = new(bool)
 			*pdb.Spec.ReuseTempFile = true
-			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+			if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 				lrpdblog.Info(" - reuseTempFile : " + strconv.FormatBool(*(pdb.Spec.ReuseTempFile)))
 			}
 		}
 		if pdb.Spec.UnlimitedStorage == nil {
 			pdb.Spec.UnlimitedStorage = new(bool)
 			*pdb.Spec.UnlimitedStorage = true
-			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+			if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 				lrpdblog.Info(" - unlimitedStorage : " + strconv.FormatBool(*(pdb.Spec.UnlimitedStorage)))
 			}
 		}
 		if pdb.Spec.LTDEImport == nil {
 			pdb.Spec.LTDEImport = new(bool)
 			*pdb.Spec.LTDEImport = false
-			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+			if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 				lrpdblog.Info(" - tdeImport : " + strconv.FormatBool(*(pdb.Spec.LTDEImport)))
 			}
 		}
 		if pdb.Spec.LTDEExport == nil {
 			pdb.Spec.LTDEExport = new(bool)
 			*pdb.Spec.LTDEExport = false
-			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+			if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 				lrpdblog.Info(" - tdeExport : " + strconv.FormatBool(*(pdb.Spec.LTDEExport)))
 			}
 		}
 		if pdb.Spec.AsClone == nil {
 			pdb.Spec.AsClone = new(bool)
 			*pdb.Spec.AsClone = false
-			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+			if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 				lrpdblog.Info(" - asClone : " + strconv.FormatBool(*(pdb.Spec.AsClone)))
 			}
 		}
@@ -163,7 +163,7 @@ func (r *LRPDB) Default(ctx context.Context, obj *LRPDB) error {
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *LRPDB) ValidateCreate(ctx context.Context, obj *LRPDB) (admission.Warnings, error) {
 	pdb := obj
-	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+	if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrpdblog.Info("ValidateCreate-Validating LRPDB spec for : " + r.Name)
 	}
 
@@ -178,7 +178,7 @@ func (r *LRPDB) ValidateCreate(ctx context.Context, obj *LRPDB) (admission.Warni
 	action := strings.ToUpper(pdb.Spec.Action)
 
 	if len(allErrs) == 0 {
-		if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+		if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 			lrpdblog.Info("LRPDB Resource : " + r.Name + " successfully validated for Action : " + action)
 		}
 		return nil, nil
@@ -195,11 +195,11 @@ func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pd
 	scrdatabase := strings.ToUpper(pdb.Spec.SrcLRPDBName)
 	//plsql := strings.ToUpper(pdb.Spec.PLSQLBlock)
 
-	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+	if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrpdblog.Info("Valdiating LRPDB Resource ")
 	}
 	/* Parameters required by the creation */
-	if Bit(pdb.Status.PDBBitMask, PDBCRT) == false && pdb.Spec.PDBBitMask == 00 {
+	if !lrestutil.Bit(pdb.Status.PDBBitMask, lrestutil.PDBCRT) && pdb.Spec.PDBBitMask == 00 {
 		/* the condition pdbitmask == 00 is required by the aut0-discovery feature
 		if the pdb already exists then administrative user is already available */
 
@@ -237,15 +237,15 @@ func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pd
 	}
 
 	/* We cannot open|close|delete|unplug a non existing pdb */
-	if (pdbstate == "OPEN" || pdbstate == "CLOSE" || pdbstate == "DELETE" || pdbstate == "UNPLUG") && Bit(pdb.Status.PDBBitMask, PDBCRT) == false {
+	if (pdbstate == "OPEN" || pdbstate == "CLOSE" || pdbstate == "DELETE" || pdbstate == "UNPLUG") && !lrestutil.Bit(pdb.Status.PDBBitMask, lrestutil.PDBCRT) {
 		*allErrs = append(*allErrs,
 			field.Required(field.NewPath("spec").Child("LRPDBState"), "PDB does not exists"))
 	}
 
-	if pdbstate == "CLOSE" || pdbstate == "OPEN" || pdbstate == "DELETE" || Bit(pdb.Status.PDBBitMask, PDBCRT) == true {
+	if pdbstate == "CLOSE" || pdbstate == "OPEN" || pdbstate == "DELETE" || lrestutil.Bit(pdb.Status.PDBBitMask, lrestutil.PDBCRT) {
 		//var Impdel *bool
 
-		if pdb.Spec.ImperativeLrpdbDeletion != true {
+		if !pdb.Spec.ImperativeLrpdbDeletion {
 			//*allErrs = append(*allErrs,
 			//	field.Required(field.NewPath("spec").Child("ImperativeLrpdbDeletion"), "Imperative Deletetion must be set"))
 			lrpdblog.Info("pdb.Spec.ImperativeLrpdbDeletion:true ")
@@ -254,13 +254,13 @@ func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pd
 	}
 
 	/* Database already exists
-	if scrdatabase != "" && Bit(pdb.Status.PDBBitMask, PDBCRT) == true {
+	if scrdatabase != "" && Bit(pdb.Status.PDBBitMask, PDBCRT) {
 		*allErrs = append(*allErrs,
 			field.Required(field.NewPath("spec").Child("SrcLRPDBName"), "PDB already exists/Cannot clone"))
 	}
 	*/
 
-	if pdbstate == "PLUG" && pdb.Spec.XMLFileName != "" && Bit(pdb.Status.PDBBitMask, PDBCRT) == false && Bit(pdb.Status.PDBBitMask, PDBPLE) == false {
+	if pdbstate == "PLUG" && pdb.Spec.XMLFileName != "" && !lrestutil.Bit(pdb.Status.PDBBitMask, lrestutil.PDBCRT) && !lrestutil.Bit(pdb.Status.PDBBitMask, lrestutil.PDBPLE) {
 		if pdb.Spec.XMLFileName == "" {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("xmlFileName"), "Please specify XML metadata filename"))
@@ -283,7 +283,7 @@ func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pd
 
 	}
 
-	if pdbstate == "UNPLUG" && pdb.Spec.XMLFileName != "" && Bit(pdb.Status.PDBBitMask, PDBCRT) == true && Bit(pdb.Status.PDBBitMask, FNALAZ) == true && Bit(pdb.Status.PDBBitMask, PDBUPE) == false {
+	if pdbstate == "UNPLUG" && pdb.Spec.XMLFileName != "" && lrestutil.Bit(pdb.Status.PDBBitMask, lrestutil.PDBCRT) && lrestutil.Bit(pdb.Status.PDBBitMask, lrestutil.FNALAZ) && !lrestutil.Bit(pdb.Status.PDBBitMask, lrestutil.PDBUPE) {
 		if pdb.Spec.XMLFileName == "" {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("xmlFileName"), "Please specify XML metadata filename"))
@@ -292,7 +292,7 @@ func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pd
 			r.validateTDEInfo(ctx, allErrs, pdb)
 		}
 		if pdb.Status.OpenMode == "READ WRITE" {
-			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+			if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 				lrpdblog.Info("Cannot unplug: pdb is open ")
 			}
 			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
@@ -319,7 +319,7 @@ func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pd
 	*/
 
 	/* Check clone parameters */
-	if scrdatabase != "" && Bit(pdb.Status.PDBBitMask, PDBCRT|FNALAZ|PDBCRE) == false {
+	if scrdatabase != "" && !lrestutil.Bit(pdb.Status.PDBBitMask, lrestutil.PDBCRT|lrestutil.FNALAZ|lrestutil.PDBCRE) {
 		if pdb.Spec.TotalSize == "" {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("totalSize"), "When the storage is not UNLIMITED the Total Size must be specified"))
@@ -329,7 +329,7 @@ func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pd
 				field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
 		}
 		if pdb.Status.OpenMode == "MOUNT" {
-			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+			if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 				lrpdblog.Info("Cannot clone: pdb is mount ")
 			}
 			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
@@ -346,7 +346,7 @@ func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pd
 			r.validateTDEInfo(ctx, allErrs, pdb)
 		}
 		if pdb.Status.OpenMode == "READ WRITE" {
-			if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+			if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 				lrpdblog.Info("Cannot unplug: pdb is open ")
 			}
 			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
@@ -356,8 +356,8 @@ func (r *LRPDB) validateAction(ctx context.Context, allErrs *field.ErrorList, pd
 }
 
 // CheckObjExistence - BUG 36752465 - lrest operator - open non-existent pdb creates a lrpdb with status failed
-func (r *LRPDB) CheckObjExistence(ctx context.Context, action string, allErrs *field.ErrorList, pdb LRPDB) {
-	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+func (r *LRPDB) CheckObjExistence(_ context.Context, action string, allErrs *field.ErrorList, pdb LRPDB) {
+	if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrpdblog.Info("obj:" + r.Name)
 		lrpdblog.Info("Action [" + action + "] checkin " + pdb.Spec.LRPDBName + " existence")
 	}
@@ -370,12 +370,12 @@ func (r *LRPDB) CheckObjExistence(ctx context.Context, action string, allErrs *f
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *LRPDB) ValidateUpdate(ctx context.Context, old, obj *LRPDB) (admission.Warnings, error) {
 	pdbold := old
-	if Bit(pdbold.Spec.Trclvl, TRCWEB) == true {
+	if lrestutil.Bit(pdbold.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrpdblog.Info("ValidateUpdate-Validating LRPDB spec for : " + r.Name)
 	}
 
 	pdb := obj
-	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+	if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrpdblog.Info("ValidateUpdate-Validating LRPDB spec for : " + r.Name)
 	}
 
@@ -424,9 +424,9 @@ func (r *LRPDB) ValidateUpdate(ctx context.Context, old, obj *LRPDB) (admission.
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *LRPDB) ValidateDelete(ctx context.Context, obj *LRPDB) (admission.Warnings, error) {
+func (r *LRPDB) ValidateDelete(_ context.Context, obj *LRPDB) (admission.Warnings, error) {
 	pdb := obj
-	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+	if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrpdblog.Info("ValidateDelete-Validating LRPDB spec for : " + r.Name)
 	}
 
@@ -435,8 +435,8 @@ func (r *LRPDB) ValidateDelete(ctx context.Context, obj *LRPDB) (admission.Warni
 }
 
 // Validate common specs needed for all LRPDB Actions
-func (r *LRPDB) validateCommon(ctx context.Context, allErrs *field.ErrorList, pdb LRPDB) {
-	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
+func (r *LRPDB) validateCommon(_ context.Context, allErrs *field.ErrorList, pdb LRPDB) {
+	if lrestutil.Bit(pdb.Spec.Trclvl, lrestutil.TRCWEB) {
 		lrpdblog.Info("obj:" + r.Name)
 		lrpdblog.Info("validateCommon", "name", pdb.Name)
 	}
@@ -460,7 +460,7 @@ func (r *LRPDB) validateCommon(ctx context.Context, allErrs *field.ErrorList, pd
 }
 
 // Validate TDE information for Create, Plug and Unplug Actions
-func (r *LRPDB) validateTDEInfo(ctx context.Context, allErrs *field.ErrorList, pdb LRPDB) {
+func (r *LRPDB) validateTDEInfo(_ context.Context, allErrs *field.ErrorList, pdb LRPDB) {
 	lrpdblog.Info("validateTDEInfo", "name", r.Name)
 
 	if reflect.ValueOf(pdb.Spec.LTDEPassword).IsZero() {

@@ -1,0 +1,105 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Cross-cluster Data Guard standby (TCP + OCI NLB). CNI-agnostic (VCN-native or overlay).
+# Pair with singleinstancedatabase_primary_cross_cluster_lb.yaml and
+# dataguardbroker_cross_cluster_lb.yaml. See docs/sidb/dataguard/DATAGUARD_CROSS_CLUSTER_LB.md.
+#
+# Before apply:
+# - Replace namespace, secrets, image, storageClass, subnet OCID
+# - Set primarySource.connectString to the primary cluster NLB (host:1521/ORCLPRD)
+# - Replace the ExternalDNS hostname below with a different name in your private
+#   DNS zone that resolves from both clusters
+# - Create tde-wallet-secret with standby-wallet.zip + tde_wallet_pwd when primary uses TDE
+# - Use the same admin password Secret values as the primary cluster
+# - Match the primary database image tag exactly
+# - Default NLB policy below (Local + is-preserve-source=false) matches VCN-native.
+#   Overlay CNIs (for example Flannel) may need externalTrafficPolicy: Cluster and
+#   must omit is-preserve-source (OCI rejects that combo). Validate remote TCP 1521
+#   to the standby NLB before Duplicate.
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: sidb-standby
+  namespace: <operator-watched-namespace>
+spec:
+  # This SID must match dataguard.standbySources[].dbUniqueName in the primary.
+  sid: ORCLSTBY
+  edition: enterprise
+  createAs: standby
+
+  # The standby connects to the primary through the primary cluster's NLB DNS
+  # name (or IP), never through a Pod IP or ClusterIP.
+  primarySource:
+    connectString: "<primary-nlb-ip-or-dns>:1521/ORCLPRD"
+
+  security:
+    secrets:
+      # Use the same admin password value as the primary cluster.
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      # 19c standby: create this Secret with the wallet ZIP only. Do not set
+      # secretKey: tde_wallet_pwd because the stock 19c image can fail when
+      # that password key is mounted in the standby container.
+      #
+      # 26ai only: add `secretKey: tde_wallet_pwd` here and include the same
+      # key in the standby Secret, as described in the runbook.
+      tde:
+        secretName: tde-wallet-secret
+        walletZipFileKey: standby-wallet.zip
+        walletRoot: /opt/oracle/oradata/dbconfig/ORCLSTBY/.wallet
+
+  # Use exactly the same database image and tag as the primary.
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    pullSecrets: ocr-reg-cred
+    prebuiltDB: false
+    imagePullPolicy: IfNotPresent
+  # Enables the prerequisite work required for Duplicate and FAL setup.
+  dataguard:
+    prereqs:
+      enabled: true
+
+  resources:
+    requests:
+      memory: "24Gi"
+      cpu: "4"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
+
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: oci-bv
+      accessMode: ReadWriteOnce
+    setWritePermissions: true
+
+  # This Service publishes the standby listener through an internal OCI NLB.
+  # The DNS name is used by the primary and by DataguardBroker.
+  services:
+    external:
+      type: LoadBalancer
+      isKeep: false
+      publishNotReadyAddresses: true
+      # Keep the endpoint published while the standby is being provisioned.
+      externalTrafficPolicy: Local
+      annotations:
+        # Use a different DNS name from the primary and ensure both clusters
+        # can resolve and reach this name on TCP 1521.
+        external-dns.alpha.kubernetes.io/hostname: "sidb-standby.internal.example.com"
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        service.beta.kubernetes.io/oci-load-balancer-connection-idle-timeout: "3600"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<standby-subnet-ocid>"
+      tcp:
+        enabled: true
+        port: 1521
+
+  replicas: 1

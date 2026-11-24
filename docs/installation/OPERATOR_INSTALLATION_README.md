@@ -13,19 +13,19 @@ cat /etc/os-release
 uname -r
 ```
 
-The build also requires Git, Go 1.26.5, Podman or Docker with BuildKit support, `kubectl`, and access to the image registry where the operator image will be pushed.
+The build also requires Git, Go 1.27.4, Podman or Docker with BuildKit support, `kubectl`, and access to the image registry where the operator image will be pushed.
 
-## Install Go 1.26.5
+## Install Go 1.27.4
 
-Download Go 1.26.5 from the [official Go downloads](https://go.dev/dl/) page, extract it under `/usr/local`, and add it to `PATH`:
+Download Go 1.27.4 from the [official Go downloads](https://go.dev/dl/) page, extract it under `/usr/local`, and add it to `PATH`:
 
 ```sh
-tar -C /usr/local -xzf go1.26.5.linux-amd64.tar.gz
+tar -C /usr/local -xzf go1.27.4.linux-amd64.tar.gz
 export PATH=/usr/local/go/bin:$PATH
 go version
 ```
 
-The output must report `go1.26.5`. Add the `PATH` update to your shell profile if it should persist across sessions. The operator uses Go modules; setting `GOPATH` is optional.
+The output must report `go1.27.4`. Add the `PATH` update to your shell profile if it should persist across sessions. The operator uses Go modules; setting `GOPATH` is optional.
 
 ## Clone the operator
 
@@ -63,7 +63,7 @@ The current Makefile uses `image-build` and `image-push`. The older `make docker
 Generate code and manifests, then build a production image using the current Go version and Oracle Linux 9 builder:
 
 ```sh
-export GOLANG_VERSION=1.26.5
+export GOLANG_VERSION=1.27.4
 
 make generate
 make manifests
@@ -77,7 +77,14 @@ make image-build \
   TARGET=prod
 ```
 
-`BUILD_INTERNAL=true` uses `oraclelinux:9` as the builder and downloads Go 1.26.5 inside the build when necessary. The runtime image is based on `oraclelinux:9-slim`, runs as the non-root user with UID/GID 1002, and contains the production manager binary without the Delve debugger.
+`BUILD_INTERNAL=true` uses `oraclelinux:9` as the builder and downloads Go 1.27.4 inside the build when necessary. The runtime image is based on `oraclelinux:9-slim`, runs as the non-root user with UID/GID 1002, and contains the production manager binary without the Delve debugger.
+
+RPM provenance is always included in the runtime image. Inspect the metadata with:
+
+```sh
+podman run --rm --entrypoint /bin/sh "$IMG" -c \
+  'ls -l /usr/share/oracle/image-metadata/rpms && cat /usr/share/oracle/image-metadata/rpms/*.txt'
+```
 
 Push the image:
 
@@ -119,7 +126,7 @@ If Make is not available, this is the equivalent production build for an interna
   --pull=missing \
   --platform=linux/amd64 \
   --build-arg BUILDER_IMG=oraclelinux:9 \
-  --build-arg GOLANG_VERSION=1.26.5 \
+  --build-arg GOLANG_VERSION=1.27.4 \
   --build-arg INSTALL_GO=true \
   --build-arg DEBUG=false \
   --target prod \
@@ -164,6 +171,8 @@ kubectl create secret docker-registry container-registry-secret \
   --docker-password="$OCI_AUTH_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+For details about creating registry credentials and image pull Secrets, see [Pull Images from Oracle Container Registry](../../docs/registry/README.md).
 
 For the default namespace-scoped installation, apply RBAC first and the system manifest second:
 

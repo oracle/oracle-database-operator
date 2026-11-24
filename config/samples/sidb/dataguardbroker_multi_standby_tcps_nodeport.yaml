@@ -1,0 +1,117 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+# Four-member DataguardBroker using TCP+TCPS NodePorts.
+# Apply in Cluster 2. Copy each member's dg-client-wallet Secret into this cluster.
+# See docs/sidb/dataguard/DATAGUARD_MULTI_STANDBY_TCPS_NODEPORT.md.
+#
+# Example ports:
+#   ORCLPRD   TCP 32331 / TCPS 32484
+#   ORCLSTBY1 TCP 30281 / TCPS 30284
+#   ORCLSTBY2 TCP 30282 / TCPS 30285
+#   ORCLSTBY3 TCP 30283 / TCPS 30286
+
+apiVersion: database.oracle.com/v4
+kind: DataguardBroker
+metadata:
+  name: sidb-multi-tcps-dg
+  namespace: <operator-watched-namespace>
+spec:
+  execution:
+    authWallet:
+      enabled: true
+    image: container-registry.oracle.com/database/enterprise_ru:latest
+    imagePullSecrets:
+      - ocr-reg-cred
+  topology:
+    defaults:
+      adminSecretRef:
+        secretKey: oracle_pwd
+        secretName: db-admin-secret
+    members:
+      - dbUniqueName: ORCLPRD
+        name: sidb-primary
+        role: PRIMARY
+        tcps:
+          enabled: true
+          clientWalletSecret: sidb-primary-dg-client-wallet
+        endpoints:
+          - name: tcp
+            host: "<cluster1-node-ip>"
+            port: 32331
+            protocol: TCP
+            serviceName: ORCLPRD
+          - name: tcps
+            host: "<cluster1-node-ip>"
+            port: 32484
+            protocol: TCPS
+            serviceName: ORCLPRD
+      - dbUniqueName: ORCLSTBY1
+        name: sidb-standby1
+        role: PHYSICAL_STANDBY
+        tcps:
+          enabled: true
+          clientWalletSecret: sidb-standby1-dg-client-wallet
+        endpoints:
+          - name: tcp
+            host: "<cluster1-node-ip>"
+            port: 30281
+            protocol: TCP
+            serviceName: ORCLSTBY1
+          - name: tcps
+            host: "<cluster1-node-ip>"
+            port: 30284
+            protocol: TCPS
+            serviceName: ORCLSTBY1
+      - dbUniqueName: ORCLSTBY2
+        name: sidb-standby2
+        role: PHYSICAL_STANDBY
+        tcps:
+          enabled: true
+          clientWalletSecret: sidb-standby2-dg-client-wallet
+        endpoints:
+          - name: tcp
+            host: "<cluster2-node-ip>"
+            port: 30282
+            protocol: TCP
+            serviceName: ORCLSTBY2
+          - name: tcps
+            host: "<cluster2-node-ip>"
+            port: 30285
+            protocol: TCPS
+            serviceName: ORCLSTBY2
+        localRef:
+          apiVersion: database.oracle.com/v4
+          kind: SingleInstanceDatabase
+          name: sidb-standby2
+          namespace: <operator-watched-namespace>
+      - dbUniqueName: ORCLSTBY3
+        name: sidb-standby3
+        role: PHYSICAL_STANDBY
+        tcps:
+          enabled: true
+          clientWalletSecret: sidb-standby3-dg-client-wallet
+        endpoints:
+          - name: tcp
+            host: "<cluster2-node-ip>"
+            port: 30283
+            protocol: TCP
+            serviceName: ORCLSTBY3
+          - name: tcps
+            host: "<cluster2-node-ip>"
+            port: 30286
+            protocol: TCPS
+            serviceName: ORCLSTBY3
+        localRef:
+          apiVersion: database.oracle.com/v4
+          kind: SingleInstanceDatabase
+          name: sidb-standby3
+          namespace: <operator-watched-namespace>
+    sourceKind: SingleInstanceDatabase
+    sourceRef:
+      apiVersion: database.oracle.com/v4
+      kind: SingleInstanceDatabase
+      name: sidb-standby3
+      namespace: <operator-watched-namespace>

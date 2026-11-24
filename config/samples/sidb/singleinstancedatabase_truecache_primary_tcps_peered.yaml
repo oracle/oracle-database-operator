@@ -2,13 +2,21 @@
 # Copyright (c) 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-# Primary SIDB for cross-cluster / peered True Cache:
+# Primary SIDB for cross-cluster / peered True Cache (TCPS):
 # - generates the True Cache blob ConfigMap
-# - exposes LoadBalancer TCP + TCPS for a remote True Cache cluster
-# Pair with singleinstancedatabase_truecache_external.yaml (connectString to this NLB).
+# - exposes LoadBalancer TCP 1521 + TCPS 2484 for a remote True Cache cluster
+# Pair with singleinstancedatabase_truecache_external.yaml:
+#   connectString uses this NLB hostname:1521/ORCLPRD (TCP bootstrap)
+#   tcpsPort: 2484 when the consumer enables TCPS
+# For TCP-only peering, use singleinstancedatabase_truecache_primary_tcp_peered.yaml.
 # For existing Healthy primaries, you can patch only trueCache.generateBlob /
 # createConfigMap / generatePath instead of recreating the database.
 #
+
+# "Peered" = primary and True Cache in different Kubernetes clusters.
+# Requires VCN peering (or equivalent), security rules, DNS/hostAliases,
+# and a reachable LoadBalancer or NodePort. See docs/sidb/truecache/TRUECACHE.md
+# section "What peered means in True Cache samples".
 
 apiVersion: database.oracle.com/v4
 kind: SingleInstanceDatabase
@@ -45,29 +53,30 @@ spec:
   ## Enable ArchiveLog so the operator can generate the True Cache blob
   archiveLog: true
 
-  ## Database image details
-  ## True Cache blob generation needs a compatible enterprise / True Cache image.
-  ## Replace <tenancy> / tag for your registry.
+  ## Database image details. True Cache capable enterprise image required for blob generation.
   image:
-    pullFrom: dbocir/oracle/database:truecache-23.26.0-ee
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    ## OCR database/enterprise_ru requires authenticated pull (accept OCR
+    ## terms + auth token). Create ocr-reg-cred in this namespace.
+    ## Anonymous pull of this licensed image is not supported.
+    pullSecrets: ocr-reg-cred
     prebuiltDB: false
     imagePullPolicy: Always
 
-  ## Optional init parameters
-  initParams:
-    sgaTarget: 2048
-    pgaAggregateTarget: 1024
-    cpuCount: 2
-    processes: 600
-
-  ## Database pod resource details
-  resources:
-    requests:
-      memory: "12Gi"
-      cpu: "2"
-    limits:
-      memory: "24Gi"
-      cpu: "4"
+  ## Optional: SIDB initParams and pod resources (not True Cache-specific).
+  ## Uncomment and tune for lab or production. Omit both to use image/operator defaults.
+  # initParams:
+  #   sgaTarget: 3072
+  #   pgaAggregateTarget: 1024
+  #   cpuCount: 2
+  #   processes: 600
+  # resources:
+  #   requests:
+  #     memory: "12Gi"
+  #     cpu: "2"
+  #   limits:
+  #     memory: "24Gi"
+  #     cpu: "4"
 
   ## Optional node selector to restrict the database pod to nodes having specific labels.
   ## For a single exact node, kubernetes.io/hostname can be used.
@@ -108,7 +117,7 @@ spec:
           oci-network-load-balancer.oraclecloud.com/assigned-private-ipv4: "10.0.2.7"
           oci-network-load-balancer.oraclecloud.com/internal: "true"
           ## Replace with your VCN subnet OCID.
-          oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.replace-me"
+          oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"
           external-dns.alpha.kubernetes.io/hostname: "sidb-sample.internal.example.com"
         tcp:
           enabled: true

@@ -1,0 +1,36 @@
+# Sanitized four-member TCPS NLB example. Deploy in Cluster 1 beside the primary.
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata: {name: <standby1-database-name>, namespace: <namespace>}
+spec:
+  sid: <standby1-db-unique-name>
+  edition: enterprise
+  createAs: standby
+  flashBack: true
+  primarySource: {databaseRef: <primary-database-name>}
+  security:
+    secrets:
+      admin: {secretName: <admin-secret>, secretKey: oracle_pwd, keepSecret: true}
+      # For 19c, omit secretKey; provide the wallet ZIP only.
+      tde: {secretName: <tde-secret>, walletZipFileKey: standby-wallet.zip, walletRoot: /opt/oracle/oradata/dbconfig/<standby1-db-unique-name>/.wallet}
+    tcps: {enabled: true, tlsSecret: <standby1-tcps-tls-secret>}
+  image: {pullFrom: <database-image>, prebuiltDB: false, imagePullPolicy: IfNotPresent}
+  dataguard: {prereqs: {enabled: true}}
+  persistence:
+    oradata: {size: <storage-size>, storageClass: <storage-class>, accessMode: ReadWriteOnce}
+    setWritePermissions: true
+  services:
+    external:
+      type: LoadBalancer
+      publishNotReadyAddresses: true
+      externalTrafficPolicy: Local
+      annotations:
+        external-dns.alpha.kubernetes.io/hostname: <standby1-nlb-dns>
+        oci.oraclecloud.com/load-balancer-type: nlb
+        service.beta.kubernetes.io/oci-load-balancer-connection-idle-timeout: "3600"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: <cluster1-subnet-ocid>
+      tcp: {enabled: true, port: 1521}
+      tcps: {enabled: true, port: 2484}
+  replicas: 1

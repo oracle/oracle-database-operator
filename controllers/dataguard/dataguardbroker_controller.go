@@ -68,6 +68,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+// revive:disable:context-as-argument
+
 // DataguardBrokerReconciler reconciles a DataguardBroker object
 type DataguardBrokerReconciler struct {
 	client.Client
@@ -82,7 +84,7 @@ const dataguardBrokerFinalizer = "database.oracle.com/dataguardbrokerfinalizer"
 func dataguardBrokerEventHandler() predicate.Predicate {
 	base := dbcommons.ResourceEventHandler()
 	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
+		CreateFunc: func(_ event.CreateEvent) bool {
 			// Reconcile on create so existing DataguardBroker resources and freshly created
 			// runner pods are re-evaluated after controller restarts or runner recreation.
 			return true
@@ -93,7 +95,7 @@ func dataguardBrokerEventHandler() predicate.Predicate {
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldPodObject, oldOk := e.ObjectOld.(*corev1.Pod)
 			newPodObject, newOk := e.ObjectNew.(*corev1.Pod)
-			if oldOk && newOk && oldPodObject.Status.Phase != newPodObject.Status.Phase {
+			if oldOk && newOk && !reflect.DeepEqual(oldPodObject.Status, newPodObject.Status) {
 				return true
 			}
 			oldServiceObject, oldServiceOK := e.ObjectOld.(*corev1.Service)
@@ -109,6 +111,15 @@ func dataguardBrokerEventHandler() predicate.Predicate {
 			oldSIDBObject, oldSIDBOK := e.ObjectOld.(*dbapi.SingleInstanceDatabase)
 			newSIDBObject, newSIDBOK := e.ObjectNew.(*dbapi.SingleInstanceDatabase)
 			if oldSIDBOK && newSIDBOK && !reflect.DeepEqual(oldSIDBObject.Status, newSIDBObject.Status) {
+				return true
+			}
+			// The E2E waiter uses a metadata annotation to retry a Broker whose
+			// runner is pending. Metadata-only updates must reach the controller;
+			// otherwise deleting a stuck runner can leave the Broker pointing at
+			// a pod that no longer exists.
+			_, oldBrokerOK := e.ObjectOld.(*dbapi.DataguardBroker)
+			_, newBrokerOK := e.ObjectNew.(*dbapi.DataguardBroker)
+			if oldBrokerOK && newBrokerOK && !reflect.DeepEqual(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) {
 				return true
 			}
 			return base.Update(e)
@@ -155,6 +166,7 @@ func dataguardBrokerRequestsForSIDB(r client.Reader) handler.MapFunc {
 //+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services;secrets,verbs=create;delete;get;list;patch;update;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
+// Reconcile reconciles a DataguardBroker resource.
 func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("controller", "DataguardBroker", "resource", req.NamespacedName)
 	log.Info("Reconcile requested")
@@ -553,17 +565,16 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerService(ctx context.
 				r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Service Creation", "service creation failed")
 				log.Info("service creation failed")
 				return err
-			} else {
-				timeout := 30
-				// Waiting for Service to get created as sometimes it takes some time to create a service . 30 seconds TImeout
-				err = dbcommons.WaitForStatusChange(r, svc.Name, broker.Namespace, ctx, req, time.Duration(timeout)*time.Second, "svc", "creation")
-				if err != nil {
-					log.Error(err, "Error in Waiting for svc status for Creation", "svc.Namespace", svc.Namespace, "SVC.Name", svc.Name)
-					return err
-				}
-				r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Service Created", "%s", fmt.Sprintf("Succesfully Created New Service %v", svc.Name))
-				log.Info("Succesfully Created New Service ", "Service.Name : ", svc.Name)
 			}
+			timeout := 30
+			// Waiting for Service to get created as sometimes it takes some time to create a service . 30 seconds TImeout
+			err = dbcommons.WaitForStatusChange(r, svc.Name, broker.Namespace, ctx, req, time.Duration(timeout)*time.Second, "svc", "creation")
+			if err != nil {
+				log.Error(err, "Error in Waiting for svc status for Creation", "svc.Namespace", svc.Namespace, "SVC.Name", svc.Name)
+				return err
+			}
+			r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Service Created", "%s", fmt.Sprintf("Succesfully Created New Service %v", svc.Name))
+			log.Info("Succesfully Created New Service ", "Service.Name : ", svc.Name)
 			time.Sleep(10 * time.Second)
 		} else {
 			return err
@@ -723,34 +734,7 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerFSFO(ctx context.Con
 		if err != nil {
 			return ctrl.Result{Requeue: false}, err
 		}
-		if scope.desired.FastStartFailover {
-			scope.markReconciling(dataguardBrokerPhaseFSFO, "ReconcileFSFO", "reconciling fast-start failover")
-			for _, member := range state.Members {
-				if member.Role == "SNAPSHOT_STANDBY" {
-					scope.markWaiting(dataguardBrokerPhaseFSFO, "SnapshotStandby", "FSFO is not supported when a snapshot standby is present")
-					return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
-				}
-			}
-			if err := configureDataguardTopologyFSFO(ctx, r, scope.broker, scope.desired, scope.req, state); err != nil {
-				if isDataguardBrokerRunnerUnavailable(err) {
-					scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionFalse, "RunnerPending", err.Error())
-					scope.markWaiting(dataguardBrokerPhaseFSFO, "RunnerPending", err.Error())
-					return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
-				}
-				return ctrl.Result{Requeue: false}, err
-			}
 
-			if err := createDataguardTopologyObserverPod(ctx, r, scope.broker, scope.req); err != nil {
-				return ctrl.Result{Requeue: false}, err
-			}
-			scope.broker.Status.FastStartFailover = "true"
-			return ctrl.Result{}, nil
-		}
-
-		// Hybrid manual FSFO mode for topology DataguardBroker.
-		// When spec.fastStartFailover is false/absent, do not enable/disable FSFO.
-		// If user manually enables FSFO in DGMGRL, operator starts observer pod automatically.
-		// FSFO status is synced from DGMGRL.
 		if err := syncDataguardBrokerTopologyFSFOStatus(ctx, r, scope.broker, scope.req, state); err != nil {
 			if isDataguardBrokerRunnerUnavailable(err) {
 				scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionFalse, "RunnerPending", err.Error())
@@ -760,18 +744,72 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerFSFO(ctx context.Con
 			return ctrl.Result{Requeue: false}, err
 		}
 
-		if scope.broker.Status.FastStartFailover == "true" {
+		// Manual FSFO mode.
+		// If spec.topology.policy.fastStartFailover is omitted, follow the
+		// actual DGMGRL FSFO state and create/delete the observer accordingly.
+		if !scope.desired.FastStartFailoverManaged {
+			if scope.broker.Status.FastStartFailover == "true" {
+				if err := createDataguardTopologyObserverPod(ctx, r, scope.broker, scope.req); err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
+			} else {
+				if err := deleteDataguardTopologyObserverPod(ctx, r, scope.broker); err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
+			}
+
+			return ctrl.Result{}, nil
+		}
+
+		// Declarative FSFO ON.
+		if scope.desired.FastStartFailover {
+			scope.markReconciling(dataguardBrokerPhaseFSFO, "ReconcileFSFO", "reconciling fast-start failover")
+			for _, member := range state.Members {
+				if member.Role == "SNAPSHOT_STANDBY" {
+					scope.markWaiting(dataguardBrokerPhaseFSFO, "SnapshotStandby", "FSFO is not supported when a snapshot standby is present")
+					return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+				}
+			}
+
+			if scope.broker.Status.FastStartFailover != "true" {
+				if err := configureDataguardTopologyFSFO(ctx, r, scope.broker, scope.desired, scope.req, state); err != nil {
+					if isDataguardBrokerRunnerUnavailable(err) {
+						scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionFalse, "RunnerPending", err.Error())
+						scope.markWaiting(dataguardBrokerPhaseFSFO, "RunnerPending", err.Error())
+						return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
+					}
+					return ctrl.Result{Requeue: false}, err
+				}
+			}
+
 			if err := createDataguardTopologyObserverPod(ctx, r, scope.broker, scope.req); err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
-		} else {
-			if err := deleteDataguardTopologyObserverPod(ctx, r, scope.broker); err != nil {
+
+			scope.broker.Status.FastStartFailover = "true"
+			return ctrl.Result{}, nil
+		}
+
+		// Declarative FSFO OFF.
+		if scope.broker.Status.FastStartFailover == "true" {
+			if err := disableDataguardTopologyFSFO(ctx, r, scope.broker, scope.req, state); err != nil {
+				if isDataguardBrokerRunnerUnavailable(err) {
+					scope.setCondition(dataguardBrokerConditionRunnerReady, metav1.ConditionFalse, "RunnerPending", err.Error())
+					scope.markWaiting(dataguardBrokerPhaseFSFO, "RunnerPending", err.Error())
+					return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
+				}
 				return ctrl.Result{Requeue: false}, err
 			}
 		}
 
+		if err := deleteDataguardTopologyObserverPod(ctx, r, scope.broker); err != nil {
+			return ctrl.Result{Requeue: false}, err
+		}
+
+		scope.broker.Status.FastStartFailover = "false"
 		return ctrl.Result{}, nil
 	}
+
 	if scope.desired.FastStartFailover {
 		scope.markReconciling(dataguardBrokerPhaseFSFO, "ReconcileFSFO", "reconciling fast-start failover")
 		for _, dbResource := range scope.broker.Status.DatabasesInDataguardConfig {
@@ -825,12 +863,31 @@ func ensureDataguardBrokerOperationsStatus(broker *dbapi.DataguardBroker) *dbapi
 	return broker.Status.Operations
 }
 
-func dataguardBrokerOperationAlreadyObserved(status *dbapi.DataguardBrokerOperationStatus, requestID string) bool {
+func dataguardBrokerOperationAlreadyObserved(
+	status *dbapi.DataguardBrokerOperationStatus,
+	requestID string,
+) bool {
 	if status == nil || strings.TrimSpace(status.ObservedRequestID) != strings.TrimSpace(requestID) {
 		return false
 	}
+
 	phase := strings.TrimSpace(status.Phase)
 	return strings.EqualFold(phase, "Succeeded") || strings.EqualFold(phase, "Failed")
+}
+
+func dataguardBrokerFailoverAlreadyObserved(
+	status *dbapi.DataguardBrokerOperationStatus,
+	requestID string,
+	target string,
+) bool {
+	if !dataguardBrokerOperationAlreadyObserved(status, requestID) {
+		return false
+	}
+
+	return strings.EqualFold(
+		strings.TrimSpace(status.Target),
+		strings.TrimSpace(target),
+	)
 }
 
 func markDataguardBrokerOperationRunning(status **dbapi.DataguardBrokerOperationStatus, requestID, target, message string) {
@@ -919,7 +976,7 @@ func (r *DataguardBrokerReconciler) reconcileDataguardBrokerTopologyOperations(c
 		markDataguardBrokerOperationComplete(status.Switchover, "Succeeded", "switchover completed")
 		return ctrl.Result{Requeue: true, RequeueAfter: 5 * time.Second}, nil
 	}
-	if op := operations.Failover; op != nil && strings.TrimSpace(op.RequestID) != "" && !dataguardBrokerOperationAlreadyObserved(status.Failover, op.RequestID) {
+	if op := operations.Failover; op != nil && strings.TrimSpace(op.RequestID) != "" && !dataguardBrokerFailoverAlreadyObserved(status.Failover, op.RequestID, op.Target) {
 		markDataguardBrokerOperationRunning(&status.Failover, op.RequestID, op.Target, "failover in progress")
 		scope.markReconciling(dataguardBrokerPhaseSwitchover, "FailoverRequested", "failover in progress")
 		if err := performDataguardTopologyFailover(ctx, r, scope.broker, scope.req, op.Target, op.Force); err != nil {
@@ -1031,7 +1088,7 @@ func (r *DataguardBrokerReconciler) performDataguardBrokerManualSwitchover(targe
 	if err := r.Get(context.TODO(), types.NamespacedName{Name: sidb.Spec.AdminPassword.SecretName, Namespace: sidb.Namespace}, &adminPasswordSecret); err != nil {
 		return ctrl.Result{Requeue: false}, err
 	}
-	var adminPassword string = string(adminPasswordSecret.Data[sidb.Spec.AdminPassword.SecretKey])
+	var adminPassword = string(adminPasswordSecret.Data[sidb.Spec.AdminPassword.SecretKey])
 
 	// Connect to 'primarySid' db using dgmgrl and switchover to 'targetSidbSid' db to make 'targetSidbSid' db primary
 	err = writeDataguardPodFileWithInput(r, sidbReadyPod, "admin.pwd", adminPassword, ctx, req)
@@ -1053,11 +1110,7 @@ func (r *DataguardBrokerReconciler) performDataguardBrokerManualSwitchover(targe
 	return ctrl.Result{Requeue: false}, nil
 }
 
-// #############################################################################################################################
-//
-//	Setup the controller with the Manager
-//
-// #############################################################################################################################
+// SetupWithManager sets up the DataguardBroker controller with the manager.
 func (r *DataguardBrokerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.DataguardBroker{}).

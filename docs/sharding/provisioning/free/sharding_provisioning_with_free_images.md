@@ -16,7 +16,7 @@ To get the Oracle AI Database 26ai Free Database and GSM Images:
 
 * The Oracle AI Database 26ai Free image used is `container-registry.oracle.com/database/free:latest`. Check [Oracle AI Database Free Get Started](https://www.oracle.com/database/free/get-started/?source=v0-DBFree-ChatCTA-j2032-20240709) for details.
 * The Oracle AI Database 26ai GSM image used is `container-registry.oracle.com/database/gsm:latest`.
-* To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the namespace `shns`. Please refer to [this page](./../container_reg_secret.md) for the details.
+* To pull the images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the `shns` namespace. For details, see [Pull Images from Oracle Container Registry](../../../registry/README.md).
 * You need to update the `dbImage` and `gsmImage` tag with the images you want to use in your environment in file `sharding_provisioning_with_free_images.yaml`.  
 
 Use the following manifest:

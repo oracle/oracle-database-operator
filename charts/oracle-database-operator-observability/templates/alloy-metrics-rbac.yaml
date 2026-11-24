@@ -1,0 +1,57 @@
+{{- $namespacedRBAC := gt (len .Values.alloy.rbac.namespaces) 0 -}}
+{{- $needsMetricsRBAC := and $namespacedRBAC .Values.operator.metrics.enabled .Values.destinations.prometheus.enabled -}}
+{{- $needsCadvisorRBAC := and .Values.cadvisor.enabled .Values.destinations.prometheus.enabled -}}
+
+{{- if and .Values.alloy.enabled (or $needsMetricsRBAC $needsCadvisorRBAC) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-alloy-metrics
+  labels:
+    {{- include "oracle-database-operator-observability.labels" . | nindent 4 }}
+rules:
+  {{- if $needsMetricsRBAC }}
+  # Secure Oracle Database Operator /metrics endpoint.
+  - nonResourceURLs:
+      - /metrics
+    verbs:
+      - get
+  {{- end }}
+
+  {{- if $needsCadvisorRBAC }}
+  # Kubernetes node discovery for cAdvisor.
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+
+  # Access kubelet cAdvisor through the Kubernetes API node proxy.
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/proxy
+      - nodes/metrics
+    verbs:
+      - get
+  {{- end }}
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-alloy-metrics
+  labels:
+    {{- include "oracle-database-operator-observability.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-alloy-metrics
+subjects:
+  - kind: ServiceAccount
+    name: {{ required "alloy.fullnameOverride is required" .Values.alloy.fullnameOverride }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

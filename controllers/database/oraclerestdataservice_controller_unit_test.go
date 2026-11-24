@@ -22,7 +22,7 @@ func TestOracleRestDataServicePodUsesORDSImageCommand(t *testing.T) {
 	ords := &dbapi.OracleRestDataService{
 		Spec: dbapi.OracleRestDataServiceSpec{
 			Image: dbapi.OracleRestDataServiceImage{
-				PullFrom: "phx.ocir.io/example/ords:latest",
+				PullFrom: "example.com/ords:latest",
 			},
 		},
 	}

@@ -1,27 +1,30 @@
-# Deploying Oracle PrivateAI Container using Public LoadBalancer without configmap
+# Deploy Oracle Private AI with a Public Load Balancer and Image-Default Models
 
-Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In this example, the deployment uses the YAML file based on `OCI OKE` cluster and there is no configmap used to specify the AI Model file location.
+This example deploys Oracle Private AI on an OCI Kubernetes Engine (OKE) cluster using a public Load Balancer. It does not specify model or model-file details in a ConfigMap. The deployment uses the default model files included in the Private AI container image.
 
-The PrivateAI container in this case uses default AI Model files from the container image.
+**Important:** Complete [Before You Begin](./README.md#before-you-begin) before deploying the `PrivateAi` resource. Use the reserved public Load Balancer IP address as the `IP_ADDRESS` value when creating the certificate. The certificate must be valid for the address clients use to connect.
 
-**IMPORTANT:** Complete [Before You Begin](./README.md#before-you-begin) before using Oracle PrivateAI Controller. Make sure you use the Public IP Address of the Public LoadBalancer to the parameter `IP_ADDRESS` while creating the certificate for this `PrivateAi` Deployment.
+1. Start with [pai_sample_publiclb_no_configmap.yaml](./provisioning/pai_sample_publiclb_no_configmap.yaml).
 
-**NOTE:** Modify the file `pai_sample_publiclb_no_configmap.yaml` with the actual Reserved Public IP before deployment.
+2. Replace the public IP placeholder in the manifest with the reserved public IP address. Ensure that the TLS certificate includes this address in its Subject Alternative Name (SAN).
 
-Use the file: [pai_sample_publiclb_no_configmap.yaml](./provisioning/pai_sample_publiclb_no_configmap.yaml) for this use case as below:
+3. From the repository root, apply the manifest and wait for the `PrivateAi` resource to become healthy:
 
-1. Deploy the `pai_sample_publiclb_no_configmap.yaml` file:
+   ```sh
+   kubectl apply -f docs/privateai/provisioning/pai_sample_publiclb_no_configmap.yaml
+   kubectl wait --for=jsonpath='{.status.status}'=Healthy pai/pai-sample \
+     -n pai --timeout=15m
+   kubectl rollout status deployment/pai-sample -n pai --timeout=15m
+   ```
 
-    ```sh
-    kubectl apply -f pai_sample_publiclb_no_configmap.yaml
-    ```
+4. Verify the `PrivateAi` status, public Load Balancer address, Deployment, Pod, and Services:
 
-2. Check the status of the deployment:
+   ```sh
+   kubectl get pai pai-sample -n pai \
+     -o jsonpath='status={.status.status} publicLoadBalancerService={.status.publicLoadBalancerService} loadBalancerIP={.status.loadBalancerIP}{"\n"}'
+   kubectl get deployment pai-sample -n pai
+   kubectl get pods -n pai -l app.kubernetes.io/name=pai-sample -o wide
+   kubectl get services -n pai -o wide
+   ```
 
-    ```sh
-    # Check the status of the Kubernetes Pods:
-    kubectl get all -n pai
-
-    # Check the logs of a particular pod. For example, to check status of pod "pai-sample-b669d7897-nkkhz":
-    kubectl logs pod/pai-sample-b669d7897-nkkhz -n pai
-    ```
+Proceed when the resource reports `Healthy`, the Load Balancer address matches the reserved public IP, the Deployment has one ready replica, and the Pod is Ready.

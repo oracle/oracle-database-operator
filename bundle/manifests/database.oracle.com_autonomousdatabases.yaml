@@ -3,7 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.21.0
   creationTimestamp: null
   name: autonomousdatabases.database.oracle.com
 spec:
@@ -43,9 +43,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: Compute Count
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
@@ -77,6 +77,8 @@ spec:
                 - Start
                 - Terminate
                 - Clone
+                - Switchover
+                - Failover
                 type: string
               clone:
                 properties:
@@ -134,6 +136,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -222,6 +225,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -359,8 +363,6 @@ spec:
                 type: string
             type: object
         type: object
-    deprecated: true
-    deprecationWarning: AutonomousDatabase v1alpha1 is deprecated; use apiVersion database.oracle.com/v4. Existing v1alpha1 resources remain supported for migration only.
     served: true
     storage: false
     subresources:
@@ -378,9 +380,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: Compute Count
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
@@ -412,6 +414,8 @@ spec:
                 - Start
                 - Terminate
                 - Clone
+                - Switchover
+                - Failover
                 type: string
               clone:
                 properties:
@@ -469,6 +473,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -557,6 +562,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string

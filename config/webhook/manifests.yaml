@@ -10,27 +10,6 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-observability-oracle-com-v1-databaseobserver
-  failurePolicy: Fail
-  matchPolicy: Exact
-  name: mdatabaseobserverv1.kb.io
-  rules:
-  - apiGroups:
-    - observability.oracle.com
-    apiVersions:
-    - v1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - databaseobservers
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
       path: /mutate-observability-oracle-com-v4-databaseobserver
   failurePolicy: Fail
   matchPolicy: Exact
@@ -435,27 +414,6 @@ webhooks:
     - UPDATE
     resources:
     - autonomousdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-observability-oracle-com-v1-databaseobserver
-  failurePolicy: Fail
-  matchPolicy: Exact
-  name: vdatabaseobserverv1.kb.io
-  rules:
-  - apiGroups:
-    - observability.oracle.com
-    apiVersions:
-    - v1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - databaseobservers
   sideEffects: None
 - admissionReviewVersions:
   - v1

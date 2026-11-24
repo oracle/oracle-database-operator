@@ -55,6 +55,8 @@ const DBA_GUID int64 = 54322
 
 const SQLPlusCLI string = "sqlplus -s / as sysdba"
 
+const SQLPlusNoLoginCLI string = "sqlplus -s /nolog"
+
 const SQLCLI string = "sql -s / as sysdba"
 
 const GetVersionSQL string = "SELECT VERSION_FULL FROM V\\$INSTANCE;"
@@ -83,13 +85,20 @@ const ForceLoggingFalseSQL string = "SELECT force_logging FROM v\\$database;" +
 	"\nALTER DATABASE NO FORCE LOGGING;" +
 	"\nSELECT force_logging FROM v\\$database;"
 
-const FlashBackTrueSQL string = "SELECT flashback_on FROM v\\$database;" +
+const FlashBackTrueSQL string = "WHENEVER SQLERROR EXIT SQL.SQLCODE\nSELECT flashback_on FROM v\\$database;" +
 	"\nALTER DATABASE FLASHBACK ON;" +
 	"\nSELECT flashback_on FROM v\\$database;"
 
-const FlashBackFalseSQL string = "SELECT flashback_on FROM v\\$database;" +
+const FlashBackFalseSQL string = "WHENEVER SQLERROR EXIT SQL.SQLCODE\nSELECT flashback_on FROM v\\$database;" +
 	"\nALTER DATABASE FLASHBACK OFF;" +
 	"\nSELECT flashback_on FROM v\\$database;"
+
+// CancelManagedRecoverySQL and StartManagedRecoverySQL bracket standby
+// flashback changes. Oracle rejects ALTER DATABASE FLASHBACK ON while MRP is
+// active (ORA-01153).
+const CancelManagedRecoverySQL string = "WHENEVER SQLERROR EXIT SQL.SQLCODE\nALTER DATABASE RECOVER MANAGED STANDBY DATABASE CANCEL;"
+
+const StartManagedRecoverySQL string = "WHENEVER SQLERROR EXIT SQL.SQLCODE\nALTER DATABASE RECOVER MANAGED STANDBY DATABASE USING CURRENT LOGFILE DISCONNECT FROM SESSION;"
 
 const ArchiveLogTrueCMD string = CreateChkFileCMD + " && " +
 	"echo -e  \"SHUTDOWN IMMEDIATE; \n STARTUP MOUNT; \n ALTER DATABASE ARCHIVELOG; \n SELECT log_mode FROM v\\$database; \n ALTER DATABASE OPEN;" +
@@ -239,8 +248,9 @@ const RemoveDataguardConfiguration string = "DISABLE FAST_START FAILOVER;" +
 
 const GetDatabaseRoleCMD string = "SELECT DATABASE_ROLE FROM V\\$DATABASE; "
 
-const RunDatapatchCMD string = " ( while true; do  sleep 60; echo \"Installing patches...\" ; done ) & if ! $ORACLE_HOME/OPatch/datapatch -skip_upgrade_check;" +
-	" then echo \"Datapatch execution has failed.\" ; else echo \"DONE: Datapatch execution.\" ; fi ; kill -9 $!;"
+const RunDatapatchCMD string = "( while true; do sleep 60; echo \"Installing patches...\"; done ) & " +
+	"progress_pid=$!; $ORACLE_HOME/OPatch/datapatch -skip_upgrade_check 2>&1; datapatch_status=$?; " +
+	"kill -9 $progress_pid 2>/dev/null || true; wait $progress_pid 2>/dev/null || true; exit $datapatch_status"
 
 const GetSqlpatchDescriptionSQL string = "select TARGET_VERSION || ' (' || ACTION || ' of ' || PATCH_ID || ')' as patchinfo from dba_registry_sqlpatch order by action_time desc;"
 
@@ -394,6 +404,16 @@ const UninstallORDSCMD string = "\numask 177" +
 	"\nrm -rf /opt/oracle/ords/config/ords/standalone" +
 	"\nrm -rf /opt/oracle/ords/config/ords/apex"
 
+const UninstallORDSCMDNoPassword string = "\numask 177" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war uninstall advanced < ords.cred" +
+	"\nrm -f ords.cred" +
+	"\numask 022" +
+	"\nrm -f /opt/oracle/ords/config/ords/defaults.xml" +
+	"\nrm -f /opt/oracle/ords/config/ords/credentials" +
+	"\nrm -rf /opt/oracle/ords/config/ords/conf" +
+	"\nrm -rf /opt/oracle/ords/config/ords/standalone" +
+	"\nrm -rf /opt/oracle/ords/config/ords/apex"
+
 const ORDSDefaultHTTPPort int32 = 8080
 
 const GetORDSStatus string = "curl -sSkfL -o /dev/null -w 'HTTP %%{http_code}\\n' http://localhost:%d/ords/_/landing"
@@ -401,6 +421,7 @@ const GetORDSStatus string = "curl -sSkfL -o /dev/null -w 'HTTP %%{http_code}\\n
 const ORDSReadinessProbe string = "curl -sSkvf -k -X GET http://localhost:%d/ords/_/landing"
 
 const ValidateAdminPassword string = "conn sys/\"%s\"@%s as sysdba\nshow user"
+const ValidateAdminPasswordWithoutPassword string = "conn sys@%s as sysdba\nshow user"
 
 const ReconcileError string = "ReconcileError"
 
@@ -442,14 +463,16 @@ const NoExternalIP string = "Node ExternalIP unavailable"
 
 const WalletPwdCMD string = "export WALLET_PWD=\"`openssl rand -base64 8`1\""
 
+const WalletAdminPasswordFile string = "/home/oracle/.operator-tmp/admin.pwd"
+
 const WalletExistsCMD string = "if [ -f ${WALLET_DIR}/ewallet.p12 ]; then echo present; fi"
 
-const WalletCreateCMD string = "if [[ ! -f ${WALLET_DIR}/ewallet.p12 ]]; then mkdir -p ${WALLET_DIR}/.wallet && (umask 177\ncat > wallet.passwd <<EOF\n${WALLET_PWD}\n${WALLET_PWD}\nEOF\nmkstore -wrl ${WALLET_DIR} -create < wallet.passwd\nrm -f wallet.passwd\numask 022;) fi"
+const WalletCreateCMD string = "if [[ ! -f ${WALLET_DIR}/ewallet.p12 ]]; then mkdir -p ${WALLET_DIR}/.wallet && (umask 177\ncat > /tmp/wallet.passwd <<EOF\n${WALLET_PWD}\n${WALLET_PWD}\nEOF\nmkstore -wrl ${WALLET_DIR} -create < /tmp/wallet.passwd\nrm -f /tmp/wallet.passwd\numask 022;) fi"
 
 const WalletDeleteCMD string = "rm -rf ${WALLET_DIR}"
 
-const WalletEntriesCMD string = "umask 177\ncat > wallet.passwd <<EOF\n${WALLET_PWD}\nEOF\nENTRY_VALUE=\"$(cat admin.pwd)\"\n mkstore -wrl ${WALLET_DIR} -createEntry oracle.dbsecurity.sysPassword \"$ENTRY_VALUE\" -createEntry oracle.dbsecurity.systemPassword \"$ENTRY_VALUE\" " +
-	"-createEntry oracle.dbsecurity.pdbAdminPassword \"$ENTRY_VALUE\" -createEntry oracle.dbsecurity.dbsnmpPassword \"$ENTRY_VALUE\" < wallet.passwd\nunset ENTRY_VALUE\nrm -f wallet.passwd\numask 022;"
+const WalletEntriesCMD string = "umask 177\ncat > /tmp/wallet.passwd <<EOF\n${WALLET_PWD}\nEOF\nENTRY_VALUE=\"$(cat " + WalletAdminPasswordFile + ")\"\n mkstore -wrl ${WALLET_DIR} -createEntry oracle.dbsecurity.sysPassword \"$ENTRY_VALUE\" -createEntry oracle.dbsecurity.systemPassword \"$ENTRY_VALUE\" " +
+	"-createEntry oracle.dbsecurity.pdbAdminPassword \"$ENTRY_VALUE\" -createEntry oracle.dbsecurity.dbsnmpPassword \"$ENTRY_VALUE\" < /tmp/wallet.passwd\nunset ENTRY_VALUE\nrm -f /tmp/wallet.passwd\numask 022;"
 
 const InitWalletCMD string = "if [ ! -f $ORACLE_BASE/oradata/.${ORACLE_SID}${CHECKPOINT_FILE_EXTN} ] || [ ! -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_%s ];" +
 	" then while [ ! -f ${WALLET_DIR}/ewallet.p12 ] || pgrep -f $WALLET_CLI > /dev/null; do sleep 0.5; done; fi "
@@ -466,7 +489,7 @@ const AlterProcessesCMD string = "echo -e  \"alter system set processes=%d scope
 const GetInitParamsSQL string = "column name format a20;" +
 	"\ncolumn display_value format a20;" +
 	"\nset linesize 100 pagesize 50;" +
-	"\nselect name,display_value from v\\$parameter where name in  ('sga_target','pga_aggregate_target','cpu_count','processes') order by name asc;"
+	"\nselect name,case when name in ('sga_target','pga_aggregate_target') then to_char(round(to_number(value)/1024/1024)) else value end as display_value from v\\$parameter where name in ('sga_target','pga_aggregate_target','cpu_count','processes') order by name asc;"
 
 const UnzipApexOnSIDBPod string = "if [ -f /opt/oracle/oradata/apex-latest.zip ]; then unzip -o /opt/oracle/oradata/apex-latest.zip -d /opt/oracle/oradata/${ORACLE_SID^^}; else echo \"apex-latest.zip not found\"; fi;"
 
@@ -640,3 +663,6 @@ if [ "$PROC" -gt 0 ]; then upsert "processes" "$PROC" "$PFILE"; fi
 `
 
 const CreateSpfileFromPfileCMD string = "echo -e \"create spfile='%s' from pfile='%s';\" | " + SQLPlusCLI
+const AlterMemoryTargetCMD string = "echo -e  \"alter system set memory_max_target=%dM scope=spfile; \n alter system set sga_target=0 scope=spfile; \n alter system set pga_aggregate_target=0 scope=spfile; \n alter system set memory_target=%dM scope=spfile; \" | %s && " + CreateChkFileCMD + " && " +
+	"echo -e  \"SHUTDOWN IMMEDIATE; \n STARTUP MOUNT; \n ALTER DATABASE OPEN; \n ALTER PLUGGABLE DATABASE ALL OPEN; \n ALTER SYSTEM REGISTER;\" | %s && " +
+	RemoveChkFileCMD

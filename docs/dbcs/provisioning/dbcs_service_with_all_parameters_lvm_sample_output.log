@@ -8,7 +8,7 @@ spec:
   ociSecret: "oci-privatekey"
   dbSystem:
     availabilityDomain: "OLou:PHX-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya"
+    compartmentId: "ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>"
     dbAdminPaswordSecret: "admin-password"
     dbBackupConfig:
       autoBackupEnabled: True
@@ -27,7 +27,7 @@ spec:
     sshPublicKeys:
       - "oci-publickey"
     storageManagement: "LVM"
-    subnetId: "ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a"
+    subnetId: "ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>"
     tags:
       "TEST": "test_case_provision"
       "CreatedBy": "MAA_TEAM"
@@ -106,7 +106,7 @@ Name:         dbcssystem-create
 Namespace:    default
 Labels:       <none>
 Annotations:  lastSuccessfulSpec:
-                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya","availabilityDomain":"O...
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>","availabilityDomain":"O...
 API Version:  database.oracle.com/v1alpha1
 Kind:         DbcsSystem
 Metadata:
@@ -198,7 +198,7 @@ Metadata:
 Spec:
   Db System:
     Availability Domain:      OLou:PHX-AD-1
-    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya
+    Compartment Id:           ocid1.compartment.oc1..<REPLACE_WITH_COMPARTMENT_OCID>
     Db Admin Pasword Secret:  admin-password
     Db Backup Config:
       Auto Backup Enabled:            true
@@ -217,7 +217,7 @@ Spec:
     Ssh Public Keys:
       oci-publickey
     Storage Management:  LVM
-    Subnet Id:           ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
+    Subnet Id:           ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
     Tags:
       Created By:                MAA_TEAM
       TEST:                      test_case_provision
@@ -232,13 +232,13 @@ Status:
   Data Storage Size In G Bs:  256
   Db Edition:                 STANDARD_EDITION
   Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.phx.anyhqljr5gy3jhqahugk47wa6hp36fwamqh24lv7bavbqleyerdjgpoublgq
+    Db Home Id:      ocid1.dbhome.oc1..<REPLACE_WITH_DB_HOME_OCID>
     Db Name:         db0130
     Db Unique Name:  db0130_phx1t6
     Db Workload:     OLTP
-    Id:              ocid1.database.oc1.phx.anyhqljrabf7htya4wwpjsm6bc4jlipqrxl7lpgm5dt7rjpfcwnuynslifra
+    Id:              ocid1.database.oc1..<REPLACE_WITH_DATABASE_OCID>
   Display Name:      dbsystem0130
-  Id:                ocid1.dbsystem.oc1.phx.anyhqljrabf7htya3y2uepxpcpy4t2gv5ctnw3r2jkfaevxloydy5uilgpna
+  Id:                ocid1.dbsystem.oc1..<REPLACE_WITH_DB_SYSTEM_OCID>
   License Model:     BRING_YOUR_OWN_LICENSE
   Network:
     Client Subnet:          k8test-pubvcn
@@ -251,10 +251,10 @@ Status:
   Shape:                    VM.Standard2.1
   State:                    AVAILABLE
   Storage Management:       LVM
-  Subnet Id:                ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
+  Subnet Id:                ocid1.subnet.oc1..<REPLACE_WITH_SUBNET_OCID>
   Time Zone:                Europe/Berlin
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrmfvsuabnnapzaxlpzxyipcfbqlquxd4yg7cfw57ectybunbjw4tq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1..<REPLACE_WITH_WORK_REQUEST_OCID>
     Operation Type:    Create DB System
     Percent Complete:  100
     Time Accepted:     2022-03-09 01:29:01.315 +0000 UTC

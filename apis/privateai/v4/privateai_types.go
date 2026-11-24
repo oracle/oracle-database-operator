@@ -146,16 +146,25 @@ type PrivateAiSecuritySpec struct {
 
 // PrivateAiRuntimeSpec groups runtime image, scaling, and process settings.
 type PrivateAiRuntimeSpec struct {
-	Image                *PrivateAiImageSpec          `json:"image,omitempty"`
-	Replicas             *int32                       `json:"replicas,omitempty"`
-	Env                  []EnvironmentVariable        `json:"env,omitempty"`
-	Resources            *corev1.ResourceRequirements `json:"resources,omitempty"`
-	Debug                *bool                        `json:"debug,omitempty"`
-	ReadinessCheckPeriod *int                         `json:"readinessCheckPeriod,omitempty"`
-	LivenessCheckPeriod  *int                         `json:"livenessCheckPeriod,omitempty"`
-	DownloadScripts      *bool                        `json:"downloadScripts,omitempty"`
-	WorkerNodes          []string                     `json:"workerNodes,omitempty"`
-	Annotations          *PaiAnnotationsSpec          `json:"annotations,omitempty"`
+	Image     *PrivateAiImageSpec          `json:"image,omitempty"`
+	Replicas  *int32                       `json:"replicas,omitempty"`
+	Env       []EnvironmentVariable        `json:"env,omitempty"`
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+	// ShmSize configures the memory-backed /dev/shm volume size. If omitted,
+	// the container runtime default is used.
+	ShmSize              string                           `json:"shmSize,omitempty"`
+	SecurityContext      *PrivateAiPodSecurityContextSpec `json:"securityContext,omitempty"`
+	Debug                *bool                            `json:"debug,omitempty"`
+	ReadinessCheckPeriod *int                             `json:"readinessCheckPeriod,omitempty"`
+	LivenessCheckPeriod  *int                             `json:"livenessCheckPeriod,omitempty"`
+	DownloadScripts      *bool                            `json:"downloadScripts,omitempty"`
+	ServiceAccountName   string                           `json:"serviceAccountName,omitempty"`
+	WorkerNodes          []string                         `json:"workerNodes,omitempty"`
+	// WorkerNodeSelector restricts Private AI Pods to nodes carrying all of
+	// the specified labels. It is mutually exclusive with workerNodes.
+	// +kubebuilder:validation:MinProperties=1
+	WorkerNodeSelector map[string]string   `json:"workerNodeSelector,omitempty"`
+	Annotations        *PaiAnnotationsSpec `json:"annotations,omitempty"`
 }
 
 // PrivateAiImageSpec defines the container image settings for PrivateAI.
@@ -177,6 +186,21 @@ type PrivateAiStorageSpec struct {
 	SizeInGb          *int32            `json:"sizeInGb,omitempty"`
 	DeletePvcOnDelete *bool             `json:"deletePvcOnDelete,omitempty"`
 	LogLocation       string            `json:"logLocation,omitempty"`
+}
+
+// PrivateAiPodSecurityContextSpec contains the optional pod identity settings
+// used by PrivateAI. Leave the identity fields unset on OpenShift so the SCC
+// can assign values from the namespace range. If runAsUser and runAsGroup are
+// supplied, the operator uses them for the explicit legacy PVC ownership path.
+// +kubebuilder:validation:XValidation:rule="!(has(self.fsGroup) && (has(self.runAsUser) || has(self.runAsGroup)))",message="fsGroup cannot be combined with runAsUser or runAsGroup"
+// +kubebuilder:validation:XValidation:rule="has(self.runAsUser) == has(self.runAsGroup)",message="runAsUser and runAsGroup must be supplied together"
+type PrivateAiPodSecurityContextSpec struct {
+	// +kubebuilder:validation:Minimum=1
+	RunAsUser *int64 `json:"runAsUser,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	RunAsGroup *int64 `json:"runAsGroup,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	FSGroup *int64 `json:"fsGroup,omitempty"`
 }
 
 // PrivateAiNetworkingSpec groups listeners, services, and TrafficManager integration.
@@ -225,7 +249,7 @@ type PaiAnnotationsSpec struct {
 	Pod      map[string]string `json:"pod,omitempty"`
 }
 
-// PaiServiceSpec defines generated Services for PrivateAI.
+// PaiServiceSpec defines generated Services for PrivateAI and AgentFactory.
 type PaiServiceSpec struct {
 	Ports               []PaiServicePortSpec   `json:"ports,omitempty"`
 	Cluster             *PaiClusterServiceSpec `json:"cluster,omitempty"`

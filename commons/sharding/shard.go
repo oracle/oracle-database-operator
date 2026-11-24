@@ -465,7 +465,7 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 			RunAsNonRoot:             BoolPointer(true),
 			RunAsUser:                &user,
 			RunAsGroup:               &group,
-			AllowPrivilegeEscalation: BoolPointer(false),
+			AllowPrivilegeEscalation: boolPointerOrDefault(OraShardSpex.AllowPrivilegeEscalation, false),
 			Capabilities: mergeCapabilitiesWithDefaults(&corev1.Capabilities{
 				Add:  capsAdd,
 				Drop: capsDrop,
@@ -544,7 +544,6 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 // buildInitContainerSpecForShard builds the optional script-download init container.
 func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Container {
 	var result []corev1.Container
-	privFlag := true
 	// var uid int64 = 0
 	uid := oraRunAsUser
 
@@ -560,9 +559,9 @@ func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraSh
 		Name:  OraShardSpex.Name + "-init1",
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             BoolPointer(false),
-			AllowPrivilegeEscalation: BoolPointer(true),
-			Privileged:               &privFlag,
+			RunAsNonRoot:             BoolPointer(true),
+			AllowPrivilegeEscalation: BoolPointer(false),
+			Privileged:               BoolPointer(false),
 			RunAsUser:                &uid,
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
