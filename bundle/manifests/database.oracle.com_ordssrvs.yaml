@@ -121,6 +121,38 @@ spec:
                       type: string
                     type: object
                 type: object
+              containerProbeSettings:
+                properties:
+                  livenessFailureThreshold:
+                    default: 18
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  path:
+                    default: /favicon.ico
+                    pattern: ^$|/.*
+                    type: string
+                  periodSeconds:
+                    default: 10
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  readinessFailureThreshold:
+                    default: 3
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  startupFailureThreshold:
+                    default: 30
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  timeoutSeconds:
+                    default: 3
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
               encPrivKey:
                 properties:
                   passwordKey:
@@ -327,11 +359,20 @@ spec:
                         type: object
                     type: object
                 type: object
-              poolProbeIntervalSeconds:
-                default: 0
-                format: int32
-                minimum: 0
-                type: integer
+              poolProbeSettings:
+                properties:
+                  intervalSeconds:
+                    default: 0
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  poolList:
+                    items:
+                      pattern: ^[a-z0-9._-]+$
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                type: object
               poolSettings:
                 items:
                   properties:
@@ -585,38 +626,6 @@ spec:
                   - poolName
                   type: object
                 type: array
-              probePath:
-                default: /favicon.ico
-                pattern: ^$|/.*
-                type: string
-              probeSettings:
-                properties:
-                  livenessFailureThreshold:
-                    default: 18
-                    format: int32
-                    minimum: 1
-                    type: integer
-                  periodSeconds:
-                    default: 10
-                    format: int32
-                    minimum: 1
-                    type: integer
-                  readinessFailureThreshold:
-                    default: 3
-                    format: int32
-                    minimum: 1
-                    type: integer
-                  startupFailureThreshold:
-                    default: 30
-                    format: int32
-                    minimum: 1
-                    type: integer
-                  timeoutSeconds:
-                    default: 3
-                    format: int32
-                    minimum: 1
-                    type: integer
-                type: object
               replicas:
                 default: 1
                 format: int32
