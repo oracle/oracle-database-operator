@@ -77,6 +77,12 @@ See also the [Quick Start](./usecase/README.md) for the shortest `lrest lrpdb` s
 
 * Reset bitmask status simplification.
 
+* **VERSION 2.3**
+
+* LREST pod liveness and readiness probes, and pod creation optimization
+
+* LREST connection monitoring and retry after an instance failure
+
 ### 1.1. <a name='KUBECTLGETLRPDBFORMAT'></a>KUBECTL GET LRPDB FORMAT
 
 | Name          | Description                                             |
