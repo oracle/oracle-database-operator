@@ -626,6 +626,15 @@ spec:
                       rule: '!(has(self.fsGroup) && (has(self.runAsUser) || has(self.runAsGroup)))'
                     - message: runAsUser and runAsGroup must be supplied together
                       rule: has(self.runAsUser) == has(self.runAsGroup)
+                  serviceAccountName:
+                    type: string
+                  shmSize:
+                    type: string
+                  workerNodeSelector:
+                    additionalProperties:
+                      type: string
+                    minProperties: 1
+                    type: object
                   workerNodes:
                     items:
                       type: string

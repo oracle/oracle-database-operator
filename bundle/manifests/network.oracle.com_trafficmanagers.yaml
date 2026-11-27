@@ -13,8 +13,6 @@ spec:
     listKind: TrafficManagerList
     plural: trafficmanagers
     shortNames:
-    - cman
-    - connectionmanager
     - trm
     singular: trafficmanager
   scope: Namespaced
@@ -907,6 +905,13 @@ spec:
                 - nginx
                 - cman
                 type: string
+                x-kubernetes-validations:
+                - message: spec.type=cman is only supported for existing TrafficManager
+                    resources and cannot be changed; use kind ConnectionManager for
+                    new resources
+                  optionalOldSelf: true
+                  rule: self == 'nginx' || (self == 'cman' && oldSelf.orValue('')
+                    == 'cman')
             type: object
           status:
             properties:
