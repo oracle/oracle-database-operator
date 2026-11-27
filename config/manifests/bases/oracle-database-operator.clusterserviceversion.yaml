@@ -48,7 +48,7 @@ spec:
       name: cdbs.database.oracle.com
       version: v4
     - description: OrdsSrvs is the Schema for the ordssrvs API
-      displayName: Ords Srvs
+      displayName: Oracle REST Data Services
       kind: OrdsSrvs
       name: ordssrvs.database.oracle.com
       statusDescriptors:
@@ -75,6 +75,22 @@ spec:
       kind: DatabaseObserver
       name: databaseobservers.observability.oracle.com
       version: v1alpha1
+    - description: Manages Oracle AI Database Private Agent Factory workloads.
+      displayName: Oracle AI Database Private Agent Factory
+      kind: AgentFactory
+      name: agentfactories.privateai.oracle.com
+      version: v4
+    - description: Manages Oracle Connection Manager endpoints and configuration.
+      displayName: Oracle Connection Manager
+      kind: ConnectionManager
+      name: connectionmanagers.network.oracle.com
+      version: v4
+    - description: Deploys and manages NGINX-based traffic routing, services, and
+        TLS configuration for Oracle AI Database workloads.
+      displayName: Traffic Manager
+      kind: TrafficManager
+      name: trafficmanagers.network.oracle.com
+      version: v4
     - description: AutonomousContainerDatabase is the Schema for the autonomouscontainerdatabases
         API
       displayName: Autonomous Container Database
@@ -207,8 +223,7 @@ spec:
       observer management, diagnostics, and lifecycle operations.
     * **SingleInstanceDatabase:** Data Guard, TCPS, True Cache, clone and restore,
       external PVCs, pod security, image updates, and connection status.
-    * **Observability — Preview:** Secure operator metrics, DatabaseObserver
-      improvements, and Grafana Alloy integration.
+    * **Observability — Preview:** DatabaseObserver improvements and Grafana Alloy integration. Secure operator metrics are available through the documented manual installation path.
 
     ## Supported Workloads
 
@@ -272,18 +287,12 @@ spec:
     url: https://github.com/oracle/oracle-database-operator
   - name: Version 2.3.0 Release Notes
     url: https://github.com/oracle/oracle-database-operator/releases/tag/2.3.0
-  - name: Installation Guide
+  - name: Installation and Upgrade
     url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/installation/README.md
-  - name: Upgrade Guide
-    url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/installation/UPGRADE.md
+  - name: Documentation
+    url: https://github.com/oracle/oracle-database-operator/tree/2.3.0/docs
   - name: Security Guidance
     url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/security/operator-security-posture.md
-  - name: AgentFactory Documentation
-    url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/agentfactory/README.md
-  - name: CMAN Documentation
-    url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/cman/README.md
-  - name: SIDB Documentation
-    url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/sidb/README.md
   maturity: stable
   provider:
     name: Oracle

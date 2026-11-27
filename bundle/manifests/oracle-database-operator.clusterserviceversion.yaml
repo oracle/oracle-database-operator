@@ -441,7 +441,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Database
     containerImage: container-registry.oracle.com/database/operator:2.3.0
-    createdAt: "2026-11-26T02:12:05Z"
+    createdAt: "2026-11-26T23:56:48Z"
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: oracle-database-operator.v2.3.0
@@ -450,7 +450,9 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-    - kind: AgentFactory
+    - description: Manages Oracle AI Database Private Agent Factory workloads.
+      displayName: Oracle AI Database Private Agent Factory
+      kind: AgentFactory
       name: agentfactories.privateai.oracle.com
       version: v4
     - description: AutonomousContainerDatabase is the Schema for the autonomouscontainerdatabases
@@ -499,7 +501,9 @@ spec:
       kind: AutonomousDatabase
       name: autonomousdatabases.database.oracle.com
       version: v4
-    - kind: ConnectionManager
+    - description: Manages Oracle Connection Manager endpoints and configuration.
+      displayName: Oracle Connection Manager
+      kind: ConnectionManager
       name: connectionmanagers.network.oracle.com
       version: v4
     - description: DatabaseObserver is the Schema for the databaseobservers API
@@ -596,7 +600,10 @@ spec:
       kind: SingleInstanceDatabase
       name: singleinstancedatabases.database.oracle.com
       version: v4
-    - kind: TrafficManager
+    - description: Deploys and manages NGINX-based traffic routing, services, and
+        TLS configuration for Oracle AI Database workloads.
+      displayName: Traffic Manager
+      kind: TrafficManager
       name: trafficmanagers.network.oracle.com
       version: v4
   description: |
@@ -614,8 +621,7 @@ spec:
       observer management, diagnostics, and lifecycle operations.
     * **SingleInstanceDatabase:** Data Guard, TCPS, True Cache, clone and restore,
       external PVCs, pod security, image updates, and connection status.
-    * **Observability — Preview:** Secure operator metrics, DatabaseObserver
-      improvements, and Grafana Alloy integration.
+    * **Observability — Preview:** DatabaseObserver improvements and Grafana Alloy integration. Secure operator metrics are available through the documented manual installation path.
 
     ## Supported Workloads
 
@@ -1102,18 +1108,12 @@ spec:
     url: https://github.com/oracle/oracle-database-operator
   - name: Version 2.3.0 Release Notes
     url: https://github.com/oracle/oracle-database-operator/releases/tag/2.3.0
-  - name: Installation Guide
+  - name: Installation and Upgrade
     url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/installation/README.md
-  - name: Upgrade Guide
-    url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/installation/UPGRADE.md
+  - name: Documentation
+    url: https://github.com/oracle/oracle-database-operator/tree/2.3.0/docs
   - name: Security Guidance
     url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/security/operator-security-posture.md
-  - name: AgentFactory Documentation
-    url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/agentfactory/README.md
-  - name: CMAN Documentation
-    url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/cman/README.md
-  - name: SIDB Documentation
-    url: https://github.com/oracle/oracle-database-operator/blob/2.3.0/docs/sidb/README.md
   maturity: stable
   provider:
     name: Oracle
